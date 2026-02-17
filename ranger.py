@@ -4,6 +4,7 @@ import subprocess
 import os
 from time import sleep
 import sys
+import time
 import shutil
 import glob
 import tempfile
@@ -22,15 +23,15 @@ def load_config():
         try:
             with open("config.json", "r") as f:
                 config.update(json.load(f))
-            print("✅ Config loaded:", config)
+            print("[OK] Config loaded:", config)
         except Exception as e:
-            print(f"⚠️ Error loading config: {e}")
+            print(f"[WARN] Error loading config: {e}")
     else:
         # Create default config
         try:
             with open("config.json", "w") as f:
                 json.dump(config, f, indent=4)
-            print("✅ Created default config.json")
+            print("[OK] Created default config.json")
         except:
             pass
             
@@ -161,14 +162,14 @@ def find_adb_executable():
     # 1. Check local adb folder
     if os.path.exists(r"adb\adb.exe"):
         adb_path = r"adb\adb.exe"
-        print(f"✅ Found local ADB: {adb_path}")
+        print(f"[OK] Found local ADB: {adb_path}")
         return True
 
     # 2. Check system PATH
     try:
         subprocess.run(["adb", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         adb_path = "adb"
-        print("✅ Found ADB in system PATH")
+        print("[OK] Found ADB in system PATH")
         return True
     except FileNotFoundError:
         pass
@@ -186,15 +187,15 @@ def find_adb_executable():
     for path in mumu_adb_paths:
         if os.path.exists(path):
             adb_path = path
-            print(f"✅ Found MuMu ADB: {path}")
+            print(f"[OK] Found MuMu ADB: {path}")
             return True
             
-    print("❌ ADB executable not found!")
+    print("[FAIL] ADB executable not found!")
     return False
 
 def connect_known_ports():
     """Auto-scan and connect to common emulator ports"""
-    print("🔄 Auto-connecting to common emulator ports...")
+    print("[INFO] Auto-connecting to common emulator ports...")
     
     # Scan from 5555 up to 30 devices
     start_port = 5555
@@ -202,14 +203,14 @@ def connect_known_ports():
     
     for i in range(max_devices): 
         port = start_port + (i * 2)
-        print(f"\r⏳ Connecting to 127.0.0.1:{port}...", end="", flush=True)
+        print(f"\r[WAIT] Connecting to 127.0.0.1:{port}...", end="", flush=True)
         cmd = [adb_path, "connect", f"127.0.0.1:{port}"]
         try:
             # Run fast with short timeout (0.5s is enough for localhost)
             subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=0.5)
         except:
             pass
-    print("\n✅ Finished checking ports.")
+    print("\n[OK] Finished checking ports.")
 
 def get_connected_devices():
     """Parse 'adb devices' output to get list of serials"""
@@ -229,7 +230,7 @@ def get_connected_devices():
                 devices.append(parts[0])
         return devices
     except Exception as e:
-        print(f"❌ Error getting devices: {e}")
+        print(f"[FAIL] Error getting devices: {e}")
         return []
 
 def capture_screen():
@@ -246,7 +247,7 @@ def capture_screen():
         os.system(f'{adb_cmd} -s {device_id} pull /sdcard/screen.png {filename}')
         
     if not os.path.exists(filename):
-         # raise Exception(f"❌ Capture screen failed for {device_id}")
+         # raise Exception(f"[FAIL] Capture screen failed for {device_id}")
          print(f"❌ Capture screen failed for {device_id}")
 
 def find(template_path, similarity=0.8):
@@ -444,7 +445,7 @@ def clear_specific_shared_prefs():
     
     print(f"[{device_id}] Removing specific shared_prefs...")
     for f in files_to_delete:
-        cmd = f"rm {base_path}/{f}"
+        cmd = f"rm -f {base_path}/{f}"
         subprocess.run([adb_cmd, "-s", device_id, "shell", f"su -c '{cmd}'"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     print(f"[{device_id}] shared_prefs cleanup completed.")
 
@@ -478,67 +479,9 @@ def first_loop_process():
         subprocess.run([adb_cmd, "-s", device_id, "shell", "monkey", "-p", "com.linecorp.LGRGS", "-c", "android.intent.category.LAUNCHER", "1"])
         sleep(10)
         
-        test_found = False
-        test_timeout = 120
-        test_start_time = time.time()
-        black_screen_timer = None
-        
-        print(f"[{device_id}] Looking for test.png (timeout: {test_timeout}s)...")
-        
-        import time
-        while time.time() - test_start_time < test_timeout:
-            elapsed_time = time.time() - test_start_time
-            
-            # Use find() which calls capture_screen
-            
-            # Check fixcak
-            if exists(r"img\fixcak.png"):
-                print(f"[{device_id}] Found fixcak.png! Clearing app...")
-                subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                sleep(6)
-                return "restart_first_loop"
+        # Wait a bit before proceeding
+        sleep(10)
 
-            # Check black screen
-            if check_black_screen():
-                if black_screen_timer is None:
-                    black_screen_timer = time.time()
-                    print(f"[{device_id}] Black screen detected...")
-                else:
-                    if time.time() - black_screen_timer >= 8:
-                         print(f"[{device_id}] Black screen > 8s, restarting...")
-                         subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                         sleep(3)
-                         # Restart with monkey
-                         subprocess.run([adb_cmd, "-s", device_id, "shell", "monkey", "-p", "com.linecorp.LGRGS", "-c", "android.intent.category.LAUNCHER", "1"])
-                         sleep(2)
-                         black_screen_timer = None
-                         continue
-            else:
-                black_screen_timer = None
-
-            # Check stopcheck
-            if exists(r"img\stopcheck.png"):
-                 print(f"[{device_id}] Found stopcheck.png!")
-                 subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                 sleep(2)
-                 return "complete"
-
-            # Check test.png
-            test_loc = find(r"img\test.png")
-            if test_loc:
-                print(f"[{device_id}] Found test.png!")
-                click(test_loc)
-                test_found = True
-                break
-            
-            if int(elapsed_time) % 10 == 0:
-                print(f"[{device_id}] Still searching for test.png...({int(elapsed_time)}s)")
-            
-            sleep(1.0)
-            
-        if not test_found:
-             print(f"[{device_id}] test.png not found, restarting")
-             return "restart_first_loop"
 
         # Check closeapp
         print(f"[{device_id}] Checking closeapp.png...")
@@ -635,14 +578,14 @@ if __name__ == "__main__":
     
     # 3. get devices
     devices = get_connected_devices()
-    print(f"📱 Connected devices: {devices}")
+    print(f"[DEV] Connected devices: {devices}")
     
     if not devices:
-        print("❌ No devices found.")
+        print("[FAIL] No devices found.")
         sys.exit(0)
 
     # 4. Load files
-    import time # Import time locally just in case
+
     
     backup_path = os.path.join(os.getcwd(), "backup")
     success_path = os.path.join(os.getcwd(), "login-success")
@@ -653,9 +596,9 @@ if __name__ == "__main__":
     file_queue = []
     if os.path.exists(backup_path):
         file_queue = glob.glob(os.path.join(backup_path, "*.xml"))
-        print(f"📂 Found {len(file_queue)} files in backup/")
+        print(f"[FILE] Found {len(file_queue)} files in backup/")
     else:
-        print("⚠️ 'backup' folder not found!")
+        print("[WARN] 'backup' folder not found!")
 
     # 5. Process Loop
     processed_count = 0
@@ -701,18 +644,18 @@ if __name__ == "__main__":
                             fname = os.path.basename(injected_file)
                             dest = os.path.join(success_path, fname)
                             shutil.move(injected_file, dest)
-                            print(f"[{device_id}] ✅ Moved {fname} to login-success")
+                            print(f"[{device_id}] [OK] Moved {fname} to login-success")
                             processed_count += 1
                         except Exception as e:
-                             print(f"[{device_id}] ⚠️ Failed to move file: {e}")
+                             print(f"[{device_id}] [WARN] Failed to move file: {e}")
                     else:
-                        print(f"[{device_id}] ⚠️ Login did not complete. File remains in backup.")
+                        print(f"[{device_id}] [WARN] Login did not complete. File remains in backup.")
                         
             except Exception as e:
-                print(f"❌ Error processing {dev}: {e}")
+                print(f"[FAIL] Error processing {dev}: {e}")
                 
         # Small delay between batches
         sleep(1)
             
-    print(f"\n✅ All files processed. Total success: {processed_count}")
+    print(f"\n[OK] All files processed. Total success: {processed_count}")
 
