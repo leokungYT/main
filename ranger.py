@@ -92,10 +92,28 @@ def main_login(current_filename=None):
             break
             
         # Failure Condition
-        if exists(r"img\login-failed.png") or exists(r"img\fixid.png"):
-            print(f"[{device_id}] ⚠️ Found login-failed.png!")
+        if exists(r"img\login-failed.png"):
+            print(f"[{device_id}] Found login-failed.png!")
             status = "failed"
             break
+
+        # Bug Condition
+        if exists(r"img\fixbuglogin.png"):
+            print(f"[{device_id}] Found fixbuglogin.png, waiting 8s...")
+            sleep(8)
+            if exists(r"img\fixbuglogin.png"):
+                 print(f"[{device_id}] Bug login persisted. Restarting app...")
+                 adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
+                 subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                 sleep(2)
+                 
+                 # Go home and click icon
+                 subprocess.run([adb_cmd, "-s", device_id, "shell", "input keyevent 3"])
+                 sleep(2)
+                 if exists(r"img\icon.png"):
+                     click(r"img\icon.png")
+                     sleep(5)
+                 continue
 
         # Check for event
         if exists(r"img\event.png"):
@@ -344,85 +362,7 @@ def inject_file():
 
 
 
-def main_login():
-    print(f"[{device_id}] Starting main_login...")
-    
-    # 0. Clear App First
-    adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
-    print(f"[{device_id}] Clearing app before starting...")
-    subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-    sleep(2)
 
-    # 1. Click Icon (Optional, if we are at home screen)
-    if exists(r"img\icon.png"):
-        print(f"[{device_id}] Found icon, entering game...")
-        click(r"img\icon.png")
-        sleep(5)
-
-    # 2. Main Loop
-    loop_count = 0
-    success = False
-    
-    # Loop until stoplogin found
-    while not exists(r"img\stoplogin.png"):
-        loop_count += 1
-        if loop_count % 5 == 0:
-            print(f"[{device_id}] Main Loop #{loop_count} running...")
-            
-        # Check for event
-        if exists(r"img\event.png"):
-            print(f"[{device_id}] Found event.png, handling event...")
-            click(r"img\event.png")
-            sleep(1)
-            
-            # Press back repeatedly until cancel.png found
-            # Mimic main.py: Burst fire BACK keys
-            back_attempts = 0
-            adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
-            
-            while True:
-                # Burst 3 BACK keys in one command for speed
-                subprocess.run([adb_cmd, "-s", device_id, "shell", "input keyevent 4 && input keyevent 4 && input keyevent 4"])
-                back_attempts += 3
-                
-                # Safety checks & Exit condition - Check every 9 presses (3 loops) implies faster execution
-                # But to be safe and responsive, let's check every loop but avoid full check if possible?
-                # No, textocr/exists is slow. match main.py: check periodically.
-                
-                if back_attempts % 9 == 0:
-                    print(f"[{device_id}] Checking exit conditions (Attempts: {back_attempts})...")
-                    if exists(r"img\cancel.png"):
-                        print(f"[{device_id}] Found cancel.png! Clicking and finishing sequence.")
-                        click(r"img\cancel.png")
-                        break
-                        
-                    if exists(r"img\stoplogin.png"):
-                        print(f"[{device_id}] Found stoplogin.png inside cancel loop!")
-                        success = True
-                        break
-
-                if back_attempts > 60: 
-                    print(f"[{device_id}] Too many back attempts, breaking cancel loop...")
-                    break
-                    
-                sleep(0.5) # Short sleep between bursts
-        
-        if success: break # Break outer loop if success found in inner loop
-        
-        sleep(1)
-        
-        # Safety break to avoid infinite loop if nothing happens for too long
-        if loop_count > 500:
-             print(f"[{device_id}] ⚠️ Max loops reached.")
-             break
-
-    print(f"[{device_id}] Found stoplogin.png! Clearing app...")
-    adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
-    subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-    print(f"[{device_id}] Login sequence finished!")
-    return True
-    
-    return False
 
 def clear_specific_shared_prefs():
     files_to_delete = [
@@ -471,89 +411,65 @@ def first_loop_process():
         clear_specific_shared_prefs()
         sleep(3)
         
-        # 2. Open App (Use monkey to launch main activity automatically)
+        # 2. Open App (Go to home and click icon)
         adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
         subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(1)
-        # Use monkey -p package -c category.LAUNCHER 1
-        subprocess.run([adb_cmd, "-s", device_id, "shell", "monkey", "-p", "com.linecorp.LGRGS", "-c", "android.intent.category.LAUNCHER", "1"])
-        sleep(10)
+        
+        # Go to Home
+        subprocess.run([adb_cmd, "-s", device_id, "shell", "input keyevent 3"])
+        sleep(2)
         
         # Wait a bit before proceeding
-        sleep(10)
+        # sleep(10) # Reduced since we will wait for icon
 
 
-        # Check closeapp
-        print(f"[{device_id}] Checking closeapp.png...")
-        close_start = time.time()
-        while time.time() - close_start < 10:
-             if exists(r"img\closeapp.png"):
-                 print(f"[{device_id}] Found closeapp.png, restarting...")
-                 subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                 sleep(2)
-                 return "restart_first_loop"
-             sleep(0.8)
-             
-        # Check save
-        print(f"[{device_id}] Looking for save.png...")
-        save_found = False
-        save_start = time.time()
-        while time.time() - save_start < 20:
-             save_loc = find(r"img\save.png")
-             if save_loc:
-                 click(save_loc)
-                 save_found = True
-                 print(f"[{device_id}] Found save.png!")
-                 break
-             
-             if exists(r"img\stopcheck.png"):
-                 subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                 return "complete"
-                 
-             sleep(0.8)
-             
-        if not save_found:
-            print(f"[{device_id}] save.png not found")
-            subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-            return "restart_from_test" # Logic says restart
-            
-        # Sequences
-        seq1 = ['apple.png', 'check-l1.png', 'check-l2.png', 'check-l3.png', 'check-l4.png']
-        seq2 = ['check-gusetid.png', 'check-gusetid1.png', 'check-l1.png', 'check-l2.png', 'check-l3.png', 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
+
+        seq1 = ['icon.png', 'apple.png', 'check-l1.png', (930, 253), (926, 327), 'check-l4.png']
+        seq2 = ['check-gusetid.png', 'check-gusetid1.png', 'check-l1.png', (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
-        print(f"[{device_id}] Processing Sequence 1...")
-        for img_name in seq1:
-            start_t = time.time()
-            found = False
-            while time.time() - start_t < 60:
+        print(f"[{device_id}] Processing Sequence 1 (STRICT - COORDS MIXED)...")
+        for item in seq1:
+            if isinstance(item, tuple):
+                print(f"[{device_id}] Clicking Coordinate {item}...")
+                click(item)
+                sleep(6)
+                continue
+                
+            img_name = item
+            print(f"[{device_id}] Waiting for {img_name}...")
+            while True:
                 loc = find(f"img\\{img_name}")
                 if loc:
                     click(loc)
-                    found = True
-                    print(f"[{device_id}] Found {img_name}")
-                    if img_name == 'check-l4.png': sleep(2)
-                    sleep(1)
+                    print(f"[{device_id}] Clicked {img_name} (One time)")
+                    sleep(6)
                     break
-                sleep(0.8)
+                sleep(1.0)
         
         print(f"[{device_id}] Seq 1 done. Waiting 8s then BACK...")
         sleep(8)
         subprocess.run([adb_cmd, "-s", device_id, "shell", "input keyevent 4"])
         sleep(2)
         
-        print(f"[{device_id}] Processing Sequence 2...")
-        for img_name in seq2:
-            start_t = time.time()
-            found = False
-            while time.time() - start_t < 60:
+        print(f"[{device_id}] Processing Sequence 2 (STRICT - COORDS MIXED)...")
+        for item in seq2:
+            if isinstance(item, tuple):
+                print(f"[{device_id}] Clicking Coordinate {item}...")
+                click(item)
+                sleep(6)
+                continue
+                
+            img_name = item
+            print(f"[{device_id}] Waiting for {img_name}...")
+            while True:
                 loc = find(f"img\\{img_name}")
                 if loc:
                     click(loc)
-                    found = True
-                    print(f"[{device_id}] Found {img_name}")
-                    sleep(1)
-                    break
-                sleep(0.8)
+                    print(f"[{device_id}] Clicked {img_name} (One time)")
+                    sleep(6)
+                    break 
+                sleep(1.0)
                 
         print(f"[{device_id}] First loop completed!")
         subprocess.run([adb_cmd, "-s", device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -602,7 +518,9 @@ if __name__ == "__main__":
 
     # 5. Process Loop
     processed_count = 0
-    device_first_loop_done = {d: False for d in devices}
+    # If config first_loop is False, we start as True (Already Done)
+    initial_loop_state = not config.get("first_loop", True)
+    device_first_loop_done = {d: initial_loop_state for d in devices}
     
     while file_queue:
         files_left = len(file_queue)
@@ -636,20 +554,35 @@ if __name__ == "__main__":
                 
                 if injected_file:
                     # 2. Login
-                    is_success = main_login()
+                    status = main_login(injected_file)
                     
-                    if is_success:
-                        # Move to login-success
+                    if status == "success":
+                        # Success: Move to success folder
+                        print(f"[{device_id}] Login SUCCESS. Moving file to success folder.")
+                        dst_success = os.path.join(success_path, os.path.basename(injected_file))
                         try:
-                            fname = os.path.basename(injected_file)
-                            dest = os.path.join(success_path, fname)
-                            shutil.move(injected_file, dest)
-                            print(f"[{device_id}] [OK] Moved {fname} to login-success")
-                            processed_count += 1
+                            shutil.move(injected_file, dst_success)
+                            print(f"[{device_id}] Moved file to {dst_success}")
                         except Exception as e:
-                             print(f"[{device_id}] [WARN] Failed to move file: {e}")
+                            print(f"[{device_id}] ❌ Error moving successful file: {e}")
+                            
+                        # Mark loop done? (Already done by first_loop_process)
+                        processed_count += 1
+                        
+                    elif status == "failed":
+                        print(f"[{device_id}] Login FAILED (status returned). Resetting First Loop flag.")
+                        device_first_loop_done[dev] = False
+                        
+                        # Delete from backup since we already pulled it to login-failed
+                        try:
+                            if os.path.exists(injected_file):
+                                os.remove(injected_file)
+                                print(f"[{device_id}] Deleted failed file from backup: {injected_file}")
+                        except Exception as e:
+                            print(f"[{device_id}] ⚠️ Error deleting failed file: {e}")
+                        
                     else:
-                        print(f"[{device_id}] [WARN] Login did not complete. File remains in backup.")
+                        print(f"[{device_id}] ⚠️ Login incomplete/unknown status. File remains in backup.")
                         
             except Exception as e:
                 print(f"[FAIL] Error processing {dev}: {e}")
