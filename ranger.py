@@ -265,6 +265,14 @@ class RangerBot(threading.Thread):
     def swipe(self, x1, y1, x2, y2, duration=300):
         os.system(f'{self.adb_cmd} -s {self.device_id} shell input swipe {x1} {y1} {x2} {y2} {duration}')
 
+    def check_error_images(self):
+        """Helper to find error images (failed1, fixbuglogin)"""
+        error_images = [r"img\fixbuglogin.png", r"img\failed1.png"]
+        for err in error_images:
+            if self.exists(err):
+                return err
+        return None
+
     # --- Logic Methods ---
     def clear_specific_shared_prefs(self):
         files_to_delete = [
@@ -348,22 +356,46 @@ class RangerBot(threading.Thread):
 
     def process_sequence(self, sequence):
         for item in sequence:
+            # Special handling: if item is tuple (coords), ensure previous image was clicked?
+            # User wants: Click check-l1.png THEN click coords.
+            
             if isinstance(item, tuple):
                 print(f"[{self.device_id}] Tap {item}")
                 self.click(item)
-                sleep(6)
+                sleep(8)
                 continue
                 
             img = item
             print(f"[{self.device_id}] Waiting for {img}...")
-            while True:
+            
+            # If it's check-l1.png, we must ensure it is found.
+            # If not found after timeout? User said "sometimes it doesn't click check-l1 and bugs".
+            
+            wait_limit = 60
+            start_wait = 0
+            found = False
+            
+            while start_wait < wait_limit:
                 loc = self.find(f"img\\{img}")
                 if loc:
                     self.click(loc)
                     print(f"[{self.device_id}] Clicked {img}")
                     sleep(6)
+                    found = True
                     break 
+                
+                # Check for bugs while waiting in sequence?
+                if self.check_error_images():
+                    print(f"[{self.device_id}] Bug found during sequence! Restarting first_loop...")
+                    return False
+
                 sleep(1)
+                start_wait += 1
+            
+            if not found:
+                 print(f"[{self.device_id}] ⚠️ Failed to find {img}. Sequence broken.")
+                 return False # Fail the sequence
+                 
         return True
 
     def main_login(self, current_filename):
