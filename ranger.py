@@ -117,6 +117,10 @@ class RangerBot(threading.Thread):
         self.filename = os.path.join(tempfile.gettempdir(), f"screen-{safe_dev}.png")
         self.first_loop_done = not config.get("first_loop", True)
         
+        # Sequence Definitions
+        self.seq1 = ['icon.png', 'apple.png', 'check-l1.png', (930, 253), (926, 327), 'check-l4.png']
+        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', 'check-l1.png', (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
+        
         self.adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
 
     def run(self):
@@ -295,26 +299,52 @@ class RangerBot(threading.Thread):
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def inject_file(self, local_xml_path):
-        print(f"[{self.device_id}] 💉 Injecting...")
+        print(f"[{self.device_id}] 💉 Injecting file (Robust Mode)...")
+        
+        # 0. Force Stop App explicitly to release locks
+        subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+        sleep(0.5)
+
         src = os.path.abspath(local_xml_path)
         tmp = f"/data/local/tmp/temp_pref_{self.device_id.replace(':','_')}.xml"
-        final = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
+        final_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
+        final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
         
         try:
-            # Push
+            # 1. Push to temp
             subprocess.run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], 
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
             
-            # Mkdir + Move + Chmod
-            cmd = f"su -c 'mkdir -p /data/data/com.linecorp.LGRGS/shared_prefs && mv -f {tmp} {final} && chmod 666 {final}'"
-            res = subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", cmd],
+            # 2. Advanced Move & Permission Fix
+            # - mkdir -p shared_prefs
+            # - mv file
+            # - chmod 666
+            # - chown to match parent dir (important for some android versions)
+            # - restorecon (fix selinux context)
+            
+            shell_cmd = (
+                f"su -c '"
+                f"mkdir -p {final_dir} && "
+                f"mv -f {tmp} {final} && "
+                f"chmod 666 {final} && "
+                # Try to emulate chown from parent folder ownership
+                f"chown $(stat -c %u:%g {final_dir}) {final} || true && "
+                f"restorecon {final} || true"
+                f"'"
+            )
+            
+            res = subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", shell_cmd],
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             if res.returncode == 0:
-                print(f"[{self.device_id}] ✅ Injection OK")
+                print(f"[{self.device_id}] ✅ Injection Successful (Permissions Fixed)")
                 return local_xml_path
+            else:
+                print(f"[{self.device_id}] ❌ Shell error: {res.stderr.decode()}")
+                return None
+                
         except Exception as e:
-            print(f"[{self.device_id}] ❌ Injection Error: {e}")
+            print(f"[{self.device_id}] ❌ Injection Exception: {e}")
         
         return None
 
@@ -330,12 +360,10 @@ class RangerBot(threading.Thread):
             subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "input keyevent 3"]) # Home
             sleep(2)
             
-            seq1 = ['icon.png', 'apple.png', 'check-l1.png', (930, 253), (926, 327), 'check-l4.png']
-            seq2 = ['check-gusetid.png', 'check-gusetid1.png', 'check-l1.png', (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
             
             print(f"[{self.device_id}] Processing SEQ 1...")
             # Reuse simplified loop logic
-            if not self.process_sequence(seq1): return "failed_seq1"
+            if not self.process_sequence(self.seq1): return "failed_seq1"
             
             print(f"[{self.device_id}] Waiting 8s then Back...")
             sleep(8)
@@ -343,7 +371,7 @@ class RangerBot(threading.Thread):
             sleep(2)
             
             print(f"[{self.device_id}] Processing SEQ 2...")
-            if not self.process_sequence(seq2): return "failed_seq2"
+            if not self.process_sequence(self.seq2): return "failed_seq2"
             
             print(f"[{self.device_id}] First Loop Completed!")
             subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -433,7 +461,30 @@ class RangerBot(threading.Thread):
                 
             # Failed
             if self.exists(r"img\login-failed.png"):
-                print(f"[{self.device_id}] Found login-failed")
+                print(f"[{self.device_id}] Found login-failed. Executing recovery sequence...")
+                
+                # 1. Click login-failed1
+                if self.exists(r"img\login-failed1.png"):
+                    self.click(r"img\login-failed1.png")
+                    sleep(2)
+                
+                # 2. Go Home and Run SEQ1
+                subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "input keyevent 3"])
+                sleep(2)
+                
+                if self.process_sequence(self.seq1):
+                    # 3. Wait/Back logic (same as first_loop)
+                    print(f"[{self.device_id}] SEQ1 done. Waiting 8s then Back...")
+                    sleep(8)
+                    subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "input keyevent 4"])
+                    sleep(2)
+                    
+                    # 4. SEQ2
+                    print(f"[{self.device_id}] Processing SEQ 2...")
+                    self.process_sequence(self.seq2)
+                
+                # 5. Clear App
+                subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
                 status = "failed"
                 break
                 
