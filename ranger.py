@@ -10,6 +10,11 @@ import tempfile
 import json
 import threading
 import queue
+import concurrent.futures
+import colorama
+from colorama import Fore, Style
+
+colorama.init(autoreset=True)
 
 # Global Config
 config = {
@@ -39,8 +44,17 @@ def find_adb_executable():
     
     # 1. Check local adb folder
     if os.path.exists(r"adb\adb.exe"):
-        adb_path = r"adb\adb.exe"
+        adb_path = os.path.abspath(r"adb\adb.exe")
         print(f"[OK] Found local ADB: {adb_path}")
+        
+        # Test ADB Execution (Check for missing DLLs)
+        try:
+            ver = subprocess.check_output([adb_path, "version"], text=True)
+            print(f"[DEBUG] {ver.strip()}")
+        except Exception as e:
+            print(f"[ERR] Failed to execute ADB (Missing DLLs?): {e}")
+            return False
+            
         return True
 
     # 2. Check system PATH
@@ -72,27 +86,61 @@ def find_adb_executable():
     return False
 
 def connect_known_ports():
-    """Auto-scan and connect to common emulator ports"""
+    """Auto-scan and connect to common emulator ports using ThreadPoolExecutor"""
     print("[INFO] Auto-connecting to common emulator ports...")
-    start_port = 5555
-    max_devices = 30
     
-    for i in range(max_devices): 
-        port = start_port + (i * 2)
-        # print(f"\r[WAIT] Connecting to 127.0.0.1:{port}...", end="", flush=True) 
-        # Squelch output to keep log clean
-        cmd = [adb_path, "connect", f"127.0.0.1:{port}"]
+    # Specific ports for popular emulators
+    manual_ports = [
+        7555,   # MuMu Player 6 / X
+        62001,  # Nox
+        16384, 16416, 16448, # MuMu 12 instances
+        21503   # MEmu
+    ]
+    
+    # Standard range (LDPlayer, BlueStacks, etc.) - Expanded
+    scan_range = [5555 + (i * 2) for i in range(20)] # Scan up to 5595
+    
+    all_ports = sorted(list(set(manual_ports + scan_range)))
+    
+    print(f"[INFO] Scanning {len(all_ports)} ports...")
+
+    def try_connect(port):
+        target = f"127.0.0.1:{port}"
+        cmd = [adb_path, "connect", target]
         try:
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=0.5)
-        except:
+            # print(f"[DEBUG] Scanning {target}...")
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=3, text=True)
+            output = proc.stdout.strip()
+            
+            if "connected to" in output:
+                 print(f"[OK] Connected to {target}")
+            elif "refused" not in output and "cannot connect" not in output:
+                 print(f"[DBG] {target} -> {output}")
+            # else:
+            #      print(f"[FAIL] {target}")
+                 
+        except subprocess.TimeoutExpired:
+            # print(f"[TIMEOUT] {target}")
             pass
-    print("\n[OK] Port scan finished.")
+        except Exception as e:
+            print(f"[ERR] {target}: {e}")
+
+    # Use ThreadPoolExecutor for parallel scanning
+    # Force iteration to ensure exceptions are caught/handled if strict=True (though we swallow them)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        list(executor.map(try_connect, all_ports))
+            
+    print("[OK] Port scan finished.")
 
 def get_connected_devices():
     try:
+        # Use simple os.popen or subprocess to be safer with paths
+        # Quote path just in case
         adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
         cmd = f'{adb_cmd} devices'
+        # print(f"[DEBUG] Running: {cmd}")
         result = subprocess.check_output(cmd, shell=True, text=True)
+        print(f"[DEBUG] Raw 'adb devices' output:\n{result}")
             
         lines = result.strip().split("\n")[1:]
         devices = []
@@ -118,65 +166,68 @@ class RangerBot(threading.Thread):
         self.first_loop_done = not config.get("first_loop", True)
         
         # Sequence Definitions
-        self.seq1 = ['icon.png', 'apple.png', 'check-l1.png', (930, 253), (926, 327), 'check-l4.png']
-        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', 'check-l1.png', (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
+        self.seq1 = ['icon.png', 'apple.png', (932, 133), (930, 253), (926, 327), 'check-l4.png']
+        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
         self.adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
 
     def run(self):
-        print(f"[{self.device_id}] 🚀 Bot Thread Started")
-        
-        while True:
-            # Check queue first to see if we should just exit if empty? 
-            # But maybe we need to process first_loop even if queue is empty?
-            # Usually we process files. If no files, we stop.
-            if self.file_queue.empty():
-                print(f"[{self.device_id}] 🏁 Queue is empty. Stopping thread.")
-                break
-
-            try:
-                # 0. Check First Loop
-                if not self.first_loop_done:
-                    res = self.first_loop_process()
-                    if res == "complete":
-                        self.first_loop_done = True
-                    else:
-                        print(f"[{self.device_id}] First loop failed or incomplete. Retrying...")
-                        sleep(2)
-                        continue # Retry first loop
-
-                # 1. Get File
-                try:
-                    xml_file = self.file_queue.get(timeout=2)
-                except queue.Empty:
+        try:
+            print(f"[{self.device_id}] Bot Thread Started", flush=True)
+            
+            while True:
+                # Check queue first to see if we should just exit if empty? 
+                # But maybe we need to process first_loop even if queue is empty?
+                # Usually we process files. If no files, we stop.
+                if self.file_queue.empty():
+                    print(f"[{self.device_id}] Queue is empty. Stopping thread.", flush=True)
                     break
-                
-                print(f"[{self.device_id}] 📥 Processing file: {os.path.basename(xml_file)}")
 
-                # 2. Inject
-                injected_file = self.inject_file(xml_file)
-                
-                if injected_file:
-                    # 3. Login
-                    status = self.main_login(injected_file)
+                try:
+                    # 0. Check First Loop
+                    if not self.first_loop_done:
+                        res = self.first_loop_process()
+                        if res == "complete":
+                            self.first_loop_done = True
+                        else:
+                            print(f"[{self.device_id}] First loop failed or incomplete. Retrying...")
+                            sleep(2)
+                            continue # Retry first loop
+
+                    # 1. Get File
+                    try:
+                        xml_file = self.file_queue.get(timeout=2)
+                    except queue.Empty:
+                        break
                     
-                    if status == "success":
-                        self.handle_success(injected_file)
-                    elif status == "failed":
-                        self.handle_failure(injected_file)
-                        self.first_loop_done = False # Reset flow
+                    print(f"[{self.device_id}] Processing file: {os.path.basename(xml_file)}")
+
+                    # 2. Inject
+                    injected_file = self.inject_file(xml_file)
+                    
+                    if injected_file:
+                        # 3. Login
+                        status = self.main_login(injected_file)
+                        
+                        if status == "success":
+                            self.handle_success(injected_file)
+                        elif status == "failed":
+                            self.handle_failure(injected_file)
+                            self.first_loop_done = False # Reset flow
+                        else:
+                            print(f"[{self.device_id}] Unknown status. Moving to next.")
                     else:
-                        print(f"[{self.device_id}] ⚠️ Unknown status. Moving to next.")
-                else:
-                    # Injection failed, maybe try next file or same file? 
-                    # For now, it's consumed from queue effectively.
-                    print(f"[{self.device_id}] ❌ Injection failed for {xml_file}")
-                
-                self.file_queue.task_done()
-                
-            except Exception as e:
-                print(f"[{self.device_id}] 💥 Critical Thread Error: {e}")
-                sleep(5)
+                        # Injection failed, maybe try next file or same file? 
+                        # For now, it's consumed from queue effectively.
+                        print(f"[{self.device_id}] Injection failed for {xml_file}")
+                    
+                    self.file_queue.task_done()
+                    
+                except Exception as e:
+                    print(f"[{self.device_id}] Critical Thread Error: {e}", flush=True)
+                    sleep(5)
+        except Exception as e:
+            print(f"[{self.device_id}] Thread Crash on Startup: {e}", flush=True)
 
     def handle_success(self, file_path):
         success_path = os.path.join(os.getcwd(), "login-success")
@@ -262,7 +313,9 @@ class RangerBot(threading.Thread):
             
         if target:
             x, y = target
-            subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap", str(x), str(y)])
+            # Use os.system with formatted string to handle adb_cmd quotes correctly
+            cmd = f'{self.adb_cmd} -s {self.device_id} shell input tap {x} {y}'
+            os.system(cmd)
             return True
         return False
     
@@ -299,7 +352,7 @@ class RangerBot(threading.Thread):
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def inject_file(self, local_xml_path):
-        print(f"[{self.device_id}] 💉 Injecting file (Robust Mode)...")
+        print(f"[{self.device_id}] Injecting file (Robust Mode)...")
         
         # 0. Force Stop App explicitly to release locks
         subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -337,20 +390,20 @@ class RangerBot(threading.Thread):
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             if res.returncode == 0:
-                print(f"[{self.device_id}] ✅ Injection Successful (Permissions Fixed)")
+                print(f"[{self.device_id}] Injection Successful (Permissions Fixed)")
                 return local_xml_path
             else:
-                print(f"[{self.device_id}] ❌ Shell error: {res.stderr.decode()}")
+                print(f"[{self.device_id}] Shell error: {res.stderr.decode()}")
                 return None
                 
         except Exception as e:
-            print(f"[{self.device_id}] ❌ Injection Exception: {e}")
+            print(f"[{self.device_id}] Injection Exception: {e}")
         
         return None
 
     def first_loop_process(self):
         try:
-            print(f"[{self.device_id}] 🔄 Starting First Loop Process...")
+            print(f"[{self.device_id}] Starting First Loop Process...")
             self.clear_specific_shared_prefs()
             sleep(3)
             
@@ -408,7 +461,10 @@ class RangerBot(threading.Thread):
                 if loc:
                     self.click(loc)
                     print(f"[{self.device_id}] Clicked {img}")
-                    sleep(6)
+                    if img == 'apple.png':
+                        sleep(10)
+                    else:
+                        sleep(6)
                     found = True
                     break 
                 
@@ -468,11 +524,11 @@ class RangerBot(threading.Thread):
                     self.click(r"img\login-failed1.png")
                     sleep(2)
                 
-                # 2. Go Home and Run SEQ1
-                subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "input keyevent 3"])
-                sleep(2)
+                # 2. Run SEQ1 (Skip icon)
+                # subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "input keyevent 3"])
+                # sleep(2)
                 
-                if self.process_sequence(self.seq1):
+                if self.process_sequence(self.seq1[1:]):
                     # 3. Wait/Back logic (same as first_loop)
                     print(f"[{self.device_id}] SEQ1 done. Waiting 8s then Back...")
                     sleep(8)
@@ -555,6 +611,11 @@ if __name__ == "__main__":
     if not find_adb_executable():
         print("ADB Not Found.")
         sys.exit(1)
+    
+    # Reset ADB to fix stale connections
+    print("[INFO] Restarting ADB Server...")
+    subprocess.run([adb_path, "kill-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run([adb_path, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
     connect_known_ports()
     devices = get_connected_devices()
