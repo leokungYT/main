@@ -1,3 +1,4 @@
 {
-    "first_loop": true
+    "first_loop": true,
+    "thread_delay": 5
 }
