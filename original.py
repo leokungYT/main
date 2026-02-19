@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
     # # click((r"img\icon.png"))
 
-    # # capture_screen()
+    # capture_screen()
     # # print(find(r"img\icon.png"))
     # # print(exists(r"img\icon.png"))
 
@@ -95,5 +95,10 @@ if __name__ == "__main__":
     # # else:
     # #     click("Not found")
 
-    x = textOCR(Region(513, 258 , 77, 19), psm=13)
-    print(x)
+    capture_screen()
+    
+    # ใช้ EasyOCR อ่าน grid ทั้งหมดทีเดียว
+    result = easyOCR(Region(463, 153, 397, 321))
+    print("===== OCR Result =====")
+    print(result)
+    print("======================")

@@ -16,49 +16,65 @@ from colorama import Fore, Style
 
 colorama.init(autoreset=True)
 
+# =============================================================
 # Global Config
+# =============================================================
 config = {
     "first_loop": True,
-    "thread_delay": 5
+    "thread_delay": 5,
+    "check-gear": 1,
+    "weaponname": {},
+    "gearname": {},
+    "ocr_region": {"x": 463, "y": 153, "w": 397, "h": 321}
 }
-adb_path = "adb" # Will be updated by find_adb_executable
+adb_path = "adb"
+
+# EasyOCR reader - loaded once globally
+_ocr_reader = None
+
+def get_ocr_reader():
+    """Get or create EasyOCR reader (singleton)"""
+    global _ocr_reader
+    if _ocr_reader is None:
+        import easyocr
+        print("[INFO] Loading EasyOCR model (first time only)...")
+        _ocr_reader = easyocr.Reader(['en'], gpu=False)
+    return _ocr_reader
+
 
 def load_config():
     global config
-    if os.path.exists("config.json"):
+    config_file = "checkgear_config.json"
+    if os.path.exists(config_file):
         try:
-            with open("config.json", "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 config.update(json.load(f))
-            print("[OK] Config loaded:", config)
+            print("[OK] Config loaded:", json.dumps(config, indent=2, ensure_ascii=False))
         except Exception as e:
             print(f"[WARN] Error loading config: {e}")
     else:
         try:
-            with open("config.json", "w") as f:
-                json.dump(config, f, indent=4)
-            print("[OK] Created default config.json")
+            with open(config_file, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+            print(f"[OK] Created default {config_file}")
         except:
             pass
+
 
 def find_adb_executable():
     global adb_path
     
-    # 1. Check local adb folder
     if os.path.exists(r"adb\adb.exe"):
         adb_path = os.path.abspath(r"adb\adb.exe")
         print(f"[OK] Found local ADB: {adb_path}")
-        
-        # Test ADB Execution (Check for missing DLLs)
         try:
             ver = subprocess.check_output([adb_path, "version"], text=True)
             print(f"[DEBUG] {ver.strip()}")
         except Exception as e:
-            print(f"[ERR] Failed to execute ADB (Missing DLLs?): {e}")
+            print(f"[ERR] Failed to execute ADB: {e}")
             return False
-            
         return True
 
-    # 2. Check system PATH
     try:
         subprocess.run(["adb", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         adb_path = "adb"
@@ -67,7 +83,6 @@ def find_adb_executable():
     except FileNotFoundError:
         pass
 
-    # 3. Check MuMu specific paths
     mumu_adb_paths = [
         "F:\\Program Files\\Netease\\MuMuPlayer\\shell\\adb.exe",
         "C:\\Program Files\\Netease\\MuMuPlayerGlobal-12.0\\shell\\adb.exe",
@@ -86,19 +101,13 @@ def find_adb_executable():
     print("[FAIL] ADB executable not found!")
     return False
 
+
 def connect_known_ports():
     """Auto-scan and connect to common emulator ports using ThreadPoolExecutor"""
     print("[INFO] Auto-connecting to common emulator ports...")
     
-    # Specific ports for popular emulators
-    manual_ports = [
-        62001,  # Nox
-        21503   # MEmu
-    ]
-    
-    # Standard range (LDPlayer, BlueStacks, etc.) - Expanded
-    scan_range = [5555 + (i * 2) for i in range(20)] # Scan up to 5595
-    
+    manual_ports = [62001, 21503]
+    scan_range = [5555 + (i * 2) for i in range(20)]
     all_ports = sorted(list(set(manual_ports + scan_range)))
     
     print(f"[INFO] Scanning {len(all_ports)} ports...")
@@ -107,37 +116,27 @@ def connect_known_ports():
         target = f"127.0.0.1:{port}"
         cmd = [adb_path, "connect", target]
         try:
-            # print(f"[DEBUG] Scanning {target}...")
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=3, text=True)
             output = proc.stdout.strip()
-            
             if "connected to" in output:
                  print(f"[OK] Connected to {target}")
             elif "refused" not in output and "cannot connect" not in output:
                  print(f"[DBG] {target} -> {output}")
-            # else:
-            #      print(f"[FAIL] {target}")
-                 
         except subprocess.TimeoutExpired:
-            # print(f"[TIMEOUT] {target}")
             pass
         except Exception as e:
             print(f"[ERR] {target}: {e}")
 
-    # Use ThreadPoolExecutor for parallel scanning
-    # Force iteration to ensure exceptions are caught/handled if strict=True (though we swallow them)
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         list(executor.map(try_connect, all_ports))
             
     print("[OK] Port scan finished.")
 
+
 def get_connected_devices():
     try:
-        # Use simple os.popen or subprocess to be safer with paths
-        # Quote path just in case
         adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
         cmd = f'{adb_cmd} devices'
-        # print(f"[DEBUG] Running: {cmd}")
         result = subprocess.check_output(cmd, shell=True, text=True)
         print(f"[DEBUG] Raw 'adb devices' output:\n{result}")
             
@@ -146,7 +145,6 @@ def get_connected_devices():
         for line in lines:
             parts = line.split()
             if len(parts) >= 2 and parts[1] == "device":
-                # Only keep 127.0.0.1:* devices, skip emulator-* etc.
                 if parts[0].startswith("127.0.0.1:"):
                     devices.append(parts[0])
         return devices
@@ -154,33 +152,42 @@ def get_connected_devices():
         print(f"[FAIL] Error getting devices: {e}")
         return []
 
-class RangerBot(threading.Thread):
+
+# =============================================================
+# CheckGearBot Class
+# =============================================================
+class CheckGearBot(threading.Thread):
     def __init__(self, device_id, file_queue):
         threading.Thread.__init__(self)
         self.device_id = device_id
         self.file_queue = file_queue
         self.daemon = True
         
-        # Determine unique filename for this thread
         safe_dev = device_id.replace(":", "_")
         self.filename = os.path.join(tempfile.gettempdir(), f"screen-{safe_dev}.png")
         self.first_loop_done = not config.get("first_loop", True)
         
-        # Sequence Definitions (prefix @ = checkpoint: wait until found but don't click)
+        # Sequence Definitions (same as ranger.py)
         self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png']
         self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
         self.adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
-        self._screen = None  # Cached screen image
+        self._screen = None       # Cached screen image (grayscale for template matching)
+        self._screen_color = None  # Cached screen image (color for OCR)
+        
+        # Load gear/weapon config
+        self.gear_names = config.get("gearname", {})
+        self.weapon_names = config.get("weaponname", {})
+        self.ocr_region = config.get("ocr_region", {"x": 463, "y": 153, "w": 397, "h": 321})
+        
+        # Current processing file info
+        self.current_original_filename = None
 
     def run(self):
         try:
-            print(f"[{self.device_id}] Bot Thread Started", flush=True)
+            print(f"[{self.device_id}] CheckGear Bot Thread Started", flush=True)
             
             while True:
-                # Check queue first to see if we should just exit if empty? 
-                # But maybe we need to process first_loop even if queue is empty?
-                # Usually we process files. If no files, we stop.
                 if self.file_queue.empty():
                     print(f"[{self.device_id}] Queue is empty. Stopping thread.", flush=True)
                     break
@@ -194,7 +201,7 @@ class RangerBot(threading.Thread):
                         else:
                             print(f"[{self.device_id}] First loop failed or incomplete. Retrying...")
                             sleep(2)
-                            continue # Retry first loop
+                            continue
 
                     # 1. Get File
                     try:
@@ -202,7 +209,8 @@ class RangerBot(threading.Thread):
                     except queue.Empty:
                         break
                     
-                    print(f"[{self.device_id}] Processing file: {os.path.basename(xml_file)}")
+                    self.current_original_filename = os.path.basename(xml_file)
+                    print(f"[{self.device_id}] Processing file: {self.current_original_filename}")
 
                     # 2. Inject
                     injected_file = self.inject_file(xml_file)
@@ -217,19 +225,18 @@ class RangerBot(threading.Thread):
                         except Exception as e:
                             print(f"[{self.device_id}] Error deleting from backup: {e}")
                         
-                        # 3. Login
+                        # 3. Login (with check-gear after stoplogin)
                         status = self.main_login(injected_file)
                         
                         if status == "success":
-                            self.handle_success(injected_file)
+                            # success already handled inside main_login -> process_check_gear
+                            pass
                         elif status == "failed":
                             self.handle_failure(injected_file)
-                            self.first_loop_done = False # Reset flow
+                            self.first_loop_done = False
                         else:
                             print(f"[{self.device_id}] Unknown status. Moving to next.")
                     else:
-                        # Injection failed, maybe try next file or same file? 
-                        # For now, it's consumed from queue effectively.
                         print(f"[{self.device_id}] Injection failed for {xml_file}")
                     
                     self.file_queue.task_done()
@@ -244,7 +251,7 @@ class RangerBot(threading.Thread):
         success_path = os.path.join(os.getcwd(), "login-success")
         if not os.path.exists(success_path): os.makedirs(success_path)
         
-        print(f"[{self.device_id}] ✅ Login SUCCESS. Moving file.")
+        print(f"[{self.device_id}] Login SUCCESS. Moving file.")
         dst = os.path.join(success_path, os.path.basename(file_path))
         try:
             shutil.move(file_path, dst)
@@ -255,15 +262,11 @@ class RangerBot(threading.Thread):
         failed_path = os.path.join(os.getcwd(), "login-failed")
         if not os.path.exists(failed_path): os.makedirs(failed_path)
         
-        # 1. Pull the actual shared_pref that failed (from device)
-        # Note: The original 'save_failed_file' logic pulled FROM device TO login-failed
-        
         src_remote = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
         dst_local = os.path.join(failed_path, os.path.basename(file_path))
         
-        print(f"[{self.device_id}] 📥 Pulling failed file info...")
+        print(f"[{self.device_id}] Pulling failed file info...")
         
-        # Copy to tmp then pull
         temp_remote = f"/data/local/tmp/failed_pref_{self.device_id.replace(':','_')}.xml"
         self.adb_shell(f"su -c 'cp {src_remote} {temp_remote}'")
         self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
@@ -271,20 +274,21 @@ class RangerBot(threading.Thread):
         
         print(f"[{self.device_id}] Saved failed file to {dst_local}")
         
-        # 2. Delete original from backup (since we moved the result to login-failed)
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                print(f"[{self.device_id}] 🗑️ Deleted original file from backup.")
+                print(f"[{self.device_id}] Deleted original file from backup.")
         except Exception as e:
             print(f"[{self.device_id}] Error deleting original: {e}")
 
-    # --- Interaction Methods ---
-    _template_cache = {}  # Class-level cache for template images
-    
+    # =========================================================
+    # Interaction Methods (same as ranger.py)
+    # =========================================================
+    _template_cache = {}
+
     @classmethod
     def _get_template(cls, template_path):
-        """Cache template images in RAM to avoid reading from disk every time"""
+        """Cache template images in RAM"""
         if template_path not in cls._template_cache:
             tpl = cv2.imread(template_path, 0)
             if tpl is not None:
@@ -303,16 +307,19 @@ class RangerBot(threading.Thread):
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
 
     def capture_screen(self):
-        """Capture screen and load into RAM"""
+        """Capture screen and load into RAM (both grayscale and color)"""
         try:
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10
             )
             if result.stdout and len(result.stdout) > 100:
-                img = cv2.imdecode(np.frombuffer(result.stdout, np.uint8), 0)
-                if img is not None:
-                    self._screen = img
+                buf = np.frombuffer(result.stdout, np.uint8)
+                img_gray = cv2.imdecode(buf, 0)
+                img_color = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+                if img_gray is not None:
+                    self._screen = img_gray
+                    self._screen_color = img_color
                     return
         except Exception:
             pass
@@ -324,8 +331,10 @@ class RangerBot(threading.Thread):
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
         if os.path.exists(self.filename):
             self._screen = cv2.imread(self.filename, 0)
+            self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
         else:
             self._screen = None
+            self._screen_color = None
     
     def _find_in_screen(self, template_path, similarity=0.8):
         """Find template in cached screen image (no new capture)"""
@@ -343,7 +352,7 @@ class RangerBot(threading.Thread):
         return None
     
     def find(self, template_path, similarity=0.8):
-        """Capture + find (use when you need fresh screen)"""
+        """Capture + find"""
         self.capture_screen()
         return self._find_in_screen(template_path, similarity)
     
@@ -351,7 +360,7 @@ class RangerBot(threading.Thread):
         return self.find(template_path, similarity) is not None
 
     def exists_in_cache(self, template_path, similarity=0.8):
-        """Check if template exists in already-captured screen (no new capture)"""
+        """Check if template exists in already-captured screen"""
         return self._find_in_screen(template_path, similarity) is not None
 
     def click(self, PSMRL, similarity=0.8):
@@ -379,35 +388,115 @@ class RangerBot(threading.Thread):
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
     def check_error_images(self):
-        """Check error images using cached screen (no new capture)"""
+        """Check error images using cached screen"""
         error_images = [r"img\fixbuglogin.png", r"img\failed1.png"]
         for err in error_images:
             if self.exists_in_cache(err):
                 return err
         return None
 
-    # --- Logic Methods ---
+    # =========================================================
+    # OCR Methods - Read text from screen
+    # =========================================================
+    def ocr_read_region(self, x, y, w, h):
+        """
+        Read text from a specific region of the cached color screen using EasyOCR.
+        Returns list of (text, confidence) tuples.
+        """
+        if self._screen_color is None:
+            print(f"[{self.device_id}] No color screen captured for OCR!")
+            return []
+        
+        # Crop region from color image
+        img = self._screen_color[y:y+h, x:x+w]
+        
+        if img is None or img.size == 0:
+            print(f"[{self.device_id}] OCR crop region empty!")
+            return []
+        
+        # Resize 2x for better OCR accuracy
+        img = cv2.resize(img, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+        
+        reader = get_ocr_reader()
+        results = reader.readtext(img, detail=1)
+        
+        text_results = []
+        for (bbox, text, conf) in results:
+            if conf > 0.3:
+                text_results.append((text, conf))
+        
+        return text_results
+
+    def ocr_read_full_screen(self):
+        """
+        Read all text from the full cached color screen.
+        Returns combined text string.
+        """
+        if self._screen_color is None:
+            return ""
+        
+        region = self.ocr_region
+        return self.ocr_read_region(region["x"], region["y"], region["w"], region["h"])
+
+    def check_gear_by_text(self):
+        """
+        Check gear by reading text from screen and matching against config gear names.
+        Returns set of matched gear names.
+        """
+        print(f"[{self.device_id}] Reading screen text with OCR...")
+        
+        # Capture fresh screen
+        self.capture_screen()
+        
+        # Read text from OCR region
+        ocr_results = self.ocr_read_full_screen()
+        
+        if not ocr_results:
+            print(f"[{self.device_id}] OCR returned no results")
+            return set()
+        
+        # Combine all OCR text into one string (lowercase for matching)
+        all_text = " ".join([text for text, conf in ocr_results]).lower()
+        print(f"[{self.device_id}] OCR Text: {all_text}")
+        
+        # Match against gear names from config
+        found_gears = set()
+        for gear_key, gear_data in self.gear_names.items():
+            # Support new format: {"ocr": "search text", "name": "custom name"}
+            if isinstance(gear_data, dict):
+                ocr_text = gear_data.get("ocr", "")
+                custom_name = gear_data.get("name", ocr_text)
+            else:
+                # Fallback: old format where value is just a string
+                ocr_text = gear_data
+                custom_name = gear_data
+            
+            if ocr_text.lower() in all_text:
+                print(f"[{self.device_id}] >> FOUND gear: '{ocr_text}' -> folder: '{custom_name}' (key: {gear_key})")
+                found_gears.add(custom_name)
+        
+        return found_gears
+
+    # =========================================================
+    # Logic Methods
+    # =========================================================
     def clear_specific_shared_prefs(self):
-        """Delete ALL shared_prefs and clear app cache to ensure clean state"""
+        """Delete ALL shared_prefs and clear app cache"""
         base = "/data/data/com.linecorp.LGRGS/shared_prefs"
         cache_dir = "/data/data/com.linecorp.LGRGS/cache"
         
-        # Force stop first
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(1)
         
-        # Delete entire shared_prefs folder contents and cache
         self.adb_shell(f"su -c 'rm -rf {base}/* && rm -rf {cache_dir}/*'")
         print(f"[{self.device_id}] Cleared shared_prefs + cache")
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
         
-        # 0. Force Stop App + wait for process to fully die
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
         
-        # 0.5 Kill any remaining processes
         self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'")
         sleep(1)
 
@@ -420,13 +509,10 @@ class RangerBot(threading.Thread):
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                # 1. Clean old files first
                 self.adb_shell(f"su -c 'rm -f {final} && rm -f {tmp}'")
                 
-                # 2. Push to temp
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30, check=True)
                 
-                # 3. Verify push succeeded (check file size on device)
                 size_check = self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", f"stat -c %s {tmp}"], text=True)
                 remote_size = int(size_check.stdout.strip()) if size_check.stdout.strip().isdigit() else 0
                 
@@ -435,7 +521,6 @@ class RangerBot(threading.Thread):
                     sleep(1)
                     continue
                 
-                # 4. Move + Fix permissions
                 shell_cmd = (
                     f"su -c '"
                     f"mkdir -p {final_dir} && "
@@ -448,7 +533,6 @@ class RangerBot(threading.Thread):
                 )
                 self.adb_shell(shell_cmd)
                 
-                # 5. Verify final file exists and has correct size
                 verify = self.adb_run(
                     [self.adb_cmd, "-s", self.device_id, "shell", f"su -c 'stat -c %s {final}'"], text=True
                 )
@@ -474,7 +558,6 @@ class RangerBot(threading.Thread):
             self.clear_specific_shared_prefs()
             sleep(3)
             
-            # Restart App
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
             sleep(1)
             self.adb_shell("input keyevent 3")  # Home
@@ -522,13 +605,11 @@ class RangerBot(threading.Thread):
                 sleep(2)
                 continue
             
-            # Checkpoint: wait until image appears but don't click
             if isinstance(item, str) and item.startswith('@'):
-                checkpoint_img = item[1:]  # remove @ prefix
+                checkpoint_img = item[1:]
                 print(f"[{self.device_id}] Waiting for checkpoint {checkpoint_img}...")
                 while True:
                     self.capture_screen()
-                    # Check icon first
                     self._check_and_click_icon()
                     if self.exists_in_cache(f"img\\{checkpoint_img}"):
                         print(f"[{self.device_id}] Checkpoint {checkpoint_img} found!")
@@ -540,7 +621,6 @@ class RangerBot(threading.Thread):
                 continue
                 
             img = item
-            # Skip icon.png in sequence if it's the item to find (avoid loop)
             if img == 'icon.png':
                 print(f"[{self.device_id}] Waiting for {img}...")
                 wait_limit = 60
@@ -569,8 +649,6 @@ class RangerBot(threading.Thread):
             
             while start_wait < wait_limit:
                 self.capture_screen()
-                
-                # Always check icon.png first (app might have crashed)
                 self._check_and_click_icon()
                 
                 loc = self._find_in_screen(f"img\\{img}")
@@ -584,7 +662,6 @@ class RangerBot(threading.Thread):
                     found = True
                     break 
                 
-                # Check for bugs while waiting
                 if self.check_error_images():
                     print(f"[{self.device_id}] Bug found during sequence! Restarting first_loop...")
                     return False
@@ -598,6 +675,192 @@ class RangerBot(threading.Thread):
                  
         return True
 
+    # =========================================================
+    # CHECK GEAR Process - Runs after stoplogin found
+    # =========================================================
+    def wait_and_click_image(self, img_name, timeout=60):
+        """Wait for image to appear and click it. Returns True if found."""
+        print(f"[{self.device_id}] Waiting for {img_name}...")
+        start = 0
+        while start < timeout:
+            try:
+                self.capture_screen()
+                
+                # Check error/crash
+                self._check_and_click_icon()
+                if self.check_error_images():
+                    print(f"[{self.device_id}] Error found while waiting for {img_name}")
+                    return False
+                
+                loc = self._find_in_screen(f"img\\{img_name}")
+                if loc:
+                    print(f"[{self.device_id}] Found {img_name} at {loc} - clicking")
+                    self.click(loc)
+                    sleep(1.5)
+                    return True
+                sleep(0.5)
+                start += 1
+            except Exception as e:
+                print(f"[{self.device_id}] Error finding {img_name}: {e}")
+                sleep(1)
+                start += 1
+        print(f"[{self.device_id}] Timeout waiting for {img_name}")
+        return False
+
+    def process_check_gear(self, current_file):
+        """
+        Process check-gear sequence.
+        1) Navigate to gear screen (findgear1 -> findgear2 -> findgear3)
+        2) Read gear names via OCR text matching
+        3) Check weapon tabs (weapons1, weapons2) for more gears
+        4) Backup with gear name prefix
+        5) Clear app and restart
+        """
+        print(f"\n[{self.device_id}] === Starting CHECK-GEAR Process ===\n")
+        
+        # Step 1: Navigate to gear pages
+        # Build filename and source for not-found backup
+        filename = self.current_original_filename or "unknown_LINE_COCOS_PREF_KEY.xml"
+        source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
+        
+        # Click findgear1.png
+        if not self.wait_and_click_image("findgear1.png"):
+            print(f"[{self.device_id}] Failed to find findgear1.png, skipping check-gear")
+            self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
+            self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+            self.backup_to_not_found(filename, source_path)
+            self.clear_and_restart()
+            return "success"
+        
+        # Click findgear2.png
+        if not self.wait_and_click_image("findgear2.png"):
+            print(f"[{self.device_id}] Failed to find findgear2.png, skipping check-gear")
+            self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
+            self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+            self.backup_to_not_found(filename, source_path)
+            self.clear_and_restart()
+            return "success"
+        
+        # Click findgear3.png
+        if not self.wait_and_click_image("findgear3.png"):
+            print(f"[{self.device_id}] Failed to find findgear3.png, skipping check-gear")
+            self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
+            self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+            self.backup_to_not_found(filename, source_path)
+            self.clear_and_restart()
+            return "success"
+        
+        # Click checkgear2.png
+        if not self.wait_and_click_image("checkgear2.png"):
+            print(f"[{self.device_id}] Failed to find checkgear2.png, skipping")
+        
+        # Click checkgear3.png
+        if not self.wait_and_click_image("checkgear3.png"):
+            print(f"[{self.device_id}] Failed to find checkgear3.png, skipping")
+        
+        # Step 2: Read gear names with OCR
+        print(f"\n[{self.device_id}] Starting gear OCR check...")
+        all_found_gears = set()
+        
+        # Round 1: Check gear directly on current screen
+        print(f"[{self.device_id}] Round 1: Direct OCR check")
+        all_found_gears.update(self.check_gear_by_text())
+        sleep(3)
+        
+        # Round 2: Check weapons tab 1
+        self.capture_screen()
+        if self.exists_in_cache(r"img\weapons1.png"):
+            print(f"\n[{self.device_id}] Round 2: Checking after weapons1.png")
+            self.click(r"img\weapons1.png")
+            sleep(2)
+            all_found_gears.update(self.check_gear_by_text())
+            sleep(3)
+        
+        # Round 3: Check weapons tab 2
+        self.capture_screen()
+        if self.exists_in_cache(r"img\weapons2.png"):
+            print(f"\n[{self.device_id}] Round 3: Checking after weapons2.png")
+            self.click(r"img\weapons2.png")
+            sleep(2)
+            all_found_gears.update(self.check_gear_by_text())
+            sleep(3)
+        
+        # Step 3: Backup
+        print(f"\n[{self.device_id}] Starting backup...")
+        
+        # Build filename (use original name)
+        filename = self.current_original_filename or "unknown_LINE_COCOS_PREF_KEY.xml"
+        source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
+        
+        # chmod for pull
+        self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
+        self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+        
+        if all_found_gears:
+            print(f"[{self.device_id}] Found gears: {', '.join(all_found_gears)}")
+            
+            # Pull file once to a temp location
+            temp_pull = os.path.join(tempfile.gettempdir(), f"gear_pull_{self.device_id.replace(':','_')}.xml")
+            result = subprocess.run(
+                [self.adb_cmd, '-s', self.device_id, 'pull', source_path, temp_pull],
+                capture_output=True, text=True
+            )
+            
+            if result.returncode == 0:
+                # Copy to each gear's folder separately
+                for gear_name in all_found_gears:
+                    gear_dir = os.path.join("backup-id", gear_name)
+                    if not os.path.exists(gear_dir):
+                        os.makedirs(gear_dir)
+                        print(f"[{self.device_id}] Created folder: {gear_dir}")
+                    
+                    dst = os.path.join(gear_dir, filename)
+                    shutil.copy2(temp_pull, dst)
+                    print(f"[{self.device_id}] Backup SUCCESS: {dst}")
+                
+                # Remove temp file
+                try:
+                    os.remove(temp_pull)
+                except:
+                    pass
+            else:
+                print(f"[{self.device_id}] Backup FAILED: {result.stderr}")
+                self.backup_to_not_found(filename, source_path)
+        else:
+            print(f"[{self.device_id}] No gear found - backup to not-found")
+            self.backup_to_not_found(filename, source_path)
+        
+        # Step 4: Clear app and restart
+        print(f"\n[{self.device_id}] Check-gear complete - clearing app and restarting")
+        self.clear_and_restart()
+        return "success"
+
+    def backup_to_not_found(self, filename, source_path):
+        """Backup pref file to not-found folder"""
+        not_found_dir = "not-found"
+        if not os.path.exists(not_found_dir):
+            os.makedirs(not_found_dir)
+        
+        backup_path = os.path.join(not_found_dir, filename)
+        
+        result = subprocess.run(
+            [self.adb_cmd, '-s', self.device_id, 'pull', source_path, backup_path],
+            capture_output=True, text=True
+        )
+        
+        if result.returncode == 0:
+            print(f"[{self.device_id}] Saved to not-found: {backup_path}")
+        else:
+            print(f"[{self.device_id}] not-found backup error: {result.stderr}")
+
+    def clear_and_restart(self):
+        """Clear app and prepare for next file"""
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+        sleep(2)
+
+    # =========================================================
+    # Main Login - Modified: After stoplogin, run check-gear
+    # =========================================================
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
         
@@ -618,10 +881,9 @@ class RangerBot(threading.Thread):
             if loop_count % 5 == 0:
                 print(f"[{self.device_id}] Login Loop #{loop_count}")
 
-            # Capture screen ONCE per loop
             self.capture_screen()
 
-            # Crash/Icon Check (Restart if found)
+            # Crash/Icon Check
             if self.exists_in_cache(r"img\icon.png"):
                 print(f"[{self.device_id}] Found icon.png (App Closed?). Relaunching...")
                 self.click(r"img\icon.png")
@@ -635,17 +897,25 @@ class RangerBot(threading.Thread):
                 sleep(2)
                 continue
                 
-            # Success
+            # ============================================
+            # SUCCESS -> DO NOT CLEAR APP -> CHECK GEAR
+            # ============================================
             if self.exists_in_cache(r"img\stoplogin.png"):
-                print(f"[{self.device_id}] Found stoplogin (Success)")
-                status = "success"
-                break
+                print(f"[{self.device_id}] Found stoplogin (Login Success!)")
+                print(f"[{self.device_id}] >> NOT clearing app - proceeding to check-gear")
+                
+                if config.get("check-gear", 0) == 1:
+                    # Run check-gear process instead of clearing
+                    return self.process_check_gear(current_filename)
+                else:
+                    # If check-gear disabled, just handle normally
+                    status = "success"
+                    break
                 
             # Failed
             if self.exists_in_cache(r"img\login-failed.png"):
                 print(f"[{self.device_id}] Found login-failed. Executing recovery sequence...")
                 
-                # 1. Click login-failed1
                 self.capture_screen()
                 if self.exists_in_cache(r"img\login-failed1.png"):
                     self.click(r"img\login-failed1.png")
@@ -664,7 +934,7 @@ class RangerBot(threading.Thread):
                 status = "failed"
                 break
                 
-            # Error/Reset (failed1, fixbuglogin) - already checked from cached screen
+            # Error/Reset
             error_found = self.check_error_images()
             
             if error_found:
@@ -687,7 +957,6 @@ class RangerBot(threading.Thread):
                 self.click(r"img\event.png")
                 sleep(1)
                 
-                # Back loop
                 back_attempts = 0
                 while True:
                     self.adb_shell("input keyevent 4 && input keyevent 4 && input keyevent 4")
@@ -699,6 +968,10 @@ class RangerBot(threading.Thread):
                             self.click(r"img\cancel.png")
                             break
                         if self.exists_in_cache(r"img\stoplogin.png"):
+                            # Found stoplogin during event handling -> check gear
+                            print(f"[{self.device_id}] Found stoplogin during event! -> check-gear")
+                            if config.get("check-gear", 0) == 1:
+                                return self.process_check_gear(current_filename)
                             status = "success"
                             break
                     
@@ -717,17 +990,19 @@ class RangerBot(threading.Thread):
         return status
 
 
+# =============================================================
+# Main Entry Point
+# =============================================================
 if __name__ == "__main__":
-    print("=== Auto ADB Ranger Script (Multi-Threaded) ===")
+    print("=== Auto ADB Check-Gear Script (Multi-Threaded) ===")
     
     load_config()
-    
     
     if not find_adb_executable():
         print("ADB Not Found.")
         sys.exit(1)
     
-    # Reset ADB to fix stale connections
+    # Reset ADB
     print("[INFO] Restarting ADB Server...")
     subprocess.run([adb_path, "kill-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     subprocess.run([adb_path, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -739,6 +1014,15 @@ if __name__ == "__main__":
     if not devices:
         print("No devices.")
         sys.exit(0)
+    
+    # Pre-load OCR model
+    print("[INFO] Pre-loading OCR model...")
+    try:
+        get_ocr_reader()
+        print("[OK] OCR model loaded.")
+    except Exception as e:
+        print(f"[WARN] Failed to load OCR: {e}")
+        print("[WARN] OCR will be retried when needed.")
         
     # Prepare Queue
     file_queue = queue.Queue()
@@ -752,13 +1036,27 @@ if __name__ == "__main__":
     else:
         print("[WARN] No backup folder.")
         
+    # Print gear config info
+    gear_names = config.get("gearname", {})
+    weapon_names = config.get("weaponname", {})
+    print(f"\n[CONFIG] Gear names to check ({len(gear_names)}):")
+    for k, v in gear_names.items():
+        if isinstance(v, dict):
+            print(f"  {k}: OCR='{v.get('ocr','')}' -> Folder='{v.get('name','')}'")
+        else:
+            print(f"  {k}: {v}")
+    print(f"[CONFIG] Weapon tabs ({len(weapon_names)}):")
+    for k, v in weapon_names.items():
+        print(f"  {k}: {v}")
+    print()
+    
     # Start Threads
     threads = []
     print(f"[INFO] Starting {len(devices)} threads...")
     
     delay = config.get("thread_delay", 5)
     for i, dev in enumerate(devices):
-        t = RangerBot(dev, file_queue)
+        t = CheckGearBot(dev, file_queue)
         t.start()
         threads.append(t)
         if i < len(devices) - 1:
