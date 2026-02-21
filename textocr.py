@@ -1,5 +1,7 @@
 import pytesseract
 import cv2
+import os
+import glob
 
 
 class Location:
@@ -71,13 +73,25 @@ class Region:
 
 
 
-def textOCR(region:Region, crop=True, psm=6, imageProcessing=True):
+def textOCR(region:Region, crop=True, psm=6, imageProcessing=True, image_path="screen.png"):
     pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
     import numpy as np
 
     # อ่านภาพภายใน region (BGR)
-    import original
-    full_img = cv2.imread(original.filename)
+    if not os.path.exists(image_path):
+        # Try finding any screen*.png if default not found
+        screens = glob.glob("screen*.png")
+        if screens:
+            image_path = screens[0]
+            print(f"[WARN] {image_path} not found, using {screens[0]}")
+        else:
+            print(f"[ERR] Image not found: {image_path}")
+            return ""
+
+    full_img = cv2.imread(image_path)
+    if full_img is None:
+        print(f"[ERR] Could not read image: {image_path}")
+        return ""
     img = full_img[region.y:region.y+region.h, region.x:region.x+region.w]
 
     # Debug: save cropped image
@@ -125,7 +139,7 @@ def textOCR(region:Region, crop=True, psm=6, imageProcessing=True):
 # ==========================================
 _reader = None
 
-def easyOCR(region:Region):
+def easyOCR(region:Region, image_path="screen.png"):
     """OCR ด้วย EasyOCR (deep learning) - แม่นกว่า Tesseract มาก"""
     global _reader
     import easyocr
@@ -136,8 +150,19 @@ def easyOCR(region:Region):
         print("[INFO] Loading EasyOCR model (first time only)...")
         _reader = easyocr.Reader(['en'], gpu=False)
     
-    import original
-    full_img = cv2.imread(original.filename)
+    if not os.path.exists(image_path):
+        screens = glob.glob("screen*.png")
+        if screens:
+            image_path = screens[0]
+            print(f"[WARN] {image_path} not found, using {screens[0]}")
+        else:
+            print(f"[ERR] Image not found: {image_path}")
+            return ""
+
+    full_img = cv2.imread(image_path)
+    if full_img is None:
+        print(f"[ERR] Could not read image: {image_path}")
+        return ""
     img = full_img[region.y:region.y+region.h, region.x:region.x+region.w]
     
     cv2.imwrite("debug_crop.png", img)

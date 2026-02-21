@@ -31,6 +31,10 @@
         "gearimg6": {
             "ocr": "Hairband",
             "name": "hairband-yor8"
+        },
+        "gearimg7": {
+            "ocr": "Moonlit Dagger",
+            "name": "Moonlit-Dagger"
         }
     },
     "ocr_region": {

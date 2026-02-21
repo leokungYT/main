@@ -1,0 +1,26 @@
+{
+    "first_loop": true,
+    "thread_delay": 5,
+    "custommode": 0,
+    "custom": {
+        "characters": [
+            "Anya"
+        ]
+    },
+    "find-all": 1,
+    "characters": [
+        "Anya",
+        "Yor",
+        "kappa",
+        "power",
+        "Denji",
+        "outlaw",
+        "purple",
+        "chip",
+        "vocalist",
+        "fairy",
+        "enji",
+        "rudo",
+        "shion"
+    ]
+}
