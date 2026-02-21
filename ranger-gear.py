@@ -1108,28 +1108,40 @@ class RangerGearBot(threading.Thread):
                 filename = self.current_original_filename or "unknown.xml"
                 source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
                 
-                # Get all unique folder names from both ranger and gear
-                all_results = set()
-                
-                # Add ranger folder names
+                # Create subfolder name from all found items
+                all_names_list = []
                 if ranger_results:
-                    all_results.update(ranger_results.values())
-                
-                # Add gear names
+                    all_names_list.extend(ranger_results.values())
                 if gear_results:
-                    all_results.update(gear_results)
+                    all_names_list.extend(gear_results)
                 
-                # Build combined folder name
-                if all_results:
-                    folder_name = "+".join(sorted(all_results))
-                    print(f"[{self.device_id}] Combined results: {all_results} -> folder: {folder_name}")
+                found_names = "+".join(sorted(set(all_names_list))) if all_names_list else "unknown"
+                
+                # Determine category folder name
+                # 1. Gear + Ranger found -> "gear+ranger"
+                # 2. Only Gear found -> "gear only"
+                # 3. Only Ranger found -> "ranger", "ranger(2)", "ranger(3)", etc.
+                has_ranger = len(ranger_results) > 0
+                has_gear = len(gear_results) > 0
+                
+                category = "unknown"
+                if has_gear and has_ranger:
+                    category = "gear+ranger"
+                elif has_gear:
+                    category = "gear only"
+                elif has_ranger:
+                    count = len(ranger_results)
+                    category = "ranger" if count == 1 else f"ranger({count})"
+                
+                if category != "unknown":
+                    print(f"[{self.device_id}] Success category: {category} -> names: {found_names}")
                     
                     # chmod for pull
                     self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
                     self.adb_shell(f"su -c 'chmod 777 {source_path}'")
                     
-                    # Create backup folder
-                    backup_dir = os.path.join("backup-id", folder_name)
+                    # Create backup folder structure: backup-id/category/found_names
+                    backup_dir = os.path.join("backup-id", category, found_names)
                     if not os.path.exists(backup_dir):
                         os.makedirs(backup_dir)
                     
