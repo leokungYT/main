@@ -83,12 +83,21 @@ def find_adb_executable():
             return False
         return True
 
-    try:
-        subprocess.run(["adb", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        adb_path = "adb"
-        print("[OK] Found ADB in system PATH")
+    # Try system PATH - search for 'adb.exe' explicitly to avoid matching 'adb' folder
+    import shutil
+    adb_in_path = shutil.which("adb")
+    if adb_in_path:
+        adb_path = os.path.abspath(adb_in_path)
+        print(f"[OK] Found ADB in PATH: {adb_path}")
         return True
-    except FileNotFoundError:
+    
+    # Try common fallback "adb" string
+    try:
+        subprocess.run(["adb", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        adb_path = "adb"
+        print("[OK] Found 'adb' command in system")
+        return True
+    except:
         pass
 
     mumu_adb_paths = [
@@ -179,7 +188,7 @@ class CheckGearBot(threading.Thread):
         self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png']
         self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
-        self.adb_cmd = f'"{adb_path}"' if " " in adb_path else adb_path
+        self.adb_cmd = adb_path
         self._screen = None       # Cached screen image (grayscale for template matching)
         self._screen_color = None  # Cached screen image (color for OCR)
         
