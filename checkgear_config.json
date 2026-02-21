@@ -35,6 +35,18 @@
         "gearimg7": {
             "ocr": "Moonlit Dagger",
             "name": "Moonlit-Dagger"
+        },
+        "gearimg8": {
+            "ocr": "Shining Axe",
+            "name": "Moonlit-Shining-Axe"
+        },
+        "gearimg9": {
+            "ocr": "Shining Shield",
+            "name": "Moonlit-Shining-Shield"
+        },
+        "gearimg10": {
+            "ocr": "Shining Belt",
+            "name": "MoonlitShining-Belt"
         }
     },
     "ocr_region": {
