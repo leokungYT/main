@@ -685,7 +685,7 @@ class RangerGearBot(threading.Thread):
             if isinstance(item, tuple):
                 print(f"[{self.device_id}] Tapping: {item}")
                 self.tap(item[0], item[1])
-                sleep(0.5)
+                sleep(1.5) # Increased delay for more reliable taps
                 continue
             
             if isinstance(item, str) and item.startswith('@'):
@@ -698,13 +698,14 @@ class RangerGearBot(threading.Thread):
                 start_wait = 0
                 while start_wait < wait_limit:
                     self.capture_screen()
-                    if self.exists_in_cache(checkpoint_img):
+                    if self.exists_in_cache(checkpoint_img, similarity=0.9): # Higher precision for checkpoint
                         print(f"[{self.device_id}] Checkpoint reached: {checkpoint_img}")
                         break
                     start_wait += 1
                     sleep(1)
                 if start_wait >= wait_limit:
                     print(f"[{self.device_id}] Checkpoint timeout: {checkpoint_img}")
+                sleep(1.0) # Short breather after checkpoint
                 continue
                 
             img = item
@@ -738,7 +739,7 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache(img_path):
                     print(f"[{self.device_id}] Found {item}, clicking...")
                     self.click(img_path)
-                    sleep(1)
+                    sleep(1.5) # Increased delay after image click
                     found = True
                     break
                 start_wait += 1
@@ -1233,9 +1234,8 @@ if __name__ == "__main__":
         print("No devices.")
         sys.exit(0)
     
-    # Use only the first device
-    devices = [devices[0]]
-    print(f"[DEV] Using: {devices[0]}")
+    # Use all detected devices
+    print(f"[DEV] Using all detected devices: {devices}")
         
     # Check mode
     find_ranger = config.get("find_ranger", 0)
