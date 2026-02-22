@@ -914,7 +914,7 @@ class RangerGearBot(threading.Thread):
                 return "stopcheck"
         
         # Common login errors
-        if self.exists_in_cache("img/fixbuglogin.png"):
+        if self.exists_in_cache("img/fixbuglogin.png") or self.exists_in_cache("img/alert2.png") or self.exists_in_cache("img/alert3.png"):
             return "fixbug"
             
         if self.exists_in_cache("img/unkhow.png"):
@@ -1010,15 +1010,28 @@ class RangerGearBot(threading.Thread):
     # Logic Methods
     # =========================================================
     def clear_specific_shared_prefs(self):
-        """Delete ALL shared_prefs and clear app cache"""
+        """Delete specific shared_prefs files only (partial clear)"""
         base = "/data/data/com.linecorp.LGRGS/shared_prefs"
-        cache_dir = "/data/data/com.linecorp.LGRGS/cache"
+        # Files to delete to clear session but keep game data
+        files_to_remove = [
+            "_LINE_COCOS_PREF_KEY.xml",
+            "com.linecorp.LGRGS.xml",
+            "LINE_LGRGS_PREFS.xml",
+            "NativeCache.xml",
+            "LocalSettings.xml"
+        ]
         
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(1)
         
-        self.adb_shell(f"su -c 'rm -rf {base}/* && rm -rf {cache_dir}/*'")
-        print(f"[{self.device_id}] Cleared shared_prefs + cache")
+        # Build rm commands for specific files
+        rm_cmds = " && ".join([f"rm -f {base}/{f}" for f in files_to_remove])
+        # Also include any .bak files to be safe
+        rm_cmds += f" && rm -f {base}/*.bak"
+        
+        # We STOP deleting the entire cache and shared_prefs folder
+        self.adb_shell(f"su -c '{rm_cmds}'")
+        print(f"[{self.device_id}] Cleared specific shared_prefs (Partial)")
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
@@ -1038,32 +1051,52 @@ class RangerGearBot(threading.Thread):
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
+                # Clear previous artifacts
+                self.adb_shell(f"su -c 'rm -f {final} && rm -f {tmp}'")
+                
                 # Push to tmp
-                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30)
-                if result.returncode != 0:
-                    print(f"[{self.device_id}] Push attempt {attempt}: {result.stderr.decode()}")
+                self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30, check=True)
+                
+                # Verify file size remotely
+                size_check = self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", f"stat -c %s {tmp}"], text=True)
+                remote_size_str = size_check.stdout.strip()
+                remote_size = int(remote_size_str) if remote_size_str.isdigit() else 0
+                
+                if remote_size != src_size:
+                    print(f"[{self.device_id}] Size mismatch! Local:{src_size} Remote:{remote_size} (Attempt {attempt})")
+                    sleep(1)
                     continue
                 
-                # Verify file size
-                result = self.adb_shell(f"wc -c < {tmp}")
-                try:
-                    pushed_size = int(result.stdout.decode('utf-8', errors='ignore').strip())
-                    if pushed_size != src_size:
-                        print(f"[{self.device_id}] File size mismatch on attempt {attempt}: expected {src_size}, got {pushed_size}")
-                        continue
-                except Exception as e:
-                    print(f"[{self.device_id}] Size check failed on attempt {attempt}: {e}")
-                    continue
+                # Robust deployment shell command
+                shell_cmd = (
+                    f"su -c '"
+                    f"mkdir -p {final_dir} && "
+                    f"cp -f {tmp} {final} && "
+                    f"chmod 666 {final} && "
+                    f"chown $(stat -c %u:%g {final_dir}) {final} || true && "
+                    f"restorecon {final} || true && "
+                    f"rm -f {tmp}"
+                    f"'"
+                )
+                self.adb_shell(shell_cmd)
                 
-                # Copy and set permissions
-                self.adb_shell(f"su -c 'cp {tmp} {final} && chmod 600 {final}'")
-                self.adb_shell(f"su -c 'rm -f {tmp}'")
+                # Final verification
+                verify = self.adb_run(
+                    [self.adb_cmd, "-s", self.device_id, "shell", f"su -c 'stat -c %s {final}'"], text=True
+                )
+                final_size_str = verify.stdout.strip()
+                final_size = int(final_size_str) if final_size_str.isdigit() else 0
                 
-                print(f"[{self.device_id}] Injection successful on attempt {attempt}")
-                return local_xml_path
+                if final_size == src_size:
+                    print(f"[{self.device_id}] Injection Verified OK (Size: {final_size} bytes)")
+                    return local_xml_path
+                else:
+                    print(f"[{self.device_id}] Verification FAILED! Expected:{src_size} Got:{final_size} (Attempt {attempt})")
+                    sleep(1)
                     
             except Exception as e:
-                print(f"[{self.device_id}] Attempt {attempt} error: {e}")
+                print(f"[{self.device_id}] Injection Exception (Attempt {attempt}): {e}")
+                sleep(1)
         
         print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
         return None
@@ -1179,9 +1212,18 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Found fixcak.png! Restarting first loop...")
                     return "restart"
                 if err == "fixbug":
-                    print(f"[{self.device_id}] Found fixbuglogin.png! Clicking and restarting...")
-                    self.click("img/fixbuglogin.png")
+                    print(f"[{self.device_id}] Found fixbug/alert detected! Clicking and restarting...")
+                    if self.exists_in_cache("img/alert2.png"): self.click("img/alert2.png")
+                    elif self.exists_in_cache("img/alert3.png"): self.click("img/alert3.png")
+                    else: self.click("img/fixbuglogin.png")
                     return "restart"
+                
+                if self.exists_in_cache("img/fixplay.png"):
+                    print(f"[{self.device_id}] Found fixplay.png! Clicking...")
+                    self.click("img/fixplay.png")
+                    sleep(1)
+                    continue
+
                 if err == "unkhow":
                     print(f"[{self.device_id}] Found unkhow.png! Clicking and restarting...")
                     self.click("img/unkhow.png")
@@ -1648,9 +1690,13 @@ class RangerGearBot(threading.Thread):
             
             if error_found:
                 print(f"[{self.device_id}] Error image found: {error_found}. Resetting...")
-                if error_found in ["fixbug", "unkhow"]:
-                    img = "img/fixbuglogin.png" if error_found == "fixbug" else "img/unkhow.png"
-                    self.click(img)
+                if error_found == "fixbug":
+                    if self.exists_in_cache("img/alert2.png"): self.click("img/alert2.png")
+                    elif self.exists_in_cache("img/alert3.png"): self.click("img/alert3.png")
+                    else: self.click("img/fixbuglogin.png")
+                    sleep(2)
+                elif error_found == "unkhow":
+                    self.click("img/unkhow.png")
                     sleep(2)
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
                 sleep(3)
@@ -1658,6 +1704,13 @@ class RangerGearBot(threading.Thread):
                     self.click("img/icon.png")
                     sleep(5)
                 loop_count = 0
+                continue
+            
+            # fixplay.png Check
+            if self.exists_in_cache("img/fixplay.png"):
+                print(f"[{self.device_id}] Found fixplay.png! Clicking...")
+                self.click("img/fixplay.png")
+                sleep(1)
                 continue
             
             # Event / Popups
