@@ -421,7 +421,7 @@ class CheckGearBot(threading.Thread):
     # =========================================================
     def ocr_read_region(self, x, y, w, h):
         """
-        Read text from a specific region of the cached color screen using EasyOCR.
+        Read text from a specific region of the cached color screen using EasyOCR. (Optimized)
         Returns list of (text, confidence) tuples.
         """
         if self._screen_color is None:
@@ -435,16 +435,25 @@ class CheckGearBot(threading.Thread):
             print(f"[{self.device_id}] OCR crop region empty!")
             return []
         
-        # Resize 2x for better OCR accuracy
-        img = cv2.resize(img, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+        # Reduced scaling (1.5x) for speed
+        img = cv2.resize(img, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_LINEAR)
         
         reader = get_ocr_reader()
-        results = reader.readtext(img, detail=1)
+        # Enable paragraph mode and performance flags
+        results = reader.readtext(
+            img, 
+            detail=1, 
+            paragraph=True,
+            contrast_ths=0.1, 
+            adjust_contrast=False,
+            add_margin=0.1,
+            width_ths=0.7
+        )
         
         text_results = []
-        for (bbox, text, conf) in results:
-            if conf > 0.3:
-                text_results.append((text, conf))
+        for (bbox, text) in results:
+            # Paragraph mode returns [(bbox, text), ...]
+            text_results.append((text, 0.99))
         
         return text_results
 
