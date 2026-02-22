@@ -324,11 +324,16 @@ class CheckGearBot(threading.Thread):
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
 
     def capture_screen(self):
-        """Capture screen and load into RAM (both grayscale and color)"""
+        """Capture screen and load into RAM (Robust version)"""
+        # Clear previous screen to avoid using stale data if capture fails
+        self._screen = None
+        self._screen_color = None
+        
         try:
+            # Try fast method with increased timeout (20s)
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20
             )
             if result.stdout and len(result.stdout) > 100:
                 buf = np.frombuffer(result.stdout, np.uint8)
@@ -337,21 +342,24 @@ class CheckGearBot(threading.Thread):
                 if img_gray is not None:
                     self._screen = img_gray
                     self._screen_color = img_color
-                    return
-        except Exception:
-            pass
+                    return True
+        except Exception as e:
+            print(f"[{self.device_id}] Fast capture error/timeout: {e}")
         
-        # Fallback
-        subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "screencap", "-p", "/sdcard/screen.png"],
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
-        subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", "/sdcard/screen.png", self.filename],
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
-        if os.path.exists(self.filename):
-            self._screen = cv2.imread(self.filename, 0)
-            self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
-        else:
-            self._screen = None
-            self._screen_color = None
+        # Fallback to slow but reliable method
+        try:
+            self.adb_shell("screencap -p /sdcard/screen.png", timeout=20)
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "pull", "/sdcard/screen.png", self.filename], timeout=20)
+            if os.path.exists(self.filename):
+                self._screen = cv2.imread(self.filename, 0)
+                self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
+                # Cleanup SD card
+                self.adb_shell("rm /sdcard/screen.png")
+                return self._screen is not None
+        except Exception as e:
+            print(f"[{self.device_id}] Fallback capture error: {e}")
+            
+        return False
     
     def _find_in_screen(self, template_path, similarity=0.8):
         """Find template in cached screen image (no new capture)"""
@@ -406,6 +414,8 @@ class CheckGearBot(threading.Thread):
 
     def check_error_images(self):
         """Check error images using cached screen"""
+        if self._screen is None:
+            return None
         # Common login errors
         if self.exists_in_cache(r"img\fixbuglogin.png") or self.exists_in_cache(r"img\alert2.png") or self.exists_in_cache(r"img\alert3.png"):
             return "fixbug"

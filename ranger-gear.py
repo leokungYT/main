@@ -797,23 +797,40 @@ class RangerGearBot(threading.Thread):
             capture_output=True, timeout=timeout)
 
     def capture_screen(self):
-        """Capture screen and load into RAM"""
+        """Capture screen and load into RAM (Robust version)"""
+        # Clear previous screen to avoid using stale data if capture fails
+        self._screen = None
+        self._screen_color = None
+        
         try:
+            # Try fast method with increased timeout (20s)
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                capture_output=True, timeout=10
+                capture_output=True, timeout=20
             )
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
                 self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
                 self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-            else:
-                with open(self.filename, "wb") as f:
-                    f.write(result.stdout)
+                return True
+        except Exception as e:
+            print(f"[{self.device_id}] Fast capture error/timeout: {e}")
+        
+        # Fallback to slow but reliable method
+        try:
+            # Use self.filename as temp storage
+            self.adb_shell("screencap -p /sdcard/screen.png", timeout=20)
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "pull", "/sdcard/screen.png", self.filename], timeout=20)
+            if os.path.exists(self.filename):
                 self._screen = cv2.imread(self.filename, 0)
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
+                # Cleanup SD card
+                self.adb_shell("rm /sdcard/screen.png")
+                return self._screen is not None
         except Exception as e:
-            print(f"[{self.device_id}] Capture error: {e}")
+            print(f"[{self.device_id}] Fallback capture error: {e}")
+            
+        return False
 
     def _find_in_screen(self, template_path, similarity=0.8):
         """Find template in cached screen image (no new capture)"""
@@ -901,6 +918,8 @@ class RangerGearBot(threading.Thread):
 
     def check_error_images(self, skip_fixcak=False, skip_icon=False):
         """Check error images using cached screen"""
+        if self._screen is None:
+            return None
         # fixcak.png: restart process if found
         if not skip_fixcak:
             fixcak_path = "img/fixcak.png"
