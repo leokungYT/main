@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import subprocess
 import os
+import time
 from time import sleep
 import sys
 import shutil
@@ -14,6 +15,7 @@ import concurrent.futures
 import colorama
 from colorama import Fore, Style
 import ssl
+import argparse
 
 colorama.init(autoreset=True)
 
@@ -115,18 +117,41 @@ def find_adb_executable():
         "adb",
     ]
     
+    # Add current working directory as another check
+    adb_locations.append(os.path.join(os.getcwd(), "adb", "adb.exe"))
+    
     for loc in adb_locations:
-        try:
-            result = subprocess.run(
-                [loc, "version"],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                adb_path = loc
-                print(f"[ADB] Found: {adb_path}")
-                return True
-        except:
-            continue
+        if not loc.endswith(".exe") and sys.platform == 'win32' and not os.path.isabs(loc):
+             pass # Skip simple "adb" for exists check if it's just a command
+        elif os.path.exists(loc):
+            print(f"[ADB] Found file at {loc}, testing...")
+            try:
+                result = subprocess.run(
+                    [loc, "version"],
+                    capture_output=True, text=True, timeout=5,
+                    shell=(sys.platform == 'win32')
+                )
+                if result.returncode == 0:
+                    adb_path = loc
+                    print(f"[ADB] Verified: {adb_path}")
+                    return True
+            except Exception as e:
+                print(f"[ADB] Error testing {loc}: {e}")
+        
+        # Also try running loc directly if it's a command name like "adb"
+        if loc == "adb":
+            try:
+                result = subprocess.run(
+                    [loc, "version"],
+                    capture_output=True, text=True, timeout=5,
+                    shell=(sys.platform == 'win32')
+                )
+                if result.returncode == 0:
+                    adb_path = loc
+                    print(f"[ADB] Verified command: {adb_path}")
+                    return True
+            except:
+                pass
     
     # Try system PATH
     adb_in_path = shutil.which("adb")
@@ -258,7 +283,7 @@ class RangerGearBot(threading.Thread):
         # Store original filename for backup
         self.current_original_filename = None
         
-        # Sequence Definitions
+        # Sequence Definitions (Reverted to use coordinates for checkboxes)
         self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png']
         self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
@@ -282,9 +307,10 @@ class RangerGearBot(threading.Thread):
                         res = self.first_loop_process()
                         if res == "complete":
                             self.first_loop_done = True
-                        else:
-                            print(f"[{self.device_id}] First loop failed or incomplete. Retrying...")
+                        elif res == "restart":
+                            print(f"[{self.device_id}] Loop triggered RESTART (fixcak/closeapp). Retrying...")
                             sleep(2)
+                            continue
                             continue
 
                     # 1. Get File
@@ -295,6 +321,26 @@ class RangerGearBot(threading.Thread):
                     
                     # Store original filename
                     self.current_original_filename = os.path.basename(xml_file)
+                    
+                    # --- File Locking Mechanism ---
+                    # To prevent multiple CMD windows from processing the same file
+                    lock_file = xml_file + ".lock"
+                    if os.path.exists(lock_file):
+                        # Simple check: if lock file is older than 1 hour, assume it's stale
+                        if time.time() - os.path.getmtime(lock_file) > 3600:
+                            print(f"[{self.device_id}] Stale lock found for {self.current_original_filename}. Removing...")
+                            os.remove(lock_file)
+                        else:
+                            # Skip this file, someone else is working on it
+                            continue
+                    
+                    # Create lock
+                    try:
+                        with open(lock_file, "w") as f:
+                            f.write(self.device_id)
+                    except:
+                        continue # If can't create lock, skip
+                    
                     print(f"[{self.device_id}] Processing file: {self.current_original_filename}")
 
                     # 2. Inject
@@ -306,15 +352,18 @@ class RangerGearBot(threading.Thread):
                         
                         if status == "success":
                             self.handle_success(xml_file)
+                            if os.path.exists(lock_file): os.remove(lock_file)
                         elif status == "failed":
                             self.handle_failure(xml_file)
+                            if os.path.exists(lock_file): os.remove(lock_file)
                             self.first_loop_done = False
                         else:
                             print(f"[{self.device_id}] Status: {status}. Moving to next.")
-                            # For timeout/unknown, we might want to keep or fail it
                             self.handle_failure(xml_file)
+                            if os.path.exists(lock_file): os.remove(lock_file)
                     else:
                         print(f"[{self.device_id}] Injection failed for {xml_file}")
+                        if os.path.exists(lock_file): os.remove(lock_file)
                     
                     self.file_queue.task_done()
                     
@@ -484,13 +533,16 @@ class RangerGearBot(threading.Thread):
             
         if target:
             x, y = target
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap", str(x), str(y)])
+            self.tap(x, y) # Use the improved tap method
             return True
         return False
     
     def tap(self, x, y):
-        """Direct tap without image search"""
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap", str(x), str(y)])
+        """Direct tap without image search - uses a short swipe for better reliability"""
+        # Short wait before tap to ensure UI is ready and ADB can process
+        sleep(0.5)
+        # Using swipe with 200ms duration makes it even more reliable than a quick tap
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", str(x), str(y), str(x), str(y), "200"])
 
     def type_text(self, text):
         """Type text via ADB (for search box)"""
@@ -501,12 +553,41 @@ class RangerGearBot(threading.Thread):
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
-    def check_error_images(self):
+    def check_black_screen(self, threshold=0.8):
+        """Check if screen is mostly black"""
+        if self._screen is None:
+            return False
+        # Count black pixels (intensity < 10)
+        black_pixels = np.sum(self._screen < 10)
+        total_pixels = self._screen.size
+        return (black_pixels / total_pixels) > threshold
+
+    def check_error_images(self, skip_fixcak=False):
         """Check error images using cached screen"""
-        error_images = ["img/fixbuglogin.png", "img/failed1.png"]
+        # fixcak.png: restart process if found
+        if not skip_fixcak:
+            fixcak_path = "img/fixcak.png"
+            if os.path.exists(fixcak_path) and self.exists_in_cache(fixcak_path):
+                return "fixcak"
+        
+        # stopcheck.png: complete/stop process if found
+        # Try multiple thresholds like in example code
+        for th in [0.95, 0.9, 0.85, 0.8]:
+            if self.exists_in_cache("img/stopcheck.png", similarity=th):
+                return "stopcheck"
+        
+        # Common login errors
+        if self.exists_in_cache("img/fixbuglogin.png"):
+            return "fixbug"
+            
+        if self.exists_in_cache("img/unkhow.png"):
+            return "unkhow"
+            
+        error_images = ["img/failed1.png", "img/fixalerterror1.png"]
         for err in error_images:
             if self.exists_in_cache(err):
-                return err
+                return "error_img"
+                
         return None
 
     # =========================================================
@@ -653,24 +734,30 @@ class RangerGearBot(threading.Thread):
             
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
             sleep(1)
+            # Go to Home screen first so we can see the icon
             self.adb_shell("input keyevent 3")
-            sleep(2)
+            print(f"[{self.device_id}] Back to Home, waiting for sequence to click icon...")
+            sleep(3)
             
+            # --- Sequence 1 ---
             print(f"[{self.device_id}] Processing SEQ 1...")
-            if not self.process_sequence(self.seq1):
-                print(f"[{self.device_id}] SEQ 1 failed")
-                return "error"
+            res1 = self.process_sequence(self.seq1)
+            if res1 == "restart": return "restart"
+            if res1 == "complete": return "complete"
             
+            # Back logic
             print(f"[{self.device_id}] Waiting 8s then Back...")
             sleep(8)
             self.adb_shell("input keyevent 4")
             sleep(2)
             
+            # --- Sequence 2 ---
             print(f"[{self.device_id}] Processing SEQ 2...")
-            if not self.process_sequence(self.seq2):
-                print(f"[{self.device_id}] SEQ 2 failed")
-                return "error"
+            res2 = self.process_sequence(self.seq2)
+            if res2 == "restart": return "restart"
+            if res2 == "complete": return "complete"
             
+            # End
             print(f"[{self.device_id}] First Loop Completed!")
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
             sleep(2)
@@ -682,15 +769,20 @@ class RangerGearBot(threading.Thread):
 
     def process_sequence(self, sequence):
         for item in sequence:
+            # Check for global triggers before each item
+            self.capture_screen()
+            err = self.check_error_images()
+            if err == "fixcak": return "restart"
+            if err == "stopcheck": return "complete"
+
             if isinstance(item, tuple):
                 print(f"[{self.device_id}] Tapping: {item}")
                 self.tap(item[0], item[1])
-                sleep(1.5) # Increased delay for more reliable taps
+                sleep(3.0) # Increased delay to 3s to let UI catch up when running multiple emulators
                 continue
             
             if isinstance(item, str) and item.startswith('@'):
                 checkpoint_img = item[1:]
-                # Add img/ prefix if not already present
                 if not checkpoint_img.startswith('img'):
                     checkpoint_img = f"img/{checkpoint_img}"
                 print(f"[{self.device_id}] Checkpoint: waiting for {checkpoint_img} (no click)")
@@ -698,30 +790,31 @@ class RangerGearBot(threading.Thread):
                 start_wait = 0
                 while start_wait < wait_limit:
                     self.capture_screen()
-                    if self.exists_in_cache(checkpoint_img, similarity=0.9): # Higher precision for checkpoint
+                    err = self.check_error_images()
+                    if err == "fixcak": return "restart"
+                    if err == "fixbug":
+                        self.click("img/fixbuglogin.png")
+                        return "restart"
+                    if err == "unkhow":
+                        self.click("img/unkhow.png")
+                        return "restart"
+                    if err == "stopcheck": return "complete"
+                    
+                    if self.exists_in_cache(checkpoint_img, similarity=0.9): 
                         print(f"[{self.device_id}] Checkpoint reached: {checkpoint_img}")
                         break
                     start_wait += 1
                     sleep(1)
-                if start_wait >= wait_limit:
-                    print(f"[{self.device_id}] Checkpoint timeout: {checkpoint_img}")
-                sleep(1.0) # Short breather after checkpoint
+                sleep(1.0)
                 continue
                 
-            img = item
-            
-            # Add img/ prefix to image name if not already present
-            if isinstance(img, str) and not img.startswith('img'):
-                img_path = f"img/{img}"
-            else:
-                img_path = img
+            img_path = f"img/{item}" if isinstance(item, str) and not item.startswith('img') else item
             
             if item == 'icon.png':
                 print(f"[{self.device_id}] Waiting for app icon...")
                 for _ in range(30):
                     self.capture_screen()
                     if self.exists_in_cache(img_path):
-                        print(f"[{self.device_id}] Found app icon, clicking...")
                         self.click(img_path)
                         sleep(5)
                         break
@@ -729,26 +822,39 @@ class RangerGearBot(threading.Thread):
                 continue
 
             print(f"[{self.device_id}] Waiting for {item}...")
-            
             wait_limit = 60
             start_wait = 0
             found = False
-            
             while start_wait < wait_limit:
-                self.capture_screen()
+                # Check fixcak/stopcheck/blackscreen/fixbug/unkhow
+                self.capture_screen() # Ensure screen is captured before checking errors
+                err = self.check_error_images()
+                if err == "fixcak":
+                    print(f"[{self.device_id}] Found fixcak.png! Restarting first loop...")
+                    return "restart"
+                if err == "fixbug":
+                    print(f"[{self.device_id}] Found fixbuglogin.png! Clicking and restarting...")
+                    self.click("img/fixbuglogin.png")
+                    return "restart"
+                if err == "unkhow":
+                    print(f"[{self.device_id}] Found unkhow.png! Clicking and restarting...")
+                    self.click("img/unkhow.png")
+                    return "restart"
+                if err == "stopcheck":
+                    print(f"[{self.device_id}] Found stopcheck.png! Skipping to complete.")
+                    return "complete"
+                
                 if self.exists_in_cache(img_path):
                     print(f"[{self.device_id}] Found {item}, clicking...")
                     self.click(img_path)
-                    sleep(1.5) # Increased delay after image click
+                    sleep(1.5)
                     found = True
                     break
                 start_wait += 1
                 sleep(1)
             
             if not found:
-                print(f"[{self.device_id}] Timeout: {item}")
-                print(f"[{self.device_id}] Sequence failed")
-                return False
+                print(f"[{self.device_id}] {item} not found, continuing sequence...")
                  
         return True
 
@@ -1179,6 +1285,10 @@ class RangerGearBot(threading.Thread):
             
             if error_found:
                 print(f"[{self.device_id}] Error image found: {error_found}. Resetting...")
+                if error_found in ["fixbug", "unkhow"]:
+                    img = "img/fixbuglogin.png" if error_found == "fixbug" else "img/unkhow.png"
+                    self.click(img)
+                    sleep(2)
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
                 sleep(3)
                 if self.exists("img/icon.png"):
@@ -1213,7 +1323,12 @@ class RangerGearBot(threading.Thread):
 
 
 if __name__ == "__main__":
-    print("=== Auto Ranger+Gear Script (Combined Mode) ===")
+    parser = argparse.ArgumentParser(description="Auto Ranger+Gear Script")
+    parser.add_argument("--device", type=str, help="Specific device ID/address to run (e.g. 127.0.0.1:5557)")
+    parser.add_argument("--no-reset-adb", action="store_true", help="Don't kill/start ADB server (use when running multiple CMDs)")
+    args = parser.parse_args()
+
+    print("=== Auto Ranger+Gear Script (Multi-CMD Compatible) ===")
     
     load_config()
     
@@ -1221,21 +1336,56 @@ if __name__ == "__main__":
         print("ADB Not Found.")
         sys.exit(1)
     
-    # Reset ADB
-    print("[INFO] Restarting ADB Server...")
-    subprocess.run([adb_path, "kill-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    subprocess.run([adb_path, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Reset ADB (Skip if requested)
+    if not args.no_reset_adb:
+        print("[INFO] Restarting ADB Server...")
+        subprocess.run([adb_path, "kill-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run([adb_path, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    else:
+        print("[INFO] Skipping ADB reset to keep other instances running.")
         
     connect_known_ports()
     devices = get_connected_devices()
-    print(f"[DEV] All detected: {devices}")
     
-    if not devices:
-        print("No devices.")
-        sys.exit(0)
-    
-    # Use all detected devices
-    print(f"[DEV] Using all detected devices: {devices}")
+    # Filter for specific device if provided
+    if args.device:
+        if args.device in devices:
+            devices = [args.device]
+            print(f"[DEV] Manually selected device: {args.device}")
+        else:
+            # Try to connect if not in list
+            print(f"[DEV] Device {args.device} not found, attempting to connect...")
+            subprocess.run([adb_path, "connect", args.device])
+            devices = get_connected_devices()
+            if args.device in devices:
+                devices = [args.device]
+            else:
+                print(f"[ERR] Could not find or connect to device: {args.device}")
+                sys.exit(1)
+    else:
+        # Filter duplicates and use all unique detected devices (Default behavior)
+        if devices:
+            unique_devices = []
+            ip_devices = [d for d in devices if ":" in d]
+            emu_devices = [d for d in devices if d.startswith("emulator-")]
+            unique_devices.extend(ip_devices)
+            for emu in emu_devices:
+                try:
+                    emu_port = int(emu.split("-")[-1])
+                    match_found = False
+                    for ip_dev in ip_devices:
+                        ip_port = int(ip_dev.split(":")[-1])
+                        if ip_port == emu_port + 1:
+                            match_found = True
+                            break
+                    if not match_found: unique_devices.append(emu)
+                except:
+                    if emu not in unique_devices: unique_devices.append(emu)
+            devices = unique_devices
+            print(f"[DEV] Unique devices to process ({len(devices)}): {devices}")
+        else:
+            print("No devices found.")
+            sys.exit(0)
         
     # Check mode
     find_ranger = config.get("find_ranger", 0)
