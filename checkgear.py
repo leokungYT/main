@@ -123,8 +123,8 @@ def connect_known_ports():
     """Auto-scan and connect to common emulator ports using ThreadPoolExecutor"""
     print("[INFO] Auto-connecting to common emulator ports...")
     
-    manual_ports = [62001, 21503]
-    scan_range = [5555 + (i * 2) for i in range(20)]
+    manual_ports = [62001, 21503, 7555]
+    scan_range = [5555 + (i * 2) for i in range(725)]
     all_ports = sorted(list(set(manual_ports + scan_range)))
     
     print(f"[INFO] Scanning {len(all_ports)} ports...")
@@ -133,7 +133,7 @@ def connect_known_ports():
         target = f"127.0.0.1:{port}"
         cmd = [adb_path, "connect", target]
         try:
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=3, text=True)
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2, text=True)
             output = proc.stdout.strip()
             if "connected to" in output:
                  print(f"[OK] Connected to {target}")
@@ -144,7 +144,7 @@ def connect_known_ports():
         except Exception as e:
             print(f"[ERR] {target}: {e}")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
         list(executor.map(try_connect, all_ports))
             
     print("[OK] Port scan finished.")
@@ -417,7 +417,9 @@ class CheckGearBot(threading.Thread):
         if self._screen is None:
             return None
         # Common login errors
-        if self.exists_in_cache(r"img\fixbuglogin.png") or self.exists_in_cache(r"img\alert2.png") or self.exists_in_cache(r"img\alert3.png"):
+        if self.exists_in_cache(r"img\fixbuglogin.png") or \
+           self.exists_in_cache(r"img\alert2.png") or \
+           self.exists_in_cache(r"img\alert3.png"):
             return "fixbug"
             
         error_images = [r"img\failed1.png", r"img\fixalerterror1.png"]
@@ -661,14 +663,14 @@ class CheckGearBot(threading.Thread):
             sleep(1)
             return True
         if self.exists_in_cache(r"img\alert2.png"):
-            print(f"[{self.device_id}] Found alert2.png! Clicking...")
+            print(f"[{self.device_id}] Found alert2.png! Clicking and waiting 50s...")
             self.click(r"img\alert2.png")
-            sleep(2)
+            sleep(50)
             return True
         if self.exists_in_cache(r"img\alert3.png"):
-            print(f"[{self.device_id}] Found alert3.png! Clicking...")
+            print(f"[{self.device_id}] Found alert3.png! Clicking and waiting 50s...")
             self.click(r"img\alert3.png")
-            sleep(2)
+            sleep(50)
             return True
         return False
 
@@ -724,23 +726,26 @@ class CheckGearBot(threading.Thread):
             
             while start_wait < wait_limit:
                 self.capture_screen()
-                self._check_and_click_icon()
                 
+                # 1. Prioritize target image
                 loc = self._find_in_screen(f"img\\{img}")
                 if loc:
                     self.click(loc)
                     print(f"[{self.device_id}] Clicked {img}")
                     if img == 'apple.png':
-                        sleep(10)
+                        sleep(1) # Fast
                     else:
                         sleep(6)
                     found = True
                     break 
+
+                # 2. Check for bugs
+                self._check_and_click_icon()
                 
                 if self.check_error_images():
-                    print(f"[{self.device_id}] Bug found during sequence! Restarting first_loop...")
+                    print(f"[{self.device_id}] Bug detected! Waiting 50s...")
                     return False
-
+                
                 sleep(1)
                 start_wait += 1
             
@@ -993,21 +998,22 @@ class CheckGearBot(threading.Thread):
             error_found = self.check_error_images()
             
             if error_found:
-                 print(f"[{self.device_id}] Found {error_found}. Resetting...")
-                 if error_found == "fixbug":
+                print(f"[{self.device_id}] Found {error_found}. Resetting...")
+                if error_found == "fixbug":
                     if self.exists_in_cache(r"img\alert2.png"): self.click(r"img\alert2.png")
                     elif self.exists_in_cache(r"img\alert3.png"): self.click(r"img\alert3.png")
                     else: self.click(r"img\fixbuglogin.png")
-                    sleep(2)
+                    print(f"[{self.device_id}] fixbug/alert detected, clicking and waiting 50s...")
+                    sleep(50)
                  
-                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                 sleep(2)
-                 self.adb_shell("input keyevent 3")
-                 sleep(2)
-                 if self.exists(r"img\icon.png"):
-                     self.click(r"img\icon.png")
-                     sleep(5)
-                 continue
+                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                sleep(2)
+                self.adb_shell("input keyevent 3")
+                sleep(2)
+                if self.exists(r"img\icon.png"):
+                    self.click(r"img\icon.png")
+                    sleep(5)
+                continue
             
             # Event
             if self.exists_in_cache(r"img\event.png"):
@@ -1066,8 +1072,9 @@ if __name__ == "__main__":
     subprocess.run([adb_path, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
     connect_known_ports()
-    devices = get_connected_devices()
-    print(f"[DEV] Connected: {devices}")
+    all_detected = get_connected_devices()
+    devices = [d for d in all_detected if d.startswith("emulator-")]
+    print(f"[DEV] Using emulators: {devices}")
     
     if not devices:
         print("No devices.")

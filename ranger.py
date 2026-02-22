@@ -93,11 +93,12 @@ def connect_known_ports():
     # Specific ports for popular emulators
     manual_ports = [
         62001,  # Nox
-        21503   # MEmu
+        21503,  # MEmu
+        7555    # MuMu
     ]
     
-    # Standard range (LDPlayer, BlueStacks, etc.) - Expanded
-    scan_range = [5555 + (i * 2) for i in range(20)] # Scan up to 5595
+    # Standard range - Optimized to odd ports only for speed
+    scan_range = [5555 + (i * 2) for i in range(725)] 
     
     all_ports = sorted(list(set(manual_ports + scan_range)))
     
@@ -108,7 +109,7 @@ def connect_known_ports():
         cmd = [adb_path, "connect", target]
         try:
             # print(f"[DEBUG] Scanning {target}...")
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=3, text=True)
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2, text=True)
             output = proc.stdout.strip()
             
             if "connected to" in output:
@@ -126,7 +127,7 @@ def connect_known_ports():
 
     # Use ThreadPoolExecutor for parallel scanning
     # Force iteration to ensure exceptions are caught/handled if strict=True (though we swallow them)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
         list(executor.map(try_connect, all_ports))
             
     print("[OK] Port scan finished.")
@@ -380,7 +381,10 @@ class RangerBot(threading.Thread):
 
     def check_error_images(self):
         """Check error images using cached screen (no new capture)"""
-        if self.exists_in_cache(r"img\fixbuglogin.png") or self.exists_in_cache(r"img\alert2.png") or self.exists_in_cache(r"img\alert3.png"):
+        # Common login errors
+        if self.exists_in_cache(r"img\fixbuglogin.png") or \
+           self.exists_in_cache(r"img\alert2.png") or \
+           self.exists_in_cache(r"img\alert3.png"):
             return "fixbug"
             
         error_images = [r"img\failed1.png", r"img\fixalerterror1.png"]
@@ -534,14 +538,14 @@ class RangerBot(threading.Thread):
             sleep(1)
             return True
         if self.exists_in_cache(r"img\alert2.png"):
-            print(f"[{self.device_id}] Found alert2.png! Clicking...")
+            print(f"[{self.device_id}] Found alert2.png! Clicking and waiting 50s...")
             self.click(r"img\alert2.png")
-            sleep(2)
+            sleep(50)
             return True
         if self.exists_in_cache(r"img\alert3.png"):
-            print(f"[{self.device_id}] Found alert3.png! Clicking...")
+            print(f"[{self.device_id}] Found alert3.png! Clicking and waiting 50s...")
             self.click(r"img\alert3.png")
-            sleep(2)
+            sleep(50)
             return True
         return False
 
@@ -601,19 +605,20 @@ class RangerBot(threading.Thread):
             while start_wait < wait_limit:
                 self.capture_screen()
                 
-                # Always check icon.png first (app might have crashed)
-                self._check_and_click_icon()
-                
+                # 1. Work first!
                 loc = self._find_in_screen(f"img\\{img}")
                 if loc:
                     self.click(loc)
                     print(f"[{self.device_id}] Clicked {img}")
                     if img == 'apple.png':
-                        sleep(10)
+                        sleep(1) # Fast
                     else:
                         sleep(6)
                     found = True
                     break 
+
+                # 2. Casually check
+                self._check_and_click_icon()
                 
                 # Check for bugs while waiting
                 if self.check_error_images():
@@ -699,21 +704,22 @@ class RangerBot(threading.Thread):
             error_found = self.check_error_images()
             
             if error_found:
-                 print(f"[{self.device_id}] Found {error_found}. Resetting...")
-                 if error_found == "fixbug":
+                print(f"[{self.device_id}] Found {error_found}. Resetting...")
+                if error_found == "fixbug":
                     if self.exists_in_cache(r"img\alert2.png"): self.click(r"img\alert2.png")
                     elif self.exists_in_cache(r"img\alert3.png"): self.click(r"img\alert3.png")
                     else: self.click(r"img\fixbuglogin.png")
-                    sleep(2)
-                 
-                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                 sleep(2)
-                 self.adb_shell("input keyevent 3")
-                 sleep(2)
-                 if self.exists(r"img\icon.png"):
-                     self.click(r"img\icon.png")
-                     sleep(5)
-                 continue
+                    print(f"[{self.device_id}] fixbug/alert detected, clicking and waiting 50s...")
+                    sleep(50)
+                
+                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                sleep(2)
+                self.adb_shell("input keyevent 3")
+                sleep(2)
+                if self.exists(r"img\icon.png"):
+                    self.click(r"img\icon.png")
+                    sleep(5)
+                continue
             
             # fixplay.png Check
             if self.exists_in_cache(r"img\fixplay.png"):
@@ -774,8 +780,9 @@ if __name__ == "__main__":
     subprocess.run([adb_path, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
     connect_known_ports()
-    devices = get_connected_devices()
-    print(f"[DEV] Connected: {devices}")
+    all_detected = get_connected_devices()
+    devices = [d for d in all_detected if d.startswith("emulator-")]
+    print(f"[DEV] Using emulators: {devices}")
     
     if not devices:
         print("No devices.")

@@ -328,7 +328,8 @@ if GUI_AVAILABLE:
                     
                     for hero, count in hero_data.items():
                         if hero not in self.hero_stats_labels:
-                            self.add_hero_row(hero, hero == "❌ ไม่เจอ")
+                            is_not_found = hero in ["❌ ไม่เจอ", "ไม่เจอ"]
+                            self.add_hero_row(hero, is_not_found)
                         self.hero_stats_labels[hero].configure(text=str(count))
             except Exception as e:
                 print(f"[GUI] Update error: {e}")
@@ -797,40 +798,23 @@ class RangerGearBot(threading.Thread):
             capture_output=True, timeout=timeout)
 
     def capture_screen(self):
-        """Capture screen and load into RAM (Robust version)"""
-        # Clear previous screen to avoid using stale data if capture fails
-        self._screen = None
-        self._screen_color = None
-        
+        """Capture screen and load into RAM"""
         try:
-            # Try fast method with increased timeout (20s)
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                capture_output=True, timeout=20
+                capture_output=True, timeout=10
             )
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
                 self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
                 self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-                return True
-        except Exception as e:
-            print(f"[{self.device_id}] Fast capture error/timeout: {e}")
-        
-        # Fallback to slow but reliable method
-        try:
-            # Use self.filename as temp storage
-            self.adb_shell("screencap -p /sdcard/screen.png", timeout=20)
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "pull", "/sdcard/screen.png", self.filename], timeout=20)
-            if os.path.exists(self.filename):
+            else:
+                with open(self.filename, "wb") as f:
+                    f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
-                # Cleanup SD card
-                self.adb_shell("rm /sdcard/screen.png")
-                return self._screen is not None
         except Exception as e:
-            print(f"[{self.device_id}] Fallback capture error: {e}")
-            
-        return False
+            print(f"[{self.device_id}] Capture error: {e}")
 
     def _find_in_screen(self, template_path, similarity=0.8):
         """Find template in cached screen image (no new capture)"""
@@ -916,10 +900,29 @@ class RangerGearBot(threading.Thread):
         total_pixels = self._screen.size
         return (black_pixels / total_pixels) > threshold
 
+    def check_floating_popups(self):
+        """
+        Check and click floating popups (fixplay / fixnet1).
+        These are non-blocking: เจอก็กด แล้วทำงานต่อปกติ ไม่ return error
+        ควรเรียกหลัง capture_screen() ทุกครั้ง
+        """
+        if self.exists_in_cache("img/fixplay.png"):
+            print(f"[{self.device_id}] [POPUP] fixplay.png detected, clicking...")
+            self.click("img/fixplay.png")
+            sleep(1)
+
+        if self.exists_in_cache("img/fixnet1.png"):
+            print(f"[{self.device_id}] [POPUP] fixnet1.png detected, clicking...")
+            self.click("img/fixnet1.png")
+            sleep(1)
+
     def check_error_images(self, skip_fixcak=False, skip_icon=False):
         """Check error images using cached screen"""
-        if self._screen is None:
-            return None
+
+        # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ ไม่ return error) =====
+        self.check_floating_popups()
+        # ====================================================================
+
         # fixcak.png: restart process if found
         if not skip_fixcak:
             fixcak_path = "img/fixcak.png"
@@ -933,7 +936,7 @@ class RangerGearBot(threading.Thread):
                 return "stopcheck"
         
         # Common login errors
-        if self.exists_in_cache("img/fixbuglogin.png") or self.exists_in_cache("img/alert2.png") or self.exists_in_cache("img/alert3.png"):
+        if self.exists_in_cache("img/fixbuglogin.png"):
             return "fixbug"
             
         if self.exists_in_cache("img/unkhow.png"):
@@ -955,7 +958,7 @@ class RangerGearBot(threading.Thread):
     # OCR Methods - For Gear Mode
     # =========================================================
     def ocr_read_region(self, x, y, w, h):
-        """Read text from a specific region of the cached color screen using EasyOCR. (Optimized)"""
+        """Read text from a specific region of the cached color screen using EasyOCR."""
         if self._screen_color is None or not self.do_gear:
             return []
         
@@ -966,25 +969,16 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] OCR crop region empty!")
             return []
         
-        # Reduced scaling (1.5x instead of 2.0x) for major speedup
-        img = cv2.resize(img, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_LINEAR)
+        # Resize 2x for better OCR accuracy
+        img = cv2.resize(img, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
         
         reader = get_ocr_reader()
-        # Performance tuning: paragraph=True makes it MUCH faster for lists
-        results = reader.readtext(
-            img, 
-            detail=1, 
-            paragraph=True,
-            contrast_ths=0.1, 
-            adjust_contrast=False,
-            add_margin=0.1,
-            width_ths=0.7
-        )
+        results = reader.readtext(img, detail=1)
         
         text_results = []
-        for (bbox, text) in results:
-            # When paragraph=True, results is [(bbox, text), ...] instead of [(bbox, text, conf), ...]
-            text_results.append((text, 0.99)) # Assume high confidence for paragraphs
+        for (bbox, text, conf) in results:
+            if conf > 0.3:
+                text_results.append((text, conf))
         
         return text_results
 
@@ -1038,28 +1032,15 @@ class RangerGearBot(threading.Thread):
     # Logic Methods
     # =========================================================
     def clear_specific_shared_prefs(self):
-        """Delete specific shared_prefs files only (partial clear)"""
+        """Delete ALL shared_prefs and clear app cache"""
         base = "/data/data/com.linecorp.LGRGS/shared_prefs"
-        # Files to delete to clear session but keep game data
-        files_to_remove = [
-            "_LINE_COCOS_PREF_KEY.xml",
-            "com.linecorp.LGRGS.xml",
-            "LINE_LGRGS_PREFS.xml",
-            "NativeCache.xml",
-            "LocalSettings.xml"
-        ]
+        cache_dir = "/data/data/com.linecorp.LGRGS/cache"
         
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(1)
         
-        # Build rm commands for specific files
-        rm_cmds = " && ".join([f"rm -f {base}/{f}" for f in files_to_remove])
-        # Also include any .bak files to be safe
-        rm_cmds += f" && rm -f {base}/*.bak"
-        
-        # We STOP deleting the entire cache and shared_prefs folder
-        self.adb_shell(f"su -c '{rm_cmds}'")
-        print(f"[{self.device_id}] Cleared specific shared_prefs (Partial)")
+        self.adb_shell(f"su -c 'rm -rf {base}/* && rm -rf {cache_dir}/*'")
+        print(f"[{self.device_id}] Cleared shared_prefs + cache")
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
@@ -1079,52 +1060,32 @@ class RangerGearBot(threading.Thread):
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                # Clear previous artifacts
-                self.adb_shell(f"su -c 'rm -f {final} && rm -f {tmp}'")
-                
                 # Push to tmp
-                self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30, check=True)
-                
-                # Verify file size remotely
-                size_check = self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", f"stat -c %s {tmp}"], text=True)
-                remote_size_str = size_check.stdout.strip()
-                remote_size = int(remote_size_str) if remote_size_str.isdigit() else 0
-                
-                if remote_size != src_size:
-                    print(f"[{self.device_id}] Size mismatch! Local:{src_size} Remote:{remote_size} (Attempt {attempt})")
-                    sleep(1)
+                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30)
+                if result.returncode != 0:
+                    print(f"[{self.device_id}] Push attempt {attempt}: {result.stderr.decode()}")
                     continue
                 
-                # Robust deployment shell command
-                shell_cmd = (
-                    f"su -c '"
-                    f"mkdir -p {final_dir} && "
-                    f"cp -f {tmp} {final} && "
-                    f"chmod 666 {final} && "
-                    f"chown $(stat -c %u:%g {final_dir}) {final} || true && "
-                    f"restorecon {final} || true && "
-                    f"rm -f {tmp}"
-                    f"'"
-                )
-                self.adb_shell(shell_cmd)
+                # Verify file size
+                result = self.adb_shell(f"wc -c < {tmp}")
+                try:
+                    pushed_size = int(result.stdout.decode('utf-8', errors='ignore').strip())
+                    if pushed_size != src_size:
+                        print(f"[{self.device_id}] File size mismatch on attempt {attempt}: expected {src_size}, got {pushed_size}")
+                        continue
+                except Exception as e:
+                    print(f"[{self.device_id}] Size check failed on attempt {attempt}: {e}")
+                    continue
                 
-                # Final verification
-                verify = self.adb_run(
-                    [self.adb_cmd, "-s", self.device_id, "shell", f"su -c 'stat -c %s {final}'"], text=True
-                )
-                final_size_str = verify.stdout.strip()
-                final_size = int(final_size_str) if final_size_str.isdigit() else 0
+                # Copy and set permissions
+                self.adb_shell(f"su -c 'cp {tmp} {final} && chmod 600 {final}'")
+                self.adb_shell(f"su -c 'rm -f {tmp}'")
                 
-                if final_size == src_size:
-                    print(f"[{self.device_id}] Injection Verified OK (Size: {final_size} bytes)")
-                    return local_xml_path
-                else:
-                    print(f"[{self.device_id}] Verification FAILED! Expected:{src_size} Got:{final_size} (Attempt {attempt})")
-                    sleep(1)
+                print(f"[{self.device_id}] Injection successful on attempt {attempt}")
+                return local_xml_path
                     
             except Exception as e:
-                print(f"[{self.device_id}] Injection Exception (Attempt {attempt}): {e}")
-                sleep(1)
+                print(f"[{self.device_id}] Attempt {attempt} error: {e}")
         
         print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
         return None
@@ -1240,18 +1201,9 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Found fixcak.png! Restarting first loop...")
                     return "restart"
                 if err == "fixbug":
-                    print(f"[{self.device_id}] Found fixbug/alert detected! Clicking and restarting...")
-                    if self.exists_in_cache("img/alert2.png"): self.click("img/alert2.png")
-                    elif self.exists_in_cache("img/alert3.png"): self.click("img/alert3.png")
-                    else: self.click("img/fixbuglogin.png")
+                    print(f"[{self.device_id}] Found fixbuglogin.png! Clicking and restarting...")
+                    self.click("img/fixbuglogin.png")
                     return "restart"
-                
-                if self.exists_in_cache("img/fixplay.png"):
-                    print(f"[{self.device_id}] Found fixplay.png! Clicking...")
-                    self.click("img/fixplay.png")
-                    sleep(1)
-                    continue
-
                 if err == "unkhow":
                     print(f"[{self.device_id}] Found unkhow.png! Clicking and restarting...")
                     self.click("img/unkhow.png")
@@ -1286,6 +1238,9 @@ class RangerGearBot(threading.Thread):
         while start < timeout:
             try:
                 self.capture_screen()
+                # ---- Check floating popups on every iteration ----
+                self.check_floating_popups()
+                # --------------------------------------------------
                 if self.exists_in_cache(img_path):
                     print(f"[{self.device_id}] Found {img_name}! Clicking...")
                     self.click(img_path)
@@ -1316,6 +1271,10 @@ class RangerGearBot(threading.Thread):
         sec1_clicked = False
         while True:
             self.capture_screen()
+
+            # ---- Check floating popups ----
+            self.check_floating_popups()
+            # --------------------------------
             
             # Check for crash/close while waiting
             if self.exists_in_cache("img/icon.png"):
@@ -1373,6 +1332,9 @@ class RangerGearBot(threading.Thread):
             
             # e) Scan ALL ranger images from img/ranger/ folder
             self.capture_screen()
+            # ---- Check floating popups ----
+            self.check_floating_popups()
+            # --------------------------------
             
             for ranger_img in self.ranger_files:
                 ranger_path = f"img/{ranger_img}"
@@ -1526,6 +1488,7 @@ class RangerGearBot(threading.Thread):
         
         # Round 2: Check weapons tab 1
         self.capture_screen()
+        self.check_floating_popups()
         if self.exists_in_cache("img/weapons1.png"):
             self.click("img/weapons1.png")
             sleep(1)
@@ -1533,6 +1496,7 @@ class RangerGearBot(threading.Thread):
         
         # Round 3: Check weapons tab 2
         self.capture_screen()
+        self.check_floating_popups()
         if self.exists_in_cache("img/weapons2.png"):
             self.click("img/weapons2.png")
             sleep(1)
@@ -1589,6 +1553,20 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] Login loop iteration {loop_count}")
 
             self.capture_screen()
+
+            # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
+            if self.exists_in_cache("img/fixplay.png"):
+                print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
+                self.click("img/fixplay.png")
+                sleep(1)
+                continue
+
+            if self.exists_in_cache("img/fixnet1.png"):
+                print(f"[{self.device_id}] [POPUP] fixnet1.png detected in login loop, clicking...")
+                self.click("img/fixnet1.png")
+                sleep(1)
+                continue
+            # ====================================================
 
             # Crash/Icon Check
             if self.exists_in_cache("img/icon.png"):
@@ -1718,13 +1696,9 @@ class RangerGearBot(threading.Thread):
             
             if error_found:
                 print(f"[{self.device_id}] Error image found: {error_found}. Resetting...")
-                if error_found == "fixbug":
-                    if self.exists_in_cache("img/alert2.png"): self.click("img/alert2.png")
-                    elif self.exists_in_cache("img/alert3.png"): self.click("img/alert3.png")
-                    else: self.click("img/fixbuglogin.png")
-                    sleep(2)
-                elif error_found == "unkhow":
-                    self.click("img/unkhow.png")
+                if error_found in ["fixbug", "unkhow"]:
+                    img = "img/fixbuglogin.png" if error_found == "fixbug" else "img/unkhow.png"
+                    self.click(img)
                     sleep(2)
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
                 sleep(3)
@@ -1732,13 +1706,6 @@ class RangerGearBot(threading.Thread):
                     self.click("img/icon.png")
                     sleep(5)
                 loop_count = 0
-                continue
-            
-            # fixplay.png Check
-            if self.exists_in_cache("img/fixplay.png"):
-                print(f"[{self.device_id}] Found fixplay.png! Clicking...")
-                self.click("img/fixplay.png")
-                sleep(1)
                 continue
             
             # Event / Popups
@@ -1880,5 +1847,3 @@ if __name__ == "__main__":
         print("\n[STOP] Keyboard Interrupt. Stopping...")
         
     print("\n[DONE] All tasks completed.")
-
-
