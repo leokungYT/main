@@ -12,15 +12,343 @@ import json
 import threading
 import queue
 import concurrent.futures
+import argparse
 import colorama
 from colorama import Fore, Style
 import ssl
-import argparse
+from datetime import datetime
+import tkinter as tk
+from tkinter import messagebox
+from PIL import Image, ImageTk
+
+# Try to import customtkinter for the modern UI
+try:
+    import customtkinter as ctk
+    GUI_AVAILABLE = True
+except ImportError:
+    GUI_AVAILABLE = False
+    print("[WARN] customtkinter not found. GUI mode will be disabled. Run 'pip install customtkinter' to enable.")
 
 colorama.init(autoreset=True)
 
 # Fix SSL certificate error for downloading EasyOCR models
 ssl._create_default_https_context = ssl._create_unverified_context
+
+# =========================================================
+# Statistics and GUI Tracking
+# =========================================================
+# ----- Simplified UI Stats Class -----
+class SimpleUIStats:
+    def __init__(self):
+        self.total_files = 0
+        self.successful_logins = 0
+        self.failed_logins = 0
+        self.processed_files = 0
+        self.connected_devices = 0
+        self.lock = threading.RLock()
+        self.last_update = time.time()
+        self.update_interval = 30
+        self.device_statuses = {}
+        self.hero_counts = {}
+        # Counter สำหรับ hero found/not-found
+        self.success_count = 0 # Matches bot success_count
+        self.fail_count = 0    # Matches bot fail_count
+        # hero found list with counts
+        self.hero_found_list = {}  # {hero_combo: count} e.g. {'Yor': 1, 'Yor+Anya': 2}
+        
+    def update(self, total=None, processed=None, success=None, fail=None, devices=None, hero_found=None, hero_not_found=None):
+        with self.lock:
+            if total is not None: self.total_files = total
+            if processed is not None: self.processed_files = processed
+            if success is not None: self.success_count = success
+            if fail is not None: self.fail_count = fail
+            if devices is not None: self.connected_devices = devices
+            # อัพเดท hero counters
+            if hero_found is not None: self.success_count += hero_found
+            if hero_not_found is not None: self.fail_count += hero_not_found
+    
+    def update_device(self, device_serial, status):
+        with self.lock:
+            self.device_statuses[device_serial] = status
+    
+    def update_hero(self, hero_name, count=1):
+        with self.lock:
+            if hero_name not in self.hero_found_list:
+                self.hero_found_list[hero_name] = 0
+            self.hero_found_list[hero_name] += count
+
+    def get_hero_combo_stats(self):
+        with self.lock:
+            return dict(self.hero_found_list)
+
+ui_stats = SimpleUIStats()
+GUI_INSTANCE = None
+
+if GUI_AVAILABLE:
+    class CollabConfigWindow(ctk.CTkToplevel):
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.title("⚙ Config Settings")
+            self.geometry("350x380")
+            self.resizable(False, False)
+            self.transient(parent)
+            self.grab_set()
+            
+            ctk.CTkLabel(self, text="Application Settings", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(10, 5))
+            
+            # Use switches for main modes
+            self.vars = {}
+            self.add_switch("Find Ranger", "find_ranger")
+            self.add_switch("Find Gear", "find_gear")
+            self.add_switch("Find Both (All)", "find_all")
+            self.add_switch("First Loop Process", "first_loop")
+            self.add_switch("Custom Mode", "custommode")
+            
+            # Thread delay entry
+            delay_frame = ctk.CTkFrame(self, fg_color="transparent")
+            delay_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(delay_frame, text="Thread Delay (sec):").pack(side="left")
+            self.ent_delay = ctk.CTkEntry(delay_frame, width=60)
+            self.ent_delay.insert(0, str(config.get("thread_delay", 5)))
+            self.ent_delay.pack(side="right")
+            
+            ctk.CTkButton(self, text="💾 Save Changes", command=self.save_config, fg_color="#2cc985", hover_color="#229f69", height=32).pack(pady=20)
+            
+        def add_switch(self, label, key):
+            var = tk.IntVar(value=config.get(key, 0))
+            self.vars[key] = var
+            chk = ctk.CTkSwitch(self, text=label, variable=var)
+            chk.pack(pady=5, padx=25, anchor="w")
+
+        def save_config(self):
+            # Update global config and save to file
+            for key, var in self.vars.items():
+                config[key] = var.get()
+            
+            try:
+                config["thread_delay"] = int(self.ent_delay.get())
+            except:
+                pass
+                
+            main_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ranger-gear_config.json")
+            try:
+                with open(main_config_file, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=4, ensure_ascii=False)
+                print(f"[CONFIG] Saved updated settings to {main_config_file}")
+            except Exception as e:
+                print(f"[ERR] Failed to save config: {e}")
+            self.destroy()
+
+    class HeroFoldersWindow(ctk.CTkToplevel):
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.title("🦸 Hero Folders")
+            self.geometry("320x400")
+            self.parent = parent
+            self.resizable(False, False)
+            self.transient(parent)
+            self.grab_set()
+            self.focus_force()
+            
+            ctk.CTkLabel(self, text="Hero Folders", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(8, 5))
+            self.scroll_frame = ctk.CTkScrollableFrame(self, width=280, height=300)
+            self.scroll_frame.pack(fill="both", expand=True, padx=10, pady=5)
+            self.load_hero_folders()
+            
+        def load_hero_folders(self):
+            # Show "no-find" and categories if they exist
+            base_dir = os.path.join(os.getcwd(), "backup-id")
+            if os.path.exists(base_dir):
+                for folder in os.listdir(base_dir):
+                    btn = ctk.CTkButton(self.scroll_frame, text=f"📁 {folder}", fg_color="#2a3a5c", height=28, anchor="w",
+                                        command=lambda f=folder: subprocess.Popen(f'explorer "{os.path.join(base_dir, f)}"'))
+                    btn.pack(fill="x", pady=1)
+
+    class DeviceMonitorWidget(ctk.CTkFrame):
+        def __init__(self, parent, device_id, index):
+            super().__init__(parent, fg_color="#383838", corner_radius=6, height=32)
+            self.device_id = device_id
+            self.pack_propagate(False)
+            
+            chk = ctk.CTkCheckBox(self, text="", width=20, height=20, checkbox_width=16, checkbox_height=16)
+            chk.pack(side="left", padx=(6, 2))
+            chk.select()
+            
+            ctk.CTkLabel(self, text=f"#{index}", font=ctk.CTkFont(size=11, weight="bold"), text_color="#ffffff", width=25).pack(side="left", padx=(0, 4))
+            ctk.CTkLabel(self, text=device_id, font=ctk.CTkFont(family="Consolas", size=10), text_color="#ccc").pack(side="left", padx=(0, 6))
+            
+            self.lbl_status = ctk.CTkLabel(self, text="Ready", font=ctk.CTkFont(size=10, weight="bold"), text_color="#4caf50", width=60)
+            self.lbl_status.pack(side="right", padx=6)
+            
+            ctk.CTkButton(self, text="↺", width=22, height=20, font=ctk.CTkFont(size=11, weight="bold"), fg_color="#e53935").pack(side="right", padx=2)
+
+        def update_state(self, status=None, **kwargs):
+            if status:
+                color_map = {'working': "#4caf50", 'waiting': "#ff9800", 'error': "#e53935", 'idle': "#888"}
+                self.lbl_status.configure(text=status.upper(), text_color=color_map.get(status, "#888"))
+
+    class ModernBotGUI(ctk.CTk):
+        def __init__(self, devices, file_queue, args):
+            super().__init__()
+            global GUI_INSTANCE
+            GUI_INSTANCE = self
+            
+            self.title("Ranger+Gear")
+            self.geometry("620x530")
+            self.devices = devices
+            self.file_queue = file_queue
+            self.args = args
+            self.bot_threads = []
+            self.device_monitors = {}
+            self.hero_stats_labels = {}
+            
+            self.setup_ui()
+            
+            # Use after to start the stats loop without blocking the constructor
+            self.after(100, self.update_realtime_stats)
+            
+            # Ensure window is visible
+            self.deiconify()
+            self.focus_force()
+            print("[GUI] Launched Successfully.")
+
+        def setup_ui(self):
+            # 1. TOP TOOLBAR
+            toolbar = ctk.CTkFrame(self, height=40, fg_color="#333333", corner_radius=0)
+            toolbar.pack(fill="x")
+            toolbar.pack_propagate(False)
+            
+            self.lbl_status = ctk.CTkLabel(toolbar, text=f"● ONLINE ({len(self.devices)})", font=ctk.CTkFont(size=11, weight="bold"), text_color="#4caf50")
+            self.lbl_status.pack(side="left", padx=10)
+            
+            self.btn_run = ctk.CTkButton(toolbar, text="▶ Start Bot", width=90, height=26, font=ctk.CTkFont(size=11, weight="bold"),
+                                        fg_color="#4caf50", command=self.start_bot)
+            self.btn_run.pack(side="left", padx=3)
+            
+            ctk.CTkButton(toolbar, text="■ Stop", width=65, height=26, font=ctk.CTkFont(size=11, weight="bold"), fg_color="#e53935").pack(side="left", padx=3)
+            
+            # Stats on Toolbar (right)
+            counter_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
+            counter_frame.pack(side="right", padx=8)
+            
+            self.lbl_succ_count = ctk.CTkLabel(counter_frame, text="✅ 0", font=ctk.CTkFont(size=12, weight="bold"), text_color="#4caf50")
+            self.lbl_succ_count.pack(side="right", padx=6)
+            
+            self.lbl_fail_count = ctk.CTkLabel(counter_frame, text="❌ 0", font=ctk.CTkFont(size=12, weight="bold"), text_color="#ff5555")
+            self.lbl_fail_count.pack(side="right", padx=6)
+            
+            self.lbl_file_count = ctk.CTkLabel(counter_frame, text="📁 0", font=ctk.CTkFont(size=12, weight="bold"), text_color="#aaaaaa")
+            self.lbl_file_count.pack(side="right", padx=6)
+            
+            # 2. MAIN CONTENT
+            main_frame = ctk.CTkFrame(self, fg_color="transparent")
+            main_frame.pack(fill="both", expand=True, padx=6, pady=4)
+            main_frame.grid_columnconfigure(0, weight=3)
+            main_frame.grid_columnconfigure(1, weight=2)
+            main_frame.grid_rowconfigure(0, weight=1)
+            
+            # Left: Devices
+            left_frame = ctk.CTkFrame(main_frame, fg_color="#2b2b2b", corner_radius=8)
+            left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 3))
+            
+            dev_header = ctk.CTkFrame(left_frame, fg_color="#383838", corner_radius=0, height=28)
+            dev_header.pack(fill="x")
+            ctk.CTkLabel(dev_header, text="   DEVICES", font=ctk.CTkFont(size=11, weight="bold"), text_color="#cccccc", anchor="w").pack(side="left")
+            
+            self.dev_scroll = ctk.CTkScrollableFrame(left_frame, fg_color="transparent")
+            self.dev_scroll.pack(fill="both", expand=True, padx=3, pady=3)
+            for i, dev in enumerate(self.devices):
+                m = DeviceMonitorWidget(self.dev_scroll, dev, i+1)
+                m.pack(fill="x", pady=1)
+                self.device_monitors[dev] = m
+            
+            # Right: Heroes
+            right_frame = ctk.CTkFrame(main_frame, fg_color="#2b2b2b", corner_radius=8)
+            right_frame.grid(row=0, column=1, sticky="nsew", padx=(3, 0))
+            
+            hero_header = ctk.CTkFrame(right_frame, fg_color="#383838", corner_radius=0, height=28)
+            hero_header.pack(fill="x")
+            ctk.CTkLabel(hero_header, text="   🏆 HEROES FOUND", font=ctk.CTkFont(size=11, weight="bold"), text_color="#f2c94c", anchor="w").pack(side="left")
+            
+            self.hero_scroll = ctk.CTkScrollableFrame(right_frame, fg_color="transparent")
+            self.hero_scroll.pack(fill="both", expand=True, padx=3, pady=3)
+            
+            # 3. LOG AREA
+            log_frame = ctk.CTkFrame(self, fg_color="#1e1e1e", corner_radius=6, height=80)
+            log_frame.pack(fill="x", padx=6, pady=(0, 4))
+            log_frame.pack_propagate(False)
+            
+            self.log_text = ctk.CTkTextbox(log_frame, font=ctk.CTkFont(family="Consolas", size=10), text_color="#8b949e", fg_color="#1e1e1e")
+            self.log_text.pack(fill="both", expand=True, padx=2, pady=2)
+            self.log_text.configure(state="disabled")
+            
+            # 4. BOTTOM BAR
+            bottom_bar = ctk.CTkFrame(self, height=32, fg_color="#333333", corner_radius=0)
+            bottom_bar.pack(fill="x")
+            
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            backup_folder = os.path.join(base_path, "backup")
+            heroes_folder = os.path.join(base_path, "backup-id")
+            
+            ctk.CTkButton(bottom_bar, text="🔌 Start ADB", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#4caf50").pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="⚙ Config", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=self.open_config).pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="📁 Backup", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{backup_folder}"')).pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="🦸 Heroes", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{heroes_folder}"')).pack(side="left", padx=3, pady=4)
+            ctk.CTkLabel(bottom_bar, text="v3.2.0", font=ctk.CTkFont(size=10), text_color="#888888").pack(side="right", padx=8)
+
+        def log(self, level, message): 
+            ts = datetime.now().strftime("%H:%M:%S")
+            self.log_text.configure(state="normal")
+            self.log_text.insert("end", f"[{ts}] {message}\n")
+            self.log_text.see("end")
+            self.log_text.configure(state="disabled")
+
+        def start_bot(self):
+            self.btn_run.configure(text="⏸ Running", fg_color="#ff9800", text_color="black")
+            self.log("INFO", "Starting Bot Threads...")
+            for device_id in self.devices:
+                bot = RangerGearBot(device_id, self.file_queue, self.args)
+                bot.start()
+                self.bot_threads.append(bot)
+
+        def update_realtime_stats(self):
+            try:
+                with ui_stats.lock:
+                    self.lbl_file_count.configure(text=f"📁 {self.file_queue.qsize()}")
+                    self.lbl_succ_count.configure(text=f"✅ {ui_stats.success_count}")
+                    self.lbl_fail_count.configure(text=f"❌ {ui_stats.fail_count}")
+                    
+                    for dev, stat in ui_stats.device_statuses.items():
+                        if dev in self.device_monitors:
+                            self.device_monitors[dev].update_state(status=stat.get('status'))
+                    
+                    hero_data = ui_stats.get_hero_combo_stats()
+                    if ui_stats.fail_count > 0:
+                        hero_data["❌ ไม่เจอ"] = ui_stats.fail_count
+                    
+                    for hero, count in hero_data.items():
+                        if hero not in self.hero_stats_labels:
+                            self.add_hero_row(hero, hero == "❌ ไม่เจอ")
+                        self.hero_stats_labels[hero].configure(text=str(count))
+            except Exception as e:
+                print(f"[GUI] Update error: {e}")
+            
+            self.after(500, self.update_realtime_stats)
+
+
+        def add_hero_row(self, hero_name, is_not_found):
+            bg = "#3d2020" if is_not_found else "#2a3a2a"
+            txt_color = "#e53935" if is_not_found else "#4caf50"
+            row = ctk.CTkFrame(self.hero_scroll, fg_color=bg, corner_radius=6, height=26)
+            row.pack(fill="x", pady=1)
+            row.pack_propagate(False)
+            ctk.CTkLabel(row, text=f"  {hero_name}", font=ctk.CTkFont(size=11, weight="bold"), text_color="white", anchor="w").pack(side="left", fill="x", expand=True)
+            lbl_count = ctk.CTkLabel(row, text="0", font=ctk.CTkFont(size=12, weight="bold"), text_color=txt_color)
+            lbl_count.pack(side="right", padx=8)
+            self.hero_stats_labels[hero_name] = lbl_count
+
+        def open_config(self): CollabConfigWindow(self)
+        def open_heroes(self): HeroFoldersWindow(self)
 
 # =============================================================
 # Global Config
@@ -63,47 +391,18 @@ def get_ocr_reader():
 def load_config():
     global config
     
-    # Load main config from ranger-gear_config.json
+    # Load ONLY main config from ranger-gear_config.json
     main_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ranger-gear_config.json")
     if os.path.exists(main_config_file):
         try:
             with open(main_config_file, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
                 config.update(loaded)
-            print(f"[CONFIG] Loaded: {main_config_file}")
+            print(f"[CONFIG] Base Loaded: {main_config_file}")
         except Exception as e:
             print(f"[WARN] Error loading config: {e}")
     else:
         print(f"[WARN] Config not found: {main_config_file}")
-        print(f"[INFO] Using default config values")
-    
-    # Load from ranger config file (for override/extend)
-    ranger_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "find-ranger_config.json")
-    if os.path.exists(ranger_config_file):
-        try:
-            with open(ranger_config_file, 'r', encoding='utf-8') as f:
-                ranger_conf = json.load(f)
-                # Only update ranger-specific keys
-                for key in ['custommode', 'custom', 'characters', 'ranger_images']:
-                    if key in ranger_conf:
-                        config[key] = ranger_conf[key]
-            print(f"[CONFIG] Extended with ranger config: {ranger_config_file}")
-        except Exception as e:
-            print(f"[WARN] Error loading ranger config: {e}")
-    
-    # Load from gear config file (for override/extend)
-    gear_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkgear_config.json")
-    if os.path.exists(gear_config_file):
-        try:
-            with open(gear_config_file, "r", encoding="utf-8") as f:
-                gear_conf = json.load(f)
-                # Only update gear-specific keys
-                for key in ['gearname', 'weaponname', 'ocr_region']:
-                    if key in gear_conf:
-                        config[key] = gear_conf[key]
-            print(f"[CONFIG] Extended with gear config: {gear_config_file}")
-        except Exception as e:
-            print(f"[WARN] Error loading gear config: {e}")
 
 
 def find_adb_executable():
@@ -236,11 +535,16 @@ def get_connected_devices():
 # RangerGearBot Class - Unified Bot for Ranger + Gear
 # =============================================================
 class RangerGearBot(threading.Thread):
-    def __init__(self, device_id, file_queue):
+    def __init__(self, device_id, file_queue, args=None):
         threading.Thread.__init__(self)
         self.device_id = device_id
         self.file_queue = file_queue
+        self.args = args # Store command line args
         self.daemon = True
+        
+        def update_gui_status(self, step, status="working"):
+            ui_stats.update_device(self.device_id, {'step': step, 'status': status})
+        self.update_gui_status = update_gui_status.__get__(self, RangerGearBot)
         
         # Determine which modes to run
         self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
@@ -297,21 +601,44 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
             
             while True:
+                # 0. Reload Config for dynamic changes without restart
+                load_config()
+                self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
+                self.do_gear = config.get("find_gear", 0) or config.get("find_all", 1)
+
                 if self.file_queue.empty():
-                    print(f"[{self.device_id}] Queue is empty. Stopping thread.", flush=True)
-                    break
+                    # Instead of breaking, wait for new files to be dropped into backup
+                    self.update_gui_status("Waiting for files", "waiting")
+                    
+                    # Scan for new files periodically
+                    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+                    new_files = [os.path.join(source_folder, f) for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
+                    if new_files:
+                        for f in new_files:
+                            self.file_queue.put(f)
+                        print(f"[{self.device_id}] Found {len(new_files)} new files. Resuming...")
+                        # Update total count in UI
+                        with ui_stats.lock:
+                            ui_stats.total_files += len(new_files)
+                        continue
+                    
+                    sleep(5)
+                    continue
 
                 try:
-                    # 0. Check First Loop
-                    if not self.first_loop_done:
+                    # 1. Check First Loop Process Toggle
+                    current_first_loop_enabled = config.get("first_loop", True)
+                    if current_first_loop_enabled and not self.first_loop_done:
+                        self.update_gui_status("First Loop", "working")
                         res = self.first_loop_process()
                         if res == "complete":
                             self.first_loop_done = True
                         elif res == "restart":
-                            print(f"[{self.device_id}] Loop triggered RESTART (fixcak/closeapp). Retrying...")
                             sleep(2)
                             continue
-                            continue
+                    else:
+                        # Skip first loop if disabled or already done
+                        self.first_loop_done = True
 
                     # 1. Get File
                     try:
@@ -342,28 +669,38 @@ class RangerGearBot(threading.Thread):
                         continue # If can't create lock, skip
                     
                     print(f"[{self.device_id}] Processing file: {self.current_original_filename}")
+                    self.update_gui_status(f"Injecting: {self.current_original_filename}")
 
                     # 2. Inject
                     injected_file = self.inject_file(xml_file)
                     
                     if injected_file:
                         # 3. Login (with ranger/gear flow based on mode)
+                        self.update_gui_status("Logging in...")
                         status = self.main_login(injected_file)
                         
                         if status == "success":
                             self.handle_success(xml_file)
                             if os.path.exists(lock_file): os.remove(lock_file)
+                            ui_stats.update(success=ui_stats.success_count + 1, processed=ui_stats.processed_files + 1)
+                            self.update_gui_status("Completed", "idle")
                         elif status == "failed":
                             self.handle_failure(xml_file)
                             if os.path.exists(lock_file): os.remove(lock_file)
+                            ui_stats.update(fail=ui_stats.fail_count + 1)
+                            self.update_gui_status("Failed", "error")
                             self.first_loop_done = False
                         else:
                             print(f"[{self.device_id}] Status: {status}. Moving to next.")
                             self.handle_failure(xml_file)
                             if os.path.exists(lock_file): os.remove(lock_file)
+                            ui_stats.update(fail=ui_stats.fail_count + 1)
+                            self.update_gui_status(f"Error: {status}", "error")
                     else:
                         print(f"[{self.device_id}] Injection failed for {xml_file}")
                         if os.path.exists(lock_file): os.remove(lock_file)
+                        ui_stats.update(fail=ui_stats.fail_count + 1)
+                        self.update_gui_status("Inject Failed", "error")
                     
                     self.file_queue.task_done()
                     
@@ -562,7 +899,7 @@ class RangerGearBot(threading.Thread):
         total_pixels = self._screen.size
         return (black_pixels / total_pixels) > threshold
 
-    def check_error_images(self, skip_fixcak=False):
+    def check_error_images(self, skip_fixcak=False, skip_icon=False):
         """Check error images using cached screen"""
         # fixcak.png: restart process if found
         if not skip_fixcak:
@@ -582,6 +919,11 @@ class RangerGearBot(threading.Thread):
             
         if self.exists_in_cache("img/unkhow.png"):
             return "unkhow"
+            
+        # Icon check (if app crashed/closed to home screen)
+        if not skip_icon:
+            if self.exists_in_cache("img/icon.png"):
+                return "icon"
             
         error_images = ["img/failed1.png", "img/fixalerterror1.png"]
         for err in error_images:
@@ -771,8 +1113,14 @@ class RangerGearBot(threading.Thread):
         for item in sequence:
             # Check for global triggers before each item
             self.capture_screen()
-            err = self.check_error_images()
+            # Skip icon check if we are currently looking for icon.png in sequence
+            skip_icon = (item == 'icon.png')
+            err = self.check_error_images(skip_icon=skip_icon)
             if err == "fixcak": return "restart"
+            if err == "icon":
+                print(f"[{self.device_id}] App closed/crashed! Clicking icon to relaunch...")
+                self.click("img/icon.png")
+                return "restart"
             if err == "stopcheck": return "complete"
 
             if isinstance(item, tuple):
@@ -786,9 +1134,7 @@ class RangerGearBot(threading.Thread):
                 if not checkpoint_img.startswith('img'):
                     checkpoint_img = f"img/{checkpoint_img}"
                 print(f"[{self.device_id}] Checkpoint: waiting for {checkpoint_img} (no click)")
-                wait_limit = 60
-                start_wait = 0
-                while start_wait < wait_limit:
+                while True:
                     self.capture_screen()
                     err = self.check_error_images()
                     if err == "fixcak": return "restart"
@@ -798,13 +1144,16 @@ class RangerGearBot(threading.Thread):
                     if err == "unkhow":
                         self.click("img/unkhow.png")
                         return "restart"
+                    if err == "icon":
+                        print(f"[{self.device_id}] App closed/crashed! Clicking icon to relaunch...")
+                        self.click("img/icon.png")
+                        return "restart"
                     if err == "stopcheck": return "complete"
                     
                     if self.exists_in_cache(checkpoint_img, similarity=0.9): 
                         print(f"[{self.device_id}] Checkpoint reached: {checkpoint_img}")
                         break
-                    start_wait += 1
-                    sleep(1)
+                    sleep(1.5)
                 sleep(1.0)
                 continue
                 
@@ -822,10 +1171,7 @@ class RangerGearBot(threading.Thread):
                 continue
 
             print(f"[{self.device_id}] Waiting for {item}...")
-            wait_limit = 60
-            start_wait = 0
-            found = False
-            while start_wait < wait_limit:
+            while True:
                 # Check fixcak/stopcheck/blackscreen/fixbug/unkhow
                 self.capture_screen() # Ensure screen is captured before checking errors
                 err = self.check_error_images()
@@ -840,6 +1186,10 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Found unkhow.png! Clicking and restarting...")
                     self.click("img/unkhow.png")
                     return "restart"
+                if err == "icon":
+                    print(f"[{self.device_id}] App closed/crashed! Clicking icon to relaunch...")
+                    self.click("img/icon.png")
+                    return "restart"
                 if err == "stopcheck":
                     print(f"[{self.device_id}] Found stopcheck.png! Skipping to complete.")
                     return "complete"
@@ -850,13 +1200,9 @@ class RangerGearBot(threading.Thread):
                     sleep(1.5)
                     found = True
                     break
-                start_wait += 1
-                sleep(1)
+                sleep(1.5)
             
-            if not found:
-                print(f"[{self.device_id}] {item} not found, continuing sequence...")
-                 
-        return True
+        return "success"
 
     def wait_and_click_image(self, img_name, timeout=30):
         """Wait for image and click it, return True if found (timeout in seconds)"""
@@ -1189,6 +1535,14 @@ class RangerGearBot(threading.Thread):
                 sleep(2)
                 loop_count = 0
                 continue
+
+            # fixcak.png Check
+            if self.exists_in_cache("img/fixcak.png"):
+                print(f"[{self.device_id}] Fixcak detected (fix bug login). Dismissing...")
+                self.click("img/fixcak.png")
+                sleep(2)
+                loop_count = 0
+                continue
                 
             # *** SUCCESS -> Run find-ranger or check-gear ***
             if self.exists_in_cache("img/stoplogin.png"):
@@ -1199,17 +1553,13 @@ class RangerGearBot(threading.Thread):
                 
                 # Run ranger process first if enabled
                 if self.do_ranger:
-                    print(f"[{self.device_id}] Running RANGER process...")
                     ranger_results = self.process_find_ranger(current_filename)
-                    print(f"[{self.device_id}] Ranger results: {ranger_results if ranger_results else 'none'}")
                 
                 # Then run gear process if enabled
                 if self.do_gear:
-                    print(f"[{self.device_id}] Running GEAR process...")
                     # If both ranger and gear, skip findgear1 since we're already in the app
                     skip_gear1 = self.do_ranger and self.do_gear
                     gear_results = self.process_check_gear(current_filename, ranger_results, skip_findgear1=skip_gear1)
-                    print(f"[{self.device_id}] Gear results: {gear_results if gear_results else 'none'}")
                 
                 # Combine results and backup
                 filename = self.current_original_filename or "unknown.xml"
@@ -1241,7 +1591,13 @@ class RangerGearBot(threading.Thread):
                     category = "ranger" if count == 1 else f"ranger({count})"
                 
                 if category != "unknown":
-                    print(f"[{self.device_id}] Success category: {category} -> names: {found_names}")
+                    msg = f"[{self.device_id}] 🏆 Success! Found {category}: {found_names}"
+                    if GUI_INSTANCE:
+                        GUI_INSTANCE.log("SUCCESS", msg)
+                        # ส่งชื่อแบบ Combo (บวกรวมกัน) ไปแสดงในหน้า GUI ตามต้องการ
+                        ui_stats.update_hero(found_names)
+                    else:
+                        print(msg)
                     
                     # chmod for pull
                     self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
@@ -1265,6 +1621,13 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] ✗ Backup failed: {result.stderr}")
                 else:
                     # No results from either ranger or gear -> backup to not-found
+                    msg = f"[{self.device_id}] ไม่เจอ Ranger/Gear ที่ต้องการ"
+                    if GUI_INSTANCE:
+                        GUI_INSTANCE.log("INFO", msg)
+                        ui_stats.update_hero("ไม่เจอ")
+                    else:
+                        print(msg)
+                    
                     print(f"[{self.device_id}] No results from ranger or gear - backing up to not-found")
                     self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
                     self.adb_shell(f"su -c 'chmod 777 {source_path}'")
@@ -1323,12 +1686,13 @@ class RangerGearBot(threading.Thread):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Auto Ranger+Gear Script")
+    parser = argparse.ArgumentParser(description="Auto Ranger+Gear Script v3.2.0")
     parser.add_argument("--device", type=str, help="Specific device ID/address to run (e.g. 127.0.0.1:5557)")
-    parser.add_argument("--no-reset-adb", action="store_true", help="Don't kill/start ADB server (use when running multiple CMDs)")
+    parser.add_argument("--no-reset-adb", action="store_true", help="Don't kill/start ADB server")
+    parser.add_argument("--cli", action="store_true", help="Launch in Command Line mode (no GUI)")
     args = parser.parse_args()
 
-    print("=== Auto Ranger+Gear Script (Multi-CMD Compatible) ===")
+    print("=== Auto Ranger+Gear Script v3.2.0 ===")
     
     load_config()
     
@@ -1341,68 +1705,32 @@ if __name__ == "__main__":
         print("[INFO] Restarting ADB Server...")
         subprocess.run([adb_path, "kill-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         subprocess.run([adb_path, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    else:
-        print("[INFO] Skipping ADB reset to keep other instances running.")
+        sleep(2)
         
-    connect_known_ports()
-    devices = get_connected_devices()
-    
-    # Filter for specific device if provided
+    devices = []
     if args.device:
-        if args.device in devices:
-            devices = [args.device]
-            print(f"[DEV] Manually selected device: {args.device}")
-        else:
-            # Try to connect if not in list
-            print(f"[DEV] Device {args.device} not found, attempting to connect...")
-            subprocess.run([adb_path, "connect", args.device])
-            devices = get_connected_devices()
-            if args.device in devices:
-                devices = [args.device]
-            else:
-                print(f"[ERR] Could not find or connect to device: {args.device}")
-                sys.exit(1)
+        devices = [args.device]
     else:
-        # Filter duplicates and use all unique detected devices (Default behavior)
-        if devices:
-            unique_devices = []
-            ip_devices = [d for d in devices if ":" in d]
-            emu_devices = [d for d in devices if d.startswith("emulator-")]
-            unique_devices.extend(ip_devices)
-            for emu in emu_devices:
-                try:
-                    emu_port = int(emu.split("-")[-1])
-                    match_found = False
-                    for ip_dev in ip_devices:
-                        ip_port = int(ip_dev.split(":")[-1])
-                        if ip_port == emu_port + 1:
-                            match_found = True
-                            break
-                    if not match_found: unique_devices.append(emu)
-                except:
-                    if emu not in unique_devices: unique_devices.append(emu)
-            devices = unique_devices
-            print(f"[DEV] Unique devices to process ({len(devices)}): {devices}")
-        else:
-            print("No devices found.")
-            sys.exit(0)
-        
-    # Check mode
+        for attempt in range(3):
+            devices = get_connected_devices()
+            emulator_devices = [d for d in devices if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
+            if emulator_devices:
+                devices = emulator_devices
+                break
+            if attempt < 2:
+                print(f"[DEV] Attempt {attempt+1}: No devices found yet, waiting 3s...")
+                sleep(3)
+    
+    if not devices:
+        print("[ERROR] No devices connected. Make sure your emulator is running.")
+        sys.exit(1)
+
+    print(f"[INFO] Connected Devices ({len(devices)}): {', '.join(devices)}")
+    
+    # Prepare OCR
     find_ranger = config.get("find_ranger", 0)
     find_gear = config.get("find_gear", 0)
     find_all = config.get("find_all", 1)
-    
-    print(f"\n[MODE] find_ranger={find_ranger}, find_gear={find_gear}, find_all={find_all}")
-    if find_all:
-        print("[MODE] Using FIND ALL mode (both Ranger and Gear)")
-    elif find_ranger:
-        print("[MODE] Using RANGER only mode")
-    elif find_gear:
-        print("[MODE] Using GEAR only mode")
-    else:
-        print("[MODE] No mode selected!")
-    
-    # Prepare OCR if gear mode enabled
     if find_gear or find_all:
         print("[INFO] Pre-loading OCR model...")
         try:
@@ -1410,53 +1738,53 @@ if __name__ == "__main__":
             print("[OK] OCR model loaded.")
         except Exception as e:
             print(f"[WARN] Failed to load OCR: {e}")
-            print("[WARN] OCR will be retried when needed.")
     
-    # Prepare Queue
+    # Setup Queue
     file_queue = queue.Queue()
-    backup_path = os.path.join(os.getcwd(), "backup")
-    
-    if os.path.exists(backup_path):
-        files = glob.glob(os.path.join(backup_path, "*.xml"))
+    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+    if os.path.exists(source_folder):
+        files = [os.path.join(source_folder, f) for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
         for f in files:
             file_queue.put(f)
-        print(f"[FILE] Loaded {len(files)} files into queue.")
+        ui_stats.update(total=len(files))
+        print(f"[FILE] Loaded {len(files)} files into queue from {source_folder}")
     else:
-        print("[WARN] No backup folder.")
+        print(f"[WARN] Backup folder '{source_folder}' not found.")
     
-    # Print configuration
-    if find_ranger or find_all:
-        chars_to_show = config.get("characters", [])
-        print(f"\n[CONFIG] Ranger mode - Characters ({len(chars_to_show)}):")
-        for c in chars_to_show:
-            print(f"  - {c}")
-        
-        ranger_folder = os.path.join("img", "ranger")
-        ranger_files = []
-        if os.path.exists(ranger_folder):
-            ranger_files = sorted([f for f in os.listdir(ranger_folder) if f.lower().endswith(".png")])
-        print(f"[CONFIG] Ranger images in img/ranger/ ({len(ranger_files)}):")
-        for f in ranger_files:
-            print(f"  - {f}")
+    # Selection
+    if not args.cli and GUI_AVAILABLE:
+        print(f"{Fore.GREEN}[START] Launching GUI Mode...{Style.RESET_ALL}")
+        try:
+            print("[DEBUG] Setting CustomTkinter appearance...")
+            ctk.set_appearance_mode("Dark")
+            print("[DEBUG] Setting CustomTkinter theme...")
+            ctk.set_default_color_theme("blue")
+            
+            print("[DEBUG] Creating ModernBotGUI instance...")
+            gui = ModernBotGUI(devices, file_queue, args)
+            
+            print("[DEBUG] Initializing mainloop...")
+            GUI_INSTANCE = gui
+            gui.mainloop()
+            print("[DEBUG] Mainloop exited.")
+            sys.exit(0)
+        except Exception as e:
+            print(f"{Fore.RED}[ERROR] GUI Failed to start: {e}{Style.RESET_ALL}")
+            import traceback
+            traceback.print_exc()
+            print("[INFO] Falling back to CLI mode...")
+            args.cli = True
+
+    # CLI Mode
+    print(f"\n{Fore.CYAN}Starting bot in CLI Mode...{Style.RESET_ALL}")
     
-    if find_gear or find_all:
-        gear_names = config.get("gearname", {})
-        print(f"\n[CONFIG] Gear mode - Gears to check ({len(gear_names)}):")
-        for k, v in gear_names.items():
-            if isinstance(v, dict):
-                print(f"  - {k}: {v.get('name', v.get('ocr', k))}")
-            else:
-                print(f"  - {k}: {v}")
-    
-    print()
-        
     # Start Threads
     threads = []
     print(f"[INFO] Starting {len(devices)} threads...")
     
     delay = config.get("thread_delay", 5)
     for i, dev in enumerate(devices):
-        t = RangerGearBot(dev, file_queue)
+        t = RangerGearBot(dev, file_queue, args)
         t.start()
         threads.append(t)
         if i < len(devices) - 1:
@@ -1471,3 +1799,5 @@ if __name__ == "__main__":
         print("\n[STOP] Keyboard Interrupt. Stopping...")
         
     print("\n[DONE] All tasks completed.")
+
+
