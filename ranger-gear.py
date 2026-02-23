@@ -56,6 +56,39 @@ class SimpleUIStats:
         # hero found list with counts
         self.hero_found_list = {}  # {hero_combo: count} e.g. {'Yor': 1, 'Yor+Anya': 2}
         
+    def _get_shared_file(self):
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared_stats.json")
+
+    def save_shared(self):
+        """Save stats to a shared file for multi-process sync"""
+        try:
+            with self.lock:
+                data = {
+                    "success_count": self.success_count,
+                    "fail_count": self.fail_count,
+                    "hero_found_list": self.hero_found_list,
+                    "device_statuses": self.device_statuses,
+                    "last_update": time.time()
+                }
+                with open(self._get_shared_file(), "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+        except: pass
+
+    def load_shared(self):
+        """Load stats from the shared file"""
+        try:
+            shared_file = self._get_shared_file()
+            if os.path.exists(shared_file):
+                # Only load if not the GUI process or if file is newer
+                with open(shared_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    with self.lock:
+                        self.success_count = data.get("success_count", self.success_count)
+                        self.fail_count = data.get("fail_count", self.fail_count)
+                        self.hero_found_list = data.get("hero_found_list", self.hero_found_list)
+                        self.device_statuses.update(data.get("device_statuses", {}))
+        except: pass
+
     def update(self, total=None, processed=None, success=None, fail=None, devices=None, hero_found=None, hero_not_found=None):
         with self.lock:
             if total is not None: self.total_files = total
@@ -63,21 +96,19 @@ class SimpleUIStats:
             if success is not None: self.success_count = success
             if fail is not None: self.fail_count = fail
             if devices is not None: self.connected_devices = devices
-            # อัพเดท hero counters
             if hero_found is not None: self.success_count += hero_found
             if hero_not_found is not None: self.fail_count += hero_not_found
-    
-    def update_device(self, device_serial, status):
-        with self.lock:
-            self.device_statuses[device_serial] = status
+            self.save_shared()
     
     def update_hero(self, hero_name, count=1):
         with self.lock:
             if hero_name not in self.hero_found_list:
                 self.hero_found_list[hero_name] = 0
             self.hero_found_list[hero_name] += count
+            self.save_shared()
 
     def get_hero_combo_stats(self):
+        self.load_shared() # Always refresh before getting
         with self.lock:
             return dict(self.hero_found_list)
 
@@ -188,7 +219,7 @@ if GUI_AVAILABLE:
                 self.lbl_status.configure(text=status.upper(), text_color=color_map.get(status, "#888"))
 
     class ModernBotGUI(ctk.CTk):
-        def __init__(self, devices, file_queue, args):
+        def __init__(self, devices, args):
             super().__init__()
             global GUI_INSTANCE
             GUI_INSTANCE = self
@@ -196,7 +227,6 @@ if GUI_AVAILABLE:
             self.title("Ranger+Gear")
             self.geometry("620x530")
             self.devices = devices
-            self.file_queue = file_queue
             self.args = args
             self.bot_threads = []
             self.device_monitors = {}
@@ -322,14 +352,23 @@ if GUI_AVAILABLE:
             self.btn_run.configure(text="⏸ Running", fg_color="#ff9800", text_color="black")
             self.log("INFO", "Starting Bot Threads...")
             for device_id in self.devices:
-                bot = RangerGearBot(device_id, self.file_queue, self.args)
+                bot = RangerGearBot(device_id, self.args)
                 bot.start()
                 self.bot_threads.append(bot)
 
         def update_realtime_stats(self):
             try:
+                # Load shared stats from other processes
+                ui_stats.load_shared()
+                
                 with ui_stats.lock:
-                    self.lbl_file_count.configure(text=f"📁 {self.file_queue.qsize()}")
+                    # Count files real-time in the backup folder
+                    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+                    qsize = 0
+                    if os.path.exists(source_folder):
+                        qsize = len([f for f in os.listdir(source_folder) if f.lower().endswith(".xml")])
+                    
+                    self.lbl_file_count.configure(text=f"📁 {qsize}")
                     self.lbl_succ_count.configure(text=f"✅ {ui_stats.success_count}")
                     self.lbl_fail_count.configure(text=f"❌ {ui_stats.fail_count}")
                     
@@ -587,10 +626,9 @@ def get_connected_devices():
 # RangerGearBot Class - Unified Bot for Ranger + Gear
 # =============================================================
 class RangerGearBot(threading.Thread):
-    def __init__(self, device_id, file_queue, args=None):
+    def __init__(self, device_id, args=None):
         threading.Thread.__init__(self)
         self.device_id = device_id
-        self.file_queue = file_queue
         self.args = args # Store command line args
         self.daemon = True
         
@@ -1821,7 +1859,18 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, help="Specific device ID/address to run (e.g. 127.0.0.1:5557)")
     parser.add_argument("--no-reset-adb", action="store_true", help="Don't kill/start ADB server")
     parser.add_argument("--cli", action="store_true", help="Launch in Command Line mode (no GUI)")
+    parser.add_argument("--minimized", action="store_true", help="Minimize window")
     args = parser.parse_args()
+
+    if args.minimized:
+        try:
+            import ctypes
+            # SW_MINIMIZE = 6 or SW_HIDE = 0. Using 2 (SW_SHOWMINIMIZED) or 6.
+            # 2 is show minimized, 0 is hide. Let's use 2 as requested "minimized".
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(hwnd, 2)
+        except: pass
 
     print("=== Auto Ranger+Gear Script v3.2.0 ===")
     
@@ -1883,7 +1932,7 @@ if __name__ == "__main__":
         try:
             ctk.set_appearance_mode("Dark")
             ctk.set_default_color_theme("blue")
-            gui = ModernBotGUI(devices, file_queue, args)
+            gui = ModernBotGUI(devices, args)
             GUI_INSTANCE = gui
             gui.mainloop()
             sys.exit(0)
@@ -1901,7 +1950,7 @@ if __name__ == "__main__":
     print(f"[INFO] Starting {len(targets)} threads...")
     delay = config.get("thread_delay", 5)
     for i, dev in enumerate(targets):
-        t = RangerGearBot(dev, file_queue, args)
+        t = RangerGearBot(dev, args)
         t.start()
         threads.append(t)
         if i < len(targets) - 1:
