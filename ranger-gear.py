@@ -354,6 +354,11 @@ if GUI_AVAILABLE:
                         
                         self.hero_stats_labels[hero].configure(text=str(count))
                     
+                    # Manually handle the "ไม่เจอ" (Success login but none found) row visibility
+                    # If it was consolidated (removed from hero_data), hide its row
+                    if "ไม่เจอ" not in hero_data and "ไม่เจอ" in self.hero_rows:
+                        self.hero_rows["ไม่เจอ"].pack_forget()
+                    
                     # Update Filter
                     self.filter_heroes()
             except Exception as e:
@@ -648,31 +653,23 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
             
             while True:
-                # 0. Reload Config for dynamic changes without restart
+                # 0. Reload Config
                 load_config()
                 self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
                 self.do_gear = config.get("find_gear", 0) or config.get("find_all", 1)
 
-                if self.file_queue.empty():
-                    # Instead of breaking, wait for new files to be dropped into backup
+                # 1. Look for next available file (Atomic Locking)
+                xml_file = self._get_next_available_file()
+                
+                if not xml_file:
                     self.update_gui_status("Waiting for files", "waiting")
-                    
-                    # Scan for new files periodically
-                    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
-                    new_files = [os.path.join(source_folder, f) for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
-                    if new_files:
-                        for f in new_files:
-                            self.file_queue.put(f)
-                        print(f"[{self.device_id}] Found {len(new_files)} new files. Resuming...")
-                        # Update total count in UI
-                        with ui_stats.lock:
-                            ui_stats.total_files += len(new_files)
-                        continue
-                    
                     sleep(5)
                     continue
 
                 try:
+                    # Store original filename
+                    self.current_original_filename = os.path.basename(xml_file)
+                    
                     # 1. Check First Loop Process Toggle
                     current_first_loop_enabled = config.get("first_loop", True)
                     if current_first_loop_enabled and not self.first_loop_done:
@@ -681,39 +678,12 @@ class RangerGearBot(threading.Thread):
                         if res == "complete":
                             self.first_loop_done = True
                         elif res == "restart":
+                            # Cleanup lock if we need to restart the whole login
+                            self._release_file_lock(xml_file)
                             sleep(2)
                             continue
                     else:
-                        # Skip first loop if disabled or already done
                         self.first_loop_done = True
-
-                    # 1. Get File
-                    try:
-                        xml_file = self.file_queue.get(timeout=2)
-                    except queue.Empty:
-                        break
-                    
-                    # Store original filename
-                    self.current_original_filename = os.path.basename(xml_file)
-                    
-                    # --- File Locking Mechanism ---
-                    # To prevent multiple CMD windows from processing the same file
-                    lock_file = xml_file + ".lock"
-                    if os.path.exists(lock_file):
-                        # Simple check: if lock file is older than 1 hour, assume it's stale
-                        if time.time() - os.path.getmtime(lock_file) > 3600:
-                            print(f"[{self.device_id}] Stale lock found for {self.current_original_filename}. Removing...")
-                            os.remove(lock_file)
-                        else:
-                            # Skip this file, someone else is working on it
-                            continue
-                    
-                    # Create lock
-                    try:
-                        with open(lock_file, "w") as f:
-                            f.write(self.device_id)
-                    except:
-                        continue # If can't create lock, skip
                     
                     print(f"[{self.device_id}] Processing file: {self.current_original_filename}")
                     self.update_gui_status(f"Injecting: {self.current_original_filename}")
@@ -722,40 +692,87 @@ class RangerGearBot(threading.Thread):
                     injected_file = self.inject_file(xml_file)
                     
                     if injected_file:
-                        # 3. Login (with ranger/gear flow based on mode)
+                        # 3. Login
                         self.update_gui_status("Logging in...")
                         status = self.main_login(injected_file)
                         
                         if status == "success":
                             self.handle_success(xml_file)
-                            if os.path.exists(lock_file): os.remove(lock_file)
                             ui_stats.update(success=ui_stats.success_count + 1, processed=ui_stats.processed_files + 1)
                             self.update_gui_status("Completed", "idle")
                         elif status == "failed":
                             self.handle_failure(xml_file)
-                            if os.path.exists(lock_file): os.remove(lock_file)
                             ui_stats.update(fail=ui_stats.fail_count + 1)
                             self.update_gui_status("Failed", "error")
                             self.first_loop_done = False
                         else:
                             print(f"[{self.device_id}] Status: {status}. Moving to next.")
                             self.handle_failure(xml_file)
-                            if os.path.exists(lock_file): os.remove(lock_file)
                             ui_stats.update(fail=ui_stats.fail_count + 1)
                             self.update_gui_status(f"Error: {status}", "error")
                     else:
                         print(f"[{self.device_id}] Injection failed for {xml_file}")
-                        if os.path.exists(lock_file): os.remove(lock_file)
+                        self.handle_dead_file(xml_file) # Move to failed if we can't even inject
                         ui_stats.update(fail=ui_stats.fail_count + 1)
                         self.update_gui_status("Inject Failed", "error")
                     
-                    self.file_queue.task_done()
+                    # Always ensure lock is removed after processing (handle_success/failure moves the file)
+                    self._release_file_lock(xml_file)
                     
                 except Exception as e:
-                    print(f"[{self.device_id}] Critical Thread Error: {e}", flush=True)
+                    print(f"[{self.device_id}] Critical Error with {xml_file}: {e}")
+                    self._release_file_lock(xml_file)
                     sleep(5)
         except Exception as e:
-            print(f"[{self.device_id}] Thread Crash on Startup: {e}", flush=True)
+            print(f"[{self.device_id}] Thread Crash: {e}", flush=True)
+
+    def _get_next_available_file(self):
+        """Finds next .xml file in backup/ and attempts to lock it atomically."""
+        source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+        if not os.path.exists(source_folder): return None
+        
+        files = [os.path.join(source_folder, f) for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
+        # Shuffle files so multiple processes don't hit the exact same order
+        import random
+        random.shuffle(files)
+        
+        for xml_file in files:
+            lock_file = xml_file + ".lock"
+            
+            # 1. Clean stale locks (> 30 mins)
+            if os.path.exists(lock_file):
+                if time.time() - os.path.getmtime(lock_file) > 1800:
+                    try: os.remove(lock_file)
+                    except: pass
+                else: continue
+            
+            # 2. Try Atomic Lock (O_CREAT | O_EXCL)
+            try:
+                fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                with os.fdopen(fd, 'w') as f:
+                    f.write(self.device_id)
+                return xml_file
+            except FileExistsError:
+                continue
+            except Exception as e:
+                print(f"[LOCK] Error creating lock for {xml_file}: {e}")
+                continue
+                
+        return None
+
+    def _release_file_lock(self, xml_file):
+        lock_file = xml_file + ".lock"
+        if os.path.exists(lock_file):
+            try: os.remove(lock_file)
+            except: pass
+
+    def handle_dead_file(self, file_path):
+        """Move file that failed injection or has other issues"""
+        dst_dir = "login-failed"
+        if not os.path.exists(dst_dir): os.makedirs(dst_dir)
+        base = os.path.basename(file_path)
+        try: shutil.move(file_path, os.path.join(dst_dir, base))
+        except: pass
 
     # =========================================================
     # File Handling
@@ -1391,19 +1408,30 @@ class RangerGearBot(threading.Thread):
             current_found_in_iteration = False
             for ranger_img in self.ranger_files:
                 ranger_path = f"img/{ranger_img}"
-                if self.exists_in_cache(ranger_path, similarity=0.95):
-                    # Get folder name from config
+                # Lower similarity to 0.85 for better recall (user said Denji was missed)
+                if self.exists_in_cache(ranger_path, similarity=0.85):
+                    # Get base filename
+                    file_base = ranger_img.split('/')[-1].replace(".png", "")
+                    
+                    found_hero_name = file_base
+                    # Smart grouping: if filename contains a name from characters list, use that name
+                    # (e.g. "powerU" -> "power")
+                    for char in self.characters:
+                        if char.lower() in file_base.lower():
+                            found_hero_name = char
+                            break
+                            
+                    # Get folder name from config or default to found_hero_name
                     if isinstance(self.ranger_image_mapping, dict) and ranger_img in self.ranger_image_mapping:
                         data = self.ranger_image_mapping[ranger_img]
-                        # Support both formats (dict with hero/folder keys OR just string)
                         if isinstance(data, dict):
-                            hero_name = data.get("hero", ranger_img.split('/')[-1].replace(".png", ""))
+                            hero_name = data.get("hero", found_hero_name)
                             folder_name = data.get("folder", hero_name)
                         else:
-                            hero_name = ranger_img.split('/')[-1].replace(".png", "")
+                            hero_name = found_hero_name
                             folder_name = str(data)
                     else:
-                        hero_name = ranger_img.split('/')[-1].replace(".png", "")
+                        hero_name = found_hero_name
                         folder_name = hero_name
                     
                     results[hero_name] = folder_name
@@ -1842,63 +1870,46 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[WARN] Failed to load OCR: {e}")
     
-    # Setup Queue
-    file_queue = queue.Queue()
+    # Setup Queue (Still needed for GUI but threads will use directory scanning)
     source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
     if os.path.exists(source_folder):
-        files = [os.path.join(source_folder, f) for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
-        for f in files:
-            file_queue.put(f)
+        files = [f for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
         ui_stats.update(total=len(files))
-        print(f"[FILE] Loaded {len(files)} files into queue from {source_folder}")
-    else:
-        print(f"[WARN] Backup folder '{source_folder}' not found.")
+        print(f"[FILE] Found {len(files)} files in {source_folder}")
     
     # Selection
     if not args.cli and GUI_AVAILABLE:
         print(f"{Fore.GREEN}[START] Launching GUI Mode...{Style.RESET_ALL}")
         try:
-            print("[DEBUG] Setting CustomTkinter appearance...")
             ctk.set_appearance_mode("Dark")
-            print("[DEBUG] Setting CustomTkinter theme...")
             ctk.set_default_color_theme("blue")
-            
-            print("[DEBUG] Creating ModernBotGUI instance...")
             gui = ModernBotGUI(devices, file_queue, args)
-            
-            print("[DEBUG] Initializing mainloop...")
             GUI_INSTANCE = gui
             gui.mainloop()
-            print("[DEBUG] Mainloop exited.")
             sys.exit(0)
         except Exception as e:
-            print(f"{Fore.RED}[ERROR] GUI Failed to start: {e}{Style.RESET_ALL}")
-            import traceback
-            traceback.print_exc()
-            print("[INFO] Falling back to CLI mode...")
+            print(f"{Fore.RED}[ERROR] GUI Failed: {e}{Style.RESET_ALL}")
             args.cli = True
 
     # CLI Mode
     print(f"\n{Fore.CYAN}Starting bot in CLI Mode...{Style.RESET_ALL}")
     
-    # Start Threads
     threads = []
-    print(f"[INFO] Starting {len(devices)} threads...")
+    # If device is specified, only run that one (useful for multi-window mode)
+    targets = [args.device] if args.device else devices
     
+    print(f"[INFO] Starting {len(targets)} threads...")
     delay = config.get("thread_delay", 5)
-    for i, dev in enumerate(devices):
+    for i, dev in enumerate(targets):
         t = RangerGearBot(dev, file_queue, args)
         t.start()
         threads.append(t)
-        if i < len(devices) - 1:
-            print(f"[INFO] Waiting {delay}s before starting next thread...")
+        if i < len(targets) - 1:
             sleep(delay)
         
-    # Wait for threads
     try:
         for t in threads:
             t.join()
     except KeyboardInterrupt:
         print("\n[STOP] Keyboard Interrupt. Stopping...")
-        
     print("\n[DONE] All tasks completed.")
