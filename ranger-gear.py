@@ -201,6 +201,8 @@ if GUI_AVAILABLE:
             self.bot_threads = []
             self.device_monitors = {}
             self.hero_stats_labels = {}
+            self.hero_rows = {}
+            self.hero_filter_text = ""
             
             self.setup_ui()
             
@@ -266,9 +268,22 @@ if GUI_AVAILABLE:
             right_frame = ctk.CTkFrame(main_frame, fg_color="#2b2b2b", corner_radius=8)
             right_frame.grid(row=0, column=1, sticky="nsew", padx=(3, 0))
             
-            hero_header = ctk.CTkFrame(right_frame, fg_color="#383838", corner_radius=0, height=28)
+            hero_header = ctk.CTkFrame(right_frame, fg_color="#383838", corner_radius=0, height=56)
             hero_header.pack(fill="x")
-            ctk.CTkLabel(hero_header, text="   🏆 HEROES FOUND", font=ctk.CTkFont(size=11, weight="bold"), text_color="#f2c94c", anchor="w").pack(side="left")
+            hero_header.pack_propagate(False)
+            
+            title_row = ctk.CTkFrame(hero_header, fg_color="transparent", height=28)
+            title_row.pack(fill="x")
+            ctk.CTkLabel(title_row, text="   🏆 HEROES FOUND", font=ctk.CTkFont(size=11, weight="bold"), text_color="#f2c94c", anchor="w").pack(side="left")
+            self.lbl_filter_count = ctk.CTkLabel(title_row, text="Filtered: 0", font=ctk.CTkFont(size=10), text_color="#aaaaaa")
+            self.lbl_filter_count.pack(side="right", padx=10)
+            
+            # Filter Entry
+            filter_frame = ctk.CTkFrame(hero_header, fg_color="transparent", height=24)
+            filter_frame.pack(fill="x", padx=5, pady=2)
+            self.ent_filter = ctk.CTkEntry(filter_frame, placeholder_text="🔍 Search heroes or gear (e.g. lapel)...", font=ctk.CTkFont(size=11), height=22, fg_color="#1e1e1e", border_width=1)
+            self.ent_filter.pack(fill="x", expand=True)
+            self.ent_filter.bind("<KeyRelease>", lambda e: self.on_filter_changed())
             
             self.hero_scroll = ctk.CTkScrollableFrame(right_frame, fg_color="transparent")
             self.hero_scroll.pack(fill="both", expand=True, padx=3, pady=3)
@@ -322,19 +337,49 @@ if GUI_AVAILABLE:
                         if dev in self.device_monitors:
                             self.device_monitors[dev].update_state(status=stat.get('status'))
                     
-                    hero_data = ui_stats.get_hero_combo_stats()
-                    if ui_stats.fail_count > 0:
-                        hero_data["❌ ไม่เจอ"] = ui_stats.fail_count
+                    hero_raw_data = ui_stats.get_hero_combo_stats()
+                    hero_data = hero_raw_data.copy()
+                    
+                    # Consolidate "ไม่เจอ" (Success login but target not found) and fail_count (Login failed)
+                    not_found_success = hero_data.pop("ไม่เจอ", 0)
+                    total_not_found = ui_stats.fail_count + not_found_success
+                    
+                    if total_not_found > 0:
+                        hero_data["❌ ไม่เจอ"] = total_not_found
                     
                     for hero, count in hero_data.items():
                         if hero not in self.hero_stats_labels:
                             is_not_found = hero in ["❌ ไม่เจอ", "ไม่เจอ"]
                             self.add_hero_row(hero, is_not_found)
+                        
                         self.hero_stats_labels[hero].configure(text=str(count))
+                    
+                    # Update Filter
+                    self.filter_heroes()
             except Exception as e:
                 print(f"[GUI] Update error: {e}")
             
             self.after(500, self.update_realtime_stats)
+
+        def on_filter_changed(self):
+            self.hero_filter_text = self.ent_filter.get().lower()
+            self.filter_heroes()
+
+        def filter_heroes(self):
+            total_filtered = 0
+            for hero, row in self.hero_rows.items():
+                if not self.hero_filter_text or self.hero_filter_text in hero.lower():
+                    row.pack(fill="x", pady=1)
+                    # Get count from label text
+                    try:
+                        count = int(self.hero_stats_labels[hero].cget("text"))
+                        total_filtered += count
+                    except: pass
+                else:
+                    row.pack_forget()
+            
+            if hasattr(self, 'lbl_filter_count'):
+                self.lbl_filter_count.configure(text=f"Filtered: {total_filtered}")
 
 
         def add_hero_row(self, hero_name, is_not_found):
@@ -347,6 +392,7 @@ if GUI_AVAILABLE:
             lbl_count = ctk.CTkLabel(row, text="0", font=ctk.CTkFont(size=12, weight="bold"), text_color=txt_color)
             lbl_count.pack(side="right", padx=8)
             self.hero_stats_labels[hero_name] = lbl_count
+            self.hero_rows[hero_name] = row
 
         def open_config(self): CollabConfigWindow(self)
         def open_heroes(self): HeroFoldersWindow(self)
@@ -947,7 +993,7 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/icon.png"):
                 return "icon"
             
-        error_images = ["img/failed1.png", "img/fixalerterror1.png"]
+        error_images = ["img/failed1.png", "img/fixalerterror1.png", "img/kaiby.png"]
         for err in error_images:
             if self.exists_in_cache(err):
                 return "error_img"
@@ -1336,6 +1382,13 @@ class RangerGearBot(threading.Thread):
             self.check_floating_popups()
             # --------------------------------
             
+            # CLEAR previous search results for THIS character iteration to avoid mixing
+            # Actually, results is a dict mapping hero_name -> folder_name.
+            # If we find "denji", it adds "denji": "denji" to the results.
+            # If the user says "Denji alone" is recorded but "Denji + others" is not, 
+            # let's make sure we only add results found in the CURRENT screen state.
+            
+            current_found_in_iteration = False
             for ranger_img in self.ranger_files:
                 ranger_path = f"img/{ranger_img}"
                 if self.exists_in_cache(ranger_path, similarity=0.95):
@@ -1354,12 +1407,13 @@ class RangerGearBot(threading.Thread):
                         folder_name = hero_name
                     
                     results[hero_name] = folder_name
+                    current_found_in_iteration = True
                     print(f"[{self.device_id}] Found ranger: {ranger_img} -> hero: {hero_name}, folder: {folder_name}")
             
-            if results:
-                print(f"[{self.device_id}] Found results: {results}")
+            if current_found_in_iteration:
+                print(f"[{self.device_id}] Iteration results: {results}")
             else:
-                print(f"[{self.device_id}] No rangers found yet")
+                print(f"[{self.device_id}] No rangers found for character: {character}")
             
             # f) Click sec5
             print(f"[{self.device_id}] Clicking sec5.png")
@@ -1686,8 +1740,9 @@ class RangerGearBot(threading.Thread):
                 return "success"
                 
             # Failed
-            if self.exists_in_cache("img/login-failed.png"):
-                print(f"[{self.device_id}] Login failed (login-failed detected)")
+            if self.exists_in_cache("img/login-failed.png") or self.exists_in_cache("img/kaiby.png"):
+                reason = "kaiby.png" if self.exists_in_cache("img/kaiby.png") else "login-failed.png"
+                print(f"[{self.device_id}] Login failed ({reason} detected)")
                 status = "failed"
                 return status
                 
