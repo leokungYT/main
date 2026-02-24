@@ -1295,7 +1295,9 @@ class RangerGearBot(threading.Thread):
 
             # 2. Sequence 1
             print(f"[{self.device_id}] Processing SEQ 1...")
-            self.process_sequence(self.seq1)
+            res1 = self.process_sequence(self.seq1)
+            if res1 == "restart": return "restart"
+            if res1 == "complete": return "complete"
             
             # 3. Back logic - Reduced wait
             print(f"[{self.device_id}] Waiting 4s then Back...")
@@ -1305,7 +1307,9 @@ class RangerGearBot(threading.Thread):
             
             # 4. Sequence 2
             print(f"[{self.device_id}] Processing SEQ 2...")
-            self.process_sequence(self.seq2)
+            res2 = self.process_sequence(self.seq2)
+            if res2 == "restart": return "restart"
+            if res2 == "complete": return "complete"
             
             # 5. End and Close App
             print(f"[{self.device_id}] First Loop Finished. Clearing app...")
@@ -1345,7 +1349,12 @@ class RangerGearBot(threading.Thread):
                 if not checkpoint_img.startswith('img'):
                     checkpoint_img = f"img/{checkpoint_img}"
                 print(f"[{self.device_id}] Checkpoint: waiting for {checkpoint_img} (no click)")
+                start_wait = time.time()
                 while True:
+                    if time.time() - start_wait > 480: # 8 minutes timeout
+                        print(f"[{self.device_id}] TIMEOUT waiting for checkpoint {checkpoint_img}. Restarting first_loop...")
+                        return "restart"
+
                     self.capture_screen()
                     err = self.check_error_images(skip_icon=skip_icon)
                     if err == "fixcak": return "restart"
@@ -1383,7 +1392,12 @@ class RangerGearBot(threading.Thread):
                 continue
 
             print(f"[{self.device_id}] Waiting for {item}...")
+            start_wait = time.time()
             while True:
+                if time.time() - start_wait > 480: # 8 minutes timeout
+                    print(f"[{self.device_id}] TIMEOUT waiting for {item}. Restarting first_loop...")
+                    return "restart"
+
                 # Check fixcak/stopcheck/blackscreen/fixbug/unkhow
                 self.capture_screen() # Ensure screen is captured before checking errors
                 err = self.check_error_images()
@@ -1410,7 +1424,6 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Found {item}, clicking...")
                     self.click(img_path)
                     sleep(0.8) # Fast transition for images
-                    found = True
                     break
                 sleep(0.5) # Fast loop search
             

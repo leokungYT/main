@@ -1,5 +1,5 @@
 {
-    "first_loop": false,
+    "first_loop": true,
     "thread_delay": 5,
     "find_ranger": 0,
     "find_gear": 0,
