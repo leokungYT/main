@@ -60,7 +60,7 @@ class SimpleUIStats:
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared_stats.json")
 
     def save_shared(self):
-        """Save stats to a shared file for multi-process sync"""
+        """Save stats to a shared file for multi-process sync (Atomic write)"""
         try:
             with self.lock:
                 data = {
@@ -70,37 +70,72 @@ class SimpleUIStats:
                     "device_statuses": self.device_statuses,
                     "last_update": time.time()
                 }
-                with open(self._get_shared_file(), "w", encoding="utf-8") as f:
+                path = self._get_shared_file()
+                tmp_path = path + ".tmp"
+                with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
-        except: pass
+                
+                # Atomic replace
+                if os.path.exists(path):
+                    os.remove(path)
+                os.rename(tmp_path, path)
+        except Exception as e:
+            print(f"[DEBUG] save_shared error: {e}")
 
     def load_shared(self):
-        """Load stats from the shared file"""
-        try:
-            shared_file = self._get_shared_file()
-            if os.path.exists(shared_file):
-                # Only load if not the GUI process or if file is newer
+        """Load stats from the shared file with retries"""
+        shared_file = self._get_shared_file()
+        if not os.path.exists(shared_file):
+            return
+            
+        for _ in range(5): # Retry up to 5 times
+            try:
                 with open(shared_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                    content = f.read()
+                    if not content: continue
+                    data = json.loads(content)
                     with self.lock:
-                        self.success_count = data.get("success_count", self.success_count)
-                        self.fail_count = data.get("fail_count", self.fail_count)
-                        self.hero_found_list = data.get("hero_found_list", self.hero_found_list)
+                        # Only update if shared data is newer or to merge
+                        self.success_count = max(self.success_count, data.get("success_count", 0))
+                        self.fail_count = max(self.fail_count, data.get("fail_count", 0))
+                        
+                        # Merge hero lists (take max count)
+                        shared_heroes = data.get("hero_found_list", {})
+                        for h, count in shared_heroes.items():
+                            self.hero_found_list[h] = max(self.hero_found_list.get(h, 0), count)
+                            
+                        # Update device statuses
                         self.device_statuses.update(data.get("device_statuses", {}))
-        except: pass
+                break
+            except Exception as e:
+                time.sleep(0.1)
 
     def update(self, total=None, processed=None, success=None, fail=None, devices=None, hero_found=None, hero_not_found=None):
+        self.load_shared() # Pull latest from others first to avoid overwriting counts
         with self.lock:
             if total is not None: self.total_files = total
             if processed is not None: self.processed_files = processed
-            if success is not None: self.success_count = success
-            if fail is not None: self.fail_count = fail
+            if success is not None: 
+                # For success/fail, we take the max of (local incremented) vs (shared latest)
+                # This is safer than just setting it.
+                self.success_count = max(self.success_count, success)
+            if fail is not None: 
+                self.fail_count = max(self.fail_count, fail)
             if devices is not None: self.connected_devices = devices
             if hero_found is not None: self.success_count += hero_found
             if hero_not_found is not None: self.fail_count += hero_not_found
             self.save_shared()
     
+    def update_device(self, device_serial, status):
+        """Update device status and sync with shared file"""
+        self.load_shared() # Pull latest from others first
+        with self.lock:
+            self.device_statuses[device_serial] = status
+            self.save_shared() # Save merged state back
+    
     def update_hero(self, hero_name, count=1):
+        """Update hero found count and sync"""
+        self.load_shared() # Pull latest first
         with self.lock:
             if hero_name not in self.hero_found_list:
                 self.hero_found_list[hero_name] = 0
@@ -243,6 +278,13 @@ if GUI_AVAILABLE:
             self.deiconify()
             self.focus_force()
             print("[GUI] Launched Successfully.")
+            
+            if getattr(self.args, 'no_start', False):
+                print("[GUI] Monitor mode active (No internal threads).")
+                self.lbl_auto_start.configure(text="[ DASHBOARD MODE ]", text_color="#ffae42")
+            else:
+                print("[GUI] Auto-starting bot threads...")
+                self.start_bot()
 
         def setup_ui(self):
             # 1. TOP TOOLBAR
@@ -250,14 +292,11 @@ if GUI_AVAILABLE:
             toolbar.pack(fill="x")
             toolbar.pack_propagate(False)
             
-            self.lbl_status = ctk.CTkLabel(toolbar, text=f"● ONLINE ({len(self.devices)})", font=ctk.CTkFont(size=11, weight="bold"), text_color="#4caf50")
-            self.lbl_status.pack(side="left", padx=10)
+            self.lbl_status = ctk.CTkLabel(toolbar, text=f"   ● ONLINE ({len(self.devices)})", font=ctk.CTkFont(size=12, weight="bold"), text_color="#4caf50")
+            self.lbl_status.pack(side="left", padx=5)
             
-            self.btn_run = ctk.CTkButton(toolbar, text="▶ Start Bot", width=90, height=26, font=ctk.CTkFont(size=11, weight="bold"),
-                                        fg_color="#4caf50", command=self.start_bot)
-            self.btn_run.pack(side="left", padx=3)
-            
-            ctk.CTkButton(toolbar, text="■ Stop", width=65, height=26, font=ctk.CTkFont(size=11, weight="bold"), fg_color="#e53935").pack(side="left", padx=3)
+            self.lbl_auto_start = ctk.CTkLabel(toolbar, text="[ AUTO-START ACTIVE ]", font=ctk.CTkFont(size=10, weight="bold"), text_color="#aaaaaa")
+            self.lbl_auto_start.pack(side="left", padx=10)
             
             # Stats on Toolbar (right)
             counter_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
@@ -349,8 +388,7 @@ if GUI_AVAILABLE:
             self.log_text.configure(state="disabled")
 
         def start_bot(self):
-            self.btn_run.configure(text="⏸ Running", fg_color="#ff9800", text_color="black")
-            self.log("INFO", "Starting Bot Threads...")
+            self.log("INFO", "Auto-starting Bot Threads...")
             for device_id in self.devices:
                 bot = RangerGearBot(device_id, self.args)
                 bot.start()
@@ -379,24 +417,28 @@ if GUI_AVAILABLE:
                     hero_raw_data = ui_stats.get_hero_combo_stats()
                     hero_data = hero_raw_data.copy()
                     
-                    # Consolidate "ไม่เจอ" (Success login but target not found) and fail_count (Login failed)
-                    not_found_success = hero_data.pop("ไม่เจอ", 0)
-                    total_not_found = ui_stats.fail_count + not_found_success
+                    # 1. Handle Login Failures separately from Scan Failures
+                    login_fail_count = ui_stats.fail_count
+                    if login_fail_count > 0:
+                        hero_data["❌ เข้าไม่ได้ (Login Failed)"] = login_fail_count
                     
-                    if total_not_found > 0:
-                        hero_data["❌ ไม่เจอ"] = total_not_found
+                    # 2. Handle "Success but No Hero/Gear Found"
+                    not_found_success = hero_data.pop("ไม่เจอ", 0)
+                    if not_found_success > 0:
+                        hero_data["🔍 สแกนไม่เจอ (Not Found)"] = not_found_success
                     
                     for hero, count in hero_data.items():
                         if hero not in self.hero_stats_labels:
-                            is_not_found = hero in ["❌ ไม่เจอ", "ไม่เจอ"]
-                            self.add_hero_row(hero, is_not_found)
+                            # Color coding: Red for failures/not found, Green for success
+                            is_error_row = any(x in hero for x in ["เข้าไม่ได้", "สแกนไม่เจอ"])
+                            self.add_hero_row(hero, is_error_row)
                         
                         self.hero_stats_labels[hero].configure(text=str(count))
                     
-                    # Manually handle the "ไม่เจอ" (Success login but none found) row visibility
-                    # If it was consolidated (removed from hero_data), hide its row
-                    if "ไม่เจอ" not in hero_data and "ไม่เจอ" in self.hero_rows:
-                        self.hero_rows["ไม่เจอ"].pack_forget()
+                    # Explicitly hide old "ไม่เจอ" or "❌ ไม่เจอ" rows if they exist from previous versions
+                    for old_key in ["ไม่เจอ", "❌ ไม่เจอ"]:
+                        if old_key in self.hero_rows:
+                            self.hero_rows[old_key].pack_forget()
                     
                     # Update Filter
                     self.filter_heroes()
@@ -616,7 +658,7 @@ def get_connected_devices():
             parts = line.strip().split()
             if len(parts) >= 2 and parts[1] == "device":
                 devices.append(parts[0])
-        return devices
+        return list(set(devices)) # Prevent duplicates
     except Exception as e:
         print(f"[ERR] get_connected_devices: {e}")
         return []
@@ -738,6 +780,11 @@ class RangerGearBot(threading.Thread):
                             self.handle_success(xml_file)
                             ui_stats.update(success=ui_stats.success_count + 1, processed=ui_stats.processed_files + 1)
                             self.update_gui_status("Completed", "idle")
+                        elif status == "kaiby":
+                            self.handle_kaiby(xml_file)
+                            ui_stats.update(fail=ui_stats.fail_count + 1)
+                            self.update_gui_status("Kaiby Detected", "error")
+                            self.first_loop_done = False
                         elif status == "failed":
                             self.handle_failure(xml_file)
                             ui_stats.update(fail=ui_stats.fail_count + 1)
@@ -859,6 +906,27 @@ class RangerGearBot(threading.Thread):
                 os.remove(file_path)
         except: pass
 
+    def handle_kaiby(self, file_path):
+        """Handle kaiby error by moving file to kaiby/ folder and clearing app"""
+        dst_dir = "kaiby"
+        if not os.path.exists(dst_dir):
+            os.makedirs(dst_dir)
+        base = os.path.basename(file_path)
+        dst = os.path.join(dst_dir, base)
+        
+        print(f"[{self.device_id}] KAIBY detected. Moving file to {dst_dir}/")
+        
+        # Clear app immediately
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+        sleep(1)
+        
+        try:
+            if os.path.exists(file_path):
+                shutil.move(file_path, dst)
+                print(f"[{self.device_id}] ✓ Moved to {dst_dir}: {base}")
+        except Exception as e:
+            print(f"[{self.device_id}] Kaiby move error: {e}")
+
     # =========================================================
     # Screen & Image Methods  
     # =========================================================
@@ -977,16 +1045,27 @@ class RangerGearBot(threading.Thread):
         return False
     
     def tap(self, x, y):
-        """Direct tap without image search - uses a short swipe for better reliability"""
-        # Short wait before tap to ensure UI is ready and ADB can process
-        sleep(0.5)
-        # Using swipe with 200ms duration makes it even more reliable than a quick tap
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", str(x), str(y), str(x), str(y), "200"])
-
+        """Direct tap without image search - uses a short swipe with random jitter for reliability"""
+        import random
+        # 1. Faster jitter for multi-process mode
+        jitter = random.uniform(0.05, 0.25)
+        sleep(0.1 + jitter) 
+        
+        # 2. Using swipe with 300ms duration for better registration
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
+                     str(x), str(y), str(x), str(y), "300"])
+        
     def type_text(self, text):
-        """Type text via ADB (for search box)"""
+        """Type text via ADB (for search box) - clears it first to avoid double typing"""
+        # 1. Clear text (Move to end then send backspaces)
+        self.adb_shell("input keyevent 123") # MOVE_END
+        for _ in range(3):
+            self.adb_shell("input keyevent 67 67 67 67 67 67 67 67 67 67") # 10 backspaces at once
+        
+        # 2. Type new text
         escaped = text.replace(" ", "%s").replace("'", "\\'").replace('"', '\\"')
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "text", escaped])
+        sleep(0.5) # Wait for UI to process text input
 
     def swipe(self, x1, y1, x2, y2, duration=300):
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
@@ -1010,7 +1089,12 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/fixplay.png"):
             print(f"[{self.device_id}] [POPUP] fixplay.png detected, clicking...")
             self.click("img/fixplay.png")
-            sleep(1)
+            sleep(2)
+            # After fixplay, look for check-ok1.png to dismiss potential confirmation
+            if self.exists("img/check-ok1.png"):
+                print(f"[{self.device_id}] [POPUP] check-ok1.png found after fixplay, clicking...")
+                self.click("img/check-ok1.png")
+                sleep(1)
 
         if self.exists_in_cache("img/fixnet1.png"):
             print(f"[{self.device_id}] [POPUP] fixnet1.png detected, clicking...")
@@ -1048,7 +1132,10 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/icon.png"):
                 return "icon"
             
-        error_images = ["img/failed1.png", "img/fixalerterror1.png", "img/kaiby.png"]
+        if self.exists_in_cache("img/kaiby.png"):
+            return "kaiby"
+
+        error_images = ["img/failed1.png", "img/fixalerterror1.png"]
         for err in error_images:
             if self.exists_in_cache(err):
                 return "error_img"
@@ -1069,9 +1156,6 @@ class RangerGearBot(threading.Thread):
         if img is None or img.size == 0:
             print(f"[{self.device_id}] OCR crop region empty!")
             return []
-        
-        # Resize 2x for better OCR accuracy
-        img = cv2.resize(img, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
         
         reader = get_ocr_reader()
         results = reader.readtext(img, detail=1)
@@ -1140,8 +1224,9 @@ class RangerGearBot(threading.Thread):
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(1)
         
+        # Total clear including cache (Restore to Full Clear)
         self.adb_shell(f"su -c 'rm -rf {base}/* && rm -rf {cache_dir}/*'")
-        print(f"[{self.device_id}] Cleared shared_prefs + cache")
+        print(f"[{self.device_id}] Cleared shared_prefs + cache (Full)")
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
@@ -1178,9 +1263,16 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Size check failed on attempt {attempt}: {e}")
                     continue
                 
-                # Copy and set permissions
-                self.adb_shell(f"su -c 'cp {tmp} {final} && chmod 600 {final}'")
-                self.adb_shell(f"su -c 'rm -f {tmp}'")
+                # Copy, set permissions and owner
+                shell_cmd = (
+                    f"su -c '"
+                    f"cp {tmp} {final} && "
+                    f"chmod 666 {final} && "
+                    f"chown $(stat -c %u:%g {final_dir}) {final} || true && "
+                    f"rm -f {tmp}"
+                    f"'"
+                )
+                self.adb_shell(shell_cmd)
                 
                 print(f"[{self.device_id}] Injection successful on attempt {attempt}")
                 return local_xml_path
@@ -1193,39 +1285,32 @@ class RangerGearBot(threading.Thread):
 
     def first_loop_process(self):
         try:
-            print(f"[{self.device_id}] Starting First Loop Process...")
+            print(f"[{self.device_id}] Starting First Loop Process (Turbo Mode)...")
             self.clear_specific_shared_prefs()
-            sleep(3)
+            sleep(1.5)
             
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-            sleep(1)
-            # Go to Home screen first so we can see the icon
+            # 1. Ensure we are at Home screen
             self.adb_shell("input keyevent 3")
-            print(f"[{self.device_id}] Back to Home, waiting for sequence to click icon...")
-            sleep(3)
-            
-            # --- Sequence 1 ---
+            sleep(0.5)
+
+            # 2. Sequence 1
             print(f"[{self.device_id}] Processing SEQ 1...")
-            res1 = self.process_sequence(self.seq1)
-            if res1 == "restart": return "restart"
-            if res1 == "complete": return "complete"
+            self.process_sequence(self.seq1)
             
-            # Back logic
-            print(f"[{self.device_id}] Waiting 8s then Back...")
-            sleep(8)
+            # 3. Back logic - Reduced wait
+            print(f"[{self.device_id}] Waiting 4s then Back...")
+            sleep(4)
             self.adb_shell("input keyevent 4")
-            sleep(2)
+            sleep(0.5)
             
-            # --- Sequence 2 ---
+            # 4. Sequence 2
             print(f"[{self.device_id}] Processing SEQ 2...")
-            res2 = self.process_sequence(self.seq2)
-            if res2 == "restart": return "restart"
-            if res2 == "complete": return "complete"
+            self.process_sequence(self.seq2)
             
-            # End
-            print(f"[{self.device_id}] First Loop Completed!")
+            # 5. End and Close App
+            print(f"[{self.device_id}] First Loop Finished. Clearing app...")
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-            sleep(2)
+            sleep(0.5)
             return "complete"
             
         except Exception as e:
@@ -1233,11 +1318,14 @@ class RangerGearBot(threading.Thread):
             return "error"
 
     def process_sequence(self, sequence):
+        idx = 0
         for item in sequence:
+            idx += 1
             # Check for global triggers before each item
             self.capture_screen()
-            # Skip icon check if we are currently looking for icon.png in sequence
-            skip_icon = (item == 'icon.png')
+            # Skip icon check if we are currently looking for icon.png in sequence 
+            # OR if we are at the very beginning of the sequence (app still launching)
+            skip_icon = (item == 'icon.png' or idx <= 3)
             err = self.check_error_images(skip_icon=skip_icon)
             if err == "fixcak": return "restart"
             if err == "icon":
@@ -1249,7 +1337,7 @@ class RangerGearBot(threading.Thread):
             if isinstance(item, tuple):
                 print(f"[{self.device_id}] Tapping: {item}")
                 self.tap(item[0], item[1])
-                sleep(3.0) # Increased delay to 3s to let UI catch up when running multiple emulators
+                sleep(3.5) # Increased to 3.5s for coordinate taps (checkboxes)
                 continue
             
             if isinstance(item, str) and item.startswith('@'):
@@ -1259,7 +1347,7 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] Checkpoint: waiting for {checkpoint_img} (no click)")
                 while True:
                     self.capture_screen()
-                    err = self.check_error_images()
+                    err = self.check_error_images(skip_icon=skip_icon)
                     if err == "fixcak": return "restart"
                     if err == "fixbug":
                         self.click("img/fixbuglogin.png")
@@ -1288,7 +1376,8 @@ class RangerGearBot(threading.Thread):
                     self.capture_screen()
                     if self.exists_in_cache(img_path):
                         self.click(img_path)
-                        sleep(5)
+                        print(f"[{self.device_id}] App icon clicked, waiting 4s for launch...")
+                        sleep(4)
                         break
                     sleep(1)
                 continue
@@ -1320,10 +1409,10 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache(img_path):
                     print(f"[{self.device_id}] Found {item}, clicking...")
                     self.click(img_path)
-                    sleep(1.5)
+                    sleep(0.8) # Fast transition for images
                     found = True
                     break
-                sleep(1.5)
+                sleep(0.5) # Fast loop search
             
         return "success"
 
@@ -1429,52 +1518,51 @@ class RangerGearBot(threading.Thread):
             if not self.wait_and_click_image("sec4.png", timeout=15):
                 print(f"[{self.device_id}] Failed to find sec4, skipping character")
                 continue
-            sleep(0.3)
             
-            # e) Scan ALL ranger images from img/ranger/ folder
-            self.capture_screen()
-            # ---- Check floating popups ----
-            self.check_floating_popups()
-            # --------------------------------
+            # Add longer wait for search results to appear
+            print(f"[{self.device_id}] Waiting 2.0s for results...")
+            sleep(2.0)
             
-            # CLEAR previous search results for THIS character iteration to avoid mixing
-            # Actually, results is a dict mapping hero_name -> folder_name.
-            # If we find "denji", it adds "denji": "denji" to the results.
-            # If the user says "Denji alone" is recorded but "Denji + others" is not, 
-            # let's make sure we only add results found in the CURRENT screen state.
-            
+            # e) Scan ranger images with RETRY (to be sure)
             current_found_in_iteration = False
-            for ranger_img in self.ranger_files:
-                ranger_path = f"img/{ranger_img}"
-                # Lower similarity to 0.85 for better recall (user said Denji was missed)
-                if self.exists_in_cache(ranger_path, similarity=0.85):
-                    # Get base filename
-                    file_base = ranger_img.split('/')[-1].replace(".png", "")
+            # Revert to full folder scan as requested ("ขอแบบเดิมเลย")
+            matching_files = self.ranger_files
+
+            for attempt in range(2):
+                if attempt > 0:
+                    print(f"[{self.device_id}] Retry scanning ranger (Attempt {attempt+1})...")
+                    sleep(1.0)
                     
-                    found_hero_name = file_base
-                    # Smart grouping: if filename contains a name from characters list, use that name
-                    # (e.g. "powerU" -> "power")
-                    for char in self.characters:
-                        if char.lower() in file_base.lower():
-                            found_hero_name = char
-                            break
+                self.capture_screen()
+                self.check_floating_popups()
+                
+                for ranger_img in matching_files:
+                    ranger_path = f"img/{ranger_img}"
+                    # Use very high similarity 0.95 for strict matching (Original images)
+                    if self.exists_in_cache(ranger_path, similarity=0.95):
+                        # Get base filename
+                        file_base = ranger_img.split('/')[-1].replace(".png", "")
+                        found_hero_name = file_base
                             
-                    # Get folder name from config or default to found_hero_name
-                    if isinstance(self.ranger_image_mapping, dict) and ranger_img in self.ranger_image_mapping:
-                        data = self.ranger_image_mapping[ranger_img]
-                        if isinstance(data, dict):
-                            hero_name = data.get("hero", found_hero_name)
-                            folder_name = data.get("folder", hero_name)
+                        # Get folder name from config or default to found_hero_name
+                        if isinstance(self.ranger_image_mapping, dict) and ranger_img in self.ranger_image_mapping:
+                            data = self.ranger_image_mapping[ranger_img]
+                            if isinstance(data, dict):
+                                hero_name = data.get("hero", found_hero_name)
+                                folder_name = data.get("folder", hero_name)
+                            else:
+                                hero_name = found_hero_name
+                                folder_name = str(data)
                         else:
                             hero_name = found_hero_name
-                            folder_name = str(data)
-                    else:
-                        hero_name = found_hero_name
-                        folder_name = hero_name
-                    
-                    results[hero_name] = folder_name
-                    current_found_in_iteration = True
-                    print(f"[{self.device_id}] Found ranger: {ranger_img} -> hero: {hero_name}, folder: {folder_name}")
+                            folder_name = hero_name
+                        
+                        results[hero_name] = folder_name
+                        current_found_in_iteration = True
+                        print(f"[{self.device_id}] Found ranger: {ranger_img} -> hero: {hero_name}, folder: {folder_name}")
+                
+                if current_found_in_iteration:
+                    break # Stop retrying if found
             
             if current_found_in_iteration:
                 print(f"[{self.device_id}] Iteration results: {results}")
@@ -1604,23 +1692,27 @@ class RangerGearBot(threading.Thread):
         # Round 1: Direct OCR check
         print(f"[{self.device_id}] Round 1: Direct OCR check")
         all_found_gears.update(self.check_gear_by_text())
-        sleep(3)
+        sleep(2)
         
         # Round 2: Check weapons tab 1
         self.capture_screen()
         self.check_floating_popups()
         if self.exists_in_cache("img/weapons1.png"):
+            print(f"\n[{self.device_id}] Round 2: Checking after weapons1.png")
             self.click("img/weapons1.png")
-            sleep(1)
+            sleep(2)
             all_found_gears.update(self.check_gear_by_text())
+            sleep(1)
         
         # Round 3: Check weapons tab 2
         self.capture_screen()
         self.check_floating_popups()
         if self.exists_in_cache("img/weapons2.png"):
+            print(f"\n[{self.device_id}] Round 3: Checking after weapons2.png")
             self.click("img/weapons2.png")
-            sleep(1)
+            sleep(2)
             all_found_gears.update(self.check_gear_by_text())
+            sleep(1)
         
         # Return gear results (will be combined with ranger results in main_login)
         print(f"\n[{self.device_id}] Gear results: {all_found_gears if all_found_gears else 'none'}")
@@ -1762,10 +1854,11 @@ class RangerGearBot(threading.Thread):
                     msg = f"[{self.device_id}] 🏆 Success! Found {category}: {found_names}"
                     if GUI_INSTANCE:
                         GUI_INSTANCE.log("SUCCESS", msg)
-                        # ส่งชื่อแบบ Combo (บวกรวมกัน) ไปแสดงในหน้า GUI ตามต้องการ
-                        ui_stats.update_hero(found_names)
                     else:
                         print(msg)
+                    
+                    # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
+                    ui_stats.update_hero(found_names)
                     
                     # chmod for pull
                     self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
@@ -1792,9 +1885,11 @@ class RangerGearBot(threading.Thread):
                     msg = f"[{self.device_id}] ไม่เจอ Ranger/Gear ที่ต้องการ"
                     if GUI_INSTANCE:
                         GUI_INSTANCE.log("INFO", msg)
-                        ui_stats.update_hero("ไม่เจอ")
                     else:
                         print(msg)
+                    
+                    # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
+                    ui_stats.update_hero("ไม่เจอ")
                     
                     print(f"[{self.device_id}] No results from ranger or gear - backing up to not-found")
                     self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
@@ -1805,12 +1900,15 @@ class RangerGearBot(threading.Thread):
                 self.clear_and_restart()
                 return "success"
                 
+            # Kaiby Check (High Priority)
+            if self.exists_in_cache("img/kaiby.png"):
+                print(f"[{self.device_id}] Kaiby detected! Stopping login...")
+                return "kaiby"
+
             # Failed
-            if self.exists_in_cache("img/login-failed.png") or self.exists_in_cache("img/kaiby.png"):
-                reason = "kaiby.png" if self.exists_in_cache("img/kaiby.png") else "login-failed.png"
-                print(f"[{self.device_id}] Login failed ({reason} detected)")
-                status = "failed"
-                return status
+            if self.exists_in_cache("img/login-failed.png"):
+                print(f"[{self.device_id}] Login failed (login-failed.png detected)")
+                return "failed"
                 
             # Error/Reset
             error_found = self.check_error_images()
@@ -1857,6 +1955,7 @@ class RangerGearBot(threading.Thread):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Auto Ranger+Gear Script v3.2.0")
     parser.add_argument("--device", type=str, help="Specific device ID/address to run (e.g. 127.0.0.1:5557)")
+    parser.add_argument("--no-start", action="store_true", help="Don't auto-start bot threads in GUI")
     parser.add_argument("--no-reset-adb", action="store_true", help="Don't kill/start ADB server")
     parser.add_argument("--cli", action="store_true", help="Launch in Command Line mode (no GUI)")
     parser.add_argument("--minimized", action="store_true", help="Minimize window")

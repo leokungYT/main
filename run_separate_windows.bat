@@ -19,7 +19,7 @@ if exist "shared_stats.json" del "shared_stats.json"
 
 :: 2. Launch Main GUI in background (it will now aggregate stats from other processes)
 echo [GUI] Launching Main UI...
-start "Ranger-GUI" python ranger-gear.py --no-reset-adb
+start "Ranger-GUI" python ranger-gear.py --no-reset-adb --no-start
 timeout /t 5 /nobreak >nul
 
 :: 3. Find and launch minimized CMDs for each device
@@ -34,4 +34,4 @@ for /f "tokens=1,2" %%a in ('!ADB_EXE! devices ^| findstr /v "List"') do (
 )
 
 echo [DONE] GUI is open, all workers are running minimized.
-pause
+exit

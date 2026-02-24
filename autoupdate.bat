@@ -9,9 +9,13 @@ setlocal enabledelayedexpansion
 
 echo.
 echo ============================================
-echo      Auto Update: Ranger Bot System
-echo ============================================
 echo.
+
+:: Kill ADB and Python processes to prevent file locks
+echo [PRE] Stopping ADB and Bot processes...
+taskkill /f /im adb.exe >nul 2>&1
+taskkill /f /im python.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
 
 set "TARGET_FOLDER=main"
 set "REPO_URL=https://github.com/leokungYT/main/archive/refs/heads/main.zip"
