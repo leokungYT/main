@@ -1090,10 +1090,15 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [POPUP] fixplay.png detected, clicking...")
             self.click("img/fixplay.png")
             sleep(2)
-            # After fixplay, look for check-ok1.png to dismiss potential confirmation
-            if self.exists("img/check-ok1.png"):
-                print(f"[{self.device_id}] [POPUP] check-ok1.png found after fixplay, clicking...")
-                self.click("img/check-ok1.png")
+            # After fixplay, FORCE wait and click check-ok1.png
+            print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png after fixplay...")
+            for _ in range(120):  # Wait up to 120 seconds
+                self.capture_screen()
+                if self.exists_in_cache("img/check-ok1.png"):
+                    print(f"[{self.device_id}] [POPUP] check-ok1.png found after fixplay, clicking...")
+                    self.click("img/check-ok1.png")
+                    sleep(1)
+                    break
                 sleep(1)
 
         if self.exists_in_cache("img/fixnet1.png"):
@@ -1133,6 +1138,9 @@ class RangerGearBot(threading.Thread):
                 return "icon"
             
         if self.exists_in_cache("img/kaiby.png"):
+            return "kaiby"
+
+        if self.exists_in_cache("img/kaiby1.png"):
             return "kaiby"
 
         error_images = ["img/failed1.png", "img/fixalerterror1.png"]
@@ -1783,7 +1791,17 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
                 self.click("img/fixplay.png")
-                sleep(1)
+                sleep(2)
+                # Force wait for check-ok1.png after fixplay
+                print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png after fixplay...")
+                for _ in range(120):
+                    self.capture_screen()
+                    if self.exists_in_cache("img/check-ok1.png"):
+                        print(f"[{self.device_id}] [POPUP] check-ok1.png found, clicking...")
+                        self.click("img/check-ok1.png")
+                        sleep(1)
+                        break
+                    sleep(1)
                 continue
 
             if self.exists_in_cache("img/fixnet1.png"):
@@ -1913,9 +1931,10 @@ class RangerGearBot(threading.Thread):
                 self.clear_and_restart()
                 return "success"
                 
-            # Kaiby Check (High Priority)
-            if self.exists_in_cache("img/kaiby.png"):
-                print(f"[{self.device_id}] Kaiby detected! Stopping login...")
+            # Kaiby / Kaiby1 Check (High Priority)
+            if self.exists_in_cache("img/kaiby.png") or self.exists_in_cache("img/kaiby1.png"):
+                reason = "kaiby1.png" if self.exists_in_cache("img/kaiby1.png") else "kaiby.png"
+                print(f"[{self.device_id}] {reason} detected! Stopping login...")
                 return "kaiby"
 
             # Failed
