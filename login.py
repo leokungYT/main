@@ -1449,12 +1449,12 @@ class RangerGearBot(threading.Thread):
 
             # === SPECIAL CASE: apple.png ===
             # เจอ fixid ก่อน -> กด fixok -> refresh -> check -> วนเช็ค fixid ไปเรื่อยๆ
-            # ถ้าเจอ fixid ครบ 15 รอบ -> return "failed" ส่งไป login-failed
+            # ถ้าเจอ fixid ครบ 8 รอบ -> return "failed" ส่งไป login-failed
             # ถ้าไม่เจอ fixid -> ผ่านไปต่อ step ถัดไป
             if item == 'apple.png':
                 print(f"[{self.device_id}] Apple step: checking for fixid loop...")
                 fixid_count = 0
-                max_fixid_retries = 15
+                max_fixid_retries = 8
                 
                 while True:
                     self.capture_screen()
@@ -1682,10 +1682,10 @@ class RangerGearBot(threading.Thread):
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png"):
                 self._login_fixid_count += 1
-                print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/15), fixok -> refresh -> check...")
+                print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/8), fixok -> refresh -> check...")
                 
-                if self._login_fixid_count >= 15:
-                    print(f"[{self.device_id}] fixid limit reached (15 times)! Failing...")
+                if self._login_fixid_count >= 8:
+                    print(f"[{self.device_id}] fixid limit reached (8 times)! Failing...")
                     self._login_fixid_count = 0
                     return "failed"
                 
