@@ -1,4 +1,8 @@
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
-    <string name="_DEVICE_UUID_KEY">9c4ffa994b7256a12b291a7cf418896b</string>
+    <string name="_ENC_LF_AC_KEY">WqIN05tUcMH8erOwaQHXjWJfRp+9IMzVjQCwrNgj1vBox/S51QThA9Q8+MVl1CGAkImZOxQ1Xqum&#10;rTEyVKbmHH0Uog6w4H8B0Al5wkt0CsEqkTX31IIsf6P7iTbpyH2qY8NB27friAT8VyOEC7Sgi9BK&#10;bLOlNyOE6kCwBD1ucXdRPfayM8A1YTID7q079kJDV7DlhXHYysoU00czPGnZ98lC5Z7UxIzzHRSz&#10;QnPAckla4kedW75w0rcYjdvOGZrJNlDq32w6gSp16iwE+I3u9z5Gk003lsEJK2BWEympLfMYQ3PV&#10;mfP/VC9q0JkBLGtJiqDlmvxoP8AVMm/j8+GzTa7LiOBrkZy9A6ZoHJVYAJ64qobaGXF5q//zYME4&#10;NtafDn3X2kFx2oWssOfySp66cA==&#10;    </string>
+    <string name="_LF_UT_KEY">GUEST</string>
+    <string name="USER_NATION_CODE">LA</string>
+    <string name="LANGUAGE_TYPE_SETTING_KEY">en</string>
+    <string name="_DEVICE_UUID_KEY">106d23e965840ba329444540216ddea2</string>
 </map>
