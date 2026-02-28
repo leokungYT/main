@@ -1716,10 +1716,10 @@ class RangerGearBot(threading.Thread):
             else:
                 try:
                     mean_val = float(np.mean(self._screen))
-                    if mean_val < 30:
+                    if mean_val < 80:
                         is_black = True
                         if loop_count % 3 == 0:
-                            print(f"[{self.device_id}] [BLACK] Mean brightness: {mean_val:.1f} (< 30 = black)")
+                            print(f"[{self.device_id}] [BLACK] Mean brightness: {mean_val:.1f} (< 80 = dark/stuck)")
                 except:
                     is_black = True
             
