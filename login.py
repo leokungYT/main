@@ -1582,6 +1582,12 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{self.device_id}] Found check.png! Clicking...")
                                 self.click("img/check.png")
                                 sleep(2)
+                                # หลังกด check -> หา fixok ด้วย
+                                self.capture_screen()
+                                if self.exists_in_cache("img/fixok.png"):
+                                    print(f"[{self.device_id}] Found fixok.png after check! Clicking...")
+                                    self.click("img/fixok.png")
+                                    sleep(1)
                                 break
                             
                             sleep(1)
@@ -1731,6 +1737,7 @@ class RangerGearBot(threading.Thread):
             
         loop_count = 0
         status = "unknown"
+        event_passed = False  # หลังเจอ event.png แล้วหยุดเช็ค fixok
         
         while True:
             loop_count += 1
@@ -1838,6 +1845,12 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] Found check.png! Clicking...")
                         self.click("img/check.png")
                         sleep(2)
+                        # หลังกด check -> หา fixok ด้วย
+                        self.capture_screen()
+                        if self.exists_in_cache("img/fixok.png"):
+                            print(f"[{self.device_id}] Found fixok.png after check! Clicking...")
+                            self.click("img/fixok.png")
+                            sleep(1)
                         break
                     sleep(1)
                 
@@ -1930,8 +1943,16 @@ class RangerGearBot(threading.Thread):
                 loop_count = 0
                 continue
             
+            # === fixok.png Check (เช็คตลอด แต่หยุดหลัง event) ===
+            if not event_passed and self.exists_in_cache("img/fixok.png"):
+                print(f"[{self.device_id}] Found fixok.png! Clicking...")
+                self.click("img/fixok.png")
+                sleep(1)
+                continue
+
             # Event / Popups
             if self.exists_in_cache("img/event.png"):
+                event_passed = True  # หลังจากนี้หยุดเช็ค fixok
                 print(f"[{self.device_id}] Event popup detected. Clicking then Back...")
                 self.click("img/event.png")
                 sleep(1)
