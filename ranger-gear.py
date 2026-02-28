@@ -1163,13 +1163,15 @@ class RangerGearBot(threading.Thread):
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
     def check_black_screen(self, threshold=0.8):
-        """Check if screen is mostly black"""
+        """Check if screen is mostly black using mean brightness"""
         if self._screen is None:
+            return True  # ถ้า capture ไม่ได้เลย ถือว่าจอดำ
+        try:
+            mean_brightness = np.mean(self._screen)
+            # ถ้าความสว่างเฉลี่ยต่ำกว่า 15 = จอดำ
+            return mean_brightness < 15
+        except:
             return False
-        # Count black pixels (intensity < 10)
-        black_pixels = np.sum(self._screen < 10)
-        total_pixels = self._screen.size
-        return (black_pixels / total_pixels) > threshold
 
     def check_floating_popups(self):
         """
@@ -1983,7 +1985,7 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
 
             # === Black Screen Check (8 วิแล้ว clear + restart app) ===
-            if self._screen is not None and self.check_black_screen():
+            if self.check_black_screen():
                 if black_screen_timer is None:
                     black_screen_timer = time.time()
                     print(f"[{self.device_id}] Black screen detected, starting timer...")
