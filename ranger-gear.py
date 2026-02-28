@@ -1412,12 +1412,13 @@ class RangerGearBot(threading.Thread):
                 continue
 
             # === SPECIAL CASE: apple.png ===
-            # เจอ apple -> กด refresh -> รอ check.png -> วนจนผ่าน
-            # ถ้าวน 15 รอบแล้วยังเจอ apple อยู่ -> return "failed" ส่งไป login-failed
+            # เจอ fixid ก่อน -> กด fixok -> refresh -> check -> วนเช็ค fixid ไปเรื่อยๆ
+            # ถ้าเจอ fixid ครบ 15 รอบ -> return "failed" ส่งไป login-failed
+            # ถ้าไม่เจอ fixid -> ผ่านไปต่อ step ถัดไป
             if item == 'apple.png':
-                print(f"[{self.device_id}] Waiting for apple.png (special refresh loop)...")
-                apple_refresh_count = 0
-                max_apple_retries = 15
+                print(f"[{self.device_id}] Apple step: checking for fixid loop...")
+                fixid_count = 0
+                max_fixid_retries = 15
                 
                 while True:
                     self.capture_screen()
@@ -1437,38 +1438,43 @@ class RangerGearBot(threading.Thread):
                         return "restart"
                     if err == "stopcheck": return "complete"
                     
-                    # ถ้าเจอ check.png -> กด check.png แล้วผ่านไปได้เลย (แทน apple)
-                    if self.exists_in_cache("img/check.png"):
-                        print(f"[{self.device_id}] Found check.png! Clicking and moving on...")
-                        self.click("img/check.png")
-                        sleep(1)
-                        break
-                    
-                    # ถ้าเจอ apple.png -> กด refresh แทน
-                    if self.exists_in_cache("img/apple.png"):
-                        apple_refresh_count += 1
-                        print(f"[{self.device_id}] Found apple.png (attempt {apple_refresh_count}/{max_apple_retries}), clicking refresh...")
+                    # === เจอ fixid.png -> เริ่ม loop: fixok -> refresh -> check ===
+                    if self.exists_in_cache("img/fixid.png"):
+                        fixid_count += 1
+                        print(f"[{self.device_id}] Found fixid.png ({fixid_count}/{max_fixid_retries})")
                         
-                        if apple_refresh_count >= max_apple_retries:
-                            print(f"[{self.device_id}] Apple refresh limit reached ({max_apple_retries} times)! Sending to login-failed...")
+                        if fixid_count >= max_fixid_retries:
+                            print(f"[{self.device_id}] fixid limit reached ({max_fixid_retries} times)! Sending to login-failed...")
                             return "failed"
                         
-                        # กด refresh
-                        if self.exists_in_cache("img/refresh.png"):
-                            self.click("img/refresh.png")
-                            print(f"[{self.device_id}] Clicked refresh.png, waiting for check.png...")
-                        else:
-                            print(f"[{self.device_id}] refresh.png not found on screen, waiting...")
+                        # 1) กด fixok
+                        print(f"[{self.device_id}] Step 1: clicking fixok.png...")
+                        for _ in range(30):
+                            self.capture_screen()
+                            if self.exists_in_cache("img/fixok.png"):
+                                self.click("img/fixok.png")
+                                print(f"[{self.device_id}] Clicked fixok.png")
+                                sleep(2)
+                                break
+                            sleep(1)
                         
-                        sleep(3)
+                        # 2) กด refresh
+                        print(f"[{self.device_id}] Step 2: clicking refresh.png...")
+                        for _ in range(30):
+                            self.capture_screen()
+                            if self.exists_in_cache("img/refresh.png"):
+                                self.click("img/refresh.png")
+                                print(f"[{self.device_id}] Clicked refresh.png")
+                                sleep(3)
+                                break
+                            sleep(1)
                         
-                        # หลังกด refresh, วนรอ check.png (timeout 60 วิ)
+                        # 3) รอ check.png แล้วกด (timeout 60 วิ)
+                        print(f"[{self.device_id}] Step 3: waiting for check.png...")
                         check_wait_start = time.time()
-                        found_check = False
                         while time.time() - check_wait_start < 60:
                             self.capture_screen()
                             
-                            # เช็ค error ระหว่างรอ
                             err2 = self.check_error_images()
                             if err2 == "fixcak": return "restart"
                             if err2 == "fixbug":
@@ -1480,24 +1486,20 @@ class RangerGearBot(threading.Thread):
                             if err2 == "stopcheck": return "complete"
                             
                             if self.exists_in_cache("img/check.png"):
-                                print(f"[{self.device_id}] Found check.png after refresh! Clicking...")
+                                print(f"[{self.device_id}] Found check.png! Clicking...")
                                 self.click("img/check.png")
-                                sleep(1)
-                                found_check = True
-                                break
-                            
-                            # ถ้าเจอ apple อีก -> break ออกไปวน refresh ใหม่
-                            if self.exists_in_cache("img/apple.png"):
-                                print(f"[{self.device_id}] Still seeing apple.png, will retry refresh...")
+                                sleep(2)
                                 break
                             
                             sleep(1)
                         
-                        if found_check:
-                            break  # ผ่าน apple step แล้ว ไปต่อ item ถัดไป
-                        continue  # ยังไม่ผ่าน -> วนกลับไปเช็ค apple/refresh อีกรอบ
+                        # วนกลับไปเช็ค fixid อีกรอบ
+                        continue
                     
-                    sleep(1)  # ยังไม่เจออะไร -> รอ
+                    # === ไม่เจอ fixid -> ผ่านไปได้เลย ===
+                    print(f"[{self.device_id}] No fixid.png found, apple step passed!")
+                    break
+                    
                 continue  # ไปต่อ item ถัดไปใน sequence
 
             print(f"[{self.device_id}] Waiting for {item}...")
@@ -1868,6 +1870,7 @@ class RangerGearBot(threading.Thread):
     # =========================================================
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
+        self._login_fixid_count = 0  # Reset fixid counter for each new ID
         
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -2038,9 +2041,77 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] {reason} detected! Stopping login...")
                 return "kaiby"
 
-            # Failed
+            # === fixid.png Check -> fixok -> refresh -> check (ยังไม่ clear, ให้มันทำงานก่อน) ===
+            if self.exists_in_cache("img/fixid.png"):
+                if not hasattr(self, '_login_fixid_count'):
+                    self._login_fixid_count = 0
+                self._login_fixid_count += 1
+                print(f"[{self.device_id}] Found fixid.png in login ({self._login_fixid_count}/15), doing fixok -> refresh -> check...")
+                
+                if self._login_fixid_count >= 15:
+                    print(f"[{self.device_id}] fixid limit reached (15 times) in login! Failing...")
+                    self._login_fixid_count = 0
+                    return "failed"
+                
+                # 1) กด fixok
+                for _ in range(30):
+                    self.capture_screen()
+                    if self.exists_in_cache("img/fixok.png"):
+                        self.click("img/fixok.png")
+                        print(f"[{self.device_id}] Clicked fixok.png")
+                        sleep(2)
+                        break
+                    sleep(1)
+                
+                # 2) กด refresh
+                for _ in range(30):
+                    self.capture_screen()
+                    if self.exists_in_cache("img/refresh.png"):
+                        self.click("img/refresh.png")
+                        print(f"[{self.device_id}] Clicked refresh.png")
+                        sleep(3)
+                        break
+                    sleep(1)
+                
+                # 3) รอ check.png แล้วกด
+                check_wait_start = time.time()
+                while time.time() - check_wait_start < 60:
+                    self.capture_screen()
+                    if self.exists_in_cache("img/check.png"):
+                        print(f"[{self.device_id}] Found check.png! Clicking...")
+                        self.click("img/check.png")
+                        sleep(2)
+                        break
+                    sleep(1)
+                
+                loop_count = 0
+                continue
+
+            # === กรณีที่ 2: เจอ refresh.png (ไม่มี fixid) -> กด refresh -> check ===
+            if self.exists_in_cache("img/refresh.png"):
+                print(f"[{self.device_id}] Found refresh.png (no fixid), clicking refresh -> check...")
+                self.click("img/refresh.png")
+                print(f"[{self.device_id}] Clicked refresh.png")
+                sleep(3)
+                
+                # รอ check.png แล้วกด
+                check_wait_start = time.time()
+                while time.time() - check_wait_start < 60:
+                    self.capture_screen()
+                    if self.exists_in_cache("img/check.png"):
+                        print(f"[{self.device_id}] Found check.png! Clicking...")
+                        self.click("img/check.png")
+                        sleep(2)
+                        break
+                    sleep(1)
+                
+                loop_count = 0
+                continue
+
+            # Failed (only if no fixid and no refresh)
             if self.exists_in_cache("img/login-failed.png"):
                 print(f"[{self.device_id}] Login failed (login-failed.png detected)")
+                self._login_fixid_count = 0
                 return "failed"
                 
             # Error/Reset

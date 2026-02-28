@@ -1,6 +1,6 @@
 {
   "success_count": 10,
-  "fail_count": 0,
+  "fail_count": 10,
   "hero_found_list": {
     "anya+yor": 3,
     "outlawboss": 1,
@@ -13,9 +13,9 @@
   },
   "device_statuses": {
     "emulator-5556": {
-      "step": "Logging in...",
-      "status": "working"
+      "step": "Waiting for files",
+      "status": "waiting"
     }
   },
-  "last_update": 1772256387.7377572
+  "last_update": 1772272690.0418591
 }
