@@ -1971,11 +1971,37 @@ class RangerGearBot(threading.Thread):
         
         # เปิดแอปด้วย am start (เร็วกว่าและเสถียรกว่าคลิก icon.png)
         self.open_app()
-        sleep(5)
+        sleep(3)
+        
+        # === Black Screen Check หลังเปิดแอพ (8 วิ ถ้ายังดำ/เทา → clear + restart) ===
+        for black_attempt in range(3):  # ลองได้ 3 ครั้ง
+            black_start = time.time()
+            is_stuck = False
+            while time.time() - black_start < 8:
+                self.capture_screen()
+                if self._screen is not None:
+                    mean_val = float(np.mean(self._screen))
+                    if mean_val >= 80:
+                        # จอสว่างแล้ว = แอพโหลดสำเร็จ
+                        print(f"[{self.device_id}] [BLACK] Screen OK! brightness={mean_val:.0f} (app loaded)")
+                        is_stuck = False
+                        break
+                    else:
+                        is_stuck = True
+                else:
+                    is_stuck = True
+                sleep(1)
+            
+            if is_stuck:
+                print(f"[{self.device_id}] [BLACK] Dark screen 8s after launch! (attempt {black_attempt+1}/3) Clearing...")
+                self.clear_and_restart()
+                self.open_app()
+                sleep(3)
+            else:
+                break  # แอพโหลดสำเร็จ ออกจาก loop
             
         loop_count = 0
         status = "unknown"
-        black_screen_timer = None  # เช็คจอดำ 15 วิ
         
         while True:
             loop_count += 1
@@ -1983,40 +2009,6 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] Login loop iteration {loop_count}")
 
             self.capture_screen()
-
-            # === Black Screen Check (8 วิแล้ว clear + restart app) ===
-            is_black = False
-            if self._screen is None:
-                is_black = True
-                print(f"[{self.device_id}] [BLACK] Screen capture failed (None)")
-            else:
-                try:
-                    mean_val = float(np.mean(self._screen))
-                    if mean_val < 80:
-                        is_black = True
-                        if loop_count % 3 == 0:
-                            print(f"[{self.device_id}] [BLACK] Mean brightness: {mean_val:.1f} (< 80 = dark/stuck)")
-                except:
-                    is_black = True
-            
-            if is_black:
-                if black_screen_timer is None:
-                    black_screen_timer = time.time()
-                    print(f"[{self.device_id}] [BLACK] Black screen detected! Starting 8s timer...")
-                else:
-                    elapsed = time.time() - black_screen_timer
-                    if elapsed >= 8:
-                        print(f"[{self.device_id}] [BLACK] Black screen > 8s! Clearing and restarting app...")
-                        self.clear_and_restart()
-                        self.open_app()
-                        sleep(3)
-                        black_screen_timer = None
-                        loop_count = 0
-                        continue
-                    elif loop_count % 3 == 0:
-                        print(f"[{self.device_id}] [BLACK] Still black... ({elapsed:.0f}s / 8s)")
-            else:
-                black_screen_timer = None
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
             if self.exists_in_cache("img/fixplay.png"):
