@@ -1577,286 +1577,15 @@ class RangerGearBot(threading.Thread):
         return False
 
     # =========================================================
-    # FIND RANGER PROCESS
+    # LOGIN SUCCESS BACKUP
     # =========================================================
-    def process_find_ranger(self, current_file):
-        """Process find-ranger sequence - Returns results dict instead of backing up"""
-        if not self.do_ranger:
-            return {}
+    def backup_to_success(self, filename, source_path):
+        """Backup pref file to login-success folder"""
+        success_dir = os.path.join("backup-id", "login-success")
+        if not os.path.exists(success_dir):
+            os.makedirs(success_dir)
         
-        print(f"\n[{self.device_id}] === Starting FIND-RANGER Process ===\n")
-        
-        results = {}
-        
-        # Step 1 & 2: Navigation to search screen
-        print(f"[{self.device_id}] Starting persistent navigation (Searching for sec1/sec2)...")
-        sec1_clicked = False
-        while True:
-            self.capture_screen()
-
-            # ---- Check floating popups ----
-            self.check_floating_popups()
-            # --------------------------------
-            
-            # Check for crash/close while waiting
-            if self.exists_in_cache("img/icon.png"):
-                print(f"[{self.device_id}] App crashed, restarting...")
-                self.click("img/icon.png")
-                sleep(5)
-                sec1_clicked = False # Reset flag on crash
-
-            # Check if we are already at sec2
-            if self.exists_in_cache("img/sec2.png"):
-                print(f"[{self.device_id}] Reached search screen (sec2), clicking to confirm...")
-                self.click("img/sec2.png")
-                break
-                
-            # Try clicking sec1 only once
-            if not sec1_clicked and self.exists_in_cache("img/sec1.png"):
-                print(f"[{self.device_id}] Found sec1, clicking once then waiting for sec2...")
-                self.click("img/sec1.png")
-                sec1_clicked = True
-                sleep(3) # Initial wait after click
-            
-            # If nothing found or already clicked sec1, just wait and loop again
-            sleep(1.5)
-            
-        print(f"[{self.device_id}] Reached search screen successfully.")
-        sleep(0.5)
-        
-        # Loop through each character
-        for i, character in enumerate(self.characters):
-            print(f"\n[{self.device_id}] --- Character {i+1}/{len(self.characters)}: {character} ---")
-            
-            # a) Tap search box position first
-            print(f"[{self.device_id}] Tapping search box (388, 288)")
-            self.tap(388, 288)
-            sleep(0.3)
-            
-            # b) Type character name
-            print(f"[{self.device_id}] Typing: {character}")
-            self.type_text(character)
-            sleep(0.5)
-            
-            # c) Click sec3
-            print(f"[{self.device_id}] Clicking sec3.png")
-            if not self.wait_and_click_image("sec3.png", timeout=15):
-                print(f"[{self.device_id}] Failed to find sec3, skipping character")
-                continue
-            sleep(0.3)
-            
-            # d) Click sec4
-            print(f"[{self.device_id}] Clicking sec4.png")
-            if not self.wait_and_click_image("sec4.png", timeout=15):
-                print(f"[{self.device_id}] Failed to find sec4, skipping character")
-                continue
-            
-            # Add longer wait for search results to appear
-            print(f"[{self.device_id}] Waiting 2.0s for results...")
-            sleep(2.0)
-            
-            # e) Scan ranger images with RETRY (to be sure)
-            current_found_in_iteration = False
-            # Revert to full folder scan as requested ("ขอแบบเดิมเลย")
-            matching_files = self.ranger_files
-
-            for attempt in range(2):
-                if attempt > 0:
-                    print(f"[{self.device_id}] Retry scanning ranger (Attempt {attempt+1})...")
-                    sleep(1.0)
-                    
-                self.capture_screen()
-                self.check_floating_popups()
-                
-                for ranger_img in matching_files:
-                    ranger_path = f"img/{ranger_img}"
-                    # Use very high similarity 0.95 for strict matching (Original images)
-                    if self.exists_in_cache(ranger_path, similarity=0.95):
-                        # Get base filename
-                        file_base = ranger_img.split('/')[-1].replace(".png", "")
-                        found_hero_name = file_base
-                            
-                        # Get folder name from config or default to found_hero_name
-                        if isinstance(self.ranger_image_mapping, dict) and ranger_img in self.ranger_image_mapping:
-                            data = self.ranger_image_mapping[ranger_img]
-                            if isinstance(data, dict):
-                                hero_name = data.get("hero", found_hero_name)
-                                folder_name = data.get("folder", hero_name)
-                            else:
-                                hero_name = found_hero_name
-                                folder_name = str(data)
-                        else:
-                            hero_name = found_hero_name
-                            folder_name = hero_name
-                        
-                        results[hero_name] = folder_name
-                        current_found_in_iteration = True
-                        print(f"[{self.device_id}] Found ranger: {ranger_img} -> hero: {hero_name}, folder: {folder_name}")
-                
-                if current_found_in_iteration:
-                    break # Stop retrying if found
-            
-            if current_found_in_iteration:
-                print(f"[{self.device_id}] Iteration results: {results}")
-            else:
-                print(f"[{self.device_id}] No rangers found for character: {character}")
-            
-            # f) Click sec5
-            print(f"[{self.device_id}] Clicking sec5.png")
-            if not self.wait_and_click_image("sec5.png", timeout=15):
-                print(f"[{self.device_id}] Failed to find sec5, continuing")
-            sleep(0.3)
-            
-            # g) Click sec2 again for next character (if not last)
-            if i < len(self.characters) - 1:
-                if not self.wait_and_click_image("sec2.png", timeout=15):
-                    print(f"[{self.device_id}] Failed to find sec2 for next iteration")
-                    break
-        
-        # Print final results
-        print(f"\n[{self.device_id}] ========== FIND-RANGER RESULTS ==========")
-        print(f"[{self.device_id}] File: {self.current_original_filename}")
-        if results:
-            for hero_name, folder_name in results.items():
-                print(f"[{self.device_id}]   {hero_name} -> {folder_name}")
-        else:
-            print(f"[{self.device_id}]   No rangers found for any character")
-        print(f"[{self.device_id}] ==========================================\n")
-        
-        # IMPORTANT: Return results instead of backing up
-        # The backup will be done in main_login after combining with gear results
-        print(f"[{self.device_id}] Find-Ranger complete - NOT clearing app, continuing to gear...")
-        return results
-
-    def backup_ranger_results(self, results):
-        """Save backup based on find-ranger results"""
-        filename = self.current_original_filename or "unknown.xml"
-        source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
-        
-        self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-        self.adb_shell(f"su -c 'chmod 777 {source_path}'")
-        
-        if results:
-            # Build folder name from folder values
-            folder_parts = sorted(set(results.values()))
-            folder_name = "+".join(folder_parts)
-            
-            backup_dir = os.path.join("backup-id", folder_name)
-            if not os.path.exists(backup_dir):
-                os.makedirs(backup_dir)
-            
-            dst = os.path.join(backup_dir, filename)
-            result = subprocess.run(
-                [self.adb_cmd, '-s', self.device_id, 'pull', source_path, dst],
-                capture_output=True, text=True
-            )
-            
-            if result.returncode == 0:
-                print(f"[{self.device_id}] Backed up to: {dst}")
-            else:
-                print(f"[{self.device_id}] Backup failed: {result.stderr}")
-        else:
-            # No results -> not-found
-            not_found_dir = "not-found"
-            if not os.path.exists(not_found_dir):
-                os.makedirs(not_found_dir)
-            
-            dst = os.path.join(not_found_dir, filename)
-            result = subprocess.run(
-                [self.adb_cmd, '-s', self.device_id, 'pull', source_path, dst],
-                capture_output=True, text=True
-            )
-            
-            if result.returncode == 0:
-                print(f"[{self.device_id}] Backed up to not-found: {dst}")
-            else:
-                print(f"[{self.device_id}] Backup failed: {result.stderr}")
-
-    # =========================================================
-    # CHECK GEAR PROCESS
-    # =========================================================
-    def process_check_gear(self, current_file, ranger_results=None, skip_findgear1=False):
-        """Process check-gear sequence
-        
-        Args:
-            current_file: Current file being processed
-            ranger_results: Dict of ranger results to combine with gear results
-            skip_findgear1: If True, skip findgear1 and go directly to findgear2 (used when coming from ranger process)
-        """
-        if not self.do_gear:
-            return {}
-        
-        print(f"\n[{self.device_id}] === Starting CHECK-GEAR Process ===\n")
-        
-        filename = self.current_original_filename or "unknown_LINE_COCOS_PREF_KEY.xml"
-        source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
-        
-        # If skip_findgear1 is True, we're coming from ranger and should go directly to findgear2
-        if skip_findgear1:
-            print(f"[{self.device_id}] Skipping findgear1 (continuing from ranger process)...")
-            sleep(1)
-        else:
-            # Normal flow: click findgear1.png first
-            if not self.wait_and_click_image("findgear1.png"):
-                print(f"[{self.device_id}] Failed to find findgear1.png")
-                return set()
-        
-        # Click findgear2.png -> findgear3.png
-        if not self.wait_and_click_image("findgear2.png"):
-            print(f"[{self.device_id}] Failed to find findgear2.png")
-            return set()
-        
-        if not self.wait_and_click_image("findgear3.png"):
-            print(f"[{self.device_id}] Failed to find findgear3.png")
-            return set()
-        
-        # Click checkgear2.png -> checkgear3.png
-        if not self.wait_and_click_image("checkgear2.png"):
-            print(f"[{self.device_id}] Failed to find checkgear2.png")
-        
-        if not self.wait_and_click_image("checkgear3.png"):
-            print(f"[{self.device_id}] Failed to find checkgear3.png")
-        
-        # Step 2: Read gear names with OCR
-        print(f"\n[{self.device_id}] Starting gear OCR check...")
-        all_found_gears = set()
-        
-        # Round 1: Direct OCR check
-        print(f"[{self.device_id}] Round 1: Direct OCR check")
-        all_found_gears.update(self.check_gear_by_text())
-        sleep(2)
-        
-        # Round 2: Check weapons tab 1
-        self.capture_screen()
-        self.check_floating_popups()
-        if self.exists_in_cache("img/weapons1.png"):
-            print(f"\n[{self.device_id}] Round 2: Checking after weapons1.png")
-            self.click("img/weapons1.png")
-            sleep(2)
-            all_found_gears.update(self.check_gear_by_text())
-            sleep(1)
-        
-        # Round 3: Check weapons tab 2
-        self.capture_screen()
-        self.check_floating_popups()
-        if self.exists_in_cache("img/weapons2.png"):
-            print(f"\n[{self.device_id}] Round 3: Checking after weapons2.png")
-            self.click("img/weapons2.png")
-            sleep(2)
-            all_found_gears.update(self.check_gear_by_text())
-            sleep(1)
-        
-        # Return gear results (will be combined with ranger results in main_login)
-        print(f"\n[{self.device_id}] Gear results: {all_found_gears if all_found_gears else 'none'}")
-        return all_found_gears
-
-    def backup_to_not_found(self, filename, source_path):
-        """Backup pref file to not-found folder"""
-        not_found_dir = "not-found"
-        if not os.path.exists(not_found_dir):
-            os.makedirs(not_found_dir)
-        
-        backup_path = os.path.join(not_found_dir, filename)
+        backup_path = os.path.join(success_dir, filename)
         
         result = subprocess.run(
             [self.adb_cmd, '-s', self.device_id, 'pull', source_path, backup_path],
@@ -1864,7 +1593,7 @@ class RangerGearBot(threading.Thread):
         )
         
         if result.returncode == 0:
-            print(f"[{self.device_id}] Backed up to not-found: {backup_path}")
+            print(f"[{self.device_id}] Backed up to login-success: {backup_path}")
         else:
             print(f"[{self.device_id}] Backup failed: {result.stderr}")
 
@@ -2008,99 +1737,30 @@ class RangerGearBot(threading.Thread):
                 loop_count = 0
                 continue
                 
-            # *** SUCCESS -> Run find-ranger or check-gear ***
+            # *** SUCCESS -> Just Login and Backup ***
             if self.exists_in_cache("img/stoplogin.png"):
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
                 
-                ranger_results = {}
-                gear_results = set()
-                
-                # Run ranger process first if enabled
-                if self.do_ranger:
-                    ranger_results = self.process_find_ranger(current_filename)
-                
-                # Then run gear process if enabled
-                if self.do_gear:
-                    # If both ranger and gear, skip findgear1 since we're already in the app
-                    skip_gear1 = self.do_ranger and self.do_gear
-                    gear_results = self.process_check_gear(current_filename, ranger_results, skip_findgear1=skip_gear1)
-                
-                # Combine results and backup
                 filename = self.current_original_filename or "unknown.xml"
                 source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
                 
-                # Create subfolder name from all found items
-                all_names_list = []
-                if ranger_results:
-                    all_names_list.extend(ranger_results.values())
-                if gear_results:
-                    all_names_list.extend(gear_results)
-                
-                found_names = "+".join(sorted(set(all_names_list))) if all_names_list else "unknown"
-                
-                # Determine category folder name
-                # 1. Gear + Ranger found -> "gear+ranger"
-                # 2. Only Gear found -> "gear only"
-                # 3. Only Ranger found -> "ranger", "ranger(2)", "ranger(3)", etc.
-                has_ranger = len(ranger_results) > 0
-                has_gear = len(gear_results) > 0
-                
-                category = "unknown"
-                if has_gear and has_ranger:
-                    category = "gear+ranger"
-                elif has_gear:
-                    category = "gear only"
-                elif has_ranger:
-                    count = len(ranger_results)
-                    category = "ranger" if count == 1 else f"ranger({count})"
-                
-                if category != "unknown":
-                    msg = f"[{self.device_id}] 🏆 Success! Found {category}: {found_names}"
-                    if GUI_INSTANCE:
-                        GUI_INSTANCE.log("SUCCESS", msg)
-                    else:
-                        print(msg)
-                    
-                    # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
-                    ui_stats.update_hero(found_names)
-                    
-                    # chmod for pull
-                    self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-                    self.adb_shell(f"su -c 'chmod 777 {source_path}'")
-                    
-                    # Create backup folder structure: backup-id/category/found_names
-                    backup_dir = os.path.join("backup-id", category, found_names)
-                    if not os.path.exists(backup_dir):
-                        os.makedirs(backup_dir)
-                    
-                    # Pull file
-                    dst = os.path.join(backup_dir, filename)
-                    result = subprocess.run(
-                        [self.adb_cmd, '-s', self.device_id, 'pull', source_path, dst],
-                        capture_output=True, text=True
-                    )
-                    
-                    if result.returncode == 0:
-                        print(f"[{self.device_id}] ✓ Backed up to: {dst}")
-                    else:
-                        print(f"[{self.device_id}] ✗ Backup failed: {result.stderr}")
+                msg = f"[{self.device_id}] 🏆 Success Login!"
+                if GUI_INSTANCE:
+                    GUI_INSTANCE.log("SUCCESS", msg)
                 else:
-                    # No results from either ranger or gear -> backup to not-found
-                    msg = f"[{self.device_id}] ไม่เจอ Ranger/Gear ที่ต้องการ"
-                    if GUI_INSTANCE:
-                        GUI_INSTANCE.log("INFO", msg)
-                    else:
-                        print(msg)
-                    
-                    # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
-                    ui_stats.update_hero("ไม่เจอ")
-                    
-                    print(f"[{self.device_id}] No results from ranger or gear - backing up to not-found")
-                    self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-                    self.adb_shell(f"su -c 'chmod 777 {source_path}'")
-                    self.backup_to_not_found(filename, source_path)
+                    print(msg)
                 
-                # Clear app and restart
+                # Update stats
+                ui_stats.update_hero("Login Success")
+                
+                # chmod for pull
+                self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
+                self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+                
+                # Backup to success folder
+                self.backup_to_success(filename, source_path)
+                
+                # Clear app and restart for next ID
                 self.clear_and_restart()
                 return "success"
                 
