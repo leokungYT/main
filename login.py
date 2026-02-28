@@ -259,7 +259,7 @@ if GUI_AVAILABLE:
             global GUI_INSTANCE
             GUI_INSTANCE = self
             
-            self.title("Ranger+Gear")
+            self.title("loginสะสม")
             self.geometry("620x530")
             self.devices = devices
             self.args = args

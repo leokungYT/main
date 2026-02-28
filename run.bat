@@ -1,1 +1,0 @@
-py ranger-gear.py
