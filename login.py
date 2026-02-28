@@ -1526,6 +1526,11 @@ class RangerGearBot(threading.Thread):
                         return "restart"
                     if err == "stopcheck": return "complete"
                     
+                    # === fixid1.png → failed ทันที ===
+                    if self.exists_in_cache("img/fixid1.png"):
+                        print(f"[{self.device_id}] Found fixid1.png! -> login-failed immediately")
+                        return "failed"
+
                     # === เจอ fixid.png -> เริ่ม loop: fixok -> refresh -> check ===
                     if self.exists_in_cache("img/fixid.png"):
                         fixid_count += 1
@@ -1756,6 +1761,12 @@ class RangerGearBot(threading.Thread):
                 self.click("img/fixnet1.png")
                 sleep(1)
                 continue
+
+            # === fixid1.png → failed ทันที ===
+            if self.exists_in_cache("img/fixid1.png"):
+                print(f"[{self.device_id}] Found fixid1.png! -> login-failed immediately")
+                self._login_fixid_count = 0
+                return "failed"
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png"):
