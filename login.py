@@ -1937,13 +1937,15 @@ class RangerGearBot(threading.Thread):
                 sleep(1)
                 self.adb_shell("input keyevent 4")  # Back button
                 sleep(2)
+                
+                # เช็ค cancel.png เฉพาะหลังเจอ event เท่านั้น
+                self.capture_screen()
+                if self.exists_in_cache("img/cancel.png"):
+                    print(f"[{self.device_id}] Cancel button after event. Clicking...")
+                    self.click("img/cancel.png")
+                    sleep(1)
+                
                 loop_count -= 1
-                continue
-
-            if self.exists_in_cache("img/cancel.png"):
-                print(f"[{self.device_id}] Cancel button detected (Exit prompt?). Clicking...")
-                self.click("img/cancel.png")
-                sleep(1)
                 continue
             
             sleep(2)
