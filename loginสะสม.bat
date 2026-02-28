@@ -29,7 +29,7 @@ if %UPDATE_COUNT% GTR 0 (
     if not errorlevel 1 (
         echo [UPDATE] Downloading latest files...
         git reset --hard origin/main
-        git pull origin main
+        git clean -f
         echo [DONE] Update complete!
     ) else (
         echo [SKIP] Update skipped by user

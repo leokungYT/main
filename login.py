@@ -1706,6 +1706,23 @@ class RangerGearBot(threading.Thread):
 
             self.capture_screen()
 
+            # === Black Screen Check (8 วิแล้ว clear + restart app) ===
+            if self._screen is not None and self.check_black_screen():
+                if black_screen_timer is None:
+                    black_screen_timer = time.time()
+                    print(f"[{self.device_id}] Black screen detected, starting timer...")
+                else:
+                    elapsed = time.time() - black_screen_timer
+                    if elapsed >= 8:
+                        print(f"[{self.device_id}] Black screen > 8s! Clearing and restarting app...")
+                        self.clear_and_restart()
+                        self.open_app()
+                        sleep(3)
+                        black_screen_timer = None
+                        continue
+            else:
+                black_screen_timer = None
+
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
@@ -1728,23 +1745,6 @@ class RangerGearBot(threading.Thread):
                 self.click("img/fixnet1.png")
                 sleep(1)
                 continue
-
-            # === Black Screen Check (15 วิแล้ว restart app) ===
-            if self.check_black_screen():
-                if black_screen_timer is None:
-                    black_screen_timer = time.time()
-                else:
-                    elapsed = time.time() - black_screen_timer
-                    if elapsed >= 15:
-                        print(f"[{self.device_id}] Black screen > 15s! Restarting app...")
-                        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                        sleep(1)
-                        self.open_app()
-                        sleep(3)
-                        black_screen_timer = None
-                        continue
-            else:
-                black_screen_timer = None
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png"):

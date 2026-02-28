@@ -29,7 +29,7 @@ if not exist "%TARGET_FOLDER%" (
 )
 
 :: 2. Download the latest version
-echo [1/4] Downloading latest version from GitHub...
+echo [1/5] Downloading latest version from GitHub...
 curl -L %REPO_URL% -o %ZIP_NAME%
 
 if %ERRORLEVEL% NEQ 0 (
@@ -40,7 +40,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 :: 3. Extract files
-echo [2/4] Extracting files...
+echo [2/5] Extracting files...
 if exist "%EXTRACT_DIR%" rd /s /q "%EXTRACT_DIR%"
 powershell -Command "Expand-Archive -Path '%ZIP_NAME%' -DestinationPath '%EXTRACT_DIR%' -Force"
 
@@ -54,13 +54,21 @@ if not defined SOURCE_FOLDER (
     exit /b 1
 )
 
-:: 4. Update files (Mirror/Overwrite into target 'main' folder)
-echo [3/4] Updating files in %TARGET_FOLDER% folder...
-:: /s /e /y /q: recursive, include empty folders, overwrite, quiet
+:: 4. DELETE all FILES in target folder (keep folders!) + delete img folder
+echo [3/5] Removing old files and img folder...
+pushd "%TARGET_FOLDER%"
+for %%f in (*.*) do (
+    del /q "%%f" >nul 2>&1
+)
+if exist "img" rd /s /q "img"
+popd
+
+:: 5. Copy new files from extracted zip
+echo [4/5] Copying new files to %TARGET_FOLDER% folder...
 xcopy /s /e /y /q "%SOURCE_FOLDER%\*" "%TARGET_FOLDER%\"
 
-:: 5. Cleanup
-echo [4/4] Cleaning up temporary files...
+:: 6. Cleanup
+echo [5/5] Cleaning up temporary files...
 del /q "%ZIP_NAME%"
 rd /s /q "%EXTRACT_DIR%"
 
