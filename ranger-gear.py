@@ -649,9 +649,10 @@ def find_adb_executable():
 
 
 def connect_known_ports():
-    """Auto-scan and connect to common emulator ports using ThreadPoolExecutor"""
-    ports = [5555, 5556, 5557, 5558, 5559, 5560, 5561, 5562, 5563, 5564, 5565,
-             5575, 5585, 7555, 62001, 62025, 62026, 21503, 21513, 21523, 21533]
+    """Auto-scan and connect to common emulator ports using ThreadPoolExecutor (รองรับ 50 จอ)"""
+    # สร้าง port range: 5555-5665 (odd ports สำหรับ MuMu/LDPlayer/Nox) + common ports
+    ports = list(range(5555, 5666))  # 5555-5665 ครอบคลุม 50+ จอ
+    ports += [7555, 62001, 62025, 62026, 21503, 21513, 21523, 21533, 21543, 21553]
 
     def try_connect(port):
         addr = f"127.0.0.1:{port}"
@@ -755,6 +756,50 @@ class RangerGearBot(threading.Thread):
         self._screen = None
         self._screen_color = None
         self._template_cache = {}
+
+    def open_app(self):
+        """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
+        attempt = 0
+        while attempt < 5:
+            attempt += 1
+            try:
+                if attempt % 2 == 1:
+                    self.adb_run([
+                        self.adb_cmd, "-s", self.device_id, "shell",
+                        "am", "start", "-S", "-n",
+                        "com.linecorp.LGRGS/com.linecorp.common.activity.LineActivity"
+                    ], timeout=10)
+                else:
+                    self.adb_run([
+                        self.adb_cmd, "-s", self.device_id, "shell",
+                        "monkey", "-p", "com.linecorp.LGRGS",
+                        "-c", "android.intent.category.LAUNCHER", "1"
+                    ], timeout=10)
+                
+                sleep(3)
+                
+                try:
+                    pid_result = subprocess.run(
+                        [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    pid = pid_result.stdout.strip()
+                except Exception:
+                    pid = ""
+                
+                if pid:
+                    print(f"[{self.device_id}] ✓ App running (PID: {pid}) - attempt {attempt}")
+                    return True
+                else:
+                    print(f"[{self.device_id}] ✗ App crashed/bounced! (attempt {attempt}) Retrying...")
+                    sleep(2)
+                    
+            except Exception as e:
+                print(f"[{self.device_id}] Error opening app (attempt {attempt}): {e}")
+                sleep(2)
+        
+        print(f"[{self.device_id}] Failed to open app after 5 attempts!")
+        return False
 
     def run(self):
         try:
@@ -1178,10 +1223,18 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/unkhow.png"):
             return "unkhow"
             
-        # Icon check (if app crashed/closed to home screen)
+        # App crash check: เช็คว่าแอปยังรันอยู่ไหม (ใช้ pidof แทน icon.png)
         if not skip_icon:
-            if self.exists_in_cache("img/icon.png"):
-                return "icon"
+            try:
+                pid_result = subprocess.run(
+                    [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
+                    capture_output=True, text=True, timeout=5
+                )
+                pid = pid_result.stdout.strip()
+                if not pid:
+                    return "icon"
+            except:
+                pass
             
         if self.exists_in_cache("img/kaiby.png"):
             return "kaiby"
@@ -1389,8 +1442,8 @@ class RangerGearBot(threading.Thread):
             err = self.check_error_images(skip_icon=skip_icon)
             if err == "fixcak": return "restart"
             if err == "icon":
-                print(f"[{self.device_id}] App closed/crashed! Clicking icon to relaunch...")
-                self.click("img/icon.png")
+                print(f"[{self.device_id}] App closed/crashed! Relaunching with am start...")
+                self.open_app()
                 return "restart"
             if err == "stopcheck": return "complete"
 
@@ -1421,8 +1474,8 @@ class RangerGearBot(threading.Thread):
                         self.click("img/unkhow.png")
                         return "restart"
                     if err == "icon":
-                        print(f"[{self.device_id}] App closed/crashed! Clicking icon to relaunch...")
-                        self.click("img/icon.png")
+                        print(f"[{self.device_id}] App closed/crashed! Relaunching with am start...")
+                        self.open_app()
                         return "restart"
                     if err == "stopcheck": return "complete"
                     
@@ -1436,15 +1489,10 @@ class RangerGearBot(threading.Thread):
             img_path = f"img/{item}" if isinstance(item, str) and not item.startswith('img') else item
             
             if item == 'icon.png':
-                print(f"[{self.device_id}] Waiting for app icon...")
-                for _ in range(30):
-                    self.capture_screen()
-                    if self.exists_in_cache(img_path):
-                        self.click(img_path)
-                        print(f"[{self.device_id}] App icon clicked, waiting 4s for launch...")
-                        sleep(4)
-                        break
-                    sleep(1)
+                print(f"[{self.device_id}] Opening app via am start (instead of icon click)...")
+                self.open_app()
+                print(f"[{self.device_id}] App launched, waiting 4s...")
+                sleep(4)
                 continue
 
             # === SPECIAL CASE: apple.png ===
@@ -1469,8 +1517,8 @@ class RangerGearBot(threading.Thread):
                         self.click("img/unkhow.png")
                         return "restart"
                     if err == "icon":
-                        print(f"[{self.device_id}] App closed/crashed! Clicking icon to relaunch...")
-                        self.click("img/icon.png")
+                        print(f"[{self.device_id}] App closed/crashed! Relaunching with am start...")
+                        self.open_app()
                         return "restart"
                     if err == "stopcheck": return "complete"
                     
@@ -1517,7 +1565,7 @@ class RangerGearBot(threading.Thread):
                                 self.click("img/fixbuglogin.png")
                                 return "restart"
                             if err2 == "icon":
-                                self.click("img/icon.png")
+                                self.open_app()
                                 return "restart"
                             if err2 == "stopcheck": return "complete"
                             
@@ -1560,8 +1608,8 @@ class RangerGearBot(threading.Thread):
                     self.click("img/unkhow.png")
                     return "restart"
                 if err == "icon":
-                    print(f"[{self.device_id}] App closed/crashed! Clicking icon to relaunch...")
-                    self.click("img/icon.png")
+                    print(f"[{self.device_id}] App closed/crashed! Relaunching with am start...")
+                    self.open_app()
                     return "restart"
                 if err == "stopcheck":
                     print(f"[{self.device_id}] Found stopcheck.png! Skipping to complete.")
@@ -1626,12 +1674,19 @@ class RangerGearBot(threading.Thread):
             self.check_floating_popups()
             # --------------------------------
             
-            # Check for crash/close while waiting
-            if self.exists_in_cache("img/icon.png"):
-                print(f"[{self.device_id}] App crashed, restarting...")
-                self.click("img/icon.png")
-                sleep(5)
-                sec1_clicked = False # Reset flag on crash
+            # Check for crash while waiting (ใช้ pidof แทน icon.png)
+            try:
+                pid_result = subprocess.run(
+                    [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if not pid_result.stdout.strip():
+                    print(f"[{self.device_id}] App crashed, relaunching...")
+                    self.open_app()
+                    sleep(5)
+                    sec1_clicked = False
+            except:
+                pass
 
             # Check if we are already at sec2
             if self.exists_in_cache("img/sec2.png"):
@@ -1912,13 +1967,13 @@ class RangerGearBot(threading.Thread):
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
         
-        # Click icon if found
-        if self.exists("img/icon.png"):
-            self.click("img/icon.png")
-            sleep(5)
+        # เปิดแอปด้วย am start (เร็วกว่าและเสถียรกว่าคลิก icon.png)
+        self.open_app()
+        sleep(5)
             
         loop_count = 0
         status = "unknown"
+        black_screen_timer = None  # เช็คจอดำ 15 วิ
         
         while True:
             loop_count += 1
@@ -1949,6 +2004,23 @@ class RangerGearBot(threading.Thread):
                 self.click("img/fixnet1.png")
                 sleep(1)
                 continue
+
+            # === Black Screen Check (15 วิแล้ว restart app) ===
+            if self.check_black_screen():
+                if black_screen_timer is None:
+                    black_screen_timer = time.time()
+                else:
+                    elapsed = time.time() - black_screen_timer
+                    if elapsed >= 15:
+                        print(f"[{self.device_id}] Black screen > 15s! Restarting app...")
+                        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                        sleep(1)
+                        self.open_app()
+                        sleep(3)
+                        black_screen_timer = None
+                        continue
+            else:
+                black_screen_timer = None
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png"):
@@ -2012,13 +2084,20 @@ class RangerGearBot(threading.Thread):
                 continue
             # ====================================================
 
-            # Crash/Icon Check
-            if self.exists_in_cache("img/icon.png"):
-                print(f"[{self.device_id}] App crashed during login. Restarting...")
-                self.click("img/icon.png")
-                sleep(5)
-                loop_count = 0
-                continue
+            # Crash Check: ใช้ pidof + open_app แทนคลิก icon.png
+            try:
+                pid_result = subprocess.run(
+                    [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if not pid_result.stdout.strip():
+                    print(f"[{self.device_id}] App crashed during login. Relaunching...")
+                    self.open_app()
+                    sleep(5)
+                    loop_count = 0
+                    continue
+            except:
+                pass
             
             # fixalerterror1 Check
             if self.exists_in_cache("img/fixalerterror1.png"):
@@ -2155,9 +2234,8 @@ class RangerGearBot(threading.Thread):
                     sleep(2)
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
                 sleep(3)
-                if self.exists("img/icon.png"):
-                    self.click("img/icon.png")
-                    sleep(5)
+                self.open_app()
+                sleep(5)
                 loop_count = 0
                 continue
             
