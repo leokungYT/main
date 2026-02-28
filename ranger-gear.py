@@ -374,11 +374,39 @@ if GUI_AVAILABLE:
             backup_folder = os.path.join(base_path, "backup")
             heroes_folder = os.path.join(base_path, "backup-id")
             
-            ctk.CTkButton(bottom_bar, text="🔌 Start ADB", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#4caf50").pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="🔌 Connect Missing", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#4caf50", command=self.connect_missing_devices).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="⚙ Config", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=self.open_config).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="📁 Backup", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{backup_folder}"')).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="🦸 Heroes", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{heroes_folder}"')).pack(side="left", padx=3, pady=4)
             ctk.CTkLabel(bottom_bar, text="v3.2.0", font=ctk.CTkFont(size=10), text_color="#888888").pack(side="right", padx=8)
+
+        def connect_missing_devices(self):
+            """Scan for missing adb connections and start them dynamically"""
+            self.log("INFO", "Scanning for missing emulators...")
+            current_devices = get_connected_devices()
+            emulator_devices = [d for d in current_devices if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
+            
+            new_count = 0
+            for dev in emulator_devices:
+                if dev not in self.devices:
+                    new_count += 1
+                    self.devices.append(dev)
+                    # Add to UI
+                    m = DeviceMonitorWidget(self.dev_scroll, dev, len(self.devices))
+                    m.pack(fill="x", pady=1)
+                    self.device_monitors[dev] = m
+                    
+                    # Start bot thread
+                    if not getattr(self.args, 'no_start', False):
+                        bot = RangerGearBot(dev, self.args)
+                        bot.start()
+                        self.bot_threads.append(bot)
+                    self.log("SUCCESS", f"Connected new device: {dev}")
+            
+            if new_count > 0:
+                self.lbl_status.configure(text=f"   ● ONLINE ({len(self.devices)})")
+            else:
+                self.log("INFO", "No new devices found.")
 
         def log(self, level, message): 
             ts = datetime.now().strftime("%H:%M:%S")
@@ -2197,6 +2225,21 @@ if __name__ == "__main__":
             except: pass
     if cleanup_count > 0:
         print(f"[CLEANUP] Removed {cleanup_count} stale .lock file(s)")
+
+    # 3. ลบไฟล์ shared_stats.json เพื่อล้างค่าจากรอบเก่า
+    shared_stats_file = ui_stats._get_shared_file()
+    if os.path.exists(shared_stats_file):
+        try:
+            os.remove(shared_stats_file)
+            print("[CLEANUP] Removed old shared_stats.json")
+        except: pass
+    
+    # รีเซ็ตค่าในหน่วยความจำด้วย
+    ui_stats.success_count = 0
+    ui_stats.fail_count = 0
+    ui_stats.hero_found_list = {}
+    ui_stats.device_statuses = {}
+    ui_stats.save_shared()
     
     if not find_adb_executable():
         print("ADB Not Found.")
