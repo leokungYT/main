@@ -1709,19 +1709,36 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
 
             # === Black Screen Check (8 วิแล้ว clear + restart app) ===
-            if self.check_black_screen():
+            is_black = False
+            if self._screen is None:
+                is_black = True
+                print(f"[{self.device_id}] [BLACK] Screen capture failed (None)")
+            else:
+                try:
+                    mean_val = float(np.mean(self._screen))
+                    if mean_val < 30:
+                        is_black = True
+                        if loop_count % 3 == 0:
+                            print(f"[{self.device_id}] [BLACK] Mean brightness: {mean_val:.1f} (< 30 = black)")
+                except:
+                    is_black = True
+            
+            if is_black:
                 if black_screen_timer is None:
                     black_screen_timer = time.time()
-                    print(f"[{self.device_id}] Black screen detected, starting timer...")
+                    print(f"[{self.device_id}] [BLACK] Black screen detected! Starting 8s timer...")
                 else:
                     elapsed = time.time() - black_screen_timer
                     if elapsed >= 8:
-                        print(f"[{self.device_id}] Black screen > 8s! Clearing and restarting app...")
+                        print(f"[{self.device_id}] [BLACK] Black screen > 8s! Clearing and restarting app...")
                         self.clear_and_restart()
                         self.open_app()
                         sleep(3)
                         black_screen_timer = None
+                        loop_count = 0
                         continue
+                    elif loop_count % 3 == 0:
+                        print(f"[{self.device_id}] [BLACK] Still black... ({elapsed:.0f}s / 8s)")
             else:
                 black_screen_timer = None
 
