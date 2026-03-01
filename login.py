@@ -1606,6 +1606,11 @@ class RangerGearBot(threading.Thread):
             self.click("img/fixnet1.png")
             sleep(1)
 
+        if self.exists_in_cache("img/fixaccep.png"):
+            print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
+            self.click("img/fixaccep.png")
+            sleep(1)
+
     def check_error_images(self, skip_fixcak=False, skip_icon=False):
         """Check error images using cached screen"""
 
@@ -2183,6 +2188,12 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/fixnet1.png"):
                 print(f"[{self.device_id}] [POPUP] fixnet1.png detected in login loop, clicking...")
                 self.click("img/fixnet1.png")
+                sleep(1)
+                continue
+
+            if self.exists_in_cache("img/fixaccep.png"):
+                print(f"[{self.device_id}] [POPUP] fixaccep.png detected in login loop, clicking...")
+                self.click("img/fixaccep.png")
                 sleep(1)
                 continue
 
