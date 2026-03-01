@@ -2,6 +2,9 @@ import cv2
 import numpy as np
 import subprocess
 import os
+
+# ลดการแย่งชิง CPU สำหรับ OpenCV เมื่อรันหลายเครื่องพร้อมกัน
+cv2.setNumThreads(1)
 import time
 from time import sleep
 import sys
@@ -109,6 +112,10 @@ class SimpleUIStats:
                         shared_heroes = data.get("hero_found_list", {})
                         for h, count in shared_heroes.items():
                             self.hero_found_list[h] = max(self.hero_found_list.get(h, 0), count)
+                            
+                        # Load login times
+                        self.total_login_time = data.get("total_login_time", self.total_login_time)
+                        self.login_time_count = data.get("login_time_count", self.login_time_count)
                             
                         # Update device statuses
                         self.device_statuses.update(data.get("device_statuses", {}))
@@ -1422,23 +1429,33 @@ class RangerGearBot(threading.Thread):
         return cls._template_cache_cls[template_path]
 
     def adb_run(self, args, timeout=10, **kwargs):
+        if 'creationflags' not in kwargs and os.name == 'nt':
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
         return subprocess.run(args, capture_output=True, timeout=timeout, **kwargs)
 
     def adb_shell(self, shell_cmd, timeout=10):
+        kwargs = {}
+        if os.name == 'nt':
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
         return subprocess.run(
             [self.adb_cmd, "-s", self.device_id, "shell", shell_cmd],
-            capture_output=True, timeout=timeout)
+            capture_output=True, timeout=timeout, **kwargs)
 
     def capture_screen(self):
         """Capture screen and load into RAM"""
+        sleep(0.3)  # เบรกลดภาระ CPU ไม่ให้วนลูปดึงจอเร็วเกินไป
+        
         if getattr(self, "last_activity_time", 0) and (time.time() - self.last_activity_time) > 500:
             print(f"[{self.device_id}] TIMEOUT: Inactive for 500s. Restarting bot sequence.")
             self.last_activity_time = time.time()
             raise RestartTimeoutError("500s Timeout")
         try:
+            kwargs = {}
+            if os.name == 'nt':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                capture_output=True, timeout=10
+                capture_output=True, timeout=10, **kwargs
             )
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
@@ -2121,19 +2138,20 @@ class RangerGearBot(threading.Thread):
 
             self.capture_screen()
 
-            # === เช็คว่าเกมยังรันอยู่จริงไหม (ทุกรอบ) ===
-            try:
-                pid_result = subprocess.run(
-                    [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
-                    capture_output=True, text=True, timeout=5
-                )
-                if not pid_result.stdout.strip():
-                    print(f"[{self.device_id}] [CRASH] App not running! Relaunching...")
-                    self.open_app()
-                    sleep(5)
-                    continue
-            except:
-                pass
+            # === เช็คว่าเกมยังรันอยู่จริงไหม (เช็คทุกๆ 15 รอบ ป้องกันหน่วง) ===
+            if loop_count % 15 == 0:
+                try:
+                    pid_result = subprocess.run(
+                        [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if not pid_result.stdout.strip():
+                        print(f"[{self.device_id}] [CRASH] App not running! Relaunching...")
+                        self.open_app()
+                        sleep(5)
+                        continue
+                except:
+                    pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
             if self.exists_in_cache("img/fixnetv2.png"):
@@ -2144,7 +2162,7 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache("img/fixnetv2ok.png"):
                     self.click("img/fixnetv2ok.png")
                     sleep(1)
-                return
+                continue
 
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
