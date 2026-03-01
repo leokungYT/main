@@ -2336,27 +2336,21 @@ class RangerGearBot(threading.Thread):
                 sleep(1)
                 continue
 
-            # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png (เหมือน mainLG.py)
+            # Event / Popups (กลับมาใช้โค้ดเดิม)
             if self.exists_in_cache("img/event.png"):
-                event_passed = True
-                print(f"[{self.device_id}] Event popup detected. Clicking event then spamming BACK...")
+                event_passed = True  # หลังจากนี้หยุดเช็ค fixok
+                print(f"[{self.device_id}] Event popup detected. Clicking then Back...")
                 self.click("img/event.png")
                 sleep(1)
+                self.adb_shell("input keyevent 4")  # Back button
+                sleep(2)
                 
-                # รัว BACK จนเจอ cancel.png
-                back_count = 0
-                while back_count < 20:  # สูงสุด 20 ครั้ง
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    back_count += 1
-                    print(f"[{self.device_id}] BACK press #{back_count}")
-                    sleep(0.3)
-                    
-                    self.capture_screen()
-                    if self.exists_in_cache("img/cancel.png"):
-                        print(f"[{self.device_id}] Found cancel.png after {back_count} BACK presses. Clicking...")
-                        self.click("img/cancel.png")
-                        sleep(1)
-                        break
+                # เช็ค cancel.png เฉพาะหลังเจอ event เท่านั้น
+                self.capture_screen()
+                if self.exists_in_cache("img/cancel.png"):
+                    print(f"[{self.device_id}] Cancel button after event. Clicking...")
+                    self.click("img/cancel.png")
+                    sleep(1)
                 
                 loop_count -= 1
                 continue
