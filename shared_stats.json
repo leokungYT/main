@@ -1,21 +1,14 @@
 {
-  "success_count": 10,
-  "fail_count": 10,
+  "success_count": 4,
+  "fail_count": 0,
   "hero_found_list": {
-    "anya+yor": 3,
-    "outlawboss": 1,
-    "anyaU+power": 1,
-    "new-soldier+yor": 1,
-    "yor": 1,
-    "kappa": 1,
-    "power": 1,
-    "conyfly+outlawboss+power+powerU": 1
+    "Login Success": 4
   },
   "device_statuses": {
     "emulator-5556": {
-      "step": "Waiting for files",
-      "status": "waiting"
+      "step": "Logging in...",
+      "status": "working"
     }
   },
-  "last_update": 1772272690.0418591
+  "last_update": 1772363429.1099749
 }

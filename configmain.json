@@ -1,0 +1,58 @@
+{
+    "7day": 0,
+    "shopgacha": 0,
+    "swap_shop": 0,
+    "swap_shopevent": 0,
+    "all-tiket": 0,
+    "all-in": 0,
+    "box_first_round": 1,
+    "box_second_round": 0,
+    "max-gacha": 0,
+    "channel": "ch2",
+    "channels_img": 0,
+    "channels": {
+        "ch1": [
+            732,
+            189
+        ],
+        "ch2": [
+            748,
+            309
+        ],
+        "ch3": [
+            745,
+            380
+        ],
+        "ch4": [
+            742,
+            169
+        ],
+        "ch5": [
+            745,
+            312
+        ]
+    },
+    "auto_trade": {
+        "enabled": 0,
+        "swap_shop1": 1,
+        "swap_shop2": 1,
+        "swap_shopkom": 1,
+        "swap_shopkom9star": 1
+    },
+    "HERO_MAPPING": {
+        "gachahero1": "kappa+",
+        "gachahero2": "bosslaw+",
+        "gachahero3": "anya+",
+        "gachahero4": "anya+U"
+    },
+    "loop1": 0,
+    "link": 0,
+    "ruby-gear200": 0,
+    "random-gear": 0,
+    "check-gear": 0,
+    "use_ocr": 0,
+    "box_settings": {
+        "first_round": 1,
+        "second_round": 0
+    }
+}

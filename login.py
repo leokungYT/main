@@ -38,6 +38,8 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # Statistics and GUI Tracking
 # =========================================================
 # ----- Simplified UI Stats Class -----
+class RestartTimeoutError(Exception): pass
+
 class SimpleUIStats:
     def __init__(self):
         self.total_files = 0
@@ -55,6 +57,8 @@ class SimpleUIStats:
         self.fail_count = 0    # Matches bot fail_count
         # hero found list with counts
         self.hero_found_list = {}  # {hero_combo: count} e.g. {'Yor': 1, 'Yor+Anya': 2}
+        self.total_login_time = 0.0
+        self.login_time_count = 0
         
     def _get_shared_file(self):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared_stats.json")
@@ -68,7 +72,9 @@ class SimpleUIStats:
                     "fail_count": self.fail_count,
                     "hero_found_list": self.hero_found_list,
                     "device_statuses": self.device_statuses,
-                    "last_update": time.time()
+                    "last_update": time.time(),
+                    "total_login_time": self.total_login_time,
+                    "login_time_count": self.login_time_count
                 }
                 path = self._get_shared_file()
                 tmp_path = path + ".tmp"
@@ -109,6 +115,13 @@ class SimpleUIStats:
                 break
             except Exception as e:
                 time.sleep(0.1)
+
+    def record_login_time(self, duration_sec):
+        self.load_shared()
+        with self.lock:
+            self.total_login_time += duration_sec
+            self.login_time_count += 1
+            self.save_shared()
 
     def update(self, total=None, processed=None, success=None, fail=None, devices=None, hero_found=None, hero_not_found=None):
         self.load_shared() # Pull latest from others first to avoid overwriting counts
@@ -151,84 +164,337 @@ ui_stats = SimpleUIStats()
 GUI_INSTANCE = None
 
 if GUI_AVAILABLE:
-    class CollabConfigWindow(ctk.CTkToplevel):
+    class MainConfigWindow(ctk.CTkToplevel):
+        """Window to edit config.json settings"""
         def __init__(self, parent):
             super().__init__(parent)
-            self.title("⚙ Config Settings")
-            self.geometry("350x380")
-            self.resizable(False, False)
-            self.transient(parent)
-            self.grab_set()
-            
-            ctk.CTkLabel(self, text="Application Settings", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(10, 5))
-            
-            # Use switches for main modes
-            self.vars = {}
-            self.add_switch("Find Ranger", "find_ranger")
-            self.add_switch("Find Gear", "find_gear")
-            self.add_switch("Find Both (All)", "find_all")
-            self.add_switch("First Loop Process", "first_loop")
-            self.add_switch("Custom Mode", "custommode")
-            
-            # Thread delay entry
-            delay_frame = ctk.CTkFrame(self, fg_color="transparent")
-            delay_frame.pack(fill="x", padx=20, pady=5)
-            ctk.CTkLabel(delay_frame, text="Thread Delay (sec):").pack(side="left")
-            self.ent_delay = ctk.CTkEntry(delay_frame, width=60)
-            self.ent_delay.insert(0, str(config.get("thread_delay", 5)))
-            self.ent_delay.pack(side="right")
-            
-            ctk.CTkButton(self, text="💾 Save Changes", command=self.save_config, fg_color="#2cc985", hover_color="#229f69", height=32).pack(pady=20)
-            
-        def add_switch(self, label, key):
-            var = tk.IntVar(value=config.get(key, 0))
-            self.vars[key] = var
-            chk = ctk.CTkSwitch(self, text=label, variable=var)
-            chk.pack(pady=5, padx=25, anchor="w")
-
-        def save_config(self):
-            # Update global config and save to file
-            for key, var in self.vars.items():
-                config[key] = var.get()
-            
-            try:
-                config["thread_delay"] = int(self.ent_delay.get())
-            except:
-                pass
-                
-            main_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ranger-gear_config.json")
-            try:
-                with open(main_config_file, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, indent=4, ensure_ascii=False)
-                print(f"[CONFIG] Saved updated settings to {main_config_file}")
-            except Exception as e:
-                print(f"[ERR] Failed to save config: {e}")
-            self.destroy()
-
-    class HeroFoldersWindow(ctk.CTkToplevel):
-        def __init__(self, parent):
-            super().__init__(parent)
-            self.title("🦸 Hero Folders")
-            self.geometry("320x400")
+            self.title("⚙️ ตั้งค่า Config")
+            self.geometry("550x650")
             self.parent = parent
-            self.resizable(False, False)
+            
             self.transient(parent)
             self.grab_set()
             self.focus_force()
             
-            ctk.CTkLabel(self, text="Hero Folders", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(8, 5))
-            self.scroll_frame = ctk.CTkScrollableFrame(self, width=280, height=300)
-            self.scroll_frame.pack(fill="both", expand=True, padx=10, pady=5)
-            self.load_hero_folders()
+            self.cfg = self.load_config()
+            self.vars = {}
             
-        def load_hero_folders(self):
-            # Show "no-find" and categories if they exist
-            base_dir = os.path.join(os.getcwd(), "backup-id")
-            if os.path.exists(base_dir):
-                for folder in os.listdir(base_dir):
-                    btn = ctk.CTkButton(self.scroll_frame, text=f"📁 {folder}", fg_color="#2a3a5c", height=28, anchor="w",
-                                        command=lambda f=folder: subprocess.Popen(f'explorer "{os.path.join(base_dir, f)}"'))
-                    btn.pack(fill="x", pady=1)
+            scroll_frame = ctk.CTkScrollableFrame(self, width=500, height=500)
+            scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+            
+            ctk.CTkLabel(scroll_frame, text="🎮 ฟีเจอร์เกม", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 5), anchor="w")
+            
+            self.add_switch(scroll_frame, "Loop1 (เปิดเกมครั้งแรก)", "loop1")
+            self.add_switch(scroll_frame, "7-Day (รับของ 7 วัน)", "7day")
+            self.add_switch(scroll_frame, "แลกแต้มเขียว Leonard", "shopgacha")
+            self.add_switch(scroll_frame, "สุ่มตัว (Swap Shop)", "swap_shop")
+            self.add_switch(scroll_frame, "สุ่มตัว Event", "swap_shopevent")
+            self.add_switch(scroll_frame, "ใช้ตั๋วทั้งหมด", "all-tiket")
+            self.add_switch(scroll_frame, "ระบบ Link", "link")
+            self.add_switch(scroll_frame, "ใช้เพชรในการสุ่ม", "all-in")
+            
+            # Max Gacha - ใส่ตัวเลข
+            max_gacha_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            max_gacha_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(max_gacha_frame, text="จำนวนสุ่มสูงสุด (0=ไม่จำกัด):", anchor="w").pack(side="left")
+            self.max_gacha_entry = ctk.CTkEntry(max_gacha_frame, width=80)
+            self.max_gacha_entry.insert(0, str(self.cfg.get("max-gacha", 0)))
+            self.max_gacha_entry.pack(side="left", padx=10)
+            
+            ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
+            ctk.CTkLabel(scroll_frame, text="⚙️ ตั้งค่า Gear", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(5, 5), anchor="w")
+            
+            self.add_switch(scroll_frame, "Ruby-Gear 200", "ruby-gear200")
+            self.add_switch(scroll_frame, "สุ่ม Gear", "random-gear")
+            self.add_switch(scroll_frame, "ตรวจสอบ Gear", "check-gear")
+            self.add_switch(scroll_frame, "ใช้ OCR (อ่านข้อความ)", "use_ocr")
+            
+            ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
+            ctk.CTkLabel(scroll_frame, text="📦 ตั้งค่ากล่อง", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(5, 5), anchor="w")
+            
+            box_settings = self.cfg.get("box_settings", {})
+            self.box_first_round = ctk.BooleanVar(value=bool(box_settings.get("first_round", 1)))
+            self.box_second_round = ctk.BooleanVar(value=bool(box_settings.get("second_round", 1)))
+            
+            ctk.CTkSwitch(scroll_frame, text="รอบแรก", variable=self.box_first_round).pack(pady=5, padx=20, anchor="w")
+            ctk.CTkSwitch(scroll_frame, text="รอบที่สอง", variable=self.box_second_round).pack(pady=5, padx=20, anchor="w")
+            
+            ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
+            ctk.CTkLabel(scroll_frame, text="📡 ตั้งค่าช่อง", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(5, 5), anchor="w")
+            
+            self.channel_var = ctk.StringVar(value=self.cfg.get("channel", "ch2"))
+            channel_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            channel_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(channel_frame, text="เลือกช่อง:").pack(side="left")
+            channel_options = ["ch1", "ch2", "ch3", "ch4", "ch5"]
+            ctk.CTkOptionMenu(channel_frame, variable=self.channel_var, values=channel_options, width=100).pack(side="left", padx=10)
+            
+            self.add_switch(scroll_frame, "ใช้รูปช่อง", "channels_img")
+            
+            # =============================================
+            # ส่วนตั้งค่า Auto Trade
+            # =============================================
+            ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
+            ctk.CTkLabel(scroll_frame, text="🛒 Auto Trade (ซื้อของ Swap Shop)", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(5, 5), anchor="w")
+            
+            auto_trade_cfg = self.cfg.get("auto_trade", {})
+            self.auto_trade_enabled = ctk.BooleanVar(value=bool(auto_trade_cfg.get("enabled", 1)))
+            ctk.CTkSwitch(scroll_frame, text="เปิดใช้งาน Auto Trade", variable=self.auto_trade_enabled).pack(pady=5, padx=20, anchor="w")
+            
+            # Shop1 - เพชร
+            shop1_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            shop1_frame.pack(fill="x", padx=20, pady=3)
+            ctk.CTkLabel(shop1_frame, text="💎 เพชร (swap_shop1):", anchor="w", width=180).pack(side="left")
+            self.auto_trade_shop1 = ctk.CTkEntry(shop1_frame, width=60)
+            self.auto_trade_shop1.insert(0, str(auto_trade_cfg.get("swap_shop1", 1)))
+            self.auto_trade_shop1.pack(side="left", padx=5)
+            ctk.CTkLabel(shop1_frame, text="ครั้ง", anchor="w").pack(side="left")
+            
+            # Shop2 - ตั๋ว
+            shop2_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            shop2_frame.pack(fill="x", padx=20, pady=3)
+            ctk.CTkLabel(shop2_frame, text="🎟️ ตั๋ว (swap_shop2):", anchor="w", width=180).pack(side="left")
+            self.auto_trade_shop2 = ctk.CTkEntry(shop2_frame, width=60)
+            self.auto_trade_shop2.insert(0, str(auto_trade_cfg.get("swap_shop2", 1)))
+            self.auto_trade_shop2.pack(side="left", padx=5)
+            ctk.CTkLabel(shop2_frame, text="ครั้ง", anchor="w").pack(side="left")
+            
+            # Shopkom - กบฟ้า
+            shopkom_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            shopkom_frame.pack(fill="x", padx=20, pady=3)
+            ctk.CTkLabel(shopkom_frame, text="🐸 กบฟ้า (swap_shopkom):", anchor="w", width=180).pack(side="left")
+            self.auto_trade_shopkom = ctk.CTkEntry(shopkom_frame, width=60)
+            self.auto_trade_shopkom.insert(0, str(auto_trade_cfg.get("swap_shopkom", 1)))
+            self.auto_trade_shopkom.pack(side="left", padx=5)
+            ctk.CTkLabel(shopkom_frame, text="ครั้ง", anchor="w").pack(side="left")
+            
+            # Shopkom9star - กบ9ดาว
+            shopkom9_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            shopkom9_frame.pack(fill="x", padx=20, pady=3)
+            ctk.CTkLabel(shopkom9_frame, text="⭐ กบ9ดาว (swap_shopkom9star):", anchor="w", width=180).pack(side="left")
+            self.auto_trade_shopkom9star = ctk.CTkEntry(shopkom9_frame, width=60)
+            self.auto_trade_shopkom9star.insert(0, str(auto_trade_cfg.get("swap_shopkom9star", 1)))
+            self.auto_trade_shopkom9star.pack(side="left", padx=5)
+            ctk.CTkLabel(shopkom9_frame, text="ครั้ง", anchor="w").pack(side="left")
+            
+            btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+            btn_frame.pack(fill="x", padx=20, pady=10)
+            
+            ctk.CTkButton(btn_frame, text="💾 บันทึก", command=self.save, fg_color="#2cc985", hover_color="#229f69", width=150).pack(side="left", padx=5)
+            ctk.CTkButton(btn_frame, text="❌ ยกเลิก", command=self.destroy, fg_color="#555555", hover_color="#444444", width=100).pack(side="right", padx=5)
+        
+        def load_config(self):
+            try:
+                if os.path.exists('configmain.json'):
+                    with open('configmain.json', 'r', encoding='utf-8') as f:
+                        return json.load(f)
+            except Exception as e:
+                print(f"Error loading config: {e}")
+            return {}
+        
+        def add_switch(self, parent, label, key):
+            val = self.cfg.get(key, 0)
+            var = ctk.BooleanVar(value=bool(val))
+            self.vars[key] = var
+            ctk.CTkSwitch(parent, text=label, variable=var).pack(pady=5, padx=20, anchor="w")
+            
+        def save(self):
+            try:
+                for key, var in self.vars.items():
+                    self.cfg[key] = 1 if var.get() else 0
+                
+                if "box_settings" not in self.cfg:
+                    self.cfg["box_settings"] = {}
+                self.cfg["box_settings"]["first_round"] = 1 if self.box_first_round.get() else 0
+                self.cfg["box_settings"]["second_round"] = 1 if self.box_second_round.get() else 0
+                self.cfg["channel"] = self.channel_var.get()
+                
+                # Save max-gacha as number
+                try:
+                    self.cfg["max-gacha"] = int(self.max_gacha_entry.get())
+                except:
+                    self.cfg["max-gacha"] = 0
+                
+                # Save auto_trade settings
+                if "auto_trade" not in self.cfg:
+                    self.cfg["auto_trade"] = {}
+                self.cfg["auto_trade"]["enabled"] = 1 if self.auto_trade_enabled.get() else 0
+                try:
+                    self.cfg["auto_trade"]["swap_shop1"] = int(self.auto_trade_shop1.get())
+                except:
+                    self.cfg["auto_trade"]["swap_shop1"] = 1
+                try:
+                    self.cfg["auto_trade"]["swap_shop2"] = int(self.auto_trade_shop2.get())
+                except:
+                    self.cfg["auto_trade"]["swap_shop2"] = 1
+                try:
+                    self.cfg["auto_trade"]["swap_shopkom"] = int(self.auto_trade_shopkom.get())
+                except:
+                    self.cfg["auto_trade"]["swap_shopkom"] = 1
+                try:
+                    self.cfg["auto_trade"]["swap_shopkom9star"] = int(self.auto_trade_shopkom9star.get())
+                except:
+                    self.cfg["auto_trade"]["swap_shopkom9star"] = 1
+                
+                with open('configmain.json', 'w', encoding='utf-8') as f:
+                    json.dump(self.cfg, f, indent=4, ensure_ascii=False)
+                
+                messagebox.showinfo("สำเร็จ", "บันทึก Config เรียบร้อย!")
+                try:
+                    global load_config
+                    load_config()
+                except Exception as ex:
+                    print(ex)
+                self.parent.log("INFO", "✅ Config.json อัพเดทแล้ว")
+                self.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"บันทึกไม่สำเร็จ: {e}")
+
+
+    class HeroConfigWindow(ctk.CTkToplevel):
+        """
+        หน้าต่างตั้งค่าชื่อ Ranger และ Gear
+        HERO_MAPPING = ตั้งชื่อ Ranger ที่จะได้เมื่อพบรูป
+        เช่น gachahero1.png พบแล้วจะตั้งชื่อไฟล์เป็น "som+"
+        """
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.title("🦸 ตั้งชื่อ Ranger & Gear")
+            self.geometry("600x700")
+            self.parent = parent
+            
+            self.transient(parent)
+            self.grab_set()
+            self.focus_force()
+            
+            self.cfg = self.load_config()
+            
+            self.tabview = ctk.CTkTabview(self, width=550, height=550)
+            self.tabview.pack(fill="both", expand=True, padx=20, pady=10)
+            
+            self.tabview.add("🦸 Rangers")
+            self.tabview.add("⚙️ Gears")
+            self.tabview.add("🔫 Weapons")
+            
+            self.setup_hero_tab()
+            self.setup_gear_tab()
+            self.setup_weapon_tab()
+            
+            ctk.CTkButton(self, text="💾 บันทึกทั้งหมด", command=self.save_all, fg_color="#2cc985", hover_color="#229f69").pack(pady=10)
+        
+        def load_config(self):
+            try:
+                if os.path.exists('configmain.json'):
+                    with open('configmain.json', 'r', encoding='utf-8') as f:
+                        return json.load(f)
+            except Exception as e:
+                print(f"Error loading config: {e}")
+            return {}
+        
+        def setup_hero_tab(self):
+            tab = self.tabview.tab("🦸 Rangers")
+            
+            # คำอธิบาย
+            desc_frame = ctk.CTkFrame(tab, fg_color="#2b2b2b", corner_radius=8)
+            desc_frame.pack(fill="x", padx=10, pady=(10, 5))
+            ctk.CTkLabel(
+                desc_frame, 
+                text="📌 ตั้งชื่อ Ranger ที่จะบันทึก\\n📂 รูปอยู่ที่: img/ranger/gachaheroX.png\\n💡 เปลี่ยนรูปได้ง่าย แค่วางไฟล์ใหม่ทับ", 
+                font=ctk.CTkFont(size=11),
+                text_color="gray",
+                justify="left"
+            ).pack(padx=10, pady=5)
+            
+            ctk.CTkLabel(tab, text="รูป → ชื่อ Ranger", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=5)
+            
+            self.hero_entries = {}
+            hero_mapping = self.cfg.get("HERO_MAPPING", {})
+            
+            scroll = ctk.CTkScrollableFrame(tab, width=480, height=300)
+            scroll.pack(fill="both", expand=True, padx=10)
+            
+            for img, name in hero_mapping.items():
+                frame = ctk.CTkFrame(scroll, fg_color="transparent")
+                frame.pack(fill="x", pady=2)
+                ctk.CTkLabel(frame, text=f"{img}.png:", width=130, anchor="e").pack(side="left")
+                entry = ctk.CTkEntry(frame, width=200)
+                entry.insert(0, name)
+                entry.pack(side="left", padx=5)
+                self.hero_entries[img] = entry
+        
+        def setup_gear_tab(self):
+            tab = self.tabview.tab("⚙️ Gears")
+            
+            desc_frame = ctk.CTkFrame(tab, fg_color="#2b2b2b", corner_radius=8)
+            desc_frame.pack(fill="x", padx=10, pady=(10, 5))
+            ctk.CTkLabel(
+                desc_frame, 
+                text="📌 ตั้งชื่อ Gear ที่จะบันทึก\\nเมื่อบอทพบรูป gearimgX.png จะตั้งชื่อไฟล์ตามที่กำหนด", 
+                font=ctk.CTkFont(size=11),
+                text_color="gray",
+                justify="left"
+            ).pack(padx=10, pady=5)
+            
+            ctk.CTkLabel(tab, text="รูป → ชื่อ Gear", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=5)
+            
+            self.gear_entries = {}
+            gear_mapping = self.cfg.get("gearname", {})
+            
+            scroll = ctk.CTkScrollableFrame(tab, width=480, height=300)
+            scroll.pack(fill="both", expand=True, padx=10)
+            
+            for img, name in gear_mapping.items():
+                frame = ctk.CTkFrame(scroll, fg_color="transparent")
+                frame.pack(fill="x", pady=2)
+                ctk.CTkLabel(frame, text=f"{img}.png:", width=130, anchor="e").pack(side="left")
+                entry = ctk.CTkEntry(frame, width=200)
+                entry.insert(0, name)
+                entry.pack(side="left", padx=5)
+                self.gear_entries[img] = entry
+        
+        def setup_weapon_tab(self):
+            tab = self.tabview.tab("🔫 Weapons")
+            ctk.CTkLabel(tab, text="เปิด/ปิด Weapon ที่ต้องการตรวจสอบ", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=10)
+            
+            self.weapon_vars = {}
+            weapon_mapping = self.cfg.get("weaponname", {})
+            
+            for img, enabled in weapon_mapping.items():
+                var = ctk.BooleanVar(value=enabled == "true" or enabled == True)
+                self.weapon_vars[img] = var
+                ctk.CTkSwitch(tab, text=img, variable=var).pack(pady=5, padx=20, anchor="w")
+        
+        def save_all(self):
+            try:
+                hero_mapping = {}
+                for img, entry in self.hero_entries.items():
+                    hero_mapping[img] = entry.get()
+                self.cfg["HERO_MAPPING"] = hero_mapping
+                
+                gear_mapping = {}
+                for img, entry in self.gear_entries.items():
+                    gear_mapping[img] = entry.get()
+                self.cfg["gearname"] = gear_mapping
+                
+                weapon_mapping = {}
+                for img, var in self.weapon_vars.items():
+                    weapon_mapping[img] = "true" if var.get() else "false"
+                self.cfg["weaponname"] = weapon_mapping
+                
+                with open('configmain.json', 'w', encoding='utf-8') as f:
+                    json.dump(self.cfg, f, indent=4, ensure_ascii=False)
+                
+                messagebox.showinfo("สำเร็จ", "บันทึก Ranger & Gear เรียบร้อย!")
+                try:
+                    global load_config
+                    load_config()
+                except Exception as ex:
+                    print(ex)
+                self.parent.log("INFO", "✅ Ranger & Gear อัพเดทแล้ว")
+                self.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"บันทึกไม่สำเร็จ: {e}")
+
 
     class DeviceMonitorWidget(ctk.CTkFrame):
         def __init__(self, parent, device_id, index):
@@ -268,6 +534,7 @@ if GUI_AVAILABLE:
             self.hero_stats_labels = {}
             self.hero_rows = {}
             self.hero_filter_text = ""
+            self.is_started = False
             
             self.setup_ui()
             
@@ -277,14 +544,13 @@ if GUI_AVAILABLE:
             # Ensure window is visible
             self.deiconify()
             self.focus_force()
-            print("[GUI] Launched Successfully.")
+            print("[GUI] Launched Successfully. Waiting for manual start.")
             
             if getattr(self.args, 'no_start', False):
                 print("[GUI] Monitor mode active (No internal threads).")
                 self.lbl_auto_start.configure(text="[ DASHBOARD MODE ]", text_color="#ffae42")
             else:
-                print("[GUI] Auto-starting bot threads...")
-                self.start_bot()
+                self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
 
         def setup_ui(self):
             # 1. TOP TOOLBAR
@@ -294,9 +560,18 @@ if GUI_AVAILABLE:
             
             self.lbl_status = ctk.CTkLabel(toolbar, text=f"   ● ONLINE ({len(self.devices)})", font=ctk.CTkFont(size=12, weight="bold"), text_color="#4caf50")
             self.lbl_status.pack(side="left", padx=5)
+
+            self.btn_start = ctk.CTkButton(toolbar, text="▶ START", font=ctk.CTkFont(size=12, weight="bold"), width=80, height=24, fg_color="#e53935", hover_color="#c62828", command=self.start_bot)
+            self.btn_start.pack(side="left", padx=10)
             
-            self.lbl_auto_start = ctk.CTkLabel(toolbar, text="[ AUTO-START ACTIVE ]", font=ctk.CTkFont(size=10, weight="bold"), text_color="#aaaaaa")
-            self.lbl_auto_start.pack(side="left", padx=10)
+            self.lbl_auto_start = ctk.CTkLabel(toolbar, text="[ WAITING FOR START ]", font=ctk.CTkFont(size=10, weight="bold"), text_color="#aaaaaa")
+            self.lbl_auto_start.pack(side="left", padx=5)
+            from datetime import datetime
+            start_time_str = datetime.now().strftime("%H:%M:%S")
+            self.lbl_start_time = ctk.CTkLabel(toolbar, text=f"Started: {start_time_str}", font=ctk.CTkFont(size=12, weight="bold"), text_color="#aaaaaa")
+            self.lbl_start_time.pack(side="right", padx=10)
+            self.lbl_avg_time = ctk.CTkLabel(toolbar, text="Avg Time: -", font=ctk.CTkFont(size=12, weight="bold"), text_color="#2196f3")
+            self.lbl_avg_time.pack(side="right", padx=10)
             
             # Stats on Toolbar (right)
             counter_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
@@ -397,7 +672,7 @@ if GUI_AVAILABLE:
                     self.device_monitors[dev] = m
                     
                     # Start bot thread
-                    if not getattr(self.args, 'no_start', False):
+                    if getattr(self, 'is_started', False) and not getattr(self.args, 'no_start', False):
                         bot = RangerGearBot(dev, self.args)
                         bot.start()
                         self.bot_threads.append(bot)
@@ -416,7 +691,14 @@ if GUI_AVAILABLE:
             self.log_text.configure(state="disabled")
 
         def start_bot(self):
-            self.log("INFO", "Auto-starting Bot Threads...")
+            if getattr(self, 'is_started', False):
+                self.log("WARN", "Bot is already running.")
+                return
+            self.is_started = True
+            if hasattr(self, 'btn_start'):
+                self.btn_start.configure(state="disabled", fg_color="#555555", text="⏳ RUNNING")
+            self.lbl_auto_start.configure(text="[ BOT IS RUNNING ]", text_color="#4caf50")
+            self.log("INFO", "Starting Bot Threads...")
             for device_id in self.devices:
                 bot = RangerGearBot(device_id, self.args)
                 bot.start()
@@ -508,8 +790,8 @@ if GUI_AVAILABLE:
             self.hero_stats_labels[hero_name] = lbl_count
             self.hero_rows[hero_name] = row
 
-        def open_config(self): CollabConfigWindow(self)
-        def open_heroes(self): HeroFoldersWindow(self)
+        def open_config(self): MainConfigWindow(self)
+        def open_heroes(self): HeroConfigWindow(self)
 
 # =============================================================
 # Global Config
@@ -650,9 +932,11 @@ def find_adb_executable():
 
 def connect_known_ports():
     """Auto-scan and connect to common emulator ports using ThreadPoolExecutor (รองรับ 50 จอ)"""
-    # สร้าง port range: 5555-5665 (odd ports สำหรับ MuMu/LDPlayer/Nox) + common ports
-    ports = list(range(5555, 5666))  # 5555-5665 ครอบคลุม 50+ จอ
-    ports += [7555, 62001, 62025, 62026, 21503, 21513, 21523, 21533, 21543, 21553]
+    ports = list(range(5555, 5666, 2))  # LDPlayer 
+    ports += [7555] # MuMu 
+    ports += [16384 + (i * 32) for i in range(40)]  # MuMu 12
+    ports += [62001] + [62025 + i for i in range(40)]  # Nox
+    ports += [21503 + (i * 10) for i in range(40)] # Memu
 
     def try_connect(port):
         addr = f"127.0.0.1:{port}"
@@ -669,7 +953,7 @@ def connect_known_ports():
             pass
         return None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
         futures = {executor.submit(try_connect, port): port for port in ports}
         for future in concurrent.futures.as_completed(futures):
             future.result()
@@ -717,6 +1001,7 @@ class RangerGearBot(threading.Thread):
         safe_dev = device_id.replace(":", "_")
         self.filename = os.path.join(tempfile.gettempdir(), f"screen-{safe_dev}.png")
         self.first_loop_done = not config.get("first_loop", True)
+        self.last_activity_time = time.time()
         
         # Ranger Config
         if self.do_ranger:
@@ -758,6 +1043,7 @@ class RangerGearBot(threading.Thread):
         self._template_cache = {}
 
     def open_app(self):
+        self.last_activity_time = time.time()
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
         attempt = 0
         while attempt < 5:
@@ -859,9 +1145,16 @@ class RangerGearBot(threading.Thread):
                     if injected_file:
                         # 3. Login
                         self.update_gui_status("Logging in...")
-                        status = self.main_login(injected_file)
+                        login_start_time = time.time()
+                        try:
+                            status = self.main_login(injected_file)
+                        except RestartTimeoutError:
+                            status = "timeout"
+                            print(f"[{self.device_id}] Caught 500s Timeout!")
+                            self.clear_and_restart()
                         
                         if status == "success":
+                            ui_stats.record_login_time(time.time() - login_start_time)
                             self.handle_success(xml_file)
                             ui_stats.update(success=ui_stats.success_count + 1, processed=ui_stats.processed_files + 1)
                             self.update_gui_status("Completed", "idle")
@@ -1061,6 +1354,10 @@ class RangerGearBot(threading.Thread):
 
     def capture_screen(self):
         """Capture screen and load into RAM"""
+        if getattr(self, "last_activity_time", 0) and (time.time() - self.last_activity_time) > 500:
+            print(f"[{self.device_id}] TIMEOUT: Inactive for 500s. Restarting bot sequence.")
+            self.last_activity_time = time.time()
+            raise RestartTimeoutError("500s Timeout")
         try:
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
@@ -1122,6 +1419,7 @@ class RangerGearBot(threading.Thread):
             return 0.0
 
     def click(self, PSMRL, similarity=0.8):
+        self.last_activity_time = time.time()
         target = None
         if isinstance(PSMRL, str):
             if os.path.exists(PSMRL):
@@ -1138,6 +1436,7 @@ class RangerGearBot(threading.Thread):
         return False
     
     def tap(self, x, y):
+        self.last_activity_time = time.time()
         """Direct tap without image search - uses a short swipe with random jitter for reliability"""
         import random
         # 1. Faster jitter for multi-process mode
@@ -1149,6 +1448,7 @@ class RangerGearBot(threading.Thread):
                      str(x), str(y), str(x), str(y), "300"])
         
     def type_text(self, text):
+        self.last_activity_time = time.time()
         """Type text via ADB (for search box) - clears it first to avoid double typing"""
         # 1. Clear text (Move to end then send backspaces)
         self.adb_shell("input keyevent 123") # MOVE_END
@@ -1161,6 +1461,7 @@ class RangerGearBot(threading.Thread):
         sleep(0.5) # Wait for UI to process text input
 
     def swipe(self, x1, y1, x2, y2, duration=300):
+        self.last_activity_time = time.time()
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
@@ -1181,6 +1482,16 @@ class RangerGearBot(threading.Thread):
         These are non-blocking: เจอก็กด แล้วทำงานต่อปกติ ไม่ return error
         ควรเรียกหลัง capture_screen() ทุกครั้ง
         """
+        if self.exists_in_cache("img/fixnetv2.png"):
+            print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
+            self.click("img/fixnetv2.png")
+            sleep(2)
+            self.capture_screen()
+            if self.exists_in_cache("img/fixnetv2ok.png"):
+                self.click("img/fixnetv2ok.png")
+                sleep(1)
+            return
+
         if self.exists_in_cache("img/fixplay.png"):
             print(f"[{self.device_id}] [POPUP] fixplay.png detected, clicking...")
             self.click("img/fixplay.png")
@@ -1671,22 +1982,8 @@ class RangerGearBot(threading.Thread):
     # LOGIN SUCCESS BACKUP
     # =========================================================
     def backup_to_success(self, filename, source_path):
-        """Backup pref file to login-success folder"""
-        success_dir = os.path.join("backup-id", "login-success")
-        if not os.path.exists(success_dir):
-            os.makedirs(success_dir)
-        
-        backup_path = os.path.join(success_dir, filename)
-        
-        result = subprocess.run(
-            [self.adb_cmd, '-s', self.device_id, 'pull', source_path, backup_path],
-            capture_output=True, text=True
-        )
-        
-        if result.returncode == 0:
-            print(f"[{self.device_id}] Backed up to login-success: {backup_path}")
-        else:
-            print(f"[{self.device_id}] Backup failed: {result.stderr}")
+        # Disabled moving to login-success folder
+        pass
 
     def clear_and_restart(self):
         """Clear app and prepare for next file"""
@@ -1761,6 +2058,16 @@ class RangerGearBot(threading.Thread):
                 pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
+            if self.exists_in_cache("img/fixnetv2.png"):
+                print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
+                self.click("img/fixnetv2.png")
+                sleep(2)
+                self.capture_screen()
+                if self.exists_in_cache("img/fixnetv2ok.png"):
+                    self.click("img/fixnetv2ok.png")
+                    sleep(1)
+                return
+
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
                 self.click("img/fixplay.png")
