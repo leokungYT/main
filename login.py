@@ -956,7 +956,7 @@ def connect_known_ports():
 
         start_port = 5555
         end_port = 9999
-        ports = list(range(start_port, end_port + 1, 2))  # [5555, 5557, ..., 9999]
+        ports = list(range(start_port, end_port + 1))  # [5555, 5556, 5557, ..., 9999]
 
         print(f"\n--- [ADB] Auto-scanning MuMu ports from {start_port} to {end_port} ({len(ports)} ports) ---")
         
@@ -966,7 +966,7 @@ def connect_known_ports():
                 addr = f"127.0.0.1:{port}"
                 result = subprocess.run(
                     [adb_path, "connect", addr],
-                    capture_output=True, timeout=2, text=True
+                    capture_output=True, timeout=1, text=True
                 )
                 time.sleep(0.3)
                 
@@ -981,7 +981,7 @@ def connect_known_ports():
             return None
 
         # ยิงเชื่อมต่อพร้อมกันด้วย thread pool
-        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
             futures = {executor.submit(try_connect_port, p): p for p in ports}
             for future in concurrent.futures.as_completed(futures):
                 pass
