@@ -649,45 +649,98 @@ def find_adb_executable():
 
 
 def connect_known_ports():
-    """Auto-scan and connect to common emulator ports using ThreadPoolExecutor (รองรับ 50 จอ)"""
-    # สร้าง port range: 5555-5665 (odd ports สำหรับ MuMu/LDPlayer/Nox) + common ports
-    ports = list(range(5555, 5666))  # 5555-5665 ครอบคลุม 50+ จอ
-    ports += [7555, 62001, 62025, 62026, 21503, 21513, 21523, 21533, 21543, 21553]
+    """Auto-scan ALL emulator ports, connect everything that responds"""
+    try:
+        # Kill & start adb server
+        subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=3)
+        time.sleep(0.1)
+        subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
+        time.sleep(0.5)
 
-    def try_connect(port):
-        addr = f"127.0.0.1:{port}"
-        try:
-            result = subprocess.run(
-                [adb_path, "connect", addr],
-                capture_output=True, text=True, timeout=3
-            )
-            out = result.stdout.strip().lower()
-            if "connected" in out and "cannot" not in out:
-                print(f"[OK] Connected: {addr}")
-                return addr
-        except:
-            pass
-        return None
+        # สแกนพอร์ตคี่ตั้งแต่ 5555-5755 (รองรับ 100 จอ MuMu)
+        ports = list(range(5555, 5756, 2))  # [5555, 5557, 5559, ..., 5755]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(try_connect, port): port for port in ports}
-        for future in concurrent.futures.as_completed(futures):
-            future.result()
+        print(f"\n--- [ADB] Auto-scanning {len(ports)} ports (5555-5755 odd) ---")
+        
+        connected = []
+        
+        def try_connect_port(port):
+            """ยิงเชื่อมต่อทีละพอร์ต"""
+            try:
+                addr = f"127.0.0.1:{port}"
+                result = subprocess.run(
+                    [adb_path, "connect", addr],
+                    capture_output=True, timeout=1, text=True
+                )
+                out = result.stdout.lower()
+                if ("connected" in out or "already connected" in out) and "cannot" not in out:
+                    return addr
+            except Exception:
+                pass
+            return None
+
+        # ยิงเชื่อมต่อพร้อมกัน
+        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+            futures = {executor.submit(try_connect_port, p): p for p in ports}
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                if result:
+                    connected.append(result)
+        
+        if connected:
+            print(f"[ADB] Port scan found {len(connected)} device(s): {', '.join(sorted(connected))}")
+        else:
+            print("[ADB] Port scan found no devices.")
+                
+        print("--- Scan Complete ---\n")
+    except Exception as e:
+        print(f"[ADB] Port scan error: {e}")
 
 
 def get_connected_devices():
+    """ดึงรายชื่อ devices ที่ online จาก adb devices (ไม่จำกัดจำนวน, กรองซ้ำ)"""
     try:
         result = subprocess.run(
             [adb_path, "devices"],
             capture_output=True, text=True, timeout=10
         )
         lines = result.stdout.strip().split("\n")[1:]
-        devices = []
+        raw_devices = []
         for line in lines:
             parts = line.strip().split()
             if len(parts) >= 2 and parts[1] == "device":
-                devices.append(parts[0])
-        return list(set(devices)) # Prevent duplicates
+                raw_devices.append(parts[0])
+        
+        if not raw_devices:
+            return []
+                
+        # กรองซ้ำ: ถ้ามี emulator-5556 อยู่แล้ว ไม่ต้องเอา 127.0.0.1:5557 อีก
+        emulator_adb_ports = set()  # เก็บพอร์ต ADB (คี่) ที่ emulator-xxx ครอง
+        for d in raw_devices:
+            if d.startswith("emulator-"):
+                try:
+                    console_port = int(d.replace("emulator-", ""))
+                    emulator_adb_ports.add(console_port + 1)  # emulator-5556 -> ADB port 5557
+                except ValueError:
+                    pass
+        
+        final_devices = []
+        seen = set()
+        for d in raw_devices:
+            if d in seen:
+                continue
+            # ถ้าเป็น 127.0.0.1:port แล้วมี emulator- ครองอยู่แล้ว -> ข้าม
+            if d.startswith("127.0.0.1:"):
+                try:
+                    port = int(d.split(":")[1])
+                    if port in emulator_adb_ports:
+                        continue  # ซ้ำกับ emulator-xxxx
+                except ValueError:
+                    pass
+            seen.add(d)
+            final_devices.append(d)
+        
+        return final_devices
     except Exception as e:
         print(f"[ERR] get_connected_devices: {e}")
         return []

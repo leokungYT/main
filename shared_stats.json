@@ -1,12 +1,14 @@
 {
-  "success_count": 0,
+  "success_count": 1,
   "fail_count": 0,
-  "hero_found_list": {},
+  "hero_found_list": {
+    "anya": 1
+  },
   "device_statuses": {
     "emulator-5556": {
       "step": "Logging in...",
       "status": "working"
     }
   },
-  "last_update": 1772393206.2557101
+  "last_update": 1772393649.7748177
 }
