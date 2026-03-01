@@ -2121,19 +2121,20 @@ class RangerGearBot(threading.Thread):
 
             self.capture_screen()
 
-            # === เช็คว่าเกมยังรันอยู่จริงไหม (ทุกรอบ) ===
-            try:
-                pid_result = subprocess.run(
-                    [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
-                    capture_output=True, text=True, timeout=5
-                )
-                if not pid_result.stdout.strip():
-                    print(f"[{self.device_id}] [CRASH] App not running! Relaunching...")
-                    self.open_app()
-                    sleep(5)
-                    continue
-            except:
-                pass
+            # === เช็คว่าเกมยังรันอยู่จริงไหม (เช็คทุกๆ 15 รอบ ป้องกันหน่วง) ===
+            if loop_count % 15 == 0:
+                try:
+                    pid_result = subprocess.run(
+                        [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if not pid_result.stdout.strip():
+                        print(f"[{self.device_id}] [CRASH] App not running! Relaunching...")
+                        self.open_app()
+                        sleep(5)
+                        continue
+                except:
+                    pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
             if self.exists_in_cache("img/fixnetv2.png"):
@@ -2144,7 +2145,7 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache("img/fixnetv2ok.png"):
                     self.click("img/fixnetv2ok.png")
                     sleep(1)
-                return
+                continue
 
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
