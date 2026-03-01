@@ -673,6 +673,9 @@ if GUI_AVAILABLE:
         def connect_missing_devices(self):
             """Scan for missing adb connections and start them dynamically"""
             self.log("INFO", "Scanning for missing emulators...")
+            # Automatically perform port scan before checking devices
+            connect_known_ports()
+            
             current_devices = get_connected_devices()
             emulator_devices = [d for d in current_devices if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
             
@@ -2377,12 +2380,10 @@ if __name__ == "__main__":
         print("ADB Not Found.")
         sys.exit(1)
     
-    # Reset ADB (Skip if requested)
+    # Reset ADB and execute port scan (Skip if requested)
     if not args.no_reset_adb:
-        print("[INFO] Restarting ADB Server...")
-        subprocess.run([adb_path, "kill-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        subprocess.run([adb_path, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        sleep(2)
+        print("[INFO] Connecting to all MuMu ports (ADB Restart inside)...")
+        connect_known_ports()
         
     devices = []
     if args.device:
