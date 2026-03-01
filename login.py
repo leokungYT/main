@@ -715,6 +715,12 @@ if GUI_AVAILABLE:
             self.log_text.see("end")
             self.log_text.configure(state="disabled")
 
+        def _start_single_bot(self, device_id):
+            bot = RangerGearBot(device_id, self.args)
+            bot.start()
+            self.bot_threads.append(bot)
+            self.log("INFO", f"🚀 Started bot on {device_id}")
+
         def start_bot(self):
             if getattr(self, 'is_started', False):
                 self.log("WARN", "Bot is already running.")
@@ -723,11 +729,14 @@ if GUI_AVAILABLE:
             if hasattr(self, 'btn_start'):
                 self.btn_start.configure(state="disabled", fg_color="#555555", text="⏳ RUNNING")
             self.lbl_auto_start.configure(text="[ BOT IS RUNNING ]", text_color="#4caf50")
-            self.log("INFO", "Starting Bot Threads...")
-            for device_id in self.devices:
-                bot = RangerGearBot(device_id, self.args)
-                bot.start()
-                self.bot_threads.append(bot)
+            
+            delay_sec = config.get("thread_delay", 5)
+            self.log("INFO", f"Starting Bot Threads (Delay: {delay_sec}s per device)...")
+            
+            for i, device_id in enumerate(self.devices):
+                delay_ms = i * int(delay_sec) * 1000
+                # Pass device_id explicitly by freezing the variable in the lambda
+                self.after(delay_ms, lambda d=device_id: self._start_single_bot(d))
 
         def update_realtime_stats(self):
             try:
