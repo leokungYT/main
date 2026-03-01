@@ -2121,20 +2121,19 @@ class RangerGearBot(threading.Thread):
 
             self.capture_screen()
 
-            # === เช็คว่าเกมยังรันอยู่จริงไหม (เช็คทุกๆ 15 รอบ ป้องกันหน่วง) ===
-            if loop_count % 15 == 0:
-                try:
-                    pid_result = subprocess.run(
-                        [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
-                        capture_output=True, text=True, timeout=5
-                    )
-                    if not pid_result.stdout.strip():
-                        print(f"[{self.device_id}] [CRASH] App not running! Relaunching...")
-                        self.open_app()
-                        sleep(5)
-                        continue
-                except:
-                    pass
+            # === เช็คว่าเกมยังรันอยู่จริงไหม (ทุกรอบ) ===
+            try:
+                pid_result = subprocess.run(
+                    [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if not pid_result.stdout.strip():
+                    print(f"[{self.device_id}] [CRASH] App not running! Relaunching...")
+                    self.open_app()
+                    sleep(5)
+                    continue
+            except:
+                pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
             if self.exists_in_cache("img/fixnetv2.png"):
@@ -2145,7 +2144,7 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache("img/fixnetv2ok.png"):
                     self.click("img/fixnetv2ok.png")
                     sleep(1)
-                continue
+                return
 
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
@@ -2336,21 +2335,27 @@ class RangerGearBot(threading.Thread):
                 sleep(1)
                 continue
 
-            # Event / Popups (กลับมาใช้โค้ดเดิม)
+            # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png (เหมือน mainLG.py)
             if self.exists_in_cache("img/event.png"):
-                event_passed = True  # หลังจากนี้หยุดเช็ค fixok
-                print(f"[{self.device_id}] Event popup detected. Clicking then Back...")
+                event_passed = True
+                print(f"[{self.device_id}] Event popup detected. Clicking event then spamming BACK...")
                 self.click("img/event.png")
                 sleep(1)
-                self.adb_shell("input keyevent 4")  # Back button
-                sleep(2)
                 
-                # เช็ค cancel.png เฉพาะหลังเจอ event เท่านั้น
-                self.capture_screen()
-                if self.exists_in_cache("img/cancel.png"):
-                    print(f"[{self.device_id}] Cancel button after event. Clicking...")
-                    self.click("img/cancel.png")
-                    sleep(1)
+                # รัว BACK จนเจอ cancel.png
+                back_count = 0
+                while back_count < 20:  # สูงสุด 20 ครั้ง
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    back_count += 1
+                    print(f"[{self.device_id}] BACK press #{back_count}")
+                    sleep(0.3)
+                    
+                    self.capture_screen()
+                    if self.exists_in_cache("img/cancel.png"):
+                        print(f"[{self.device_id}] Found cancel.png after {back_count} BACK presses. Clicking...")
+                        self.click("img/cancel.png")
+                        sleep(1)
+                        break
                 
                 loop_count -= 1
                 continue
