@@ -954,11 +954,11 @@ def connect_known_ports():
         subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
         time.sleep(0.5)
 
-        start_port = 5557
-        max_devices = 30
-        ports = [start_port + (i * 2) for i in range(max_devices)]  # [5557, 5559, 5561, ..., 5615]
+        start_port = 5555
+        end_port = 9999
+        ports = list(range(start_port, end_port + 1, 2))  # [5555, 5557, ..., 9999]
 
-        print(f"\n--- [ADB] Auto-scanning MuMu ports from {start_port} ({max_devices} devices) ---")
+        print(f"\n--- [ADB] Auto-scanning MuMu ports from {start_port} to {end_port} ({len(ports)} ports) ---")
         
         def try_connect_port(port):
             """เชื่อมต่อ port แต่ละดวง"""
@@ -981,7 +981,7 @@ def connect_known_ports():
             return None
 
         # ยิงเชื่อมต่อพร้อมกันด้วย thread pool
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
             futures = {executor.submit(try_connect_port, p): p for p in ports}
             for future in concurrent.futures.as_completed(futures):
                 pass
