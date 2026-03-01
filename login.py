@@ -770,10 +770,18 @@ if GUI_AVAILABLE:
                     
                     # Update Filter
                     self.filter_heroes()
+                    
+                    # Update Avg Time
+                    if ui_stats.login_time_count > 0:
+                        avg_sec = ui_stats.total_login_time / ui_stats.login_time_count
+                        if avg_sec >= 60:
+                            self.lbl_avg_time.configure(text=f"Avg: {avg_sec/60:.1f}m")
+                        else:
+                            self.lbl_avg_time.configure(text=f"Avg: {avg_sec:.0f}s")
             except Exception as e:
                 print(f"[GUI] Update error: {e}")
             
-            self.after(500, self.update_realtime_stats)
+            self.after(2000, self.update_realtime_stats)
 
         def on_filter_changed(self):
             self.hero_filter_text = self.ent_filter.get().lower()
@@ -2327,21 +2335,27 @@ class RangerGearBot(threading.Thread):
                 sleep(1)
                 continue
 
-            # Event / Popups
+            # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png (เหมือน mainLG.py)
             if self.exists_in_cache("img/event.png"):
-                event_passed = True  # หลังจากนี้หยุดเช็ค fixok
-                print(f"[{self.device_id}] Event popup detected. Clicking then Back...")
+                event_passed = True
+                print(f"[{self.device_id}] Event popup detected. Clicking event then spamming BACK...")
                 self.click("img/event.png")
                 sleep(1)
-                self.adb_shell("input keyevent 4")  # Back button
-                sleep(2)
                 
-                # เช็ค cancel.png เฉพาะหลังเจอ event เท่านั้น
-                self.capture_screen()
-                if self.exists_in_cache("img/cancel.png"):
-                    print(f"[{self.device_id}] Cancel button after event. Clicking...")
-                    self.click("img/cancel.png")
-                    sleep(1)
+                # รัว BACK จนเจอ cancel.png
+                back_count = 0
+                while back_count < 20:  # สูงสุด 20 ครั้ง
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    back_count += 1
+                    print(f"[{self.device_id}] BACK press #{back_count}")
+                    sleep(0.3)
+                    
+                    self.capture_screen()
+                    if self.exists_in_cache("img/cancel.png"):
+                        print(f"[{self.device_id}] Found cancel.png after {back_count} BACK presses. Clicking...")
+                        self.click("img/cancel.png")
+                        sleep(1)
+                        break
                 
                 loop_count -= 1
                 continue
