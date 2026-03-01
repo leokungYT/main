@@ -893,7 +893,7 @@ def get_ocr_reader():
 def load_config():
     global config
     
-    # Load ONLY main config from ranger-gear_config.json
+    # 1. Load main config from ranger-gear_config.json
     main_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ranger-gear_config.json")
     if os.path.exists(main_config_file):
         try:
@@ -902,9 +902,18 @@ def load_config():
                 config.update(loaded)
             print(f"[CONFIG] Base Loaded: {main_config_file}")
         except Exception as e:
-            print(f"[WARN] Error loading config: {e}")
-    else:
-        print(f"[WARN] Config not found: {main_config_file}")
+            print(f"[WARN] Error loading base config: {e}")
+
+    # 2. Load UI settings from configmain.json (Post-login tasks etc.)
+    ui_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configmain.json")
+    if os.path.exists(ui_config_file):
+        try:
+            with open(ui_config_file, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+                config.update(loaded)
+            print(f"[CONFIG] UI Settings Loaded: {ui_config_file}")
+        except Exception as e:
+            print(f"[WARN] Error loading UI config: {e}")
 
 
 def find_adb_executable():
@@ -1151,6 +1160,12 @@ class RangerGearBot(threading.Thread):
         self._screen = None
         self._screen_color = None
         self._template_cache = {}
+        
+        # Post-Login Task Sequences
+        self.box_seq = ['box1.png', 'box2.png', 'box3.png', 'box4.png', 'box5.png', 'box6.png', 'end_box.png']
+        self.seven_day_seq = ['7day.png', '7day1.png', '7day2.png', 'fixok.png']
+        self.shop_gacha_seq = ['gacha.png', 'gacha1.png', 'gacha3.png', 'fixok.png']
+        self.swap_shop_seq = ['swap_shop.png', 'swap_shop1.png', 'swap_shop2.png', 'swap_shop3.png', 'swap_shop4.png', 'fixok.png']
 
     def open_app(self):
         self.last_activity_time = time.time()
@@ -1724,16 +1739,16 @@ class RangerGearBot(threading.Thread):
     def ocr_read_full_screen(self):
         """Read all text from the full cached color screen."""
         if self._screen_color is None or not self.do_gear:
-            return ""
+            return []
         
         region = self.ocr_region
         return self.ocr_read_region(region["x"], region["y"], region["w"], region["h"])
 
-    def check_gear_by_text(self):
-        """Check gear by reading text from screen and matching against config gear names."""
+    def check_gears_on_screen(self):
+        """Check for specific gear names using OCR on target region"""
         if not self.do_gear:
             return set()
-        
+            
         print(f"[{self.device_id}] Reading screen text with OCR...")
         
         # Capture fresh screen
@@ -1745,7 +1760,7 @@ class RangerGearBot(threading.Thread):
         if not ocr_results:
             print(f"[{self.device_id}] OCR returned no results")
             return set()
-        
+            
         # Combine all OCR text into one string (lowercase for matching)
         all_text = " ".join([text for text, conf in ocr_results]).lower()
         print(f"[{self.device_id}] OCR Text: {all_text}")
@@ -1764,11 +1779,78 @@ class RangerGearBot(threading.Thread):
             if ocr_text.lower() in all_text:
                 found_gears.add(gear_name)
                 print(f"[{self.device_id}] Found gear: {gear_name}")
-        
+                
         return found_gears
 
+    def handle_post_login_tasks(self):
+        """Perform additional tasks after reaching the lobby (Boxes, 7-Day, etc.)"""
+        print(f"[{self.device_id}] Starting Post-Login Tasks...")
+        try:
+            load_config() # Reload global config (consolidated)
+            self.cfg = config 
+        except:
+            pass
+        
+        # Helper to check first image with timeout
+        def check_task_available(img_name, timeout=8):
+            start = time.time()
+            while time.time() - start < timeout:
+                self.capture_screen()
+                if self.exists_in_cache(img_name): return True
+                sleep(1)
+            return False
+
+        # 1. Check 7-Day Login
+        if self.cfg.get("7day"):
+            print(f"[{self.device_id}] Task Check: 7-Day Login...")
+            if check_task_available("img/7day.png"):
+                self.process_sequence(self.seven_day_seq)
+                sleep(2)
+            else:
+                print(f"[{self.device_id}] 7-Day icon not found, skipping.")
+
+        # 2. Open Gift Boxes (Round 1)
+        box_cfg = self.cfg.get("box_settings", {})
+        if box_cfg.get("first_round"):
+            print(f"[{self.device_id}] Task Check: Opening Boxes (Round 1)...")
+            # Usually box icon is always there or we can just try once
+            if check_task_available("img/box1.png"):
+                self.process_sequence(self.box_seq)
+                sleep(2)
+            else:
+                print(f"[{self.device_id}] Box icon not found, skipping.")
+
+        # 3. LEONARD Gacha Shop
+        if self.cfg.get("shopgacha"):
+            print(f"[{self.device_id}] Task Check: Leonard Gacha Shop...")
+            if check_task_available("img/gacha.png"):
+                self.process_sequence(self.shop_gacha_seq)
+                sleep(2)
+            else:
+                print(f"[{self.device_id}] Gacha icon not found, skipping.")
+
+        # 4. Swap Shop (Auto Trade)
+        if self.cfg.get("swap_shop") or self.cfg.get("swap_shopevent") or self.cfg.get("auto_trade", {}).get("enabled"):
+            print(f"[{self.device_id}] Task Check: Auto Trade / Swap Shop...")
+            if check_task_available("img/swap_shop.png"):
+                self.process_sequence(self.swap_shop_seq)
+                sleep(2)
+            else:
+                print(f"[{self.device_id}] Swap Shop icon not found, skipping.")
+            
+        # 5. Open Gift Boxes (Round 2)
+        if box_cfg.get("second_round"):
+            print(f"[{self.device_id}] Task Check: Opening Boxes (Round 2)...")
+            if check_task_available("img/box1.png"):
+                self.process_sequence(self.box_seq)
+                sleep(2)
+            else:
+                print(f"[{self.device_id}] Box icon (Round 2) not found, skipping.")
+            
+        print(f"[{self.device_id}] Post-Login Tasks Completed.")
+
     # =========================================================
-    # Logic Methods
+    # ADB & Interaction
     # =========================================================
     def clear_specific_shared_prefs(self):
         """Delete ALL shared_prefs and clear app cache"""
@@ -2046,8 +2128,17 @@ class RangerGearBot(threading.Thread):
 
             print(f"[{self.device_id}] Waiting for {item}...")
             start_wait = time.time()
+            
+            # Custom timeout for specific images
+            item_timeout = 480
+            if item in ['box6.png', 'end_box.png']:
+                item_timeout = 5
+
             while True:
-                if time.time() - start_wait > 480: # 8 minutes timeout
+                if time.time() - start_wait > item_timeout:
+                    if item in ['box6.png', 'end_box.png']:
+                        print(f"[{self.device_id}] Timeout 5s for {item}, skipping to next step.")
+                        break # Continue to next item in sequence
                     print(f"[{self.device_id}] TIMEOUT waiting for {item}. Restarting first_loop...")
                     return "restart"
 
@@ -2357,6 +2448,10 @@ class RangerGearBot(threading.Thread):
                 
                 # Backup to success folder
                 self.backup_to_success(filename, source_path)
+                
+                # --- New: Perform Post-Login Tasks (Boxes/Gacha/etc) ---
+                self.update_gui_status("Opening Boxes", "working")
+                self.handle_post_login_tasks()
                 
                 # Clear app and restart for next ID
                 self.clear_and_restart()
