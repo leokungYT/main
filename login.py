@@ -185,6 +185,15 @@ if GUI_AVAILABLE:
             ctk.CTkLabel(scroll_frame, text="🎮 ฟีเจอร์เกม", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(10, 5), anchor="w")
             
             self.add_switch(scroll_frame, "Loop1 (เปิดเกมครั้งแรก)", "loop1")
+            
+            # Black Screen Timeout - ใส่ตัวเลข
+            black_timeout_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            black_timeout_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(black_timeout_frame, text="TimeOut จอดำ (วินาที):", anchor="w").pack(side="left")
+            self.black_timeout_entry = ctk.CTkEntry(black_timeout_frame, width=80)
+            self.black_timeout_entry.insert(0, str(self.cfg.get("black_screen_timeout", 8)))
+            self.black_timeout_entry.pack(side="left", padx=10)
+
             self.add_switch(scroll_frame, "7-Day (รับของ 7 วัน)", "7day")
             self.add_switch(scroll_frame, "แลกแต้มเขียว Leonard", "shopgacha")
             self.add_switch(scroll_frame, "สุ่มตัว (Swap Shop)", "swap_shop")
@@ -314,6 +323,12 @@ if GUI_AVAILABLE:
                     self.cfg["max-gacha"] = int(self.max_gacha_entry.get())
                 except:
                     self.cfg["max-gacha"] = 0
+                
+                # Save black_screen_timeout as number
+                try:
+                    self.cfg["black_screen_timeout"] = int(self.black_timeout_entry.get())
+                except:
+                    self.cfg["black_screen_timeout"] = 8
                 
                 # Save auto_trade settings
                 if "auto_trade" not in self.cfg:
@@ -931,32 +946,49 @@ def find_adb_executable():
 
 
 def connect_known_ports():
-    """Auto-scan and connect to common emulator ports using ThreadPoolExecutor (รองรับ 50 จอ)"""
-    ports = list(range(5555, 5666, 2))  # LDPlayer 
-    ports += [7555] # MuMu 
-    ports += [16384 + (i * 32) for i in range(40)]  # MuMu 12
-    ports += [62001] + [62025 + i for i in range(40)]  # Nox
-    ports += [21503 + (i * 10) for i in range(40)] # Memu
+    """Auto-scan and connect to MuMu Player ports (จาก mainLG.py)"""
+    try:
+        # Kill & start adb server
+        subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=3)
+        time.sleep(0.1)
+        subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
+        time.sleep(0.5)
 
-    def try_connect(port):
-        addr = f"127.0.0.1:{port}"
-        try:
-            result = subprocess.run(
-                [adb_path, "connect", addr],
-                capture_output=True, text=True, timeout=3
-            )
-            out = result.stdout.strip().lower()
-            if "connected" in out and "cannot" not in out:
-                print(f"[OK] Connected: {addr}")
-                return addr
-        except:
-            pass
-        return None
+        start_port = 5557
+        max_devices = 30
+        ports = [start_port + (i * 2) for i in range(max_devices)]  # [5557, 5559, 5561, ..., 5615]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
-        futures = {executor.submit(try_connect, port): port for port in ports}
-        for future in concurrent.futures.as_completed(futures):
-            future.result()
+        print(f"\n--- [ADB] Auto-scanning MuMu ports from {start_port} ({max_devices} devices) ---")
+        
+        def try_connect_port(port):
+            """เชื่อมต่อ port แต่ละดวง"""
+            try:
+                addr = f"127.0.0.1:{port}"
+                result = subprocess.run(
+                    [adb_path, "connect", addr],
+                    capture_output=True, timeout=2, text=True
+                )
+                time.sleep(0.3)
+                
+                # ตรวจสอบการเชื่อมต่อ
+                out = result.stdout.lower()
+                if "connected" in out or "already connected" in out:
+                    if "cannot connect" not in out:
+                        print(f"[OK] Connected: {addr}")
+                        return addr
+            except Exception:
+                pass
+            return None
+
+        # ยิงเชื่อมต่อพร้อมกันด้วย thread pool
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(try_connect_port, p): p for p in ports}
+            for future in concurrent.futures.as_completed(futures):
+                pass
+                
+        print("--- Scan Complete ---\n")
+    except Exception as e:
+        print(f"[ADB] Port scan error: {e}")
 
 
 def get_connected_devices():
@@ -2005,11 +2037,12 @@ class RangerGearBot(threading.Thread):
         self.open_app()
         sleep(3)
         
-        # === Black Screen Check หลังเปิดแอพ (8 วิ ถ้ายังดำ/เทา → clear + restart) ===
+        # === Black Screen Check หลังเปิดแอพ (ถ้ายังดำ/เทา → clear + restart) ===
         for black_attempt in range(3):  # ลองได้ 3 ครั้ง
             black_start = time.time()
             is_stuck = False
-            while time.time() - black_start < 8:
+            black_timeout = config.get("black_screen_timeout", 8)
+            while time.time() - black_start < black_timeout:
                 self.capture_screen()
                 if self._screen is not None:
                     mean_val = float(np.mean(self._screen))
@@ -2025,7 +2058,7 @@ class RangerGearBot(threading.Thread):
                 sleep(1)
             
             if is_stuck:
-                print(f"[{self.device_id}] [BLACK] Dark screen 8s after launch! (attempt {black_attempt+1}/3) Clearing...")
+                print(f"[{self.device_id}] [BLACK] Dark screen {black_timeout}s after launch! (attempt {black_attempt+1}/3) Clearing...")
                 self.clear_and_restart()
                 self.open_app()
                 sleep(3)
