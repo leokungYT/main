@@ -1,4 +1,4 @@
-import cv2
+﻿import cv2
 import numpy as np
 import subprocess
 import os
@@ -268,8 +268,12 @@ if GUI_AVAILABLE:
             self.hero_stats_labels = {}
             self.hero_rows = {}
             self.hero_filter_text = ""
+            self.is_started = False
             
             self.setup_ui()
+            
+            # Handle window close
+            self.protocol("WM_DELETE_WINDOW", self.on_closing)
             
             # Use after to start the stats loop without blocking the constructor
             self.after(100, self.update_realtime_stats)
@@ -277,14 +281,13 @@ if GUI_AVAILABLE:
             # Ensure window is visible
             self.deiconify()
             self.focus_force()
-            print("[GUI] Launched Successfully.")
+            print("[GUI] Launched Successfully. Waiting for manual start.")
             
             if getattr(self.args, 'no_start', False):
                 print("[GUI] Monitor mode active (No internal threads).")
                 self.lbl_auto_start.configure(text="[ DASHBOARD MODE ]", text_color="#ffae42")
             else:
-                print("[GUI] Auto-starting bot threads...")
-                self.start_bot()
+                self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
 
         def setup_ui(self):
             # 1. TOP TOOLBAR
@@ -294,9 +297,12 @@ if GUI_AVAILABLE:
             
             self.lbl_status = ctk.CTkLabel(toolbar, text=f"   ● ONLINE ({len(self.devices)})", font=ctk.CTkFont(size=12, weight="bold"), text_color="#4caf50")
             self.lbl_status.pack(side="left", padx=5)
+
+            self.btn_start = ctk.CTkButton(toolbar, text="▶ START", font=ctk.CTkFont(size=12, weight="bold"), width=80, height=24, fg_color="#e53935", hover_color="#c62828", command=self.start_bot)
+            self.btn_start.pack(side="left", padx=10)
             
-            self.lbl_auto_start = ctk.CTkLabel(toolbar, text="[ AUTO-START ACTIVE ]", font=ctk.CTkFont(size=10, weight="bold"), text_color="#aaaaaa")
-            self.lbl_auto_start.pack(side="left", padx=10)
+            self.lbl_auto_start = ctk.CTkLabel(toolbar, text="[ WAITING FOR START ]", font=ctk.CTkFont(size=10, weight="bold"), text_color="#aaaaaa")
+            self.lbl_auto_start.pack(side="left", padx=5)
             
             # Stats on Toolbar (right)
             counter_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
@@ -400,7 +406,7 @@ if GUI_AVAILABLE:
                     self.device_monitors[dev] = m
                     
                     # Start bot thread
-                    if not getattr(self.args, 'no_start', False):
+                    if getattr(self, 'is_started', False) and not getattr(self.args, 'no_start', False):
                         bot = RangerGearBot(dev, self.args)
                         bot.start()
                         self.bot_threads.append(bot)
@@ -418,12 +424,40 @@ if GUI_AVAILABLE:
             self.log_text.see("end")
             self.log_text.configure(state="disabled")
 
+        def _start_single_bot(self, device_id):
+            bot = RangerGearBot(device_id, self.args)
+            bot.start()
+            self.bot_threads.append(bot)
+            self.log("INFO", f"🚀 Started bot on {device_id}")
+
         def start_bot(self):
-            self.log("INFO", "Auto-starting Bot Threads...")
-            for device_id in self.devices:
-                bot = RangerGearBot(device_id, self.args)
-                bot.start()
-                self.bot_threads.append(bot)
+            if getattr(self, 'is_started', False):
+                self.log("WARN", "Bot is already running.")
+                return
+            self.is_started = True
+            if hasattr(self, 'btn_start'):
+                self.btn_start.configure(state="disabled", fg_color="#555555", text="⏳ RUNNING")
+            self.lbl_auto_start.configure(text="[ BOT IS RUNNING ]", text_color="#4caf50")
+            
+            delay_sec = config.get("thread_delay", 5)
+            self.log("INFO", f"Starting Bot Threads (Delay: {delay_sec}s per device)...")
+            
+            for i, device_id in enumerate(self.devices):
+                delay_ms = i * int(delay_sec) * 1000
+                # Pass device_id explicitly by freezing the variable in the lambda
+                self.after(delay_ms, lambda d=device_id: self._start_single_bot(d))
+
+        def on_closing(self):
+            if messagebox.askokcancel("Quit", "คุณต้องการหยุดบอทและปิดโปรแกรมใช่หรือไม่?\n(จะทำการ Kill ADB และ Python ทั้งหมด)"):
+                print("[GUI] Shutting down... Killing background processes.")
+                try:
+                    # Kill ADB and Python processes on Windows
+                    if os.name == 'nt':
+                        subprocess.run("taskkill /F /IM adb.exe /T", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        subprocess.run("taskkill /F /IM python.exe /T", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except:
+                    pass
+                sys.exit(0)
 
         def update_realtime_stats(self):
             try:
