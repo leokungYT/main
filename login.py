@@ -560,6 +560,9 @@ if GUI_AVAILABLE:
             
             self.setup_ui()
             
+            # Handle window close
+            self.protocol("WM_DELETE_WINDOW", self.on_closing)
+            
             # Use after to start the stats loop without blocking the constructor
             self.after(100, self.update_realtime_stats)
             
@@ -737,6 +740,20 @@ if GUI_AVAILABLE:
                 delay_ms = i * int(delay_sec) * 1000
                 # Pass device_id explicitly by freezing the variable in the lambda
                 self.after(delay_ms, lambda d=device_id: self._start_single_bot(d))
+
+        def on_closing(self):
+            if messagebox.askokcancel("Quit", "คุณต้องการหยุดบอทและปิดโปรแกรมใช่หรือไม่?\n(จะทำการ Kill ADB และ Python ทั้งหมด)"):
+                print("[GUI] Shutting down... Killing background processes.")
+                try:
+                    # Kill ADB and Python processes on Windows
+                    if os.name == 'nt':
+                        subprocess.run("taskkill /F /IM adb.exe /T", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        # We don't kill python.exe here because it would kill THIS process too early.
+                        # We use os._exit(0) at the end.
+                except:
+                    pass
+                self.destroy()
+                os._exit(0)
 
         def update_realtime_stats(self):
             try:
@@ -1197,8 +1214,15 @@ class RangerGearBot(threading.Thread):
                 
                 if not xml_file:
                     self.update_gui_status("Waiting for files", "waiting")
-                    sleep(5)
+                    # Log only once every 60 seconds to avoid spam
+                    if not hasattr(self, '_last_wait_log') or time.time() - self._last_wait_log > 60:
+                        print(f"[{self.device_id}] File queue empty. Waiting for new files...")
+                        self._last_wait_log = time.time()
+                    sleep(10)
                     continue
+                
+                # Reset wait log once we get a file
+                self._last_wait_log = 0
 
                 try:
                     # Store original filename
