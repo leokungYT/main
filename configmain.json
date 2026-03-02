@@ -50,7 +50,7 @@
     "check-gear": 0,
     "use_ocr": 0,
     "box_settings": {
-        "first_round": 1,
+        "first_round": 0,
         "second_round": 0
     },
     "black_screen_timeout": 8
