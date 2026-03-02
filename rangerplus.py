@@ -164,14 +164,7 @@ if GUI_AVAILABLE:
             self.scroll = ctk.CTkScrollableFrame(self, width=380, height=480, fg_color="transparent")
             self.scroll.pack(fill="both", expand=True, padx=5, pady=5)
             
-            ctk.CTkLabel(self.scroll, text="Main Application Modes", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(10, 5))
-            
             self.vars = {}
-            self.add_switch("Find Ranger (Old)", "find_ranger")
-            self.add_switch("Find Gear (Old)", "find_gear")
-            self.add_switch("Find Both (Old All)", "find_all")
-            self.add_switch("First Loop Process", "first_loop")
-            self.add_switch("Custom Mode", "custommode")
             
             # --- PLUS SEARCH SECTION ---
             ctk.CTkLabel(self.scroll, text="Plus Search Settings", font=ctk.CTkFont(size=14, weight="bold"), text_color="#f2c94c").pack(pady=(15, 5))
