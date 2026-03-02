@@ -2534,29 +2534,40 @@ class RangerGearBot(threading.Thread):
                 sleep(1)
                 continue
 
-            # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png (เหมือน mainLG.py)
+            # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png หรือ stoplogin.png (Triple Back Mode)
             if self.exists_in_cache("img/event.png"):
                 event_passed = True
-                print(f"[{self.device_id}] Event popup detected. Clicking event then spamming BACK...")
+                print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
                 self.click("img/event.png")
                 sleep(1)
                 
-                # รัว BACK จนเจอ cancel.png
-                back_count = 0
-                while back_count < 20:  # สูงสุด 20 ครั้ง
+                back_press_count = 0
+                while True:
+                    # กด Back ทีเดียว 3 รอบ
                     self.adb_shell("input keyevent KEYCODE_BACK")
-                    back_count += 1
-                    print(f"[{self.device_id}] BACK press #{back_count}")
-                    sleep(0.3)
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    back_press_count += 3
+                    print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
                     
+                    sleep(0.3) # ให้เวลา UI อัปเดตเล็กน้อย
                     self.capture_screen()
+                    
+                    # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด
                     if self.exists_in_cache("img/cancel.png"):
-                        print(f"[{self.device_id}] Found cancel.png after {back_count} BACK presses. Clicking...")
+                        print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
                         self.click("img/cancel.png")
                         sleep(1)
                         break
+                    
+                    if self.exists_in_cache("img/stoplogin.png"):
+                        print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
+                        break
+                        
+                    if back_press_count >= 30: # ป้องกันลูปค้าง (สูงสุด 30 ครั้ง)
+                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached (30), continuing...")
+                        break
                 
-                loop_count -= 1
                 continue
             
             sleep(2)
