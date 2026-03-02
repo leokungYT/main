@@ -43,7 +43,7 @@
         "gachahero3": "anya+",
         "gachahero4": "anya+U"
     },
-    "loop1": 0,
+    "loop1": 1,
     "link": 0,
     "ruby-gear200": 0,
     "random-gear": 0,
@@ -52,5 +52,6 @@
     "box_settings": {
         "first_round": 1,
         "second_round": 0
-    }
+    },
+    "black_screen_timeout": 8
 }

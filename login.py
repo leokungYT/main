@@ -1514,8 +1514,20 @@ class RangerGearBot(threading.Thread):
                     f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
+            
+            # Global popup checks (like fixnet1.png)
+            if not getattr(self, "_in_popup_check", False):
+                self._in_popup_check = True
+                try:
+                    self.check_floating_popups()
+                except:
+                    pass
+                self._in_popup_check = False
+                
         except Exception as e:
             print(f"[{self.device_id}] Capture error: {e}")
+            if hasattr(self, "_in_popup_check"):
+                self._in_popup_check = False
 
     def _find_in_screen(self, template_path, similarity=0.8):
         """Find template in cached screen image (no new capture)"""
@@ -2030,13 +2042,15 @@ class RangerGearBot(threading.Thread):
                 continue
 
             # === SPECIAL CASE: apple.png ===
+            # เจอ apple.png ให้กดด้วย และทำลูป fixid ต่อ
             # เจอ fixid ก่อน -> กด fixok -> refresh -> check -> วนเช็ค fixid ไปเรื่อยๆ
             # ถ้าเจอ fixid ครบ 8 รอบ -> return "failed" ส่งไป login-failed
             # ถ้าไม่เจอ fixid -> ผ่านไปต่อ step ถัดไป
             if item == 'apple.png':
-                print(f"[{self.device_id}] Apple step: checking for fixid loop...")
+                print(f"[{self.device_id}] Apple step: clicking apple.png (if found) and checking for fixid loop...")
                 fixid_count = 0
                 max_fixid_retries = 8
+                apple_start_wait = time.time()
                 
                 while True:
                     self.capture_screen()
@@ -2059,6 +2073,13 @@ class RangerGearBot(threading.Thread):
                         self.open_app()
                         return "restart"
                     if err == "stopcheck": return "complete"
+                    
+                    # === คลิก apple.png ถ้าเจอ ===
+                    if self.exists_in_cache("img/apple.png"):
+                        print(f"[{self.device_id}] Found apple.png! Clicking...")
+                        self.click("img/apple.png")
+                        sleep(2)
+                        # ไม่ break นะครับ เพราะต้องเช็ค fixid ต่อ
                     
                     # === fixid1.png → failed ทันที ===
                     if self.exists_in_cache("img/fixid1.png"):
@@ -2129,9 +2150,14 @@ class RangerGearBot(threading.Thread):
                         # วนกลับไปเช็ค fixid อีกรอบ
                         continue
                     
-                    # === ไม่เจอ fixid -> ผ่านไปได้เลย ===
-                    print(f"[{self.device_id}] No fixid.png found, apple step passed!")
-                    break
+                    # === ไม่เจอ fixid และถ้าคลิก apple ไปแล้ว หรือรอสักพักแล้วไม่เจอ fixid -> ผ่านไปได้เลย ===
+                    # ตรวจสอบเพิ่มเติมว่าเราข้ามขั้นตอน apple ได้เมื่อไหร่
+                    if time.time() - apple_start_wait > 30:
+                        print(f"[{self.device_id}] Apple step finished (waited 30s or check passed).")
+                        break
+                    
+                    sleep(1)
+
                     
                 continue  # ไปต่อ item ถัดไปใน sequence
 

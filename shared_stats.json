@@ -2,7 +2,7 @@
   "success_count": 1,
   "fail_count": 0,
   "hero_found_list": {
-    "Anyax1": 1
+    "Login Success": 1
   },
   "device_statuses": {
     "emulator-5556": {
@@ -10,5 +10,7 @@
       "status": "working"
     }
   },
-  "last_update": 1772471502.553372
+  "last_update": 1772474002.0734148,
+  "total_login_time": 176.79839038848877,
+  "login_time_count": 1
 }
