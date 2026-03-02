@@ -1994,6 +1994,11 @@ class RangerGearBot(threading.Thread):
                         return "restart"
 
                     self.capture_screen()
+                    
+                    # ---- Check floating popups on every iteration ----
+                    self.check_floating_popups()
+                    # --------------------------------------------------
+                    
                     err = self.check_error_images(skip_icon=skip_icon)
                     if err == "fixcak": return "restart"
                     if err == "fixbug":
@@ -2035,6 +2040,10 @@ class RangerGearBot(threading.Thread):
                 
                 while True:
                     self.capture_screen()
+                    
+                    # ---- Check floating popups on every iteration ----
+                    self.check_floating_popups()
+                    # --------------------------------------------------
                     
                     # Check errors first
                     err = self.check_error_images()
@@ -2144,6 +2153,11 @@ class RangerGearBot(threading.Thread):
 
                 # Check fixcak/stopcheck/blackscreen/fixbug/unkhow
                 self.capture_screen() # Ensure screen is captured before checking errors
+                
+                # ---- Check floating popups on every iteration ----
+                self.check_floating_popups()
+                # --------------------------------------------------
+                
                 err = self.check_error_images()
                 if err == "fixcak":
                     print(f"[{self.device_id}] Found fixcak.png! Restarting first loop...")

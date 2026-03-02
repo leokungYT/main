@@ -1,0 +1,13 @@
+{
+    "first_loop": true,
+    "thread_delay": 5,
+    "check-gear": 1,
+    "weaponname": {},
+    "gearname": {},
+    "ocr_region": {
+        "x": 463,
+        "y": 153,
+        "w": 397,
+        "h": 321
+    }
+}

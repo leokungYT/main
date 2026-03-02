@@ -102,7 +102,8 @@ if __name__ == "__main__":
     capture_screen()
     
     # ใช้ EasyOCR อ่าน grid ทั้งหมดทีเดียว
-    result = easyOCR(Region(463, 153, 397, 321), image_path=filename)
+    # result = easyOCR(Region(463, 153, 397, 321), image_path=filename) หาเกียร์
+    result = easyOCR(Region(10, 378, 750, 132), image_path=filename) 
     print("===== OCR Result =====")
     print(result)
     print("======================")
