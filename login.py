@@ -1948,10 +1948,12 @@ class RangerGearBot(threading.Thread):
             if res1 == "complete": return "complete"
             if res1 == "failed": return "failed"
             
-            # 3. Back logic - Reduced wait
-            print(f"[{self.device_id}] Waiting 4s then Back...")
-            sleep(4)
-            self.adb_shell("input keyevent 4")
+            # 3. Back logic - Speed Mode (Triple Back)
+            print(f"[{self.device_id}] Back Speed Mode: Executing Triple Back...")
+            sleep(1) # Reduced from 4s
+            for _ in range(3):
+                self.adb_shell("input keyevent 4")
+                sleep(0.2)
             sleep(0.5)
             
             # 4. Sequence 2
