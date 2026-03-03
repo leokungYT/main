@@ -1529,7 +1529,7 @@ class RangerGearBot(threading.Thread):
             if hasattr(self, "_in_popup_check"):
                 self._in_popup_check = False
 
-    def _find_in_screen(self, template_path, similarity=0.8):
+    def _find_in_screen(self, template_path, similarity=0.95):
         """Find template in cached screen image (no new capture)"""
         if self._screen is None:
             return None
@@ -1547,15 +1547,15 @@ class RangerGearBot(threading.Thread):
             pass
         return None
 
-    def find(self, template_path, similarity=0.8):
+    def find(self, template_path, similarity=0.95):
         """Capture + find"""
         self.capture_screen()
         return self._find_in_screen(template_path, similarity)
 
-    def exists(self, template_path, similarity=0.8):
+    def exists(self, template_path, similarity=0.95):
         return self.find(template_path, similarity) is not None
 
-    def exists_in_cache(self, template_path, similarity=0.8):
+    def exists_in_cache(self, template_path, similarity=0.95):
         """Check if template exists in already-captured screen"""
         return self._find_in_screen(template_path, similarity) is not None
 
@@ -1572,7 +1572,7 @@ class RangerGearBot(threading.Thread):
         except:
             return 0.0
 
-    def click(self, PSMRL, similarity=0.8):
+    def click(self, PSMRL, similarity=0.95):
         self.last_activity_time = time.time()
         target = None
         if isinstance(PSMRL, str):
@@ -2027,7 +2027,7 @@ class RangerGearBot(threading.Thread):
                         return "restart"
                     if err == "stopcheck": return "complete"
                     
-                    if self.exists_in_cache(checkpoint_img, similarity=0.9): 
+                    if self.exists_in_cache(checkpoint_img, similarity=0.95): 
                         print(f"[{self.device_id}] Checkpoint reached: {checkpoint_img}")
                         break
                     sleep(1.5)
@@ -2084,12 +2084,12 @@ class RangerGearBot(threading.Thread):
                         # ไม่ break นะครับ เพราะต้องเช็ค fixid ต่อ
                     
                     # === fixid1.png → failed ทันที ===
-                    if self.exists_in_cache("img/fixid1.png"):
+                    if self.exists_in_cache("img/fixid1.png", similarity=0.95):
                         print(f"[{self.device_id}] Found fixid1.png! -> login-failed immediately")
                         return "failed"
 
                     # === เจอ fixid.png -> เริ่ม loop: fixok -> refresh -> check ===
-                    if self.exists_in_cache("img/fixid.png"):
+                    if self.exists_in_cache("img/fixid.png", similarity=0.95):
                         fixid_count += 1
                         print(f"[{self.device_id}] Found fixid.png ({fixid_count}/{max_fixid_retries})")
                         
@@ -2364,13 +2364,13 @@ class RangerGearBot(threading.Thread):
                 continue
 
             # === fixid1.png → failed ทันที ===
-            if self.exists_in_cache("img/fixid1.png"):
+            if self.exists_in_cache("img/fixid1.png", similarity=0.95):
                 print(f"[{self.device_id}] Found fixid1.png! -> login-failed immediately")
                 self._login_fixid_count = 0
                 return "failed"
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
-            if self.exists_in_cache("img/fixid.png"):
+            if self.exists_in_cache("img/fixid.png", similarity=0.95):
                 self._login_fixid_count += 1
                 print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/8), fixok -> refresh -> check...")
                 
