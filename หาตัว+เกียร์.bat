@@ -1,37 +1,56 @@
 @echo off
-setlocal enabledelayedexpansion
+chcp 65001 >nul
+title Ranger Gear Bot Auto Update
+cd /d "%~dp0"
 
-echo ======================================================
-echo   Ranger+Gear Multi-Process Launcher (With GUI)
-echo ======================================================
+echo =========================================
+echo       Checking for updates...
+echo =========================================
 
-:: Determine ADB Path
-set "ADB_EXE=adb.exe"
-if exist "adb\adb.exe" (
-    set "ADB_EXE=adb\adb.exe"
-    echo [INFO] Using local ADB: !ADB_EXE!
-) else (
-    echo [INFO] Local ADB not found, trying system PATH...
+:: Check if this is a Git repository
+if not exist ".git" (
+    echo [SKIP] Not a Git repo - skipping update check
+    goto start_program
 )
 
-:: 1. Cleanup old shared stats
-if exist "shared_stats.json" del "shared_stats.json"
+:: Fetch latest from Github
+git fetch origin main >nul 2>&1
 
-:: 2. Launch Main GUI in background (it will now aggregate stats from other processes)
-echo [GUI] Launching Main UI...
-start "Ranger-GUI" python ranger-gear.py --no-reset-adb --no-start
-timeout /t 5 /nobreak >nul
+:: Count how many commits behind
+for /f "tokens=*" %%g in ('git rev-list HEAD...origin/main --count') do (set UPDATE_COUNT=%%g)
+if "%UPDATE_COUNT%"=="" set UPDATE_COUNT=0
 
-:: 3. Find and launch minimized CMDs for each device
-echo [INFO] Searching for devices to start WORKERS...
-for /f "tokens=1,2" %%a in ('!ADB_EXE! devices ^| findstr /v "List"') do (
-    if "%%b"=="device" (
-        echo [WORKER] Starting background process for %%a...
-        :: Using --minimized flag we just added, plus --cli
-        start "Bot-%%a" python ranger-gear.py --device %%a --cli --minimized --no-reset-adb
-        timeout /t 2 /nobreak >nul
+if %UPDATE_COUNT% GTR 0 (
+    echo [!] New update found on Github!
+    
+    :: Show popup via separate Python script
+    if exist "_check_update.py" (
+        python _check_update.py
+        
+        if not errorlevel 1 (
+            echo [UPDATE] Downloading latest files...
+            git reset --hard origin/main
+            git clean -f
+            echo [DONE] Update complete!
+        ) else (
+            echo [SKIP] Update skipped by user
+        )
+    ) else (
+        echo [UPDATE] _check_update.py not found. Downloading latest files automatically...
+        git reset --hard origin/main
+        git clean -f
+        echo [DONE] Update complete!
     )
+) else (
+    echo [OK] Already up to date!
 )
 
-echo [DONE] GUI is open, all workers are running minimized.
-exit
+:start_program
+echo.
+echo =========================================
+echo       Starting program...
+echo =========================================
+echo.
+
+python ranger-gear.py
+pause
