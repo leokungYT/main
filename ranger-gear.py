@@ -1690,8 +1690,19 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{self.device_id}] Found check.png! Clicking...")
                                 self.click("img/check.png")
                                 sleep(2)
-                                # หลังกด check -> หา fixok ด้วย
-                                self.capture_screen()
+                                # หลังกด check -> รอดู fixid ก่อน 2 วิ
+                                found_fixid_after_check = False
+                                for _ in range(2):
+                                    self.capture_screen()
+                                    if self.exists_in_cache("img/fixid.png"):
+                                        print(f"[{self.device_id}] Found fixid.png right after check! Re-routing...")
+                                        found_fixid_after_check = True
+                                        break
+                                    sleep(1)
+                                
+                                if found_fixid_after_check:
+                                    break
+
                                 if self.exists_in_cache("img/fixok.png"):
                                     print(f"[{self.device_id}] Found fixok.png after check! Clicking...")
                                     self.click("img/fixok.png")
@@ -2232,8 +2243,19 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] Found check.png! Clicking...")
                         self.click("img/check.png")
                         sleep(2)
-                        # หลังกด check -> หา fixok ด้วย
-                        self.capture_screen()
+                        # หลังกด check -> รอดู fixid ก่อน 2 วิ
+                        found_fixid_after_check = False
+                        for _ in range(2):
+                            self.capture_screen()
+                            if self.exists_in_cache("img/fixid.png"):
+                                print(f"[{self.device_id}] Found fixid.png right after check! Re-routing...")
+                                found_fixid_after_check = True
+                                break
+                            sleep(1)
+                        
+                        if found_fixid_after_check:
+                            break
+
                         if self.exists_in_cache("img/fixok.png"):
                             print(f"[{self.device_id}] Found fixok.png after check! Clicking...")
                             self.click("img/fixok.png")
@@ -2256,8 +2278,19 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] Found check.png! Clicking...")
                         self.click("img/check.png")
                         sleep(2)
-                        # หลังกด check -> หา fixok ด้วย
-                        self.capture_screen()
+                        # หลังกด check -> รอดู fixid ก่อน 2 วิ
+                        found_fixid_after_check = False
+                        for _ in range(2):
+                            self.capture_screen()
+                            if self.exists_in_cache("img/fixid.png"):
+                                print(f"[{self.device_id}] Found fixid.png right after check! Re-routing...")
+                                found_fixid_after_check = True
+                                break
+                            sleep(1)
+                        
+                        if found_fixid_after_check:
+                            break
+
                         if self.exists_in_cache("img/fixok.png"):
                             print(f"[{self.device_id}] Found fixok.png after check! Clicking...")
                             self.click("img/fixok.png")

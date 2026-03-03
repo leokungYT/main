@@ -1,17 +1,9 @@
 {
-    "first_loop": true,
+    "first_loop": 0,
     "thread_delay": 5,
     "find_ranger": 0,
     "find_gear": 0,
     "find_all": 1,
-    "find_all_rangerplus": 0,
-    "custom_plus": {
-        "kappa": 0,
-        "anya": 1,
-        "yor": 1,
-        "power": 0,
-        "denji": 0
-    },
     "custommode": 0,
     "custom": {
         "characters": [
@@ -91,5 +83,13 @@
         "y": 153,
         "w": 397,
         "h": 321
+    },
+    "find_all_rangerplus": 0,
+    "custom_plus": {
+        "kappa": 0,
+        "anya": 1,
+        "yor": 1,
+        "power": 0,
+        "denji": 0
     }
 }
