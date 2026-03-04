@@ -253,6 +253,26 @@ if GUI_AVAILABLE:
                 color_map = {'working': "#4caf50", 'waiting': "#ff9800", 'error': "#e53935", 'idle': "#888"}
                 self.lbl_status.configure(text=status.upper(), text_color=color_map.get(status, "#888"))
 
+    class ConsoleRedirector:
+        """Redirect print() output to both console AND GUI log area"""
+        def __init__(self, original_stdout, log_queue):
+            self.original_stdout = original_stdout
+            self.log_queue = log_queue
+        
+        def write(self, message):
+            if self.original_stdout:
+                self.original_stdout.write(message)
+            # Only queue non-empty, non-newline messages
+            if message and message.strip():
+                try:
+                    self.log_queue.put_nowait(message.strip())
+                except:
+                    pass
+        
+        def flush(self):
+            if self.original_stdout:
+                self.original_stdout.flush()
+
     class ModernBotGUI(ctk.CTk):
         def __init__(self, devices, args):
             super().__init__()
@@ -272,11 +292,16 @@ if GUI_AVAILABLE:
             
             self.setup_ui()
             
+            # Setup console redirect to GUI log
+            self._log_queue = queue.Queue()
+            sys.stdout = ConsoleRedirector(sys.__stdout__, self._log_queue)
+            
             # Handle window close
             self.protocol("WM_DELETE_WINDOW", self.on_closing)
             
             # Use after to start the stats loop without blocking the constructor
             self.after(100, self.update_realtime_stats)
+            self.after(100, self.process_log_queue)
             
             # Ensure window is visible
             self.deiconify()
@@ -421,8 +446,25 @@ if GUI_AVAILABLE:
             ts = datetime.now().strftime("%H:%M:%S")
             self.log_text.configure(state="normal")
             self.log_text.insert("end", f"[{ts}] {message}\n")
+            # Keep log area from growing too large (max 500 lines)
+            line_count = int(self.log_text.index('end-1c').split('.')[0])
+            if line_count > 500:
+                self.log_text.delete('1.0', f'{line_count - 400}.0')
             self.log_text.see("end")
             self.log_text.configure(state="disabled")
+
+        def process_log_queue(self):
+            """Process pending log messages from bot threads"""
+            try:
+                max_per_tick = 20  # Process up to 20 messages per tick to avoid freezing
+                count = 0
+                while not self._log_queue.empty() and count < max_per_tick:
+                    msg = self._log_queue.get_nowait()
+                    self.log("BOT", msg)
+                    count += 1
+            except:
+                pass
+            self.after(200, self.process_log_queue)
 
         def _start_single_bot(self, device_id):
             bot = RangerGearBot(device_id, self.args)
@@ -2413,19 +2455,28 @@ class RangerGearBot(threading.Thread):
             # *** SUCCESS -> Run find-ranger or check-gear ***
             if self.exists_in_cache("img/stoplogin.png"):
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
+                print(f"[{self.device_id}] [DEBUG] Modes -> do_ranger={self.do_ranger}, do_gear={self.do_gear}")
                 
                 ranger_results = {}
                 gear_results = set()
                 
                 # Run ranger process first if enabled
                 if self.do_ranger:
+                    print(f"[{self.device_id}] [DEBUG] Starting Ranger scan...")
                     ranger_results = self.process_find_ranger(current_filename)
+                    print(f"[{self.device_id}] [DEBUG] Ranger results: {ranger_results}")
+                else:
+                    print(f"[{self.device_id}] [DEBUG] Ranger scan SKIPPED (do_ranger={self.do_ranger})")
                 
                 # Then run gear process if enabled
                 if self.do_gear:
                     # If both ranger and gear, skip findgear1 since we're already in the app
                     skip_gear1 = self.do_ranger and self.do_gear
+                    print(f"[{self.device_id}] [DEBUG] Starting Gear scan (skip_findgear1={skip_gear1})...")
                     gear_results = self.process_check_gear(current_filename, ranger_results, skip_findgear1=skip_gear1)
+                    print(f"[{self.device_id}] [DEBUG] Gear results: {gear_results}")
+                else:
+                    print(f"[{self.device_id}] [DEBUG] Gear scan SKIPPED (do_gear={self.do_gear})")
                 
                 # Combine results and backup
                 filename = self.current_original_filename or "unknown.xml"
@@ -2439,13 +2490,12 @@ class RangerGearBot(threading.Thread):
                     all_names_list.extend(gear_results)
                 
                 found_names = "+".join(sorted(set(all_names_list))) if all_names_list else "unknown"
+                print(f"[{self.device_id}] [DEBUG] all_names_list={all_names_list}, found_names={found_names}")
                 
                 # Determine category folder name
-                # 1. Gear + Ranger found -> "gear+ranger"
-                # 2. Only Gear found -> "gear only"
-                # 3. Only Ranger found -> "ranger", "ranger(2)", "ranger(3)", etc.
                 has_ranger = len(ranger_results) > 0
                 has_gear = len(gear_results) > 0
+                print(f"[{self.device_id}] [DEBUG] has_ranger={has_ranger}, has_gear={has_gear}")
                 
                 category = "unknown"
                 if has_gear and has_ranger:
@@ -2456,12 +2506,11 @@ class RangerGearBot(threading.Thread):
                     count = len(ranger_results)
                     category = "ranger" if count == 1 else f"ranger({count})"
                 
+                print(f"[{self.device_id}] [DEBUG] category={category}")
+                
                 if category != "unknown":
                     msg = f"[{self.device_id}] 🏆 Success! Found {category}: {found_names}"
-                    if GUI_INSTANCE:
-                        GUI_INSTANCE.log("SUCCESS", msg)
-                    else:
-                        print(msg)
+                    print(msg)
                     
                     # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
                     ui_stats.update_hero(found_names)
@@ -2489,10 +2538,7 @@ class RangerGearBot(threading.Thread):
                 else:
                     # No results from either ranger or gear -> backup to not-found
                     msg = f"[{self.device_id}] ไม่เจอ Ranger/Gear ที่ต้องการ"
-                    if GUI_INSTANCE:
-                        GUI_INSTANCE.log("INFO", msg)
-                    else:
-                        print(msg)
+                    print(msg)
                     
                     # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
                     ui_stats.update_hero("ไม่เจอ")

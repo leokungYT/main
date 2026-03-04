@@ -2,8 +2,8 @@
     "first_loop": 0,
     "thread_delay": 5,
     "find_ranger": 0,
-    "find_gear": 0,
-    "find_all": 1,
+    "find_gear": 1,
+    "find_all": 0,
     "custommode": 0,
     "custom": {
         "characters": [

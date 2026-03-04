@@ -1,22 +1,14 @@
 {
-  "success_count": 13,
-  "fail_count": 1,
+  "success_count": 2,
+  "fail_count": 0,
   "hero_found_list": {
-    "maid-cony+yor": 1,
-    "kappa+yor": 2,
-    "yor": 2,
-    "conyfly+outlawboss+power+powerU": 2,
-    "power+yor": 1,
-    "power+rudo": 1,
-    "anya+yor": 1,
-    "outlawboss": 2,
-    "anya": 1
+    "ไม่เจอ": 2
   },
   "device_statuses": {
-    "emulator-5556": {
+    "127.0.0.1:5557": {
       "step": "Logging in...",
       "status": "working"
     }
   },
-  "last_update": 1772624314.8578334
+  "last_update": 1772632747.2458184
 }
