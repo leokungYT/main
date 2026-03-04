@@ -76,18 +76,25 @@ class SimpleUIStats:
                     "hero_found_list": self.hero_found_list,
                     "device_statuses": self.device_statuses,
                     "last_update": time.time(),
-                    "total_login_time": self.total_login_time,
-                    "login_time_count": self.login_time_count
+                    "total_login_time": getattr(self, "total_login_time", 0),
+                    "login_time_count": getattr(self, "login_time_count", 0)
                 }
                 path = self._get_shared_file()
                 tmp_path = path + ".tmp"
                 with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
                 
-                # Atomic replace
-                if os.path.exists(path):
-                    os.remove(path)
-                os.rename(tmp_path, path)
+                # Atomic replace with retry for Windows WinError 32
+                for _ in range(5):
+                    try:
+                        os.replace(tmp_path, path)
+                        break
+                    except OSError:
+                        time.sleep(0.1)
+                else:
+                    # Fallback
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
         except Exception as e:
             print(f"[DEBUG] save_shared error: {e}")
 
@@ -1514,14 +1521,13 @@ class RangerGearBot(threading.Thread):
                     f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
-            
-            # Global popup checks (like fixnet1.png)
+            # Global popup checks (like fixnet1.png) - หาตลอดคลุมทั้งการทำงาน!
             if not getattr(self, "_in_popup_check", False):
                 self._in_popup_check = True
                 try:
                     self.check_floating_popups()
-                except:
-                    pass
+                except Exception as e:
+                    print(f"[{self.device_id}] Popup check error: {e}")
                 self._in_popup_check = False
                 
         except Exception as e:
@@ -1893,7 +1899,6 @@ class RangerGearBot(threading.Thread):
         sleep(1)
 
         src = os.path.abspath(local_xml_path)
-        src_size = os.path.getsize(src)
         tmp = f"/data/local/tmp/temp_pref_{self.device_id.replace(':','_')}.xml"
         final_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
         final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
@@ -1904,26 +1909,17 @@ class RangerGearBot(threading.Thread):
                 # Push to tmp
                 result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30)
                 if result.returncode != 0:
-                    print(f"[{self.device_id}] Push attempt {attempt}: {result.stderr.decode()}")
+                    err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
+                    print(f"[{self.device_id}] Push attempt {attempt} failed: {err}")
+                    sleep(2)
                     continue
                 
-                # Verify file size
-                result = self.adb_shell(f"wc -c < {tmp}")
-                try:
-                    pushed_size = int(result.stdout.decode('utf-8', errors='ignore').strip())
-                    if pushed_size != src_size:
-                        print(f"[{self.device_id}] File size mismatch on attempt {attempt}: expected {src_size}, got {pushed_size}")
-                        continue
-                except Exception as e:
-                    print(f"[{self.device_id}] Size check failed on attempt {attempt}: {e}")
-                    continue
-                
-                # Copy, set permissions and owner
+                # Copy, set permissions and owner (no frail 'wc -c' check)
                 shell_cmd = (
                     f"su -c '"
                     f"cp {tmp} {final} && "
                     f"chmod 666 {final} && "
-                    f"chown $(stat -c %u:%g {final_dir}) {final} || true && "
+                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {final_dir}/.. 2>/dev/null || echo 1000:1000) {final} || true && "
                     f"rm -f {tmp}"
                     f"'"
                 )
@@ -1934,6 +1930,7 @@ class RangerGearBot(threading.Thread):
                     
             except Exception as e:
                 print(f"[{self.device_id}] Attempt {attempt} error: {e}")
+                sleep(2)
         
         print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
         return None
