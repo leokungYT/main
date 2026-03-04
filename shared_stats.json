@@ -1,14 +1,7 @@
 {
-  "success_count": 2,
+  "success_count": 0,
   "fail_count": 0,
-  "hero_found_list": {
-    "ไม่เจอ": 2
-  },
-  "device_statuses": {
-    "127.0.0.1:5557": {
-      "step": "Logging in...",
-      "status": "working"
-    }
-  },
-  "last_update": 1772632747.2458184
+  "hero_found_list": {},
+  "device_statuses": {},
+  "last_update": 1772632979.5686336
 }

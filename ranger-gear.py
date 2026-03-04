@@ -1416,15 +1416,20 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] OCR crop region empty!")
             return []
         
-        reader = get_ocr_reader()
-        results = reader.readtext(img, detail=1)
-        
-        text_results = []
-        for (bbox, text, conf) in results:
-            if conf > 0.3:
-                text_results.append((text, conf))
-        
-        return text_results
+        try:
+            reader = get_ocr_reader()
+            results = reader.readtext(img, detail=1)
+            
+            text_results = []
+            for (bbox, text, conf) in results:
+                if conf > 0.3:
+                    text_results.append((text, conf))
+            
+            return text_results
+        except Exception as e:
+            print(f"[{self.device_id}] [OCR ERROR] OCR failed: {e}")
+            print(f"[{self.device_id}] [OCR ERROR] Please install Visual C++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe")
+            return []
 
     def ocr_read_full_screen(self):
         """Read all text from the full cached color screen."""
@@ -1439,38 +1444,43 @@ class RangerGearBot(threading.Thread):
         if not self.do_gear:
             return set()
         
-        print(f"[{self.device_id}] Reading screen text with OCR...")
-        
-        # Capture fresh screen
-        self.capture_screen()
-        
-        # Read text from OCR region
-        ocr_results = self.ocr_read_full_screen()
-        
-        if not ocr_results:
-            print(f"[{self.device_id}] OCR returned no results")
-            return set()
-        
-        # Combine all OCR text into one string (lowercase for matching)
-        all_text = " ".join([text for text, conf in ocr_results]).lower()
-        print(f"[{self.device_id}] OCR Text: {all_text}")
-        
-        # Match against gear names from config
-        found_gears = set()
-        for gear_key, gear_data in self.gear_names.items():
-            # Support new format: {"ocr": "search text", "name": "custom name"}
-            if isinstance(gear_data, dict):
-                ocr_text = gear_data.get("ocr", gear_key)
-                gear_name = gear_data.get("name", gear_key)
-            else:
-                ocr_text = gear_data
-                gear_name = gear_data
+        try:
+            print(f"[{self.device_id}] Reading screen text with OCR...")
             
-            if ocr_text.lower() in all_text:
-                found_gears.add(gear_name)
-                print(f"[{self.device_id}] Found gear: {gear_name}")
-        
-        return found_gears
+            # Capture fresh screen
+            self.capture_screen()
+            
+            # Read text from OCR region
+            ocr_results = self.ocr_read_full_screen()
+            
+            if not ocr_results:
+                print(f"[{self.device_id}] OCR returned no results")
+                return set()
+            
+            # Combine all OCR text into one string (lowercase for matching)
+            all_text = " ".join([text for text, conf in ocr_results]).lower()
+            print(f"[{self.device_id}] OCR Text: {all_text}")
+            
+            # Match against gear names from config
+            found_gears = set()
+            for gear_key, gear_data in self.gear_names.items():
+                # Support new format: {"ocr": "search text", "name": "custom name"}
+                if isinstance(gear_data, dict):
+                    ocr_text = gear_data.get("ocr", gear_key)
+                    gear_name = gear_data.get("name", gear_key)
+                else:
+                    ocr_text = gear_data
+                    gear_name = gear_data
+                
+                if ocr_text.lower() in all_text:
+                    found_gears.add(gear_name)
+                    print(f"[{self.device_id}] Found gear: {gear_name}")
+            
+            return found_gears
+        except Exception as e:
+            print(f"[{self.device_id}] [OCR ERROR] check_gear_by_text failed: {e}")
+            print(f"[{self.device_id}] [OCR ERROR] Gear scan skipped due to OCR error")
+            return set()
 
     # =========================================================
     # Logic Methods
