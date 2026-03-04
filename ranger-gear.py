@@ -2039,44 +2039,54 @@ class RangerGearBot(threading.Thread):
         filename = self.current_original_filename or "unknown.xml"
         source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
         
-        self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-        self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+        # วิธีที่ได้ผล 100%: cp ไป /data/local/tmp → chmod → pull
+        safe_dev = self.device_id.replace(":", "_")
+        temp_remote = f"/data/local/tmp/backup_{safe_dev}.xml"
         
-        if results:
-            # Build folder name from folder values
-            folder_parts = sorted(set(results.values()))
-            folder_name = "+".join(folder_parts)
+        try:
+            self.adb_shell(f"su -c 'cp {source_path} {temp_remote}'")
+            self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
             
-            backup_dir = os.path.join("backup-id", folder_name)
-            if not os.path.exists(backup_dir):
-                os.makedirs(backup_dir)
-            
-            dst = os.path.join(backup_dir, filename)
-            result = subprocess.run(
-                [self.adb_cmd, '-s', self.device_id, 'pull', source_path, dst],
-                capture_output=True, text=True
-            )
-            
-            if result.returncode == 0:
-                print(f"[{self.device_id}] Backed up to: {dst}")
+            if results:
+                # Build folder name from folder values
+                folder_parts = sorted(set(results.values()))
+                folder_name = "+".join(folder_parts)
+                
+                backup_dir = os.path.join("backup-id", folder_name)
+                if not os.path.exists(backup_dir):
+                    os.makedirs(backup_dir)
+                
+                dst = os.path.join(backup_dir, filename)
+                result = subprocess.run(
+                    [self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, dst],
+                    capture_output=True, text=True
+                )
+                
+                if result.returncode == 0:
+                    print(f"[{self.device_id}] Backed up to: {dst}")
+                else:
+                    print(f"[{self.device_id}] Backup failed: {result.stderr}")
             else:
-                print(f"[{self.device_id}] Backup failed: {result.stderr}")
-        else:
-            # No results -> not-found
-            not_found_dir = "not-found"
-            if not os.path.exists(not_found_dir):
-                os.makedirs(not_found_dir)
+                # No results -> not-found
+                not_found_dir = "not-found"
+                if not os.path.exists(not_found_dir):
+                    os.makedirs(not_found_dir)
+                
+                dst = os.path.join(not_found_dir, filename)
+                result = subprocess.run(
+                    [self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, dst],
+                    capture_output=True, text=True
+                )
+                
+                if result.returncode == 0:
+                    print(f"[{self.device_id}] Backed up to not-found: {dst}")
+                else:
+                    print(f"[{self.device_id}] Backup failed: {result.stderr}")
             
-            dst = os.path.join(not_found_dir, filename)
-            result = subprocess.run(
-                [self.adb_cmd, '-s', self.device_id, 'pull', source_path, dst],
-                capture_output=True, text=True
-            )
-            
-            if result.returncode == 0:
-                print(f"[{self.device_id}] Backed up to not-found: {dst}")
-            else:
-                print(f"[{self.device_id}] Backup failed: {result.stderr}")
+            # Cleanup temp
+            self.adb_shell(f"rm -f {temp_remote}")
+        except Exception as e:
+            print(f"[{self.device_id}] Backup error: {e}")
 
     # =========================================================
     # CHECK GEAR PROCESS
@@ -2205,15 +2215,25 @@ class RangerGearBot(threading.Thread):
         
         backup_path = os.path.join(not_found_dir, filename)
         
-        result = subprocess.run(
-            [self.adb_cmd, '-s', self.device_id, 'pull', source_path, backup_path],
-            capture_output=True, text=True
-        )
+        # วิธีที่ได้ผล 100%: cp ไป /data/local/tmp → chmod → pull
+        safe_dev = self.device_id.replace(":", "_")
+        temp_remote = f"/data/local/tmp/backup_{safe_dev}.xml"
         
-        if result.returncode == 0:
-            print(f"[{self.device_id}] Backed up to not-found: {backup_path}")
-        else:
-            print(f"[{self.device_id}] Backup failed: {result.stderr}")
+        try:
+            self.adb_shell(f"su -c 'cp {source_path} {temp_remote}'")
+            self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
+            result = subprocess.run(
+                [self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, backup_path],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print(f"[{self.device_id}] Backed up to not-found: {backup_path}")
+            else:
+                print(f"[{self.device_id}] Backup failed: {result.stderr}")
+            # Cleanup temp
+            self.adb_shell(f"rm -f {temp_remote}")
+        except Exception as e:
+            print(f"[{self.device_id}] Backup error: {e}")
 
     def clear_and_restart(self):
         """Clear app and prepare for next file"""
@@ -2525,9 +2545,11 @@ class RangerGearBot(threading.Thread):
                     # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
                     ui_stats.update_hero(found_names)
                     
-                    # chmod for pull
-                    self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-                    self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+                    # chmod for pull (วิธีที่ได้ผล 100%: cp → tmp → chmod → pull)
+                    safe_dev = self.device_id.replace(":", "_")
+                    temp_remote = f"/data/local/tmp/backup_{safe_dev}.xml"
+                    self.adb_shell(f"su -c 'cp {source_path} {temp_remote}'")
+                    self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
                     
                     # Create backup folder structure: backup-id/category/found_names
                     backup_dir = os.path.join("backup-id", category, found_names)
@@ -2537,7 +2559,7 @@ class RangerGearBot(threading.Thread):
                     # Pull file
                     dst = os.path.join(backup_dir, filename)
                     result = subprocess.run(
-                        [self.adb_cmd, '-s', self.device_id, 'pull', source_path, dst],
+                        [self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, dst],
                         capture_output=True, text=True
                     )
                     
@@ -2545,6 +2567,8 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] ✓ Backed up to: {dst}")
                     else:
                         print(f"[{self.device_id}] ✗ Backup failed: {result.stderr}")
+                    # Cleanup temp
+                    self.adb_shell(f"rm -f {temp_remote}")
                 else:
                     # No results from either ranger or gear -> backup to not-found
                     msg = f"[{self.device_id}] ไม่เจอ Ranger/Gear ที่ต้องการ"
@@ -2554,8 +2578,6 @@ class RangerGearBot(threading.Thread):
                     ui_stats.update_hero("ไม่เจอ")
                     
                     print(f"[{self.device_id}] No results from ranger or gear - backing up to not-found")
-                    self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-                    self.adb_shell(f"su -c 'chmod 777 {source_path}'")
                     self.backup_to_not_found(filename, source_path)
                 
                 # Clear app and restart
