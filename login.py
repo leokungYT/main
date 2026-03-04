@@ -1661,10 +1661,17 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(1)
 
-        if self.exists_in_cache("img/fixnet1.png"):
-            print(f"[{self.device_id}] [POPUP] fixnet1.png detected, clicking...")
-            self.click("img/fixnet1.png")
+        # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ)
+        fixnet1_clicks = 0
+        while self.exists_in_cache("img/fixnet1.png", similarity=0.95):
+            fixnet1_clicks += 1
+            print(f"[{self.device_id}] [POPUP] fixnet1.png detected (click #{fixnet1_clicks}), clicking...")
+            self.click("img/fixnet1.png", similarity=0.95)
             sleep(1)
+            self.capture_screen()  # จับภาพใหม่เพื่อเช็คซ้ำ
+            if fixnet1_clicks >= 10:
+                print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
+                break
 
         if self.exists_in_cache("img/fixaccep.png"):
             print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
@@ -2362,10 +2369,18 @@ class RangerGearBot(threading.Thread):
                     sleep(1)
                 continue
 
-            if self.exists_in_cache("img/fixnet1.png"):
-                print(f"[{self.device_id}] [POPUP] fixnet1.png detected in login loop, clicking...")
-                self.click("img/fixnet1.png")
+            # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ)
+            fixnet1_login_clicks = 0
+            while self.exists_in_cache("img/fixnet1.png", similarity=0.95):
+                fixnet1_login_clicks += 1
+                print(f"[{self.device_id}] [POPUP] fixnet1.png detected in login loop (click #{fixnet1_login_clicks}), clicking...")
+                self.click("img/fixnet1.png", similarity=0.95)
                 sleep(1)
+                self.capture_screen()  # จับภาพใหม่เพื่อเช็คซ้ำ
+                if fixnet1_login_clicks >= 10:
+                    print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times in login, breaking")
+                    break
+            if fixnet1_login_clicks > 0:
                 continue
 
             if self.exists_in_cache("img/fixaccep.png"):

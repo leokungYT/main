@@ -1284,10 +1284,17 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(1)
 
-        if self.exists_in_cache("img/fixnet1.png"):
-            print(f"[{self.device_id}] [POPUP] fixnet1.png detected, clicking...")
-            self.click("img/fixnet1.png")
+        # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ)
+        fixnet1_clicks = 0
+        while self.exists_in_cache("img/fixnet1.png", similarity=0.95):
+            fixnet1_clicks += 1
+            print(f"[{self.device_id}] [POPUP] fixnet1.png detected (click #{fixnet1_clicks}), clicking...")
+            self.click("img/fixnet1.png", similarity=0.95)
             sleep(1)
+            self.capture_screen()  # จับภาพใหม่เพื่อเช็คซ้ำ
+            if fixnet1_clicks >= 10:
+                print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
+                break
 
     def check_error_images(self, skip_fixcak=False, skip_icon=False):
         """Check error images using cached screen"""
@@ -2046,41 +2053,82 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Failed to find findgear3.png")
             return set()
         
-        # Click checkgear2.png -> checkgear3.png
-        if not self.wait_and_click_image("checkgear2.png"):
-            print(f"[{self.device_id}] Failed to find checkgear2.png")
-        
-        if not self.wait_and_click_image("checkgear3.png"):
-            print(f"[{self.device_id}] Failed to find checkgear3.png")
-        
         # Step 2: Read gear names with OCR
         print(f"\n[{self.device_id}] Starting gear OCR check...")
         all_found_gears = set()
         
-        # Round 1: Direct OCR check
-        print(f"[{self.device_id}] Round 1: Direct OCR check")
-        all_found_gears.update(self.check_gear_by_text())
-        sleep(2)
+        # === Attempt 1: checkgear2 -> checkgear3 -> scan ===
+        print(f"[{self.device_id}] [GEAR] Attempt 1: checkgear2 -> checkgear3...")
+        if not self.wait_and_click_image("checkgear2.png"):
+            print(f"[{self.device_id}] Failed to find checkgear2.png")
         
-        # Round 2: Check weapons tab 1
-        self.capture_screen()
-        self.check_floating_popups()
-        if self.exists_in_cache("img/weapons1.png"):
-            print(f"\n[{self.device_id}] Round 2: Checking after weapons1.png")
-            self.click("img/weapons1.png")
-            sleep(2)
-            all_found_gears.update(self.check_gear_by_text())
-            sleep(1)
+        checkgear3_found = self.wait_and_click_image("checkgear3.png", timeout=60)
         
-        # Round 3: Check weapons tab 2
-        self.capture_screen()
-        self.check_floating_popups()
-        if self.exists_in_cache("img/weapons2.png"):
-            print(f"\n[{self.device_id}] Round 3: Checking after weapons2.png")
-            self.click("img/weapons2.png")
-            sleep(2)
+        if checkgear3_found:
+            # checkgear3 สำเร็จ -> สแกน OCR ปกติ
+            print(f"[{self.device_id}] [GEAR] checkgear3 found! Scanning OCR...")
             all_found_gears.update(self.check_gear_by_text())
-            sleep(1)
+            sleep(2)
+            
+            # ยังสแกน weapons tabs ต่อตามปกติ
+            self.capture_screen()
+            self.check_floating_popups()
+            if self.exists_in_cache("img/weapons1.png"):
+                print(f"\n[{self.device_id}] Checking weapons1 tab...")
+                self.click("img/weapons1.png")
+                sleep(2)
+                all_found_gears.update(self.check_gear_by_text())
+                sleep(1)
+            
+            self.capture_screen()
+            self.check_floating_popups()
+            if self.exists_in_cache("img/weapons2.png"):
+                print(f"\n[{self.device_id}] Checking weapons2 tab...")
+                self.click("img/weapons2.png")
+                sleep(2)
+                all_found_gears.update(self.check_gear_by_text())
+                sleep(1)
+        else:
+            # === checkgear3 ไม่เจอ -> กด weapons1 แล้วสแกน ===
+            print(f"[{self.device_id}] [GEAR] checkgear3 NOT found after 60s! Falling back to weapons1...")
+            self.capture_screen()
+            self.check_floating_popups()
+            if self.exists_in_cache("img/weapons1.png"):
+                print(f"[{self.device_id}] [GEAR] Clicking weapons1.png and scanning...")
+                self.click("img/weapons1.png")
+                sleep(2)
+                all_found_gears.update(self.check_gear_by_text())
+                sleep(1)
+            else:
+                print(f"[{self.device_id}] [GEAR] weapons1.png not found on screen")
+            
+            # === Attempt 2: checkgear2 -> checkgear3 อีกรอบ ===
+            print(f"\n[{self.device_id}] [GEAR] Attempt 2: checkgear2 -> checkgear3...")
+            self.capture_screen()
+            self.check_floating_popups()
+            if not self.wait_and_click_image("checkgear2.png"):
+                print(f"[{self.device_id}] [GEAR] checkgear2 not found on attempt 2")
+            
+            checkgear3_found_2 = self.wait_and_click_image("checkgear3.png", timeout=60)
+            
+            if checkgear3_found_2:
+                # checkgear3 สำเร็จรอบ 2 -> สแกน OCR
+                print(f"[{self.device_id}] [GEAR] checkgear3 found on attempt 2! Scanning OCR...")
+                all_found_gears.update(self.check_gear_by_text())
+                sleep(2)
+            else:
+                # === checkgear3 ไม่เจออีก -> กด weapons2 แล้วสแกน ===
+                print(f"[{self.device_id}] [GEAR] checkgear3 NOT found again! Falling back to weapons2...")
+                self.capture_screen()
+                self.check_floating_popups()
+                if self.exists_in_cache("img/weapons2.png"):
+                    print(f"[{self.device_id}] [GEAR] Clicking weapons2.png and scanning...")
+                    self.click("img/weapons2.png")
+                    sleep(2)
+                    all_found_gears.update(self.check_gear_by_text())
+                    sleep(1)
+                else:
+                    print(f"[{self.device_id}] [GEAR] weapons2.png not found on screen")
         
         # Return gear results (will be combined with ranger results in main_login)
         print(f"\n[{self.device_id}] Gear results: {all_found_gears if all_found_gears else 'none'}")
@@ -2193,10 +2241,18 @@ class RangerGearBot(threading.Thread):
                     sleep(1)
                 continue
 
-            if self.exists_in_cache("img/fixnet1.png"):
-                print(f"[{self.device_id}] [POPUP] fixnet1.png detected in login loop, clicking...")
-                self.click("img/fixnet1.png")
+            # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ)
+            fixnet1_login_clicks = 0
+            while self.exists_in_cache("img/fixnet1.png", similarity=0.95):
+                fixnet1_login_clicks += 1
+                print(f"[{self.device_id}] [POPUP] fixnet1.png detected in login loop (click #{fixnet1_login_clicks}), clicking...")
+                self.click("img/fixnet1.png", similarity=0.95)
                 sleep(1)
+                self.capture_screen()  # จับภาพใหม่เพื่อเช็คซ้ำ
+                if fixnet1_login_clicks >= 10:
+                    print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times in login, breaking")
+                    break
+            if fixnet1_login_clicks > 0:
                 continue
 
             # === fixid1.png → failed ทันที ===
