@@ -1191,11 +1191,17 @@ class RangerGearBot(threading.Thread):
 
     def capture_screen(self):
         """Capture screen and load into RAM"""
+        sleep(0.3)  # เบรกลดภาระ CPU ไม่ให้วนลูปดึงจอเร็วเกินไป
         try:
+            kwargs = {}
+            if os.name == 'nt':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                capture_output=True, timeout=10
+                capture_output=True, timeout=10, **kwargs
             )
+            
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
                 self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
@@ -1205,8 +1211,20 @@ class RangerGearBot(threading.Thread):
                     f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
+                
+            # Global popup checks (like fixnet1.png) - หาตลอดคลุมทั้งการทำงาน!
+            if not getattr(self, "_in_popup_check", False):
+                self._in_popup_check = True
+                try:
+                    self.check_floating_popups()
+                except Exception as e:
+                    print(f"[{self.device_id}] Popup check error: {e}")
+                self._in_popup_check = False
+                
         except Exception as e:
             print(f"[{self.device_id}] Capture error: {e}")
+            if hasattr(self, "_in_popup_check"):
+                self._in_popup_check = False
 
     def _find_in_screen(self, template_path, similarity=0.95):
         """Find template in cached screen image (no new capture)"""
