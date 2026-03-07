@@ -96,13 +96,16 @@ def capture_screen(adb_cmd, device_id):
     return None
 
 def find_image(screen, template_path, similarity=0.95):
-    """หารูปในจอ คืนตำแหน่ง (x, y) หรือ None"""
+    """หารูปในจอ คืนตำแหน่ง (x, y) หรือ None + confidence จริงเสมอ"""
     if not os.path.exists(template_path):
-        return None, 0.0
+        return None, -1.0
     tmpl = cv2.imread(template_path, 0)
     if tmpl is None or screen is None:
-        return None, 0.0
+        return None, -1.0
     try:
+        # เช็คว่า template ไม่ใหญ่กว่า screen
+        if tmpl.shape[0] > screen.shape[0] or tmpl.shape[1] > screen.shape[1]:
+            return None, -2.0  # template ใหญ่กว่าจอ!
         result = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
         if max_val >= similarity:
@@ -110,9 +113,9 @@ def find_image(screen, template_path, similarity=0.95):
             cx = max_loc[0] + w // 2
             cy = max_loc[1] + h // 2
             return (cx, cy), max_val
-    except:
-        pass
-    return None, 0.0
+        return None, max_val  # ไม่เจอ แต่คืน confidence จริง
+    except Exception as e:
+        return None, -3.0
 
 def tap(adb_cmd, device_id, x, y):
     """กดจอที่ตำแหน่ง (x, y)"""
