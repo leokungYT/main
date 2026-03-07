@@ -1374,6 +1374,11 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
                 break
 
+        if self.exists_in_cache("img/fixaccep.png"):
+            print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
+            self.click("img/fixaccep.png")
+            sleep(1)
+
     def _raw_capture(self):
         """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน)"""
         try:

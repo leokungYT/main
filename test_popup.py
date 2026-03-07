@@ -18,7 +18,7 @@ POPUP_IMAGES = [
     "img/fixplay.png",
     "img/fixaccep.png",
 ]
-SIMILARITY = 0.70   # ลดลงเพื่อหาว่ารูปตรงไหม (บอทจริงใช้ 0.95)
+SIMILARITY = 0.95
 CHECK_INTERVAL = 2  # วินาที
 MAX_ROUNDS = 30     # จำนวนรอบสูงสุด (30 รอบ x 2 วิ = 60 วินาที)
 
@@ -182,10 +182,8 @@ def main():
     for d in devices:
         print(f"  Device: {d}")
     
-    device = devices[0]
-    
-    # เริ่มเช็คแบบ loop
-    print(f"\n[4] Starting popup check loop on [{device}]")
+    # เริ่มเช็คแบบ loop ทุก device
+    print(f"\n[4] Starting popup check on ALL {len(devices)} devices")
     print(f"    Checking every {CHECK_INTERVAL}s for {MAX_ROUNDS} rounds...")
     print(f"    Press Ctrl+C to stop\n")
     print("-" * 55)
@@ -198,58 +196,26 @@ def main():
             timestamp = time.strftime("%H:%M:%S")
             print(f"\n[Round {round_num}/{MAX_ROUNDS}] {timestamp}")
             
-            # แคปจอ
-            screen = capture_screen(adb_cmd, device)
-            if screen is None:
-                print("  WARNING: Could not capture screen, retrying...")
-                time.sleep(CHECK_INTERVAL)
-                continue
-            
-            print(f"  Screen captured: {screen.shape[1]}x{screen.shape[0]}")
-            
-            # เซฟภาพจอรอบแรก เพื่อเปรียบเทียบกับ template
-            if round_num == 1:
-                cv2.imwrite("test_screenshot.png", screen)
-                print(f"  >> Saved screenshot to: test_screenshot.png")
-                print(f"  >> Compare this with img/fixnet1.png to see why it doesn't match!")
-            
-            found_any = False
-            for img_path in POPUP_IMAGES:
-                if not os.path.exists(img_path):
+            # วนเช็คทุก device
+            for device in devices:
+                screen = capture_screen(adb_cmd, device)
+                if screen is None:
+                    print(f"  [{device}] Cannot capture")
                     continue
                 
-                pos, confidence = find_image(screen, img_path, SIMILARITY)
-                img_name = os.path.basename(img_path)
-                
-                if pos:
-                    found_any = True
-                    total_found += 1
-                    print(f"  >> FOUND: {img_name} at ({pos[0]}, {pos[1]}) confidence={confidence:.3f}")
+                for img_path in POPUP_IMAGES:
+                    if not os.path.exists(img_path):
+                        continue
                     
-                    # กดเลย!
-                    print(f"  >> CLICKING {img_name} at ({pos[0]}, {pos[1]})...")
-                    success = tap(adb_cmd, device, pos[0], pos[1])
-                    if success:
+                    pos, confidence = find_image(screen, img_path, SIMILARITY)
+                    img_name = os.path.basename(img_path)
+                    
+                    if pos:
+                        total_found += 1
+                        print(f"  [{device}] FOUND: {img_name} conf={confidence:.3f} -> CLICKING ({pos[0]},{pos[1]})")
+                        tap(adb_cmd, device, pos[0], pos[1])
                         total_clicked += 1
-                        print(f"  >> CLICKED! (total clicks: {total_clicked})")
-                    else:
-                        print(f"  >> Click failed!")
-                    
-                    # รอ 1 วิ แล้วแคปจอใหม่เพื่อดูว่าหายไปไหม
-                    time.sleep(1)
-                    screen2 = capture_screen(adb_cmd, device)
-                    if screen2 is not None:
-                        pos2, conf2 = find_image(screen2, img_path, SIMILARITY)
-                        if pos2:
-                            print(f"  >> {img_name} STILL VISIBLE after click! (conf={conf2:.3f})")
-                        else:
-                            print(f"  >> {img_name} disappeared after click! SUCCESS!")
-                else:
-                    # แสดง confidence ทุกรูปเพื่อให้ดูค่า
-                    print(f"  -- {img_name}: conf={confidence:.3f} (need>={SIMILARITY}) {'CLOSE!' if confidence > 0.7 else ''}")
-            
-            if not found_any:
-                print(f"  OK: No popups detected - screen is clean")
+                        time.sleep(0.5)
             
             time.sleep(CHECK_INTERVAL)
             

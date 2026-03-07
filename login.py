@@ -1642,6 +1642,7 @@ class RangerGearBot(threading.Thread):
         เจอก็กด วนเช็คซ้ำจนกว่าจะไม่เจอ popup ใดๆ
         ทำงานทุกรอบ capture_screen() คลุมทั้งไฟล์
         """
+        # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
         if self.exists_in_cache("img/fixnetv2.png"):
             print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
             self.click("img/fixnetv2.png")

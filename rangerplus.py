@@ -1201,13 +1201,13 @@ class RangerPlusBot(threading.Thread):
                 self._screen = cv2.imread(self.filename, 0)
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
                 
-            # Global popup checks (like fixnet1.png) - หาคลุมทั้งตลอดเจอกดทันที
+            # Global popup checks (like fixnet1.png) - หาตลอดคลุมทั้งการทำงาน!
             if not getattr(self, "_in_popup_check", False):
                 self._in_popup_check = True
                 try:
                     self.check_floating_popups()
                 except Exception as e:
-                    pass
+                    print(f"[{self.device_id}] Popup check error: {e}")
                 self._in_popup_check = False
                 
         except Exception as e:
@@ -1318,7 +1318,7 @@ class RangerPlusBot(threading.Thread):
         เจอก็กด วนเช็คซ้ำจนกว่าจะไม่เจอ popup ใดๆ
         ทำงานทุกรอบ capture_screen() คลุมทั้งไฟล์
         """
-        # fixnetv2.png
+        # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
         if self.exists_in_cache("img/fixnetv2.png"):
             print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
             self.click("img/fixnetv2.png")
@@ -1355,6 +1355,11 @@ class RangerPlusBot(threading.Thread):
             if fixnet1_clicks >= 10:
                 print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
                 break
+
+        if self.exists_in_cache("img/fixaccep.png"):
+            print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
+            self.click("img/fixaccep.png")
+            sleep(1)
 
     def _raw_capture(self):
         """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน)"""
