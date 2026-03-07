@@ -18,7 +18,7 @@ POPUP_IMAGES = [
     "img/fixplay.png",
     "img/fixaccep.png",
 ]
-SIMILARITY = 0.95
+SIMILARITY = 0.95  # ลดลงเพื่อทดสอบ (บอทจริงใช้ 0.95) - ดูค่า confidence จริงๆ ก่อน
 CHECK_INTERVAL = 2  # วินาที
 MAX_ROUNDS = 30     # จำนวนรอบสูงสุด (30 รอบ x 2 วิ = 60 วินาที)
 
@@ -231,9 +231,8 @@ def main():
                         else:
                             print(f"  >> {img_name} disappeared after click! SUCCESS!")
                 else:
-                    # แสดง confidence ถ้าใกล้ threshold
-                    if confidence > 0.7:
-                        print(f"  -- {img_name}: NOT matched but close (conf={confidence:.3f}, need={SIMILARITY})")
+                    # แสดง confidence ทุกรูปเพื่อให้ดูค่า
+                    print(f"  -- {img_name}: conf={confidence:.3f} (need>={SIMILARITY}) {'CLOSE!' if confidence > 0.7 else ''}")
             
             if not found_any:
                 print(f"  OK: No popups detected - screen is clean")
