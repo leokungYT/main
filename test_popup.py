@@ -8,9 +8,9 @@ import cv2
 import os
 import time
 import sys
+import shutil
 
 # ===== CONFIG =====
-ADB_CMD = "adb"
 POPUP_IMAGES = [
     "img/fixnet1.png",
     "img/fixnetv2.png",
@@ -22,23 +22,69 @@ SIMILARITY = 0.95
 CHECK_INTERVAL = 2  # วินาที
 MAX_ROUNDS = 30     # จำนวนรอบสูงสุด (30 รอบ x 2 วิ = 60 วินาที)
 
-def get_devices():
+def find_adb():
+    """หา adb แบบเดียวกับบอท - รองรับทุกเครื่อง"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # 1. หาในโฟลเดอร์ adb/ ข้างๆ สคริปต์
+    candidates = [
+        os.path.join(script_dir, "adb", "adb.exe"),
+        os.path.join(os.getcwd(), "adb", "adb.exe"),
+    ]
+    for loc in candidates:
+        if os.path.exists(loc):
+            print(f"  [ADB] Found: {loc}")
+            return loc
+    
+    # 2. หาใน system PATH
+    adb_in_path = shutil.which("adb")
+    if adb_in_path:
+        print(f"  [ADB] Found in PATH: {adb_in_path}")
+        return os.path.abspath(adb_in_path)
+    
+    # 3. ลองรัน adb ตรงๆ
+    try:
+        subprocess.run(["adb", "--version"], capture_output=True, timeout=5, check=True)
+        print(f"  [ADB] Using system 'adb' command")
+        return "adb"
+    except:
+        pass
+    
+    # 4. MuMu paths
+    mumu_paths = [
+        "F:\\Program Files\\Netease\\MuMuPlayer\\shell\\adb.exe",
+        "C:\\Program Files\\Netease\\MuMuPlayerGlobal-12.0\\shell\\adb.exe",
+        "C:\\Program Files\\Netease\\MuMuPlayer\\shell\\adb.exe",
+        "F:\\MuMuPlayerGlobal-12.0\\shell\\adb.exe",
+        "D:\\Program Files\\Netease\\MuMuPlayer\\shell\\adb.exe",
+    ]
+    for p in mumu_paths:
+        if os.path.exists(p):
+            print(f"  [ADB] Found MuMu ADB: {p}")
+            return p
+    
+    return None
+
+def get_devices(adb_cmd):
     """หา device ที่เชื่อมต่ออยู่"""
-    result = subprocess.run([ADB_CMD, "devices"], capture_output=True, text=True, timeout=5)
+    kwargs = {}
+    if os.name == 'nt':
+        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+    result = subprocess.run([adb_cmd, "devices"], capture_output=True, text=True, timeout=5, **kwargs)
     devices = []
     for line in result.stdout.strip().split("\n")[1:]:
         if "\tdevice" in line:
             devices.append(line.split("\t")[0])
     return devices
 
-def capture_screen(device_id):
+def capture_screen(adb_cmd, device_id):
     """แคปจอ"""
     try:
         kwargs = {}
         if os.name == 'nt':
             kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
         result = subprocess.run(
-            [ADB_CMD, "-s", device_id, "exec-out", "screencap", "-p"],
+            [adb_cmd, "-s", device_id, "exec-out", "screencap", "-p"],
             capture_output=True, timeout=10, **kwargs
         )
         if result.returncode == 0 and len(result.stdout) > 100:
@@ -68,14 +114,14 @@ def find_image(screen, template_path, similarity=0.95):
         pass
     return None, 0.0
 
-def tap(device_id, x, y):
+def tap(adb_cmd, device_id, x, y):
     """กดจอที่ตำแหน่ง (x, y)"""
     try:
         kwargs = {}
         if os.name == 'nt':
             kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
         subprocess.run(
-            [ADB_CMD, "-s", device_id, "shell", "input", "tap", str(x), str(y)],
+            [adb_cmd, "-s", device_id, "shell", "input", "tap", str(x), str(y)],
             capture_output=True, timeout=5, **kwargs
         )
         return True
@@ -84,35 +130,54 @@ def tap(device_id, x, y):
 
 def main():
     print("=" * 55)
-    print("  🔍 Popup Detection Test (fixnet1 / fixnetv2 / etc)")
+    print("  Popup Detection Test (fixnet1 / fixnetv2 / etc)")
     print("=" * 55)
     
     # เช็คว่ามีไฟล์รูป popup ไหม
     print("\n[1] Checking popup image files...")
     for img in POPUP_IMAGES:
         exists = os.path.exists(img)
-        status = "✅ Found" if exists else "❌ NOT FOUND"
+        status = "Found" if exists else "NOT FOUND"
         print(f"  {img}: {status}")
     
+    # หา ADB
+    print("\n[2] Finding ADB...")
+    adb_cmd = find_adb()
+    if not adb_cmd:
+        print("  ERROR: ADB not found!")
+        print("  Put adb.exe in the 'adb' folder next to this script")
+        input("Press Enter to exit...")
+        return
+    
     # หา device
-    print("\n[2] Finding connected devices...")
-    devices = get_devices()
+    print("\n[3] Finding connected devices...")
+    devices = get_devices(adb_cmd)
     if not devices:
-        print("  ❌ No devices found! Please connect emulator first.")
+        # ลอง connect MuMu ports
+        print("  No devices found. Trying to connect MuMu ports...")
+        for port in [7555, 5555, 5557, 5559, 5561, 5563, 5565, 5567, 5569, 5571, 5573, 5575, 5577, 5579, 5581, 5583, 5585, 5587]:
+            try:
+                kwargs = {}
+                if os.name == 'nt':
+                    kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                subprocess.run([adb_cmd, "connect", f"127.0.0.1:{port}"], capture_output=True, timeout=3, **kwargs)
+            except:
+                pass
+        time.sleep(1)
+        devices = get_devices(adb_cmd)
+    
+    if not devices:
+        print("  ERROR: No devices found!")
+        input("Press Enter to exit...")
         return
     
     for d in devices:
-        print(f"  ✅ {d}")
+        print(f"  Device: {d}")
     
-    # เลือก device ตัวแรก (หรือให้เลือก)
-    if len(devices) == 1:
-        device = devices[0]
-    else:
-        print(f"\n  Found {len(devices)} devices. Testing first: {devices[0]}")
-        device = devices[0]
+    device = devices[0]
     
     # เริ่มเช็คแบบ loop
-    print(f"\n[3] Starting popup check loop on [{device}]")
+    print(f"\n[4] Starting popup check loop on [{device}]")
     print(f"    Checking every {CHECK_INTERVAL}s for {MAX_ROUNDS} rounds...")
     print(f"    Press Ctrl+C to stop\n")
     print("-" * 55)
@@ -126,9 +191,9 @@ def main():
             print(f"\n[Round {round_num}/{MAX_ROUNDS}] {timestamp}")
             
             # แคปจอ
-            screen = capture_screen(device)
+            screen = capture_screen(adb_cmd, device)
             if screen is None:
-                print("  ⚠️ Could not capture screen, retrying...")
+                print("  WARNING: Could not capture screen, retrying...")
                 time.sleep(CHECK_INTERVAL)
                 continue
             
@@ -145,45 +210,46 @@ def main():
                 if pos:
                     found_any = True
                     total_found += 1
-                    print(f"  🔴 FOUND: {img_name} at ({pos[0]}, {pos[1]}) confidence={confidence:.3f}")
+                    print(f"  >> FOUND: {img_name} at ({pos[0]}, {pos[1]}) confidence={confidence:.3f}")
                     
                     # กดเลย!
-                    print(f"  👆 CLICKING {img_name} at ({pos[0]}, {pos[1]})...")
-                    success = tap(device, pos[0], pos[1])
+                    print(f"  >> CLICKING {img_name} at ({pos[0]}, {pos[1]})...")
+                    success = tap(adb_cmd, device, pos[0], pos[1])
                     if success:
                         total_clicked += 1
-                        print(f"  ✅ CLICKED! (total clicks: {total_clicked})")
+                        print(f"  >> CLICKED! (total clicks: {total_clicked})")
                     else:
-                        print(f"  ❌ Click failed!")
+                        print(f"  >> Click failed!")
                     
                     # รอ 1 วิ แล้วแคปจอใหม่เพื่อดูว่าหายไปไหม
                     time.sleep(1)
-                    screen2 = capture_screen(device)
+                    screen2 = capture_screen(adb_cmd, device)
                     if screen2 is not None:
                         pos2, conf2 = find_image(screen2, img_path, SIMILARITY)
                         if pos2:
-                            print(f"  ⚠️ {img_name} STILL VISIBLE after click! (conf={conf2:.3f})")
+                            print(f"  >> {img_name} STILL VISIBLE after click! (conf={conf2:.3f})")
                         else:
-                            print(f"  ✅ {img_name} disappeared after click!")
+                            print(f"  >> {img_name} disappeared after click! SUCCESS!")
                 else:
                     # แสดง confidence ถ้าใกล้ threshold
                     if confidence > 0.7:
-                        print(f"  🟡 {img_name}: NOT matched but close (confidence={confidence:.3f}, need={SIMILARITY})")
+                        print(f"  -- {img_name}: NOT matched but close (conf={confidence:.3f}, need={SIMILARITY})")
             
             if not found_any:
-                print(f"  🟢 No popups detected - screen is clean")
+                print(f"  OK: No popups detected - screen is clean")
             
             time.sleep(CHECK_INTERVAL)
             
     except KeyboardInterrupt:
-        print("\n\n⏹️  Stopped by user")
+        print("\n\nStopped by user")
     
     # สรุป
     print("\n" + "=" * 55)
-    print(f"  📊 SUMMARY")
+    print(f"  SUMMARY")
     print(f"  Total popups found:   {total_found}")
     print(f"  Total clicks sent:    {total_clicked}")
     print("=" * 55)
+    input("\nPress Enter to exit...")
 
 if __name__ == "__main__":
     main()
