@@ -18,7 +18,7 @@ POPUP_IMAGES = [
     "img/fixplay.png",
     "img/fixaccep.png",
 ]
-SIMILARITY = 0.95  # ลดลงเพื่อทดสอบ (บอทจริงใช้ 0.95) - ดูค่า confidence จริงๆ ก่อน
+SIMILARITY = 0.70   # ลดลงเพื่อหาว่ารูปตรงไหม (บอทจริงใช้ 0.95)
 CHECK_INTERVAL = 2  # วินาที
 MAX_ROUNDS = 30     # จำนวนรอบสูงสุด (30 รอบ x 2 วิ = 60 วินาที)
 
@@ -136,12 +136,17 @@ def main():
     print("  Popup Detection Test (fixnet1 / fixnetv2 / etc)")
     print("=" * 55)
     
-    # เช็คว่ามีไฟล์รูป popup ไหม
+    # เช็คว่ามีไฟล์รูป popup ไหม + ขนาด template
     print("\n[1] Checking popup image files...")
     for img in POPUP_IMAGES:
-        exists = os.path.exists(img)
-        status = "Found" if exists else "NOT FOUND"
-        print(f"  {img}: {status}")
+        if os.path.exists(img):
+            tmpl = cv2.imread(img)
+            if tmpl is not None:
+                print(f"  {img}: Found ({tmpl.shape[1]}x{tmpl.shape[0]} px)")
+            else:
+                print(f"  {img}: Found but CANNOT READ!")
+        else:
+            print(f"  {img}: NOT FOUND")
     
     # หา ADB
     print("\n[2] Finding ADB...")
@@ -201,6 +206,12 @@ def main():
                 continue
             
             print(f"  Screen captured: {screen.shape[1]}x{screen.shape[0]}")
+            
+            # เซฟภาพจอรอบแรก เพื่อเปรียบเทียบกับ template
+            if round_num == 1:
+                cv2.imwrite("test_screenshot.png", screen)
+                print(f"  >> Saved screenshot to: test_screenshot.png")
+                print(f"  >> Compare this with img/fixnet1.png to see why it doesn't match!")
             
             found_any = False
             for img_path in POPUP_IMAGES:
