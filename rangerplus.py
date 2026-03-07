@@ -1314,10 +1314,21 @@ class RangerPlusBot(threading.Thread):
 
     def check_floating_popups(self):
         """
-        Check and click floating popups (fixplay / fixnet1).
-        These are non-blocking: เจอก็กด แล้วทำงานต่อปกติ ไม่ return error
-        ควรเรียกหลัง capture_screen() ทุกครั้ง
+        Check and click floating popups (fixnetv2 / fixplay / fixnet1).
+        เจอก็กด วนเช็คซ้ำจนกว่าจะไม่เจอ popup ใดๆ
+        ทำงานทุกรอบ capture_screen() คลุมทั้งไฟล์
         """
+        # fixnetv2.png
+        if self.exists_in_cache("img/fixnetv2.png"):
+            print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
+            self.click("img/fixnetv2.png")
+            sleep(2)
+            self._raw_capture()
+            if self.exists_in_cache("img/fixnetv2ok.png"):
+                self.click("img/fixnetv2ok.png")
+                sleep(1)
+            return
+
         if self.exists_in_cache("img/fixplay.png"):
             print(f"[{self.device_id}] [POPUP] fixplay.png detected, clicking...")
             self.click("img/fixplay.png")
@@ -1325,7 +1336,7 @@ class RangerPlusBot(threading.Thread):
             # After fixplay, FORCE wait and click check-ok1.png
             print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png after fixplay...")
             for _ in range(120):  # Wait up to 120 seconds
-                self.capture_screen()
+                self._raw_capture()
                 if self.exists_in_cache("img/check-ok1.png"):
                     print(f"[{self.device_id}] [POPUP] check-ok1.png found after fixplay, clicking...")
                     self.click("img/check-ok1.png")
@@ -1340,10 +1351,32 @@ class RangerPlusBot(threading.Thread):
             print(f"[{self.device_id}] [POPUP] fixnet1.png detected (click #{fixnet1_clicks}), clicking...")
             self.click("img/fixnet1.png", similarity=0.95)
             sleep(1)
-            self.capture_screen()  # จับภาพใหม่เพื่อเช็คซ้ำ
+            self._raw_capture()  # จับภาพใหม่เพื่อเช็คซ้ำ (ไม่วนกลับ popup check)
             if fixnet1_clicks >= 10:
                 print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
                 break
+
+    def _raw_capture(self):
+        """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน)"""
+        try:
+            kwargs = {}
+            if os.name == 'nt':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            result = subprocess.run(
+                [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
+                capture_output=True, timeout=10, **kwargs
+            )
+            if result.returncode == 0 and len(result.stdout) > 100:
+                img_array = np.frombuffer(result.stdout, np.uint8)
+                self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+                self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            else:
+                with open(self.filename, "wb") as f:
+                    f.write(result.stdout)
+                self._screen = cv2.imread(self.filename, 0)
+                self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
+        except Exception as e:
+            print(f"[{self.device_id}] Raw capture error: {e}")
 
     def check_error_images(self, skip_fixcak=False, skip_icon=False):
         """Check error images using cached screen"""
