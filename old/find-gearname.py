@@ -15,10 +15,23 @@ filename = "screen-5556.png"
 
 
 def get_device_id():
+    # Auto-connect MuMu ports
+    for port in range(5555, 5600, 2):
+        try:
+            subprocess.run([r"adb\adb", "connect", f"127.0.0.1:{port}"],
+                          capture_output=True, timeout=2)
+        except:
+            pass
+    sleep(1)
+    
     result = subprocess.check_output(r"adb\adb devices", shell=True).decode()
     print(result)
     lines = result.strip().split("\n")[1:]
     devices = [line.split()[0] for line in lines if "device" in line and not line.startswith("*")]
+    if not devices:
+        print("ERROR: No devices found! Make sure emulator is running.")
+        input("Press Enter to exit...")
+        exit(1)
     return devices[0]
 
 def capture_screen():
@@ -102,8 +115,10 @@ if __name__ == "__main__":
     capture_screen()
     
     # ใช้ EasyOCR อ่าน grid ทั้งหมดทีเดียว
-    # result = easyOCR(Region(463, 153, 397, 321), image_path=filename) หาเกียร์
-    result = easyOCR(Region(10, 378, 750, 132), image_path=filename) 
+    #หาเกียร์
+    result = easyOCR(Region(463, 153, 397, 321), image_path=filename)
+    #หาตัว
+    # result = easyOCR(Region(10, 378, 750, 132), image_path=filename) 
     print("===== OCR Result =====")
     print(result)
     print("======================")

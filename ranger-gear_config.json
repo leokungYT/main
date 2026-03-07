@@ -71,6 +71,14 @@
         "gearimg10": {
             "ocr": "Shining Belt",
             "name": "MoonlitShining-Belt"
+        },
+        "gearimg11": {
+            "ocr": "Guard Gloves",
+            "name": "MoonlitGuard Gloves"
+        },
+        "gearimg12": {
+            "ocr": "Tough Watch",
+            "name": "LeonardTough Watch"
         }
     },
     "weaponname": {

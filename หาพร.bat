@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title Ranger Plus - หาพร
+title Ranger Plus
 cd /d "%~dp0"
 
 echo =========================================
@@ -47,10 +47,18 @@ if %UPDATE_COUNT% GTR 0 (
 :start_program
 echo.
 echo =========================================
-echo       Starting Ranger Plus (หาพร)...
+echo       Starting Ranger Plus...
 echo =========================================
 echo.
 
-:: รันไฟล์ rangerplus.py
+:: Run rangerplus.py
 python rangerplus.py
-pause
+
+if %errorlevel% neq 0 (
+    echo.
+    echo =========================================
+    echo [ERROR] Program crashed! See error above.
+    echo =========================================
+)
+
+cmd /k
