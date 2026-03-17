@@ -2453,6 +2453,36 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Found {item}, clicking...")
                     self.click(img_path)
                     sleep(0.8) # Fast transition for images
+
+                    # === SPECIAL CASE: box1.png logic ===
+                    if item == 'box1.png':
+                        print(f"[{self.device_id}] [BOX] box1 clicked. Waiting 20s for box2.png or end_box.png...")
+                        found_cont = False
+                        wait_box_started = time.time()
+                        while time.time() - wait_box_started < 20:
+                            self.capture_screen()
+                            if self.exists_in_cache("img/box2.png"):
+                                print(f"[{self.device_id}] [BOX] box2.png detected. Proceeding...")
+                                found_cont = True
+                                break
+                            if self.exists_in_cache("img/end_box.png"):
+                                print(f"[{self.device_id}] [BOX] end_box.png detected. Stopping box sequence.")
+                                # We don't set found_cont=True because we want to jump to box5
+                                break
+                            sleep(1)
+                        
+                        if not found_cont:
+                            print(f"[{self.device_id}] [BOX] Box2 not found or end reached. Clicking box5.png and finishing.")
+                            # Try to click box5.png to close
+                            for _ in range(10):
+                                self.capture_screen()
+                                if self.exists_in_cache("img/box5.png"):
+                                    self.click("img/box5.png")
+                                    print(f"[{self.device_id}] [BOX] Clicked box5.png")
+                                    break
+                                sleep(1)
+                            return "success" # Exit this sequence early
+
                     break
                 sleep(0.5) # Fast loop search
             
