@@ -1,4 +1,4 @@
-﻿import cv2
+import cv2
 import numpy as np
 import subprocess
 import os
@@ -1362,13 +1362,13 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(1)
 
-        # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ)
+        # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ) - ปรับ similarity เป็น 0.8 เพื่อความชัวร์
         fixnet1_clicks = 0
-        while self.exists_in_cache("img/fixnet1.png", similarity=0.95):
+        while self.exists_in_cache("img/fixnet1.png", similarity=0.8):
             fixnet1_clicks += 1
             print(f"[{self.device_id}] [POPUP] fixnet1.png detected (click #{fixnet1_clicks}), clicking...")
-            self.click("img/fixnet1.png", similarity=0.95)
-            sleep(1)
+            self.click("img/fixnet1.png", similarity=0.8)
+            sleep(1.5)
             self._raw_capture()  # จับภาพใหม่เพื่อเช็คซ้ำ (ไม่วนกลับ popup check)
             if fixnet1_clicks >= 10:
                 print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
@@ -2378,13 +2378,13 @@ class RangerGearBot(threading.Thread):
                     sleep(1)
                 continue
 
-            # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ)
+            # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (ปรับ similarity 0.8)
             fixnet1_login_clicks = 0
-            while self.exists_in_cache("img/fixnet1.png", similarity=0.95):
+            while self.exists_in_cache("img/fixnet1.png", similarity=0.8):
                 fixnet1_login_clicks += 1
                 print(f"[{self.device_id}] [POPUP] fixnet1.png detected in login loop (click #{fixnet1_login_clicks}), clicking...")
-                self.click("img/fixnet1.png", similarity=0.95)
-                sleep(1)
+                self.click("img/fixnet1.png", similarity=0.8)
+                sleep(1.5)
                 self.capture_screen()  # จับภาพใหม่เพื่อเช็คซ้ำ
                 if fixnet1_login_clicks >= 10:
                     print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times in login, breaking")
