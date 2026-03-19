@@ -2584,8 +2584,8 @@ class RangerGearBot(threading.Thread):
                 loop_count = 0
                 continue
                 
-            # *** SUCCESS -> Run find-ranger or check-gear ***
-            if self.exists_in_cache("img/stoplogin.png"):
+            # *** SUCCESS -> Just Login and Backup ***
+            if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
                 print(f"[{self.device_id}] [DEBUG] Modes -> do_ranger={self.do_ranger}, do_gear={self.do_gear}")
                 

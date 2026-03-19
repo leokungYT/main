@@ -1951,18 +1951,32 @@ class RangerPlusBot(threading.Thread):
     # =========================================================
     # PLUS PROCESSES
     # =========================================================
+    def scan_text_count_with_retry(self, target_text, timeout=10):
+        """Try scanning for target_text multiple times within timeout."""
+        start_time = time.time()
+        print(f"[{self.device_id}] Scanning for '{target_text}' (with retry up to {timeout}s)...")
+        
+        while time.time() - start_time < timeout:
+            count = self.scan_text_count(target_text)
+            if count > 0:
+                return count
+            sleep(2)  # Wait before retry
+            
+        print(f"[{self.device_id}] Could not find '{target_text}' after {timeout}s.")
+        return 0
+
     def scan_text_count(self, target_text):
         """Use OCR to count how many times target_text appears on screen."""
         self.capture_screen()
         if self._screen_color is None:
             return 0
         reader = get_ocr_reader()
-        print(f"[{self.device_id}] Running OCR to find '{target_text}'...")
+        # print(f"[{self.device_id}] Running OCR to find '{target_text}'...")
         results = reader.readtext(self._screen_color, detail=1)
         count = 0
         target_lower = target_text.lower()
         for (bbox, text, conf) in results:
-            if conf > 0.3:
+            if conf > 0.2: # Lowered confidence slightly for better detection
                 text_lower = text.lower()
                 if target_lower in text_lower:
                     count += 1
@@ -1998,9 +2012,9 @@ class RangerPlusBot(threading.Thread):
         self.wait_and_click_image("findkappa2.png")
         self.wait_and_click_image("okfinranger.png")
         
-        sleep(2) # Give UI time to load results
-        count = self.scan_text_count("Moon")
-        print(f"[{self.device_id}] Found 'Moon' {count} time(s).")
+        sleep(3) # Give UI more time to load results
+        count = self.scan_text_count_with_retry("Moon", timeout=12)
+        print(f"[{self.device_id}] Total Found 'Moon': {count}")
         
         res = None
         if count == 2:
@@ -2043,9 +2057,9 @@ class RangerPlusBot(threading.Thread):
         self.swipe(775, 440, 256, 443, 300)
         sleep(1)
         
-        sleep(1) # Give UI time to load results
-        count = self.scan_text_count("Anya")
-        print(f"[{self.device_id}] Found 'Anya' {count} time(s).")
+        sleep(3) # Give UI more time to load results
+        count = self.scan_text_count_with_retry("Anya", timeout=12)
+        print(f"[{self.device_id}] Total Found 'Anya': {count}")
         res = None
         if count == 2:
             res = "Anyax2"
@@ -2087,9 +2101,9 @@ class RangerPlusBot(threading.Thread):
         self.swipe(775, 440, 256, 443, 300)
         sleep(1)
         
-        sleep(1) # Give UI time to load results
-        count = self.scan_text_count("Yor")
-        print(f"[{self.device_id}] Found 'Yor' {count} time(s).")
+        sleep(3) # Give UI more time to load results
+        count = self.scan_text_count_with_retry("Yor", timeout=12)
+        print(f"[{self.device_id}] Total Found 'Yor': {count}")
         res = None
         if count == 2:
             res = "Yorx2"
@@ -2131,9 +2145,9 @@ class RangerPlusBot(threading.Thread):
         self.swipe(775, 440, 256, 443, 300)
         sleep(1)
         
-        sleep(1) # Give UI time to load results
-        count = self.scan_text_count("Power")
-        print(f"[{self.device_id}] Found 'Power' {count} time(s).")
+        sleep(3) # Give UI more time to load results
+        count = self.scan_text_count_with_retry("Power", timeout=12)
+        print(f"[{self.device_id}] Total Found 'Power': {count}")
         res = None
         if count == 2:
             res = "Powerx2"
@@ -2175,9 +2189,9 @@ class RangerPlusBot(threading.Thread):
         self.swipe(775, 440, 256, 443, 300)
         sleep(1)
         
-        sleep(1) # Give UI time to load results
-        count = self.scan_text_count("Denji")
-        print(f"[{self.device_id}] Found 'Denji' {count} time(s).")
+        sleep(3) # Give UI more time to load results
+        count = self.scan_text_count_with_retry("Denji", timeout=12)
+        print(f"[{self.device_id}] Total Found 'Denji': {count}")
         res = None
         if count == 2:
             res = "Denjix2"
@@ -2520,9 +2534,11 @@ class RangerPlusBot(threading.Thread):
                     # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
                     ui_stats.update_hero(found_names)
                     
-                    # chmod for pull
-                    self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-                    self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+                    # chmod for pull (วิธีที่ได้ผล 100%: cp → tmp → chmod → pull)
+                    safe_dev = self.device_id.replace(":", "_")
+                    temp_remote = f"/data/local/tmp/backup_{safe_dev}.xml"
+                    self.adb_shell(f"su -c 'cp {source_path} {temp_remote}'")
+                    self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
                     
                     # Create backup folder structure: backup-id/found_names
                     backup_dir = os.path.join("backup-id", found_names)
@@ -2532,7 +2548,7 @@ class RangerPlusBot(threading.Thread):
                     # Pull file
                     dst = os.path.join(backup_dir, filename)
                     result = subprocess.run(
-                        [self.adb_cmd, '-s', self.device_id, 'pull', source_path, dst],
+                        [self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, dst],
                         capture_output=True, text=True
                     )
                     
@@ -2540,6 +2556,9 @@ class RangerPlusBot(threading.Thread):
                         print(f"[{self.device_id}] ✓ Backed up to: {dst}")
                     else:
                         print(f"[{self.device_id}] ✗ Backup failed: {result.stderr}")
+                    
+                    # Cleanup temp
+                    self.adb_shell(f"rm -f {temp_remote}")
                 else:
                     msg = f"[{self.device_id}] ไม่เจอตัวละครตามเงื่อนไขเลย"
                     if GUI_INSTANCE:
@@ -2550,9 +2569,12 @@ class RangerPlusBot(threading.Thread):
                     ui_stats.update_hero("ไม่เจอ")
                     
                     print(f"[{self.device_id}] No results found - backing up to not-found")
-                    self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-                    self.adb_shell(f"su -c 'chmod 777 {source_path}'")
-                    self.backup_to_not_found(filename, source_path)
+                    safe_dev = self.device_id.replace(":", "_")
+                    temp_remote = f"/data/local/tmp/backup_{safe_dev}_nf.xml"
+                    self.adb_shell(f"su -c 'cp {source_path} {temp_remote}'")
+                    self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
+                    self.backup_to_not_found(filename, temp_remote)
+                    self.adb_shell(f"rm -f {temp_remote}")
                 
                 # Clear app and restart
                 self.clear_and_restart()

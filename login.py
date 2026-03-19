@@ -2839,7 +2839,7 @@ class RangerGearBot(threading.Thread):
                 continue
                 
             # *** SUCCESS -> Just Login and Backup ***
-            if self.exists_in_cache("img/stoplogin.png"):
+            if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
                 # [DIST CHECK] แวะเช็คหา distcheck หรือ distskip 5วิ
                 print(f"[{self.device_id}] stoplogin found, checking for distcheck/distskip (5s)...")
                 found_distcheck = False
