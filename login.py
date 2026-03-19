@@ -1633,13 +1633,16 @@ class RangerGearBot(threading.Thread):
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
     def check_black_screen(self, threshold=0.8):
-        """Check if screen is mostly black using mean brightness"""
+        """Check if screen is mostly black/dark using mean brightness"""
         if self._screen is None:
             return True  # ถ้า capture ไม่ได้เลย ถือว่าจอดำ
         try:
             mean_brightness = np.mean(self._screen)
-            # ถ้าความสว่างเฉลี่ยต่ำกว่า 15 = จอดำ
-            return mean_brightness < 15
+            # ถ้าความสว่างเฉลี่ยต่ำกว่า 55 = จอดำ/เทา (ปรับจาก 15 ให้ครอบคลุมจอค้างสีเทา)
+            if mean_brightness < 55:
+                # print(f"[{self.device_id}] check_black_screen: brightness={mean_brightness:.1f} (STUCK/BLACK)")
+                return True
+            return False
         except:
             return False
 
@@ -1765,6 +1768,11 @@ class RangerGearBot(threading.Thread):
 
         # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ ไม่ return error) =====
         self.check_floating_popups()
+        
+        # Check for Black/Stuck screen
+        if self.check_black_screen():
+            print(f"[{self.device_id}] Black/Dark screen detected! Returning fixcak to restart.")
+            return "fixcak"
         # ====================================================================
 
         # fixcak.png: restart process if found
@@ -2598,8 +2606,8 @@ class RangerGearBot(threading.Thread):
                 self.capture_screen()
                 if self._screen is not None:
                     mean_val = float(np.mean(self._screen))
-                    if mean_val >= 80:
-                        # จอสว่างแล้ว = แอพโหลดสำเร็จ
+                    if mean_val >= 60:
+                        # จอสว่างแล้ว = แอพโหลดสำเร็จ (ปรับจาก 80 เป็น 60 ให้รองรับจอที่อาจจะไม่สว่างมาก)
                         print(f"[{self.device_id}] [BLACK] Screen OK! brightness={mean_val:.0f} (app loaded)")
                         is_stuck = False
                         break
@@ -2644,6 +2652,11 @@ class RangerGearBot(threading.Thread):
                     pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
+            # checkline.png: ลำดับเช็คบล็อกพิเศษ
+            if self.exists_in_cache("img/checkline.png"):
+                self.check_floating_popups()
+                continue
+
             if self.exists_in_cache("img/fixnetv2.png"):
                 print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
                 self.click("img/fixnetv2.png")

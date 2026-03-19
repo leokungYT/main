@@ -1302,13 +1302,16 @@ class RangerPlusBot(threading.Thread):
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
     def check_black_screen(self, threshold=0.8):
-        """Check if screen is mostly black using mean brightness"""
+        """Check if screen is mostly black/dark using mean brightness"""
         if self._screen is None:
             return True  # ถ้า capture ไม่ได้เลย ถือว่าจอดำ
         try:
             mean_brightness = np.mean(self._screen)
-            # ถ้าความสว่างเฉลี่ยต่ำกว่า 15 = จอดำ
-            return mean_brightness < 15
+            # ถ้าความสว่างเฉลี่ยต่ำกว่า 55 = จอดำ/เทา (ปรับจาก 15 ให้ครอบคลุมจอค้างสีเทา)
+            if mean_brightness < 55:
+                # print(f"[{self.device_id}] check_black_screen: brightness={mean_brightness:.1f} (STUCK/BLACK)")
+                return True
+            return False
         except:
             return False
 
@@ -1434,6 +1437,11 @@ class RangerPlusBot(threading.Thread):
 
         # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ ไม่ return error) =====
         self.check_floating_popups()
+        
+        # Check for Black/Stuck screen
+        if self.check_black_screen():
+            print(f"[{self.device_id}] Black/Dark screen detected! Returning fixcak to restart.")
+            return "fixcak"
         # ====================================================================
 
         # fixcak.png: restart process if found
@@ -1970,8 +1978,23 @@ class RangerPlusBot(threading.Thread):
             
         print(f"[{self.device_id}] Swiping down (707 340 694 277 300)...")
         self.swipe(707, 340, 694, 277, 300)
-        sleep(1)
         
+        # กันค้าง: รอ 10 วิ ถ้าไม่เจอให้ swipe ซ้ำ
+        start_wait_kappa = time.time()
+        found_k2 = False
+        while time.time() - start_wait_kappa < 10:
+            self.capture_screen()
+            self.check_floating_popups()
+            if self.exists_in_cache("img/findkappa2.png"):
+                found_k2 = True
+                break
+            sleep(1)
+        
+        if not found_k2:
+            print(f"[{self.device_id}] findkappa2.png not found after 10s, retrying swipe...")
+            self.swipe(707, 340, 694, 277, 300)
+            sleep(1)
+            
         self.wait_and_click_image("findkappa2.png")
         self.wait_and_click_image("okfinranger.png")
         
@@ -2216,8 +2239,8 @@ class RangerPlusBot(threading.Thread):
                 self.capture_screen()
                 if self._screen is not None:
                     mean_val = float(np.mean(self._screen))
-                    if mean_val >= 80:
-                        # จอสว่างแล้ว = แอพโหลดสำเร็จ
+                    if mean_val >= 60:
+                        # จอสว่างแล้ว = แอพโหลดสำเร็จ (ปรับจาก 80 เป็น 60 ให้รองรับจอที่อาจจะไม่สว่างมาก)
                         print(f"[{self.device_id}] [BLACK] Screen OK! brightness={mean_val:.0f} (app loaded)")
                         is_stuck = False
                         break
@@ -2261,6 +2284,21 @@ class RangerPlusBot(threading.Thread):
                 pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
+            # checkline.png: ลำดับเช็คบล็อกพิเศษ
+            if self.exists_in_cache("img/checkline.png"):
+                self.check_floating_popups()
+                continue
+
+            if self.exists_in_cache("img/fixnetv2.png"):
+                print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
+                self.click("img/fixnetv2.png")
+                sleep(2)
+                self.capture_screen()
+                if self.exists_in_cache("img/fixnetv2ok.png"):
+                    self.click("img/fixnetv2ok.png")
+                    sleep(1)
+                continue
+
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
                 self.click("img/fixplay.png")
