@@ -601,21 +601,11 @@ config = {
 
 adb_path = "adb"
 
-# EasyOCR reader - loaded once globally
-_ocr_reader = None
-_ocr_lock = threading.Lock()  # Thread-safe OCR init
-
-def get_ocr_reader():
-    """Get or create EasyOCR reader (singleton, thread-safe)"""
-    global _ocr_reader
-    if _ocr_reader is None:
-        with _ocr_lock:
-            if _ocr_reader is None:
-                import easyocr
-                print("[INFO] Loading EasyOCR model (first time only)...")
-                _ocr_reader = easyocr.Reader(['en'], gpu=False)
-                print("[OK] EasyOCR model loaded!")
-    return _ocr_reader
+# EasyOCR reader - NO LONGER SINGLETON (Each bot gets its own reader to prevent thread blocking)
+def get_ocr_reader_for_instance():
+    """Import and return easyocr module (Helper)"""
+    import easyocr
+    return easyocr
 
 
 def load_config():
@@ -824,6 +814,8 @@ class RangerPlusBot(threading.Thread):
         self.device_id = device_id
         self.args = args # Store command line args
         self.daemon = True
+        self.ocr_reader = None  # Init reader per bot instance
+        self._ocr_init_lock = threading.Lock()
         
         def update_gui_status(self, step, status="working"):
             ui_stats.update_device(self.device_id, {'step': step, 'status': status})
@@ -1965,22 +1957,37 @@ class RangerPlusBot(threading.Thread):
         print(f"[{self.device_id}] Could not find '{target_text}' after {timeout}s.")
         return 0
 
+    def _get_reader(self):
+        """Get or initialize the OCR reader for this specific bot instance."""
+        if self.ocr_reader is None:
+            with self._ocr_init_lock:
+                if self.ocr_reader is None:
+                    import easyocr
+                    print(f"[{self.device_id}] Initializing private OCR reader...")
+                    self.ocr_reader = easyocr.Reader(['en'], gpu=False)
+                    print(f"[{self.device_id}] Private OCR reader ready!")
+        return self.ocr_reader
+
     def scan_text_count(self, target_text):
         """Use OCR to count how many times target_text appears on screen."""
         self.capture_screen()
         if self._screen_color is None:
             return 0
-        reader = get_ocr_reader()
-        # print(f"[{self.device_id}] Running OCR to find '{target_text}'...")
-        results = reader.readtext(self._screen_color, detail=1)
-        count = 0
-        target_lower = target_text.lower()
-        for (bbox, text, conf) in results:
-            if conf > 0.2: # Lowered confidence slightly for better detection
-                text_lower = text.lower()
-                if target_lower in text_lower:
-                    count += 1
-        return count
+        
+        try:
+            reader = self._get_reader()
+            results = reader.readtext(self._screen_color, detail=1)
+            count = 0
+            target_lower = target_text.lower()
+            for (bbox, text, conf) in results:
+                if conf > 0.2: # Lowered confidence slightly for better detection
+                    text_lower = text.lower()
+                    if target_lower in text_lower:
+                        count += 1
+            return count
+        except Exception as e:
+            print(f"[{self.device_id}] [OCR ERROR] Scan failed: {e}")
+            return 0
 
     def process_kappaplus(self):
         print(f"\n[{self.device_id}] === Starting kappaplus ===")
