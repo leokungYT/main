@@ -1645,10 +1645,56 @@ class RangerGearBot(threading.Thread):
 
     def check_floating_popups(self):
         """
-        Check and click floating popups (fixnetv2 / fixplay / fixnet1).
+        Check and click floating popups (checkline / fixnetv2 / fixplay / fixnet1).
         เจอก็กด วนเช็คซ้ำจนกว่าจะไม่เจอ popup ใดๆ
         ทำงานทุกรอบ capture_screen() คลุมทั้งไฟล์
         """
+        # checkline.png: Handle Checkbox Popup Sequence
+        if self.exists_in_cache("img/checkline.png"):
+            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
+            self.click("img/checkline.png")
+            sleep(2)
+            
+            # 1. Wait for @check-l1.png
+            start_l1 = time.time()
+            while time.time() - start_l1 < 60:
+                self._raw_capture()
+                if self.exists_in_cache("img/check-l1.png"):
+                    print(f"[{self.device_id}] [POPUP] Found check-l1.png")
+                    break
+                sleep(1)
+            
+            # 2. Coordinates
+            print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
+            self.tap(932, 133)
+            sleep(0.5)
+            self.tap(930, 253)
+            sleep(0.5)
+            self.tap(926, 327)
+            sleep(1.0)
+            
+            # 3. Wait for check-l4.png
+            start_l4 = time.time()
+            while time.time() - start_l4 < 60:
+                self._raw_capture()
+                if self.exists_in_cache("img/check-l4.png"):
+                    print(f"[{self.device_id}] [POPUP] Found and clicking check-l4.png")
+                    self.click("img/check-l4.png")
+                    break
+                sleep(1)
+                
+            # 4. Click check-ok1.png
+            print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
+            for _ in range(60):
+                self._raw_capture()
+                if self.exists_in_cache("img/check-ok1.png"):
+                    self.click("img/check-ok1.png")
+                    print(f"[{self.device_id}] [POPUP] Checkline sequence complete!")
+                    sleep(1)
+                    break
+                sleep(1)
+            return
+
         # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
         if self.exists_in_cache("img/fixnetv2.png"):
             print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
