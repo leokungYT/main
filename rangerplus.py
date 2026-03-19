@@ -601,6 +601,9 @@ config = {
 
 adb_path = "adb"
 
+# Concurrent OCR Limiter - Only allow e.g. 2 bots to OCR at the same time to save CPU/RAM
+ocr_semaphore = threading.Semaphore(2) 
+
 # EasyOCR reader - NO LONGER SINGLETON (Each bot gets its own reader to prevent thread blocking)
 def get_ocr_reader_for_instance():
     """Import and return easyocr module (Helper)"""
@@ -1181,7 +1184,7 @@ class RangerPlusBot(threading.Thread):
                 
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                capture_output=True, timeout=10, **kwargs
+                capture_output=True, timeout=20, **kwargs
             )
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
@@ -1410,7 +1413,7 @@ class RangerPlusBot(threading.Thread):
                 kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                capture_output=True, timeout=10, **kwargs
+                capture_output=True, timeout=20, **kwargs
             )
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
@@ -1969,25 +1972,34 @@ class RangerPlusBot(threading.Thread):
         return self.ocr_reader
 
     def scan_text_count(self, target_text):
-        """Use OCR to count how many times target_text appears on screen."""
+        """Use OCR to count how many times target_text appears on screen (Optimized)."""
         self.capture_screen()
         if self._screen_color is None:
             return 0
         
-        try:
-            reader = self._get_reader()
-            results = reader.readtext(self._screen_color, detail=1)
-            count = 0
-            target_lower = target_text.lower()
-            for (bbox, text, conf) in results:
-                if conf > 0.2: # Lowered confidence slightly for better detection
-                    text_lower = text.lower()
-                    if target_lower in text_lower:
-                        count += 1
-            return count
-        except Exception as e:
-            print(f"[{self.device_id}] [OCR ERROR] Scan failed: {e}")
-            return 0
+        # Region Optimization: Scanning for characters only in the bottom half
+        # 1280x720 standard: crop [360:720, 0:1280]
+        h, w = self._screen_color.shape[:2]
+        crop_y = h // 2 # Only bottom half
+        crop_img = self._screen_color[crop_y:h, 0:w]
+        
+        # Use semaphore to avoid CPU/RAM thrashing
+        with ocr_semaphore:
+            try:
+                reader = self._get_reader()
+                # print(f"[{self.device_id}] OCR scanning region...")
+                results = reader.readtext(crop_img, detail=1)
+                count = 0
+                target_lower = target_text.lower()
+                for (bbox, text, conf) in results:
+                    if conf > 0.2: # Lowered confidence slightly for better detection
+                        text_lower = text.lower()
+                        if target_lower in text_lower:
+                            count += 1
+                return count
+            except Exception as e:
+                print(f"[{self.device_id}] [OCR ERROR] Scan failed: {e}")
+                return 0
 
     def process_kappaplus(self):
         print(f"\n[{self.device_id}] === Starting kappaplus ===")
