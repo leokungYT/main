@@ -10,6 +10,7 @@ import glob
 import tempfile
 import json
 import threading
+import multiprocessing
 import queue
 import concurrent.futures
 import argparse
@@ -45,23 +46,39 @@ class SimpleUIStats:
         self.failed_logins = 0
         self.processed_files = 0
         self.connected_devices = 0
-        self.lock = threading.RLock()
+        self.lock = threading.RLock() # Local thread lock for GUI side
         self.last_update = time.time()
         self.update_interval = 30
         self.device_statuses = {}
         self.hero_counts = {}
         # Counter สำหรับ hero found/not-found
-        self.success_count = 0 # Matches bot success_count
-        self.fail_count = 0    # Matches bot fail_count
+        self.success_count = 0 
+        self.fail_count = 0    
         # hero found list with counts
-        self.hero_found_list = {}  # {hero_combo: count} e.g. {'Yor': 1, 'Yor+Anya': 2}
+        self.hero_found_list = {}  
         
     def _get_shared_file(self):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared_stats.json")
 
+    def _get_shared_lock_file(self):
+        return self._get_shared_file() + ".lock"
+
     def save_shared(self):
-        """Save stats to a shared file for multi-process sync (Atomic write)"""
+        """Save stats to a shared file for multi-process sync (Atomic write with lock)"""
+        lock_path = self._get_shared_lock_file()
         try:
+            # Simple file-based lock for cross-process sync
+            start_lock = time.time()
+            while time.time() - start_lock < 5: # 5s timeout
+                try:
+                    fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                    os.close(fd)
+                    break
+                except FileExistsError:
+                    time.sleep(0.05)
+            else:
+                return # Give up after 5s
+                
             with self.lock:
                 data = {
                     "success_count": self.success_count,
@@ -75,47 +92,58 @@ class SimpleUIStats:
                 with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
                 
-                # Atomic replace with retry for Windows WinError 32
+                # Atomic replace
                 for _ in range(5):
                     try:
                         os.replace(tmp_path, path)
                         break
                     except OSError:
                         time.sleep(0.1)
-                else:
-                    # Fallback if replace keeps failing
-                    if os.path.exists(tmp_path):
-                        os.remove(tmp_path)
-        except Exception as e:
-            print(f"[DEBUG] save_shared error: {e}")
+        finally:
+            try: os.remove(lock_path)
+            except: pass
 
     def load_shared(self):
-        """Load stats from the shared file with retries"""
+        """Load stats from the shared file with lock"""
         shared_file = self._get_shared_file()
         if not os.path.exists(shared_file):
             return
             
-        for _ in range(5): # Retry up to 5 times
+        lock_path = self._get_shared_lock_file()
+        start_lock = time.time()
+        while time.time() - start_lock < 5:
             try:
-                with open(shared_file, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    if not content: continue
-                    data = json.loads(content)
-                    with self.lock:
-                        # Only update if shared data is newer or to merge
-                        self.success_count = max(self.success_count, data.get("success_count", 0))
-                        self.fail_count = max(self.fail_count, data.get("fail_count", 0))
-                        
-                        # Merge hero lists (take max count)
-                        shared_heroes = data.get("hero_found_list", {})
-                        for h, count in shared_heroes.items():
-                            self.hero_found_list[h] = max(self.hero_found_list.get(h, 0), count)
-                            
-                        # Update device statuses
-                        self.device_statuses.update(data.get("device_statuses", {}))
+                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
                 break
-            except Exception as e:
-                time.sleep(0.1)
+            except FileExistsError:
+                time.sleep(0.05)
+        else:
+            return
+            
+        try:
+            for _ in range(5): 
+                try:
+                    with open(shared_file, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        if not content: continue
+                        data = json.loads(content)
+                        with self.lock:
+                            # Sync counts (always take higher value)
+                            self.success_count = max(self.success_count, data.get("success_count", 0))
+                            self.fail_count = max(self.fail_count, data.get("fail_count", 0))
+                            
+                            shared_heroes = data.get("hero_found_list", {})
+                            for h, count in shared_heroes.items():
+                                self.hero_found_list[h] = max(self.hero_found_list.get(h, 0), count)
+                                
+                            self.device_statuses.update(data.get("device_statuses", {}))
+                    break
+                except Exception:
+                    time.sleep(0.1)
+        finally:
+            try: os.remove(lock_path)
+            except: pass
 
     def update(self, total=None, processed=None, success=None, fail=None, devices=None, hero_found=None, hero_not_found=None):
         self.load_shared() # Pull latest from others first to avoid overwriting counts
@@ -287,7 +315,7 @@ if GUI_AVAILABLE:
             self.geometry("620x530")
             self.devices = devices
             self.args = args
-            self.bot_threads = []
+            self.bot_processes = []
             self.device_monitors = {}
             self.hero_stats_labels = {}
             self.hero_rows = {}
@@ -308,7 +336,7 @@ if GUI_AVAILABLE:
             print("[GUI] Launched Successfully. Waiting for manual start.")
             
             if getattr(self.args, 'no_start', False):
-                print("[GUI] Monitor mode active (No internal threads).")
+                print("[GUI] Monitor mode active (No internal processes).")
                 self.lbl_auto_start.configure(text="[ DASHBOARD MODE ]", text_color="#ffae42")
             else:
                 self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
@@ -429,11 +457,11 @@ if GUI_AVAILABLE:
                     m.pack(fill="x", pady=1)
                     self.device_monitors[dev] = m
                     
-                    # Start bot thread
+                    # Start bot process
                     if getattr(self, 'is_started', False) and not getattr(self.args, 'no_start', False):
                         bot = RangerPlusBot(dev, self.args)
                         bot.start()
-                        self.bot_threads.append(bot)
+                        self.bot_processes.append(bot)
                     self.log("SUCCESS", f"Connected new device: {dev}")
             
             if new_count > 0:
@@ -451,8 +479,8 @@ if GUI_AVAILABLE:
         def _start_single_bot(self, device_id):
             bot = RangerPlusBot(device_id, self.args)
             bot.start()
-            self.bot_threads.append(bot)
-            self.log("INFO", f"🚀 Started bot on {device_id}")
+            self.bot_processes.append(bot)
+            self.log("INFO", f"🚀 Started bot process on {device_id}")
 
         def start_bot(self):
             if getattr(self, 'is_started', False):
@@ -464,7 +492,7 @@ if GUI_AVAILABLE:
             self.lbl_auto_start.configure(text="[ BOT IS RUNNING ]", text_color="#4caf50")
             
             delay_sec = config.get("thread_delay", 5)
-            self.log("INFO", f"Starting Bot Threads (Delay: {delay_sec}s per device)...")
+            self.log("INFO", f"Starting Bot Processes (Delay: {delay_sec}s per device)...")
             
             for i, device_id in enumerate(self.devices):
                 delay_ms = i * int(delay_sec) * 1000
@@ -601,7 +629,7 @@ config = {
 
 adb_path = "adb"
 
-# EasyOCR reader - loaded once globally (Matches ranger-gear.py for memory efficiency)
+# EasyOCR reader - loaded once globally
 _ocr_reader = None
 _ocr_lock = threading.Lock()  # Thread-safe OCR init
 
@@ -612,7 +640,7 @@ def get_ocr_reader():
         with _ocr_lock:
             if _ocr_reader is None:
                 import easyocr
-                print("[INFO] Loading EasyOCR model (multi-device shared)...")
+                print("[INFO] Loading EasyOCR model (first time only)...")
                 _ocr_reader = easyocr.Reader(['en'], gpu=False)
                 print("[OK] EasyOCR model loaded!")
     return _ocr_reader
@@ -818,16 +846,15 @@ def get_connected_devices():
 # =============================================================
 # RangerGearBot Class - Unified Bot for Ranger + Gear
 # =============================================================
-class RangerPlusBot(threading.Thread):
+class RangerPlusBot(multiprocessing.Process):
+    def update_gui_status(self, step, status="working"):
+        ui_stats.update_device(self.device_id, {'step': step, 'status': status})
+
     def __init__(self, device_id, args=None):
-        threading.Thread.__init__(self)
+        multiprocessing.Process.__init__(self)
         self.device_id = device_id
         self.args = args # Store command line args
         self.daemon = True
-        
-        def update_gui_status(self, step, status="working"):
-            ui_stats.update_device(self.device_id, {'step': step, 'status': status})
-        self.update_gui_status = update_gui_status.__get__(self, RangerPlusBot)
         
         # Determine which modes to run
         self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
@@ -878,6 +905,7 @@ class RangerPlusBot(threading.Thread):
         self._screen = None
         self._screen_color = None
         self._template_cache = {}
+        self._black_start_time = None
 
     def open_app(self):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
@@ -925,7 +953,7 @@ class RangerPlusBot(threading.Thread):
 
     def run(self):
         try:
-            print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
+            print(f"[{self.device_id}] RangerGear Bot Process Started", flush=True)
             
             while True:
                 # 0. Reload Config
@@ -1189,7 +1217,7 @@ class RangerPlusBot(threading.Thread):
                 
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                capture_output=True, timeout=20, **kwargs
+                capture_output=True, timeout=10, **kwargs
             )
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
@@ -1301,19 +1329,36 @@ class RangerPlusBot(threading.Thread):
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
-    def check_black_screen(self, threshold=0.8):
-        """Check if screen is mostly black/dark using mean brightness"""
+    def check_black_screen(self):
+        """Check if screen is mostly black (>80% black pixels) using persistence (15s)"""
         if self._screen is None:
-            return True  # ถ้า capture ไม่ได้เลย ถือว่าจอดำ
+            return False 
+            
         try:
-            mean_brightness = np.mean(self._screen)
-            # ถ้าความสว่างเฉลี่ยต่ำกว่า 55 = จอดำ/เทา (ปรับจาก 15 ให้ครอบคลุมจอค้างสีเทา)
-            if mean_brightness < 55:
-                # print(f"[{self.device_id}] check_black_screen: brightness={mean_brightness:.1f} (STUCK/BLACK)")
-                return True
-            return False
+            # Thresholding to find black pixels (brightness < 50)
+            _, thresh = cv2.threshold(self._screen, 50, 255, cv2.THRESH_BINARY_INV)
+            num_black = cv2.countNonZero(thresh)
+            total = self._screen.shape[0] * self._screen.shape[1]
+            black_ratio = num_black / total
+            is_black_now = black_ratio > 0.75
         except:
+            is_black_now = False
+
+        if not is_black_now:
+            self._black_start_time = None
             return False
+            
+        if not hasattr(self, '_black_start_time') or self._black_start_time is None:
+            self._black_start_time = time.time()
+            return False
+            
+        duration = time.time() - self._black_start_time
+        if duration >= 10:
+            print(f"[{self.device_id}] STUCK/BLACK screen persisted for {duration:.1f}s. Triggering recovery...")
+            self._black_start_time = None 
+            return True
+            
+        return False
 
     def check_floating_popups(self):
         """
@@ -1418,7 +1463,7 @@ class RangerPlusBot(threading.Thread):
                 kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                capture_output=True, timeout=20, **kwargs
+                capture_output=True, timeout=10, **kwargs
             )
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
@@ -1440,9 +1485,7 @@ class RangerPlusBot(threading.Thread):
         
         # Check for Black/Stuck screen
         if self.check_black_screen():
-            print(f"[{self.device_id}] Black/Dark screen detected! Returning fixcak to restart.")
             return "fixcak"
-        # ====================================================================
 
         # fixcak.png: restart process if found
         if not skip_fixcak:
@@ -1951,45 +1994,22 @@ class RangerPlusBot(threading.Thread):
     # =========================================================
     # PLUS PROCESSES
     # =========================================================
-    def scan_text_count_with_retry(self, target_text, timeout=10):
-        """Try scanning for target_text multiple times within timeout."""
-        start_time = time.time()
-        print(f"[{self.device_id}] Scanning for '{target_text}' (with retry up to {timeout}s)...")
-        
-        while time.time() - start_time < timeout:
-            count = self.scan_text_count(target_text)
-            if count > 0:
-                return count
-            sleep(2)  # Wait before retry
-            
-        print(f"[{self.device_id}] Could not find '{target_text}' after {timeout}s.")
-        return 0
-
     def scan_text_count(self, target_text):
-        """Use OCR to count how many times target_text appears on screen (Shared Reader)."""
+        """Use OCR to count how many times target_text appears on screen."""
         self.capture_screen()
         if self._screen_color is None:
             return 0
-        
-        # Region Optimization: Scanning for characters only in the bottom half
-        h, w = self._screen_color.shape[:2]
-        crop_y = h // 2 
-        crop_img = self._screen_color[crop_y:h, 0:w]
-        
-        try:
-            reader = get_ocr_reader()
-            results = reader.readtext(crop_img, detail=1)
-            count = 0
-            target_lower = target_text.lower()
-            for (bbox, text, conf) in results:
-                if conf > 0.2: 
-                    text_lower = text.lower()
-                    if target_lower in text_lower:
-                        count += 1
-            return count
-        except Exception as e:
-            print(f"[{self.device_id}] [OCR ERROR] Scan failed: {e}")
-            return 0
+        reader = get_ocr_reader()
+        print(f"[{self.device_id}] Running OCR to find '{target_text}'...")
+        results = reader.readtext(self._screen_color, detail=1)
+        count = 0
+        target_lower = target_text.lower()
+        for (bbox, text, conf) in results:
+            if conf > 0.3:
+                text_lower = text.lower()
+                if target_lower in text_lower:
+                    count += 1
+        return count
 
     def process_kappaplus(self):
         print(f"\n[{self.device_id}] === Starting kappaplus ===")
@@ -1999,31 +2019,34 @@ class RangerPlusBot(threading.Thread):
         if not self.wait_and_click_image("findkappa1.png"):
             return None
             
-        print(f"[{self.device_id}] Swiping down (707 340 694 277 300)...")
+        print(f"[{self.device_id}] Swiping down (first attempt)...")
         self.swipe(707, 340, 694, 277, 300)
         
-        # กันค้าง: รอ 10 วิ ถ้าไม่เจอให้ swipe ซ้ำ
-        start_wait_kappa = time.time()
-        found_k2 = False
-        while time.time() - start_wait_kappa < 10:
+        # --- ROBUST SCROLL FOR KAPPA2 ---
+        kappa2_found = False
+        start_kappa2_wait = time.time()
+        print(f"[{self.device_id}] Waiting for findkappa2.png (10s retry)...")
+        while time.time() - start_kappa2_wait < 10:
             self.capture_screen()
-            self.check_floating_popups()
             if self.exists_in_cache("img/findkappa2.png"):
-                found_k2 = True
+                kappa2_found = True
                 break
             sleep(1)
         
-        if not found_k2:
-            print(f"[{self.device_id}] findkappa2.png not found after 10s, retrying swipe...")
+        if not kappa2_found:
+            print(f"[{self.device_id}] Still not found findkappa2.png in 10s. Swiping again...")
             self.swipe(707, 340, 694, 277, 300)
-            sleep(1)
+            sleep(1.5)
             
-        self.wait_and_click_image("findkappa2.png")
+        # Continue with standard behavior
+        if not self.wait_and_click_image("findkappa2.png"):
+            return None
+            
         self.wait_and_click_image("okfinranger.png")
         
-        sleep(3) # Give UI more time to load results
-        count = self.scan_text_count_with_retry("Moon", timeout=12)
-        print(f"[{self.device_id}] Total Found 'Moon': {count}")
+        sleep(2) # Give UI time to load results
+        count = self.scan_text_count("Moon")
+        print(f"[{self.device_id}] Found 'Moon' {count} time(s).")
         
         res = None
         if count == 2:
@@ -2066,9 +2089,9 @@ class RangerPlusBot(threading.Thread):
         self.swipe(775, 440, 256, 443, 300)
         sleep(1)
         
-        sleep(3) # Give UI more time to load results
-        count = self.scan_text_count_with_retry("Anya", timeout=12)
-        print(f"[{self.device_id}] Total Found 'Anya': {count}")
+        sleep(1) # Give UI time to load results
+        count = self.scan_text_count("Anya")
+        print(f"[{self.device_id}] Found 'Anya' {count} time(s).")
         res = None
         if count == 2:
             res = "Anyax2"
@@ -2110,9 +2133,9 @@ class RangerPlusBot(threading.Thread):
         self.swipe(775, 440, 256, 443, 300)
         sleep(1)
         
-        sleep(3) # Give UI more time to load results
-        count = self.scan_text_count_with_retry("Yor", timeout=12)
-        print(f"[{self.device_id}] Total Found 'Yor': {count}")
+        sleep(1) # Give UI time to load results
+        count = self.scan_text_count("Yor")
+        print(f"[{self.device_id}] Found 'Yor' {count} time(s).")
         res = None
         if count == 2:
             res = "Yorx2"
@@ -2154,9 +2177,9 @@ class RangerPlusBot(threading.Thread):
         self.swipe(775, 440, 256, 443, 300)
         sleep(1)
         
-        sleep(3) # Give UI more time to load results
-        count = self.scan_text_count_with_retry("Power", timeout=12)
-        print(f"[{self.device_id}] Total Found 'Power': {count}")
+        sleep(1) # Give UI time to load results
+        count = self.scan_text_count("Power")
+        print(f"[{self.device_id}] Found 'Power' {count} time(s).")
         res = None
         if count == 2:
             res = "Powerx2"
@@ -2198,9 +2221,9 @@ class RangerPlusBot(threading.Thread):
         self.swipe(775, 440, 256, 443, 300)
         sleep(1)
         
-        sleep(3) # Give UI more time to load results
-        count = self.scan_text_count_with_retry("Denji", timeout=12)
-        print(f"[{self.device_id}] Total Found 'Denji': {count}")
+        sleep(1) # Give UI time to load results
+        count = self.scan_text_count("Denji")
+        print(f"[{self.device_id}] Found 'Denji' {count} time(s).")
         res = None
         if count == 2:
             res = "Denjix2"
@@ -2254,27 +2277,33 @@ class RangerPlusBot(threading.Thread):
         self.open_app()
         sleep(3)
         
-        # === Black Screen Check หลังเปิดแอพ (8 วิ ถ้ายังดำ/เทา → clear + restart) ===
+        # === Black Screen Check หลังเปิดแอพ (10 วิ ถ้ายังดำ/เทา > 75% → clear + restart) ===
         for black_attempt in range(3):  # ลองได้ 3 ครั้ง
             black_start = time.time()
             is_stuck = False
-            while time.time() - black_start < 8:
+            while time.time() - black_start < 10:
                 self.capture_screen()
                 if self._screen is not None:
-                    mean_val = float(np.mean(self._screen))
-                    if mean_val >= 60:
-                        # จอสว่างแล้ว = แอพโหลดสำเร็จ (ปรับจาก 80 เป็น 60 ให้รองรับจอที่อาจจะไม่สว่างมาก)
-                        print(f"[{self.device_id}] [BLACK] Screen OK! brightness={mean_val:.0f} (app loaded)")
-                        is_stuck = False
-                        break
-                    else:
+                    try:
+                        _, thresh = cv2.threshold(self._screen, 50, 255, cv2.THRESH_BINARY_INV)
+                        num_black = cv2.countNonZero(thresh)
+                        total = self._screen.shape[0] * self._screen.shape[1]
+                        black_ratio = num_black / total
+                        if black_ratio < 0.75:
+                            # จอสว่างแล้ว (>25% pixels not black)
+                            print(f"[{self.device_id}] [BLACK] Screen OK! (app loaded)")
+                            is_stuck = False
+                            break
+                        else:
+                            is_stuck = True
+                    except:
                         is_stuck = True
                 else:
                     is_stuck = True
                 sleep(1)
             
             if is_stuck:
-                print(f"[{self.device_id}] [BLACK] Dark screen 8s after launch! (attempt {black_attempt+1}/3) Clearing...")
+                print(f"[{self.device_id}] [BLACK] Dark screen 10s after launch! (attempt {black_attempt+1}/3) Clearing...")
                 self.clear_and_restart()
                 self.open_app()
                 sleep(3)
@@ -2307,21 +2336,6 @@ class RangerPlusBot(threading.Thread):
                 pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
-            # checkline.png: ลำดับเช็คบล็อกพิเศษ
-            if self.exists_in_cache("img/checkline.png"):
-                self.check_floating_popups()
-                continue
-
-            if self.exists_in_cache("img/fixnetv2.png"):
-                print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
-                self.click("img/fixnetv2.png")
-                sleep(2)
-                self.capture_screen()
-                if self.exists_in_cache("img/fixnetv2ok.png"):
-                    self.click("img/fixnetv2ok.png")
-                    sleep(1)
-                continue
-
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
                 self.click("img/fixplay.png")
@@ -2543,11 +2557,9 @@ class RangerPlusBot(threading.Thread):
                     # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
                     ui_stats.update_hero(found_names)
                     
-                    # chmod for pull (วิธีที่ได้ผล 100%: cp → tmp → chmod → pull)
-                    safe_dev = self.device_id.replace(":", "_")
-                    temp_remote = f"/data/local/tmp/backup_{safe_dev}.xml"
-                    self.adb_shell(f"su -c 'cp {source_path} {temp_remote}'")
-                    self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
+                    # chmod for pull
+                    self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
+                    self.adb_shell(f"su -c 'chmod 777 {source_path}'")
                     
                     # Create backup folder structure: backup-id/found_names
                     backup_dir = os.path.join("backup-id", found_names)
@@ -2557,7 +2569,7 @@ class RangerPlusBot(threading.Thread):
                     # Pull file
                     dst = os.path.join(backup_dir, filename)
                     result = subprocess.run(
-                        [self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, dst],
+                        [self.adb_cmd, '-s', self.device_id, 'pull', source_path, dst],
                         capture_output=True, text=True
                     )
                     
@@ -2565,9 +2577,6 @@ class RangerPlusBot(threading.Thread):
                         print(f"[{self.device_id}] ✓ Backed up to: {dst}")
                     else:
                         print(f"[{self.device_id}] ✗ Backup failed: {result.stderr}")
-                    
-                    # Cleanup temp
-                    self.adb_shell(f"rm -f {temp_remote}")
                 else:
                     msg = f"[{self.device_id}] ไม่เจอตัวละครตามเงื่อนไขเลย"
                     if GUI_INSTANCE:
@@ -2578,12 +2587,9 @@ class RangerPlusBot(threading.Thread):
                     ui_stats.update_hero("ไม่เจอ")
                     
                     print(f"[{self.device_id}] No results found - backing up to not-found")
-                    safe_dev = self.device_id.replace(":", "_")
-                    temp_remote = f"/data/local/tmp/backup_{safe_dev}_nf.xml"
-                    self.adb_shell(f"su -c 'cp {source_path} {temp_remote}'")
-                    self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
-                    self.backup_to_not_found(filename, temp_remote)
-                    self.adb_shell(f"rm -f {temp_remote}")
+                    self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
+                    self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+                    self.backup_to_not_found(filename, source_path)
                 
                 # Clear app and restart
                 self.clear_and_restart()
@@ -2776,12 +2782,12 @@ if __name__ == "__main__":
     # If device is specified, only run that one (useful for multi-window mode)
     targets = [args.device] if args.device else devices
     
-    print(f"[INFO] Starting {len(targets)} threads...")
+    print(f"[INFO] Starting {len(targets)} processes...")
     delay = config.get("thread_delay", 5)
     for i, dev in enumerate(targets):
-        t = RangerPlusBot(dev, args)
-        t.start()
-        threads.append(t)
+        p = RangerPlusBot(dev, args)
+        p.start()
+        threads.append(p)
         if i < len(targets) - 1:
             sleep(delay)
         

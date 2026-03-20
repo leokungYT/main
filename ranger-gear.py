@@ -895,6 +895,7 @@ class RangerGearBot(threading.Thread):
         self._screen = None
         self._screen_color = None
         self._template_cache = {}
+        self._black_start_time = None
 
     def open_app(self):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
@@ -1319,19 +1320,36 @@ class RangerGearBot(threading.Thread):
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
-    def check_black_screen(self, threshold=0.8):
-        """Check if screen is mostly black/dark using mean brightness"""
+    def check_black_screen(self):
+        """Check if screen is mostly black (>80% black pixels) using persistence (15s)"""
         if self._screen is None:
-            return True  # ถ้า capture ไม่ได้เลย ถือว่าจอดำ
+            return False 
+            
         try:
-            mean_brightness = np.mean(self._screen)
-            # ถ้าความสว่างเฉลี่ยต่ำกว่า 55 = จอดำ/เทา (ปรับจาก 15 ให้ครอบคลุมจอค้างสีเทา)
-            if mean_brightness < 55:
-                # print(f"[{self.device_id}] check_black_screen: brightness={mean_brightness:.1f} (STUCK/BLACK)")
-                return True
-            return False
+            # Thresholding to find black pixels (brightness < 50)
+            _, thresh = cv2.threshold(self._screen, 50, 255, cv2.THRESH_BINARY_INV)
+            num_black = cv2.countNonZero(thresh)
+            total = self._screen.shape[0] * self._screen.shape[1]
+            black_ratio = num_black / total
+            is_black_now = black_ratio > 0.75
         except:
+            is_black_now = False
+
+        if not is_black_now:
+            self._black_start_time = None
             return False
+            
+        if not hasattr(self, '_black_start_time') or self._black_start_time is None:
+            self._black_start_time = time.time()
+            return False
+            
+        duration = time.time() - self._black_start_time
+        if duration >= 10:
+            print(f"[{self.device_id}] STUCK/BLACK screen persisted for {duration:.1f}s. Triggering recovery...")
+            self._black_start_time = None 
+            return True
+            
+        return False
 
     def check_floating_popups(self):
         """
@@ -1458,9 +1476,7 @@ class RangerGearBot(threading.Thread):
         
         # Check for Black/Stuck screen
         if self.check_black_screen():
-            print(f"[{self.device_id}] Black/Dark screen detected! Returning fixcak to restart.")
             return "fixcak"
-        # ====================================================================
 
         # fixcak.png: restart process if found
         if not skip_fixcak:
@@ -2352,27 +2368,33 @@ class RangerGearBot(threading.Thread):
         self.open_app()
         sleep(3)
         
-        # === Black Screen Check หลังเปิดแอพ (8 วิ ถ้ายังดำ/เทา → clear + restart) ===
+        # === Black Screen Check หลังเปิดแอพ (15 วิ ถ้ายังดำ/เทา > 80% → clear + restart) ===
         for black_attempt in range(3):  # ลองได้ 3 ครั้ง
             black_start = time.time()
             is_stuck = False
-            while time.time() - black_start < 8:
+            while time.time() - black_start < 10:
                 self.capture_screen()
                 if self._screen is not None:
-                    mean_val = float(np.mean(self._screen))
-                    if mean_val >= 60:
-                        # จอสว่างแล้ว = แอพโหลดสำเร็จ (ปรับจาก 80 เป็น 60 ให้รองรับจอที่อาจจะไม่สว่างมาก)
-                        print(f"[{self.device_id}] [BLACK] Screen OK! brightness={mean_val:.0f} (app loaded)")
-                        is_stuck = False
-                        break
-                    else:
+                    try:
+                        _, thresh = cv2.threshold(self._screen, 50, 255, cv2.THRESH_BINARY_INV)
+                        num_black = cv2.countNonZero(thresh)
+                        total = self._screen.shape[0] * self._screen.shape[1]
+                        black_ratio = num_black / total
+                        if black_ratio < 0.75:
+                            # จอสว่างแล้ว (>20% pixels not black)
+                            print(f"[{self.device_id}] [BLACK] Screen OK! (app loaded)")
+                            is_stuck = False
+                            break
+                        else:
+                            is_stuck = True
+                    except:
                         is_stuck = True
                 else:
                     is_stuck = True
                 sleep(1)
             
             if is_stuck:
-                print(f"[{self.device_id}] [BLACK] Dark screen 8s after launch! (attempt {black_attempt+1}/3) Clearing...")
+                print(f"[{self.device_id}] [BLACK] Dark screen 15s after launch! (attempt {black_attempt+1}/3) Clearing...")
                 self.clear_and_restart()
                 self.open_app()
                 sleep(3)
