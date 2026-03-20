@@ -674,7 +674,7 @@ def find_adb_executable():
             try:
                 result = subprocess.run(
                     [loc, "version"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True, text=True, timeout=15,
                     shell=(sys.platform == 'win32')
                 )
                 if result.returncode == 0:
@@ -689,7 +689,7 @@ def find_adb_executable():
             try:
                 result = subprocess.run(
                     [loc, "version"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True, text=True, timeout=15,
                     shell=(sys.platform == 'win32')
                 )
                 if result.returncode == 0:
