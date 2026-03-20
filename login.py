@@ -1424,10 +1424,13 @@ class RangerGearBot(threading.Thread):
             dest_filename = f"{prefix}-{original_name}"
             dest_path = os.path.join(backup_dir, dest_filename)
             source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
-            self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-            self.adb_shell(f"su -c 'chmod 777 {source_path}'")
-            res = subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", source_path, dest_path], 
+            temp_path = f"/data/local/tmp/backup_{self.device_id.replace(':','_')}.xml"
+            
+            self.adb_shell(f"su -c 'cp {source_path} {temp_path}'")
+            self.adb_shell(f"su -c 'chmod 666 {temp_path}'")
+            res = subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", temp_path, dest_path], 
                                  capture_output=True, timeout=15)
+            self.adb_shell(f"su -c 'rm {temp_path}'")
             if os.path.exists(dest_path):
                 print(f"[{self.device_id}] สำรองข้อมูลสำเร็จ: {dest_path}")
                 return True
@@ -1451,10 +1454,13 @@ class RangerGearBot(threading.Thread):
             dest_filename = f"FAIL-{original_name}"
             dest_path = os.path.join(backup_dir, dest_filename)
             source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
-            self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
-            self.adb_shell(f"su -c 'chmod 777 {source_path}'")
-            res = subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", source_path, dest_path], 
+            temp_path = f"/data/local/tmp/fail_backup_{self.device_id.replace(':','_')}.xml"
+            
+            self.adb_shell(f"su -c 'cp {source_path} {temp_path}'")
+            self.adb_shell(f"su -c 'chmod 666 {temp_path}'")
+            res = subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", temp_path, dest_path], 
                                  capture_output=True, timeout=15)
+            self.adb_shell(f"su -c 'rm {temp_path}'")
             if os.path.exists(dest_path):
                 print(f"[{self.device_id}] สำรองข้อมูลล้มเหลวสำเร็จ: {dest_path}")
                 return True
