@@ -2680,6 +2680,15 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(1)
 
+        # fixnet.png: เช็คตลอดเจอก็กดรัวๆ ไม่มีหยุดจนกว่าจะหายไป
+        fixnet_clicks = 0
+        while self.exists_in_cache("img/fixnet.png", similarity=0.8):
+            fixnet_clicks += 1
+            print(f"[{self.device_id}] [POPUP] fixnet.png detected (click #{fixnet_clicks}), clicking...")
+            self.click("img/fixnet.png", similarity=0.8)
+            sleep(1.5)
+            self._raw_capture()
+
         # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ) - ปรับ similarity เป็น 0.8 เพื่อความชัวร์
         fixnet1_clicks = 0
         while self.exists_in_cache("img/fixnet1.png", similarity=0.8):
@@ -3637,6 +3646,22 @@ class RangerGearBot(threading.Thread):
                     sleep(2)
             else:
                 self._fixokk_start_time = None
+
+            # === alert2.png Persistence Check (รอค้างครบ 8 วิ ให้ clear app แล้วเปิดใหม่) ===
+            if self.exists_in_cache("img/alert2.png", similarity=0.8):
+                if not hasattr(self, '_alert2_start_time') or self._alert2_start_time is None:
+                    self._alert2_start_time = time.time()
+                    print(f"[{self.device_id}] Detected alert2.png... waiting 8s to clear app")
+                elif time.time() - self._alert2_start_time >= 8:
+                    print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ 8 วินาที! เคลียร์แอพและเข้าใหม่...")
+                    self.clear_and_restart()
+                    self.open_app()
+                    self._alert2_start_time = None
+                    sleep(3)
+                    continue
+            else:
+                self._alert2_start_time = None
+
 
             # === fixid1.png → failed ทันที ===
             if self.exists_in_cache("img/fixid1.png", similarity=0.95):
