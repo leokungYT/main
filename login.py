@@ -1759,16 +1759,16 @@ class RangerGearBot(threading.Thread):
             return False
         
         def safe_tap(x, y, image_name, delay_before=0, delay_after=0, check_gachaout_time=0.3):
-            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ⏸️ [SAFE TAP] รอ {delay_before} วิ ก่อนกด {image_name}...")
-            time.sleep(delay_before)
-            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] 🔵 [SAFE TAP] กำลังกด: {image_name} ที่ตำแหน่ง ({x}, {y})")
-            device.tap(x, y)
-            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ⏸️ [SAFE TAP] รอ {delay_after} วิ หลังกด {image_name}...")
-            time.sleep(delay_after)
+            if delay_before > 0:
+                time.sleep(delay_before)
             
-            if not all_in_mode:
-                print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] 🔍 [SAFE TAP] แวะเช็ค gachaout หลังหน่วง {check_gachaout_time} วิ...")
-                
+            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ⚡ กดปุ่ม: {image_name}")
+            device.tap(x, y)
+            
+            if delay_after > 0:
+                time.sleep(delay_after)
+            
+            if not all_in_mode and check_gachaout_time > 0:
                 check_start = time.time()
                 while time.time() - check_start < check_gachaout_time:
                     try:
@@ -1783,9 +1783,7 @@ class RangerGearBot(threading.Thread):
                             return "gachaout_found"
                         time.sleep(0.1)
                     except Exception as e:
-                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ⚠️ [SAFE TAP] Error: {e}")
                         time.sleep(0.1)
-                print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ✅ [SAFE TAP] ผ่าน {check_gachaout_time} วิ - ไม่พบ gachaout.png หลัง {image_name}")
 
             return "ok"
         
@@ -1992,7 +1990,7 @@ class RangerGearBot(threading.Thread):
                     stopgacha4_clicked = True
                     stopgacha4_last_position = stopgacha4_pos[0]
                     stopgacha4_last_seen = current_time
-                    if safe_tap(stopgacha4_pos[0][0], stopgacha4_pos[0][1], "stopgacha4 (1)", 0, 0, 0.3) == "gachaout_found": return "complete"
+                    if safe_tap(stopgacha4_pos[0][0], stopgacha4_pos[0][1], "stopgacha4 (1)", 0, 0, 0) == "gachaout_found": return "complete"
                     if safe_tap(stopgacha4_pos[0][0], stopgacha4_pos[0][1], "stopgacha4 (2)", 0, 0, 0.3) == "gachaout_found": return "complete"
                     if check_and_count_swapgacha1() == "complete_gacha":
                         device.clear_and_restart()
@@ -2005,7 +2003,7 @@ class RangerGearBot(threading.Thread):
                     stopgacha6_pos = ImgSearchADB(adb_img, 'img/stopgacha6.png')
                     if stopgacha6_pos:
                         last_click_position = stopgacha6_pos[0]
-                        if safe_tap(stopgacha6_pos[0][0], stopgacha6_pos[0][1], "stopgacha6 (1)", 0, 0, 0.3) == "gachaout_found": return "random-Fail"
+                        if safe_tap(stopgacha6_pos[0][0], stopgacha6_pos[0][1], "stopgacha6 (1)", 0, 0, 0) == "gachaout_found": return "random-Fail"
                         if safe_tap(stopgacha6_pos[0][0], stopgacha6_pos[0][1], "stopgacha6 (2)", 0, 0, 0.3) == "gachaout_found": return "random-Fail"
                         if check_and_count_swapgacha1() == "complete_gacha":
                             ui_stats.update_hero("สุ่มไม่ได้")
