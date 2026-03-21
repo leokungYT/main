@@ -24,7 +24,7 @@ set "REPO_URL=https://github.com/leokungYT/main/archive/refs/heads/main.zip"
 set "ZIP_NAME=main_update.zip"
 set "EXTRACT_DIR=update_temp"
 
-:: 1. Create target folder if it doesn't exist
+:: 1. Create target folder if it doesn't exist (Always exists here)
 if not exist "%TARGET_FOLDER%" (
     echo [INFO] Creating directory: %TARGET_FOLDER%
     mkdir "%TARGET_FOLDER%"
@@ -87,18 +87,19 @@ if not defined SOURCE_FOLDER (
     exit /b 1
 )
 
-:: 4. DELETE all FILES in target folder (keep folders!) + delete img folder
-echo [3/5] Removing old files and img folder...
-pushd "%TARGET_FOLDER%"
-for %%f in (*.*) do (
-    del /q "%%f" >nul 2>&1
-)
-if exist "img" rd /s /q "img"
-popd
+:: 4. Cleanup old img folder
+echo [3/5] Cleaning old img folder (if needed)...
+if exist "%TARGET_FOLDER%\img" rd /s /q "%TARGET_FOLDER%\img"
 
-:: 5. Copy new files from extracted zip
-echo [4/5] Copying new files to %TARGET_FOLDER% folder...
-xcopy /s /e /y /q "%SOURCE_FOLDER%\*" "%TARGET_FOLDER%\"
+:: 5. Secure local backups + Copy new files from extracted zip 
+echo [4/5] Copying new files to %TARGET_FOLDER%\...
+echo ============================================
+:: ลบโฟลเดอร์ backup จากไฟล์ที่โหลดมาก่อน เพื่อป้องกันไม่ให้เขียนทับของเก่า
+if exist "%SOURCE_FOLDER%\backup" rd /s /q "%SOURCE_FOLDER%\backup"
+if exist "%SOURCE_FOLDER%\backup-id" rd /s /q "%SOURCE_FOLDER%\backup-id"
+
+xcopy /s /e /y "%SOURCE_FOLDER%\*" "%TARGET_FOLDER%\"
+echo ============================================
 
 :: 6. Cleanup
 echo [5/5] Cleaning up temporary files...
