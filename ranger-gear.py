@@ -176,6 +176,7 @@ if GUI_AVAILABLE:
             self.add_switch("Find Both (All)", "find_all")
             self.add_switch("First Loop Process", "first_loop")
             self.add_switch("Custom Mode", "custommode")
+            self.add_switch("Check Ruby/Ticket", "check_ruby_ticket")
             
             # Thread delay entry
             delay_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -613,7 +614,8 @@ config = {
     "ranger_images": {},
     "gearname": {},
     "weaponname": {},
-    "ocr_region": {"x": 463, "y": 153, "w": 397, "h": 321}
+    "ocr_region": {"x": 463, "y": 153, "w": 397, "h": 321},
+    "check_ruby_ticket": 0
 }
 
 adb_path = "adb"
@@ -950,6 +952,7 @@ class RangerGearBot(threading.Thread):
                 load_config()
                 self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
                 self.do_gear = config.get("find_gear", 0) or config.get("find_all", 1)
+                self.do_ruby_ticket = config.get("check_ruby_ticket", 0) or config.get("find_all", 1) # Support 'All' mode too
 
                 # 1. Look for next available file (Atomic Locking)
                 xml_file = self._get_next_available_file()
@@ -1522,6 +1525,151 @@ class RangerGearBot(threading.Thread):
                 return "error_img"
                 
         return None
+
+    # =========================================================
+    # Ruby and Ticket OCR - Derived from check-rubyandtiket.py
+    # =========================================================
+    def find_template_ocr(self, img, template_path, threshold=0.7):
+        """Find template in image and return position (for OCR regions)"""
+        try:
+            template = cv2.imread(template_path)
+            if template is None:
+                return None
+            
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            
+            result = cv2.matchTemplate(img_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            
+            if max_val >= threshold:
+                h, w = template_gray.shape
+                return {
+                    'x': max_loc[0], 'y': max_loc[1],
+                    'width': w, 'height': h,
+                    'confidence': max_val
+                }
+            return None
+        except Exception:
+            return None
+
+    def read_number_from_region(self, img, x, y, width, height):
+        """Read number from specified region using EasyOCR"""
+        try:
+            h, w = img.shape[:2]
+            x1 = max(0, x)
+            y1 = max(0, y)
+            x2 = min(w, x + width)
+            y2 = min(h, y + height)
+            
+            cropped = img[y1:y2, x1:x2]
+            if cropped is None or cropped.size == 0:
+                return None
+                
+            # Scale image 3x for better OCR accuracy
+            scale = 3
+            enlarged = cv2.resize(cropped, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            
+            reader = get_ocr_reader()
+            results = reader.readtext(enlarged, allowlist='0123456789', detail=0)
+            
+            if results:
+                return results[0].strip()
+            return None
+        except Exception:
+            return None
+
+    def read_ticket_and_ruby(self):
+        """Read Ticket and Ruby counts from screen using OCR"""
+        if self._screen_color is None:
+            return None, None
+            
+        img = self._screen_color
+        ticket_value = None
+        ruby_value = None
+        
+        # Search for checktiket.png
+        ticket_match = self.find_template_ocr(img, 'img/checktiket.png', threshold=0.7)
+        if ticket_match:
+            x, y, w, h = ticket_match['x'], ticket_match['y'], ticket_match['width'], ticket_match['height']
+            # Crop to the right for values
+            ocr_x = x + int(w * 0.70)
+            ocr_y = y + 5
+            ocr_w = int(w * 0.28)
+            ocr_h = h - 10
+            ticket_value = self.read_number_from_region(img, ocr_x, ocr_y, ocr_w, ocr_h)
+        
+        # Search for checkruby.png
+        ruby_match = self.find_template_ocr(img, 'img/checkruby.png', threshold=0.7)
+        if ruby_match:
+            rx, ry, rw, rh = ruby_match['x'], ruby_match['y'], ruby_match['width'], ruby_match['height']
+            # Crop to values between icon and + button
+            ruby_ocr_x = rx + int(rw * 0.22)
+            ruby_ocr_y = ry + 3
+            ruby_ocr_w = int(rw * 0.50)
+            ruby_ocr_h = rh - 6
+            ruby_value = self.read_number_from_region(img, ruby_ocr_x, ruby_ocr_y, ruby_ocr_w, ruby_ocr_h)
+        
+        return ticket_value, ruby_value
+
+    def process_check_ruby_ticket(self):
+        """Navigate to gacha screen and check rubies/tickets"""
+        print(f"[{self.device_id}] Starting Ruby and Ticket check...")
+
+        # 1. Back to home screen if needed (press Back until gotogacha1.png is visible)
+        for i in range(5):
+             self.capture_screen()
+             if self.exists_in_cache("img/gotogacha1.png"):
+                 print(f"[{self.device_id}] [NAVI] At Home screen.")
+                 break
+             print(f"[{self.device_id}] [NAVI] Not at Home (attempt {i+1}/5), pressing BACK...")
+             self.adb_shell("input keyevent 4")
+             sleep(2)
+             # Also clear any popups
+             self.capture_screen()
+             if self.exists_in_cache("img/cancel.png"):
+                 self.click("img/cancel.png")
+                 sleep(1)
+        
+        # Navigation: gotogacha1 -> gotogacha2 (replacing gacha.png)
+        # First ensure we clear any popup that might block (like cancel.png)
+        for _ in range(3):
+            self.capture_screen()
+            if self.exists_in_cache("img/cancel.png"):
+                print(f"[{self.device_id}] Clearing popup with cancel.png")
+                self.click("img/cancel.png")
+                sleep(1)
+                break
+            sleep(0.5)
+            
+        # Navigation to gacha screen
+        if not self.wait_and_click_image("gotogacha1.png", timeout=15):
+             print(f"[{self.device_id}] gotogacha1.png not found")
+             # Fallback to gacha if needed or error
+        sleep(1.5)
+        
+        if not self.wait_and_click_image("gotogacha2.png", timeout=15):
+             print(f"[{self.device_id}] gotogacha2.png not found")
+        
+        # Wait for gacha screen to settle
+        sleep(2.5)
+        self.capture_screen() # Requirement for OCR (already captures color in self._screen_color)
+        
+        ticket, ruby = self.read_ticket_and_ruby()
+        print(f"[{self.device_id}] Result -> Ruby: {ruby}, Ticket: {ticket}")
+        return ruby, ticket
+
+    def wait_and_click_image(self, img_name, timeout=30, similarity=0.95):
+        """Wait for image to appear and click it"""
+        path = img_name if img_name.startswith("img/") else f"img/{img_name}"
+        start = time.time()
+        while time.time() - start < timeout:
+            self.capture_screen()
+            if self.exists_in_cache(path, similarity=similarity):
+                if self.click(path, similarity=similarity):
+                    return True
+            sleep(1)
+        return False
 
     # =========================================================
     # OCR Methods - For Gear Mode
@@ -2632,8 +2780,26 @@ class RangerGearBot(threading.Thread):
                 else:
                     print(f"[{self.device_id}] [DEBUG] Gear scan SKIPPED (do_gear={self.do_gear})")
                 
+                # Ruby and Ticket Check
+                ruby_count = None
+                ticket_count = None
+                is_rt_enabled = config.get("check_ruby_ticket", 0) or config.get("find_all", 1)
+                print(f"[{self.device_id}] [DEBUG] check_ruby_ticket config: {config.get('check_ruby_ticket')}, find_all: {config.get('find_all')}")
+                if is_rt_enabled:
+                    ruby_count, ticket_count = self.process_check_ruby_ticket()
+                
                 # Combine results and backup
                 filename = self.current_original_filename or "unknown.xml"
+                
+                # Handle Ruby/Ticket in filename (Strip existing tags)
+                import re
+                clean_filename = re.sub(r'\+ruby\[[^\]]*\]', '', filename)
+                clean_filename = re.sub(r'\+ticket\[[^\]]*\]', '', clean_filename)
+                if ruby_count is not None or ticket_count is not None:
+                    ruby_str = ruby_count if ruby_count else "0"
+                    ticket_str = ticket_count if ticket_count else "0"
+                    filename = f"{os.path.splitext(clean_filename)[0]}+ruby[{ruby_str}]+ticket[{ticket_str}].xml"
+                
                 source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
                 
                 # Create subfolder name from all found items
@@ -2680,6 +2846,18 @@ class RangerGearBot(threading.Thread):
                     if not os.path.exists(backup_dir):
                         os.makedirs(backup_dir)
                     
+                    # Delete old files for the same account to avoid accumulation (as requested)
+                    clean_base = os.path.splitext(clean_filename)[0]
+                    if os.path.exists(backup_dir):
+                        for old_f in os.listdir(backup_dir):
+                            # Stricter match: either account_name.xml OR account_name+tags.xml
+                            is_match = (old_f == (clean_base + ".xml")) or (old_f.startswith(clean_base + "+") and old_f.endswith(".xml"))
+                            if is_match:
+                                try:
+                                    os.remove(os.path.join(backup_dir, old_f))
+                                except:
+                                    pass
+
                     # Pull file
                     dst = os.path.join(backup_dir, filename)
                     result = subprocess.run(

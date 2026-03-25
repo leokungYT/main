@@ -1,18 +1,14 @@
 {
-  "success_count": 3,
+  "success_count": 1,
   "fail_count": 0,
-  "random_fail_count": 0,
   "hero_found_list": {
-    "สุ่มไม่ได้": 3,
-    "Success": 3
+    "anya": 1
   },
   "device_statuses": {
     "emulator-5556": {
-      "step": "Post-Login Tasks",
-      "status": "working"
+      "step": "Waiting for files",
+      "status": "waiting"
     }
   },
-  "last_update": 1774075824.5220904,
-  "total_login_time": 791.4312770366669,
-  "login_time_count": 3
+  "last_update": 1774437218.7144434
 }

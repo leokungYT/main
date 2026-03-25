@@ -2617,11 +2617,11 @@ class RangerGearBot(threading.Thread):
             # 2. Coordinates
             print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
             self.tap(932, 133)
-            sleep(0.5)
+            sleep(5)
             self.tap(930, 253)
-            sleep(0.5)
+            sleep(5)
             self.tap(926, 327)
-            sleep(1.0)
+            sleep(5)
             
             # 3. Wait for check-l4.png
             start_l4 = time.time()
