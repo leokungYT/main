@@ -834,6 +834,95 @@ def get_connected_devices():
         return []
 
 
+def ImgSearchADB(adb_img, find_img_path, threshold=0.95, method=cv2.TM_CCOEFF_NORMED):
+    try:
+        find_img = cv2.imread(find_img_path, cv2.IMREAD_COLOR)
+        if find_img is None:
+            return []
+        
+        needle_w = find_img.shape[1]
+        needle_h = find_img.shape[0]
+        result = cv2.matchTemplate(adb_img, find_img, method)
+        locations = np.where(result >= threshold)
+        locations = list(zip(*locations[::-1]))
+        rectangles = []
+        for loc in locations:
+            rect = [int(loc[0]), int(loc[1]), needle_w, needle_h]
+            rectangles.append(rect)
+            rectangles.append(rect)
+        if len(rectangles):
+            rectangles, _ = cv2.groupRectangles(rectangles, groupThreshold=1, eps=1)
+        points = []
+        if len(rectangles):
+            for (x, y, w, h) in rectangles:
+                center_x = x + int(w / 2)
+                center_y = y + int(h / 2)
+                points.append((center_x, center_y))
+        return points
+    except Exception as e:
+        return []
+
+class NetworkMonitor:
+    def __init__(self):
+        self.last_check = time.time()
+        self.check_interval = 10
+        
+    def check_network(self, bot, adb_img):
+        current_time = time.time()
+        if current_time - self.last_check >= self.check_interval:
+            fixnet_pos = ImgSearchADB(adb_img, 'img/fixnet.png')
+            if fixnet_pos:
+                print(f"[{bot.device_id}] พบปัญหาการเชื่อมต่อ (fixnet.png)")
+                bot.tap(fixnet_pos[0][0], fixnet_pos[0][1])
+                time.sleep(1)
+                return True
+            self.last_check = current_time
+        return False
+
+def check_critical_errors(bot, adb_img, context=""):
+    """
+    ตรวจสอบ fixid.png, fixunkown.png, apple.png
+    """
+    try:
+        # ตรวจสอบ fixid.png
+        fixid_pos = ImgSearchADB(adb_img, 'img/fixid.png')
+        if fixid_pos:
+            print(f"[{bot.device_id}] ⚠️ Found fixid.png in {context}!")
+            bot.backup_to_backupxml()
+            bot.clear_and_restart()
+            time.sleep(6)
+            return "fixid"
+        
+        # ตรวจสอบ fixunkown.png
+        fixunkown_pos = ImgSearchADB(adb_img, 'img/fixunkown.png')
+        if fixunkown_pos:
+            print(f"[{bot.device_id}] ⚠️ Found fixunkown.png in {context}!")
+            bot.backup_to_backupxml()
+            bot.clear_and_restart()
+            time.sleep(6)
+            return "fixunkown"
+        
+        # ตรวจสอบ apple.png
+        apple_pos = ImgSearchADB(adb_img, 'img/apple.png')
+        if apple_pos:
+            print(f"[{bot.device_id}] ⚠️ Found apple.png in {context}!")
+            bot.backup_failed_login()
+            bot.clear_and_restart()
+            time.sleep(6)
+            return "apple"
+            
+        # ตรวจสอบ fixnet1.png / fixnet.png (ปัญหาเน็ตหลุดเด้งป๊อปอัพ)
+        fixnet_pos = ImgSearchADB(adb_img, 'img/fixnet1.png') or ImgSearchADB(adb_img, 'img/fixnet.png')
+        if fixnet_pos:
+            print(f"[{bot.device_id}] 📶 พบปัญหาการเชื่อมต่อ (fixnet1/fixnet) ใน {context} - กำลังกด OK...")
+            bot.tap(fixnet_pos[0][0], fixnet_pos[0][1])
+            time.sleep(1)
+        
+        return None
+    except Exception as e:
+        print(f"[ERROR] check_critical_errors: {e}")
+        return None
+
 # =============================================================
 # RangerGearBot Class - Unified Bot for Ranger + Gear
 # =============================================================
@@ -1108,6 +1197,22 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] Move error: {e}")
 
+    def clear_specific_shared_prefs(self):
+        """ลบ shared_prefs เฉพาะที่จำเป็น เพื่อให้เกมสร้างชุดข้อมูลใหม่ที่สะอาด"""
+        try:
+            pkg = "com.linecorp.LGRGS"
+            target_prefs = [
+                "_LINE_COCOS_PREF_KEY.xml",
+                "com.linecorp.LGRGS.xml",
+                "AdInfo.xml"
+            ]
+            for pref in target_prefs:
+                path = f"/data/data/{pkg}/shared_prefs/{pref}"
+                self.adb_shell(f"su -c 'rm -f {path}'")
+            print(f"[{self.device_id}] เคลียร์ SharedPrefs สำเร็จ")
+        except Exception as e:
+            print(f"[{self.device_id}] Error clear prefs: {e}")
+
     def handle_failure(self, file_path):
         dst_dir = "login-failed"
         if not os.path.exists(dst_dir):
@@ -1139,6 +1244,60 @@ class RangerGearBot(threading.Thread):
             if os.path.exists(file_path):
                 os.remove(file_path)
         except: pass
+
+        # Clear app and shared prefs to ensure device is clean
+        print(f"[{self.device_id}] Clearing app data after failure...")
+        self.clear_specific_shared_prefs()
+        self.clear_and_restart()
+
+    def backup_to_backupxml(self):
+        try:
+            if not self.current_original_filename:
+                return False
+            print(f"[{self.device_id}] ย้ายไฟล์ {self.current_original_filename} กลับไป backup/ เพื่อวนเข้าใหม่...")
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            backup_xml_dir = os.path.join(current_dir, "backup")
+            source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
+            dest_path = os.path.join(backup_xml_dir, self.current_original_filename)
+            self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
+            self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+            subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", source_path, dest_path], 
+                           capture_output=True, timeout=15)
+            if os.path.exists(dest_path):
+                print(f"[{self.device_id}] ย้ายไฟล์กลับ backup/ สำเร็จ: {dest_path}")
+                return True
+            return False
+        except Exception as e:
+            print(f"[{self.device_id}] Error backup back to backupxml: {e}")
+            return False
+
+    def backup_failed_login(self):
+        try:
+            print(f"[{self.device_id}] ล็อกอินล้มเหลว/ติด apple - กำลังสำรองข้อมูลไปยัง login-failed...")
+            filename_prefix = config.get('filename_prefix', 'conyfly')
+            backup_dir = "login-failed"
+            if not os.path.exists(backup_dir):
+                os.makedirs(backup_dir)
+            file_count = len([f for f in os.listdir(backup_dir) if f.startswith(filename_prefix)])
+            next_num = file_count + 1
+            source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
+            dest_path = os.path.join(backup_dir, f"{filename_prefix}-loginfail{next_num}_LINE_COCOS_PREF_KEY_.xml")
+            self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
+            self.adb_shell(f"su -c 'chmod 777 {source_path}'")
+            subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", source_path, dest_path], 
+                           capture_output=True, timeout=15)
+            if os.path.exists(dest_path):
+                print(f"[{self.device_id}] ย้ายไฟล์ไป login-failed สำเร็จ: {dest_path}")
+                return True
+            return False
+        except Exception as e:
+            print(f"[{self.device_id}] Error backup failed login: {e}")
+            return False
+
+    def clear_and_restart(self):
+        """Clear app and prepare for next file"""
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+        sleep(2)
 
     def handle_kaiby(self, file_path):
         """Handle kaiby error by moving file to kaiby/ folder and clearing app"""
@@ -1488,6 +1647,10 @@ class RangerGearBot(threading.Thread):
 
         # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ ไม่ return error) =====
         self.check_floating_popups()
+
+        # ===== CRITICAL ERROR CHECKS (ย้ายไฟล์กลับ/สำรองล้ว restart) =====
+        critical = check_critical_errors(self, self._screen_color, "check_error_images")
+        if critical: return critical
         
         # Check for Black/Stuck screen
         if self.check_black_screen():
@@ -1878,6 +2041,7 @@ class RangerGearBot(threading.Thread):
             skip_icon = (item == 'icon.png' or idx <= 3)
             err = self.check_error_images(skip_icon=skip_icon)
             if err == "fixcak": return "restart"
+            if err in ["fixid", "apple", "fixunkown"]: return "restart"
             if err == "icon":
                 print(f"[{self.device_id}] App closed/crashed! Relaunching with am start...")
                 self.open_app()
@@ -1909,6 +2073,7 @@ class RangerGearBot(threading.Thread):
                     
                     err = self.check_error_images(skip_icon=skip_icon)
                     if err == "fixcak": return "restart"
+                    if err in ["fixid", "apple", "fixunkown"]: return "restart"
                     if err == "fixbug":
                         self.click("img/fixbuglogin.png")
                         return "restart"
@@ -1958,6 +2123,7 @@ class RangerGearBot(threading.Thread):
                     # Check errors first
                     err = self.check_error_images()
                     if err == "fixcak": return "restart"
+                    if err in ["fixid", "apple", "fixunkown"]: return "restart"
                     if err == "fixbug":
                         self.click("img/fixbuglogin.png")
                         return "restart"
