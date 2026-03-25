@@ -1,14 +1,12 @@
 {
-  "success_count": 1,
-  "fail_count": 0,
-  "hero_found_list": {
-    "anya": 1
-  },
+  "success_count": 0,
+  "fail_count": 5,
+  "hero_found_list": {},
   "device_statuses": {
     "emulator-5556": {
-      "step": "Waiting for files",
-      "status": "waiting"
+      "step": "Logging in...",
+      "status": "working"
     }
   },
-  "last_update": 1774437218.7144434
+  "last_update": 1774440605.7055519
 }
