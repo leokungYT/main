@@ -1493,7 +1493,7 @@ class RangerGearBot(threading.Thread):
             num_black = cv2.countNonZero(thresh)
             total = self._screen.shape[0] * self._screen.shape[1]
             black_ratio = num_black / total
-            is_black_now = black_ratio > 0.75
+            is_black_now = black_ratio > 0.85
         except:
             is_black_now = False
 
@@ -2581,8 +2581,8 @@ class RangerGearBot(threading.Thread):
                         num_black = cv2.countNonZero(thresh)
                         total = self._screen.shape[0] * self._screen.shape[1]
                         black_ratio = num_black / total
-                        if black_ratio < 0.75:
-                            # จอสว่างแล้ว (>20% pixels not black)
+                        if black_ratio < 0.85:
+                            # จอสว่างแล้ว (>15% pixels not black)
                             print(f"[{self.device_id}] [BLACK] Screen OK! (app loaded)")
                             is_stuck = False
                             break

@@ -1,6 +1,6 @@
 {
   "success_count": 0,
-  "fail_count": 5,
+  "fail_count": 6,
   "hero_found_list": {},
   "device_statuses": {
     "emulator-5556": {
@@ -8,5 +8,5 @@
       "status": "working"
     }
   },
-  "last_update": 1774440605.7055519
+  "last_update": 1774440831.0671303
 }
