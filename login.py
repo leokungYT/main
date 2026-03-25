@@ -2682,6 +2682,9 @@ class RangerGearBot(threading.Thread):
             self.click("img/fixnet.png", similarity=0.8)
             sleep(1.5)
             self._raw_capture()
+            if fixnet_clicks >= 10:
+                print(f"[{self.device_id}] [POPUP] fixnet.png clicked 10 times, breaking to avoid infinite loop")
+                break
 
         # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ) - ปรับ similarity เป็น 0.8 เพื่อความชัวร์
         fixnet1_clicks = 0
