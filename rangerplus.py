@@ -217,6 +217,9 @@ if GUI_AVAILABLE:
             
             # Thread delay entry
             ctk.CTkLabel(self.scroll, text="System Settings", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(15, 5))
+            self.add_switch("Skip Kaiby Shop (3s)", "kaibyskip")
+            self.add_switch("Force Kaiby Check (Proceed)", "kaibycheck")
+            
             delay_frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
             delay_frame.pack(fill="x", padx=20, pady=5)
             ctk.CTkLabel(delay_frame, text="Thread Delay (sec):").pack(side="left")
@@ -2587,11 +2590,41 @@ class RangerPlusBot(multiprocessing.Process):
                 loop_count = 0
                 continue
                 
+            # kaiby.png / kaiby1.png Check
+            if self.exists_in_cache("img/kaiby.png", similarity=0.8) or self.exists_in_cache("img/kaiby1.png", similarity=0.8):
+                print(f"[{self.device_id}] ⚠️ พบ kaiby.png! (ไก่บี้เด้งระหว่าง Login) เคลียร์แอพและส่งเข้าโฟลเดอร์ kaiby...")
+                self.clear_and_restart()
+                sleep(2)
+                return "kaiby"
+
             # *** SUCCESS -> Run findplus logic ***
             if self.exists_in_cache("img/stoplogin.png"):
                 # 1) ต้องผ่าน stoplogin.png ก่อนเท่านั้นถึงจะรัน Plus
                 print(f"[{self.device_id}] Login successful (stoplogin confirmed). Starting PLUS process...")
+
+                # === Check for kaibyswap_shop.png before proceeding (if configured) ===
+                kaibyskip_enabled = config.get("kaibyskip", 0)
+                kaibycheck_enabled = config.get("kaibycheck", 0)
                 
+                if kaibycheck_enabled == 1:
+                    print(f"[{self.device_id}] config kaibycheck=1: Skipping kaibyswap_shop check, proceeding normally...")
+                elif kaibyskip_enabled == 1:
+                    print(f"[{self.device_id}] config kaibyskip=1: Checking for kaibyswap_shop.png (3s)...")
+                    kaibyswap_found = False
+                    kaiby_start = time.time()
+                    while time.time() - kaiby_start < 3:
+                        self.capture_screen()
+                        if self.exists_in_cache("img/kaibyswap_shop.png"):
+                            kaibyswap_found = True
+                            break
+                        sleep(0.5)
+                    
+                    if kaibyswap_found:
+                        print(f"[{self.device_id}] ⚠️ Found kaibyswap_shop.png! Returning kaiby...")
+                        self.clear_and_restart()
+                        return "kaiby"
+                # ====================================================================
+
                 # 2) คลิกปุ่มเข้าหน้า Ranger Plus
                 if not self.wait_and_click_image("findrangerplus1.png", timeout=30):
                     print(f"[{self.device_id}] [ERR] findrangerplus1.png not found, cannot continue Plus process")

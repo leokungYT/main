@@ -100,5 +100,7 @@
         "yor": 1,
         "power": 0,
         "denji": 0
-    }
+    },
+    "kaibyskip": 1,
+    "kaibycheck": 0
 }
