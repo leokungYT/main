@@ -1369,6 +1369,14 @@ class RangerGearBot(threading.Thread):
         self.seven_day_seq = ['7day.png', '7day1.png', '7day2.png', 'fixok.png']
         self.shop_gacha_seq = ['gacha.png', 'gacha1.png', 'gacha3.png', 'fixok.png']
         self.swap_shop_seq = ['swap_shop.png', 'swap_shop1.png', 'swap_shop2.png', 'swap_shop3.png', 'swap_shop4.png', 'fixok.png']
+        
+        self._fixnetv3_count = 0
+        self._need_restart = False
+        self._running = True
+        
+        # Start background monitor thread
+        self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
+        self.monitor_thread.start()
 
     def open_app(self):
         self.last_activity_time = time.time()
@@ -2551,11 +2559,52 @@ class RangerGearBot(threading.Thread):
         self.adb_shell("input keyevent 123") # MOVE_END
         for _ in range(3):
             self.adb_shell("input keyevent 67 67 67 67 67 67 67 67 67 67") # 10 backspaces at once
-        
+
         # 2. Type new text
         escaped = text.replace(" ", "%s").replace("'", "\\'").replace('"', '\\"')
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "text", escaped])
         sleep(0.5) # Wait for UI to process text input
+
+    def _popup_monitor_loop(self):
+        """Background thread to monitor fixnetv3.png regardless of main loop state"""
+        while self._running:
+            try:
+                # 1. Capture screen for monitor
+                kwargs = {}
+                if os.name == 'nt':
+                    kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                result = subprocess.run(
+                    [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
+                    capture_output=True, timeout=10, **kwargs
+                )
+                
+                if result.returncode == 0 and len(result.stdout) > 100:
+                    img_array = np.frombuffer(result.stdout, np.uint8)
+                    mon_screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+                    
+                    if mon_screen is not None:
+                        tmpl = self._get_template("img/fixnetv3.png")
+                        if tmpl is not None:
+                            res = cv2.matchTemplate(mon_screen, tmpl, cv2.TM_CCOEFF_NORMED)
+                            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                            
+                            if max_val >= 0.8:
+                                self._fixnetv3_count += 1
+                                print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
+                                self.tap(472, 361)
+                                
+                                if self._fixnetv3_count >= 8:
+                                    print(f"[{self.device_id}] [MONITOR] fixnetv3.png persists after 8 clicks! Force-stopping app...")
+                                    self._need_restart = True
+                                    self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                                    self._fixnetv3_count = 0
+                            else:
+                                if self._fixnetv3_count > 0:
+                                    self._fixnetv3_count = 0
+                
+            except Exception:
+                pass
+            time.sleep(2.5)
 
     def swipe(self, x1, y1, x2, y2, duration=300):
         self.last_activity_time = time.time()
@@ -2700,10 +2749,17 @@ class RangerGearBot(threading.Thread):
 
         # fixnetv3.png: Network error popup - tap (472, 361) to dismiss
         if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
-            print(f"[{self.device_id}] [POPUP] fixnetv3.png detected, tapping (472, 361)...")
+            self._fixnetv3_count += 1
+            print(f"[{self.device_id}] [POPUP] fixnetv3.png detected (#{self._fixnetv3_count}), tapping (472, 361)...")
             self.tap(472, 361)
             sleep(1.5)
             self._raw_capture()
+            
+            if self._fixnetv3_count >= 8:
+                print(f"[{self.device_id}] [POPUP] fixnetv3.png persists after 8 clicks! Force-stopping app...")
+                self._need_restart = True
+                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                self._fixnetv3_count = 0
 
         if self.exists_in_cache("img/fixaccep.png"):
             print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
@@ -3407,7 +3463,7 @@ class RangerGearBot(threading.Thread):
                                 found_fixid_after_check = False
                                 for _ in range(2):
                                     self.capture_screen()
-                                    if self.exists_in_cache("img/fixid.png", similarity=0.95):
+                                    if self.exists_in_cache("img/fixid.png"):
                                         print(f"[{self.device_id}] Found fixid.png right after check! Re-routing...")
                                         found_fixid_after_check = True
                                         break
@@ -3616,6 +3672,16 @@ class RangerGearBot(threading.Thread):
 
         
         while True:
+            # 0. Check if background monitor triggered a restart
+            if self._need_restart:
+                print(f"[{self.device_id}] Main loop detected restart request from monitor.")
+                self._need_restart = False
+                # On restart, we continue the loop which will naturally restart the login flow
+                self.clear_and_restart()
+                self.open_app()
+                sleep(5)
+                continue
+
             loop_count += 1
             if loop_count % 5 == 0:
                 print(f"[{self.device_id}] Login loop iteration {loop_count}")
@@ -4076,8 +4142,10 @@ class RangerGearBot(threading.Thread):
                 else:
                     print(msg)
 
-                # Clear app and restart for next ID
+                # Clear app and restart for next ID (Wait 8s as requested by user)
+                print(f"[{self.device_id}] Success! Waiting 8s before clearing...")
                 self.update_gui_status("Cleaning up")
+                sleep(8.0)
                 self.clear_and_restart()
                 return "success"
                 

@@ -989,6 +989,57 @@ class RangerGearBot(threading.Thread):
         self._screen_color = None
         self._template_cache = {}
         self._black_start_time = None
+        self._fixnetv3_count = 0
+        self._need_restart = False
+        self._running = True
+        
+        # Start background monitor thread
+        self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
+        self.monitor_thread.start()
+
+    def _popup_monitor_loop(self):
+        """Background thread to monitor fixnetv3.png regardless of main loop state"""
+        while self._running:
+            try:
+                # 1. Capture screen for monitor (raw, no popup check recursion)
+                # Note: We use a separate capture to avoid interfering with main thread's _screen
+                # exec-out screencap is very fast.
+                kwargs = {}
+                if os.name == 'nt':
+                    kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                result = subprocess.run(
+                    [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
+                    capture_output=True, timeout=10, **kwargs
+                )
+                
+                if result.returncode == 0 and len(result.stdout) > 100:
+                    img_array = np.frombuffer(result.stdout, np.uint8)
+                    mon_screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+                    
+                    if mon_screen is not None:
+                        tmpl = self._get_template("img/fixnetv3.png")
+                        if tmpl is not None:
+                            # matchTemplate
+                            res = cv2.matchTemplate(mon_screen, tmpl, cv2.TM_CCOEFF_NORMED)
+                            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                            
+                            if max_val >= 0.8:
+                                self._fixnetv3_count += 1
+                                print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
+                                self.tap(472, 361)
+                                
+                                if self._fixnetv3_count >= 8:
+                                    print(f"[{self.device_id}] [MONITOR] fixnetv3.png persists after 8 clicks! Force-stopping app...")
+                                    self._need_restart = True
+                                    self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                                    self._fixnetv3_count = 0
+                            else:
+                                if self._fixnetv3_count > 0:
+                                    self._fixnetv3_count = 0
+                
+            except Exception:
+                pass
+            time.sleep(2.5) # Check every 2.5 seconds
 
     def open_app(self):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
@@ -1038,6 +1089,14 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
             
             while True:
+                # 0. Check if background monitor triggered a restart
+                if self._need_restart:
+                    print(f"[{self.device_id}] Main loop detected restart request from monitor.")
+                    self._need_restart = False
+                    # No need to release lock yet if we haven't started processing, 
+                    # but if we have a file, we should probably keep it and just restart the logic.
+                    # For simplicity, we just continue which will pick up next or same file.
+
                 # 0. Reload Config
                 load_config()
                 self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
@@ -1623,9 +1682,19 @@ class RangerGearBot(threading.Thread):
 
         # fixnetv3.png: Global Network Popup Check (Special coordinates 472, 361)
         if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
-            print(f"[{self.device_id}] [POPUP] fixnetv3.png detected! Tapping (472, 361)...")
+            self._fixnetv3_count += 1
+            print(f"[{self.device_id}] [POPUP] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
             self.tap(472, 361)
             sleep(0.5)
+            
+            if self._fixnetv3_count >= 8:
+                print(f"[{self.device_id}] [POPUP] fixnetv3.png persists after 8 clicks! Force-stopping app...")
+                self._need_restart = True
+                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                self._fixnetv3_count = 0
+        else:
+            # We don't reset here necessarily because multiple popups might be checked
+            pass
 
     def _raw_capture(self):
         """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน)"""
