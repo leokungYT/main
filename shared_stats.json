@@ -1,12 +1,14 @@
 {
-  "success_count": 0,
-  "fail_count": 1,
-  "hero_found_list": {},
+  "success_count": 1,
+  "fail_count": 0,
+  "hero_found_list": {
+    "kappa": 1
+  },
   "device_statuses": {
     "emulator-5556": {
-      "step": "Logging in...",
-      "status": "working"
+      "step": "Waiting for files",
+      "status": "waiting"
     }
   },
-  "last_update": 1774453599.7901638
+  "last_update": 1774532362.8317914
 }

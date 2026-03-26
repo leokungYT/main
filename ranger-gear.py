@@ -1009,7 +1009,7 @@ class RangerGearBot(threading.Thread):
                         "-c", "android.intent.category.LAUNCHER", "1"
                     ], timeout=10)
                 
-                sleep(3)
+                sleep(1)
                 
                 try:
                     pid_result = subprocess.run(
@@ -1025,11 +1025,10 @@ class RangerGearBot(threading.Thread):
                     return True
                 else:
                     print(f"[{self.device_id}] ✗ App crashed/bounced! (attempt {attempt}) Retrying...")
-                    sleep(2)
+                    sleep(0.5)
                     
             except Exception as e:
-                print(f"[{self.device_id}] Error opening app (attempt {attempt}): {e}")
-                sleep(2)
+                sleep(0.5)
         
         print(f"[{self.device_id}] Failed to open app after 5 attempts!")
         return False
@@ -1050,7 +1049,7 @@ class RangerGearBot(threading.Thread):
                 
                 if not xml_file:
                     self.update_gui_status("Waiting for files", "waiting")
-                    sleep(5)
+                    sleep(1)
                     continue
 
                 try:
@@ -1124,7 +1123,7 @@ class RangerGearBot(threading.Thread):
                 except Exception as e:
                     print(f"[{self.device_id}] Critical Error with {xml_file}: {e}")
                     self._release_file_lock(xml_file)
-                    sleep(5)
+                    sleep(1)
         except Exception as e:
             print(f"[{self.device_id}] Thread Crash: {e}", flush=True)
 
@@ -1299,7 +1298,7 @@ class RangerGearBot(threading.Thread):
     def clear_and_restart(self):
         """Clear app and prepare for next file"""
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-        sleep(2)
+        sleep(0.5)
 
     def handle_kaiby(self, file_path):
         """Handle kaiby error by moving file to kaiby/ folder and clearing app"""
@@ -1313,7 +1312,7 @@ class RangerGearBot(threading.Thread):
         
         # Clear app immediately
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-        sleep(1)
+        sleep(0.5)
         
         try:
             if os.path.exists(file_path):
@@ -1363,7 +1362,7 @@ class RangerGearBot(threading.Thread):
 
     def capture_screen(self):
         """Capture screen and load into RAM"""
-        sleep(0.3)  # เบรกลดภาระ CPU ไม่ให้วนลูปดึงจอเร็วเกินไป
+        sleep(0.05)  # minimal CPU brake
         try:
             kwargs = {}
             if os.name == 'nt':
@@ -1460,13 +1459,13 @@ class RangerGearBot(threading.Thread):
     def tap(self, x, y):
         """Direct tap without image search - uses a short swipe with random jitter for reliability"""
         import random
-        # 1. Faster jitter for multi-process mode
-        jitter = random.uniform(0.05, 0.25)
-        sleep(0.1 + jitter) 
+        # 1. Minimal jitter for speed
+        jitter = random.uniform(0.02, 0.08)
+        sleep(jitter) 
         
-        # 2. Using swipe with 300ms duration for better registration
+        # 2. Using swipe with 100ms duration for fast registration
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
-                     str(x), str(y), str(x), str(y), "300"])
+                     str(x), str(y), str(x), str(y), "100"])
         
     def type_text(self, text):
         """Type text via ADB (for search box) - clears it first to avoid double typing"""
@@ -1478,7 +1477,7 @@ class RangerGearBot(threading.Thread):
         # 2. Type new text
         escaped = text.replace(" ", "%s").replace("'", "\\'").replace('"', '\\"')
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "text", escaped])
-        sleep(0.5) # Wait for UI to process text input
+        sleep(0.2) # Brief wait for UI to process text input
 
     def swipe(self, x1, y1, x2, y2, duration=300):
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
@@ -1525,7 +1524,7 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/checkline.png"):
             print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
             self.click("img/checkline.png")
-            sleep(2)
+            sleep(0.5)
             
             # 1. Wait for @check-l1.png
             start_l1 = time.time()
@@ -1534,16 +1533,16 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache("img/check-l1.png"):
                     print(f"[{self.device_id}] [POPUP] Found check-l1.png")
                     break
-                sleep(1)
+                sleep(0.3)
             
             # 2. Coordinates
             print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
             self.tap(932, 133)
-            sleep(0.5)
+            sleep(0.2)
             self.tap(930, 253)
-            sleep(0.5)
+            sleep(0.2)
             self.tap(926, 327)
-            sleep(1.0)
+            sleep(0.3)
             
             # 3. Wait for check-l4.png
             start_l4 = time.time()
@@ -1553,7 +1552,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [POPUP] Found and clicking check-l4.png")
                     self.click("img/check-l4.png")
                     break
-                sleep(1)
+                sleep(0.3)
                 
             # 4. Click check-ok1.png
             print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
@@ -1562,26 +1561,26 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache("img/check-ok1.png"):
                     self.click("img/check-ok1.png")
                     print(f"[{self.device_id}] [POPUP] Checkline sequence complete!")
-                    sleep(1)
+                    sleep(0.3)
                     break
-                sleep(1)
+                sleep(0.3)
             return
 
         # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
         if self.exists_in_cache("img/fixnetv2.png"):
             print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
             self.click("img/fixnetv2.png")
-            sleep(2)
+            sleep(0.5)
             self._raw_capture()
             if self.exists_in_cache("img/fixnetv2ok.png"):
                 self.click("img/fixnetv2ok.png")
-                sleep(1)
+                sleep(0.3)
             return
 
         if self.exists_in_cache("img/fixplay.png"):
             print(f"[{self.device_id}] [POPUP] fixplay.png detected, clicking...")
             self.click("img/fixplay.png")
-            sleep(2)
+            sleep(0.5)
             # After fixplay, FORCE wait and click check-ok1.png
             print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png after fixplay...")
             for _ in range(120):  # Wait up to 120 seconds
@@ -1589,9 +1588,9 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache("img/check-ok1.png"):
                     print(f"[{self.device_id}] [POPUP] check-ok1.png found after fixplay, clicking...")
                     self.click("img/check-ok1.png")
-                    sleep(1)
+                    sleep(0.3)
                     break
-                sleep(1)
+                sleep(0.5)
 
         # fixnet.png: เช็คตลอดเจอก็กดรัวๆ ไม่มีหยุดจนกว่าจะหายไป
         fixnet_clicks = 0
@@ -1599,7 +1598,7 @@ class RangerGearBot(threading.Thread):
             fixnet_clicks += 1
             print(f"[{self.device_id}] [POPUP] fixnet.png detected (click #{fixnet_clicks}), clicking...")
             self.click("img/fixnet.png", similarity=0.8)
-            sleep(1.5)
+            sleep(0.5)
             self._raw_capture()
             if fixnet_clicks >= 10:
                 print(f"[{self.device_id}] [POPUP] fixnet.png clicked 10 times, breaking to avoid infinite loop")
@@ -1611,7 +1610,7 @@ class RangerGearBot(threading.Thread):
             fixnet1_clicks += 1
             print(f"[{self.device_id}] [POPUP] fixnet1.png detected (click #{fixnet1_clicks}), clicking...")
             self.click("img/fixnet1.png", similarity=0.8)
-            sleep(1.5)
+            sleep(0.5)
             self._raw_capture()  # จับภาพใหม่เพื่อเช็คซ้ำ (ไม่วนกลับ popup check)
             if fixnet1_clicks >= 10:
                 print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
@@ -1620,7 +1619,7 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/fixaccep.png"):
             print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
             self.click("img/fixaccep.png")
-            sleep(1)
+            sleep(0.3)
 
     def _raw_capture(self):
         """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน)"""
@@ -1748,10 +1747,15 @@ class RangerGearBot(threading.Thread):
             enlarged = cv2.resize(cropped, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
             
             reader = get_ocr_reader()
-            results = reader.readtext(enlarged, allowlist='0123456789', detail=0)
+            # Allow comma and dot to be read but filter them out in code
+            results = reader.readtext(enlarged, allowlist='0123456789,.', detail=0)
             
             if results:
-                return results[0].strip()
+                # Combine all text parts and remove non-digit characters (like commas)
+                import re
+                combined = "".join(results)
+                clean_number = re.sub(r'[^\d]', '', combined)
+                return clean_number if clean_number else None
             return None
         except Exception:
             return None
@@ -1794,19 +1798,19 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Starting Ruby and Ticket check...")
 
         # 1. Back to home screen if needed (press Back until gotogacha1.png is visible)
-        for i in range(5):
+        for i in range(8):
              self.capture_screen()
              if self.exists_in_cache("img/gotogacha1.png"):
-                 print(f"[{self.device_id}] [NAVI] At Home screen.")
+                 print(f"[{self.device_id}] [NAVI-RUBY] At Home screen.")
                  break
-             print(f"[{self.device_id}] [NAVI] Not at Home (attempt {i+1}/5), pressing BACK...")
+             print(f"[{self.device_id}] [NAVI-RUBY] Not at Home (attempt {i+1}/8), pressing BACK...")
              self.adb_shell("input keyevent 4")
-             sleep(2)
+             sleep(0.5)
              # Also clear any popups
              self.capture_screen()
              if self.exists_in_cache("img/cancel.png"):
                  self.click("img/cancel.png")
-                 sleep(1)
+                 sleep(0.3)
         
         # Navigation: gotogacha1 -> gotogacha2 (replacing gacha.png)
         # First ensure we clear any popup that might block (like cancel.png)
@@ -1815,37 +1819,64 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/cancel.png"):
                 print(f"[{self.device_id}] Clearing popup with cancel.png")
                 self.click("img/cancel.png")
-                sleep(1)
+                sleep(0.3)
                 break
-            sleep(0.5)
+            sleep(0.2)
             
         # Navigation to gacha screen
         if not self.wait_and_click_image("gotogacha1.png", timeout=15):
              print(f"[{self.device_id}] gotogacha1.png not found")
              # Fallback to gacha if needed or error
-        sleep(1.5)
+        sleep(0.5)
         
         if not self.wait_and_click_image("gotogacha2.png", timeout=15):
              print(f"[{self.device_id}] gotogacha2.png not found")
         
-        # Wait for gacha screen to settle
-        sleep(2.5)
-        self.capture_screen() # Requirement for OCR (already captures color in self._screen_color)
+        # Wait for gacha screen to settle fully (User requested around 8s total if needed)
+        print(f"[{self.device_id}] Waiting 3s for Gacha UI to settle...")
+        sleep(3.0)
         
-        ticket, ruby = self.read_ticket_and_ruby()
+        ruby = None
+        ticket = None
+        
+        # Retry loop for OCR (Up to 3 attempts, total wait approx 8s)
+        for attempt in range(3):
+            if attempt > 0:
+                print(f"[{self.device_id}] OCR returned None, retrying in 2s (Attempt {attempt+1}/3)...")
+                sleep(2.0)
+            
+            self.capture_screen() 
+            ticket, ruby = self.read_ticket_and_ruby()
+            
+            if ruby is not None or ticket is not None:
+                break
+        
         print(f"[{self.device_id}] Result -> Ruby: {ruby}, Ticket: {ticket}")
         return ruby, ticket
 
     def wait_and_click_image(self, img_name, timeout=30, similarity=0.95):
-        """Wait for image to appear and click it"""
-        path = img_name if img_name.startswith("img/") else f"img/{img_name}"
+        """Wait for image and click it, return True if found (timeout in seconds)"""
+        if not img_name.startswith('img'):
+            img_path = f"img/{img_name}"
+        else:
+            img_path = img_name
+        
         start = time.time()
         while time.time() - start < timeout:
-            self.capture_screen()
-            if self.exists_in_cache(path, similarity=similarity):
-                if self.click(path, similarity=similarity):
+            try:
+                self.capture_screen()
+                # ---- Check floating popups on every iteration ----
+                self.check_floating_popups()
+                # --------------------------------------------------
+                if self.exists_in_cache(img_path, similarity=similarity):
+                    print(f"[{self.device_id}] Found {img_name} (sim={similarity})! Clicking...")
+                    self.click(img_path, similarity=similarity)
                     return True
-            sleep(1)
+            except Exception as e:
+                print(f"[{self.device_id}] Error while waiting for {img_name}: {e}")
+            sleep(0.2)
+                
+        print(f"[{self.device_id}] Timeout waiting for {img_name} ({timeout}s)")
         return False
 
     # =========================================================
@@ -2053,7 +2084,7 @@ class RangerGearBot(threading.Thread):
             if isinstance(item, tuple):
                 print(f"[{self.device_id}] Tapping: {item}")
                 self.tap(item[0], item[1])
-                sleep(3.5) # Increased to 3.5s for coordinate taps (checkboxes)
+                sleep(1.5) # Wait for checkbox animation
                 continue
             
             if isinstance(item, str) and item.startswith('@'):
@@ -2091,8 +2122,8 @@ class RangerGearBot(threading.Thread):
                     if self.exists_in_cache(checkpoint_img, similarity=0.95): 
                         print(f"[{self.device_id}] Checkpoint reached: {checkpoint_img}")
                         break
-                    sleep(1.5)
-                sleep(1.0)
+                    sleep(0.3)
+                sleep(0.3)
                 continue
                 
             img_path = f"img/{item}" if isinstance(item, str) and not item.startswith('img') else item
@@ -2157,39 +2188,13 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache(img_path):
                     print(f"[{self.device_id}] Found {item}, clicking...")
                     self.click(img_path)
-                    sleep(0.8) # Fast transition for images
+                    sleep(0.3) # Fast transition for images
                     break
-                sleep(0.5) # Fast loop search
+                sleep(0.2) # Fast loop search
             
         return "success"
 
-    def wait_and_click_image(self, img_name, timeout=30):
-        """Wait for image and click it, return True if found (timeout in seconds)"""
-        # Add img/ prefix if not already present
-        if not img_name.startswith('img'):
-            img_path = f"img/{img_name}"
-        else:
-            img_path = img_name
-        
-        start = 0
-        while start < timeout:
-            try:
-                self.capture_screen()
-                # ---- Check floating popups on every iteration ----
-                self.check_floating_popups()
-                # --------------------------------------------------
-                if self.exists_in_cache(img_path):
-                    print(f"[{self.device_id}] Found {img_name}! Clicking...")
-                    self.click(img_path)
-                    sleep(0.5)
-                    return True
-                start += 1
-                sleep(1)
-            except Exception as e:
-                print(f"[{self.device_id}] Error while waiting for {img_name}: {e}")
-                
-        print(f"[{self.device_id}] Timeout waiting for {img_name} ({timeout}s)")
-        return False
+
 
     # =========================================================
     # FIND RANGER PROCESS
@@ -2238,13 +2243,13 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] Found sec1, clicking once then waiting for sec2...")
                 self.click("img/sec1.png")
                 sec1_clicked = True
-                sleep(3) # Initial wait after click
+                sleep(1) # Brief wait after click
             
             # If nothing found or already clicked sec1, just wait and loop again
-            sleep(1.5)
+            sleep(0.3)
             
         print(f"[{self.device_id}] Reached search screen successfully.")
-        sleep(0.5)
+        sleep(0.2)
         
         # Loop through each character
         for i, character in enumerate(self.characters):
@@ -2253,29 +2258,29 @@ class RangerGearBot(threading.Thread):
             # a) Tap search box position first
             print(f"[{self.device_id}] Tapping search box (388, 288)")
             self.tap(388, 288)
-            sleep(0.3)
+            sleep(0.1)
             
             # b) Type character name
             print(f"[{self.device_id}] Typing: {character}")
             self.type_text(character)
-            sleep(0.5)
+            sleep(0.2)
             
             # c) Click sec3
             print(f"[{self.device_id}] Clicking sec3.png")
-            if not self.wait_and_click_image("sec3.png", timeout=15):
+            if not self.wait_and_click_image("sec3.png", timeout=15, similarity=0.95):
                 print(f"[{self.device_id}] Failed to find sec3, skipping character")
                 continue
-            sleep(0.3)
+            sleep(0.1)
             
             # d) Click sec4
             print(f"[{self.device_id}] Clicking sec4.png")
-            if not self.wait_and_click_image("sec4.png", timeout=15):
+            if not self.wait_and_click_image("sec4.png", timeout=15, similarity=0.95):
                 print(f"[{self.device_id}] Failed to find sec4, skipping character")
                 continue
             
             # Add longer wait for search results to appear
-            print(f"[{self.device_id}] Waiting 2.0s for results...")
-            sleep(2.0)
+            print(f"[{self.device_id}] Waiting 0.8s for results...")
+            sleep(0.8)
             
             # e) Scan ranger images with RETRY (to be sure)
             current_found_in_iteration = False
@@ -2285,7 +2290,7 @@ class RangerGearBot(threading.Thread):
             for attempt in range(2):
                 if attempt > 0:
                     print(f"[{self.device_id}] Retry scanning ranger (Attempt {attempt+1})...")
-                    sleep(1.0)
+                    sleep(0.3)
                     
                 self.capture_screen()
                 self.check_floating_popups()
@@ -2327,7 +2332,7 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Clicking sec5.png")
             if not self.wait_and_click_image("sec5.png", timeout=15):
                 print(f"[{self.device_id}] Failed to find sec5, continuing")
-            sleep(0.3)
+            sleep(0.1)
             
             # g) Click sec2 again for next character (if not last)
             if i < len(self.characters) - 1:
@@ -2423,22 +2428,38 @@ class RangerGearBot(threading.Thread):
         filename = self.current_original_filename or "unknown_LINE_COCOS_PREF_KEY.xml"
         source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
         
-        # If skip_findgear1 is True, we're coming from ranger and should go directly to findgear2
-        if skip_findgear1:
-            print(f"[{self.device_id}] Skipping findgear1 (continuing from ranger process)...")
-            sleep(1)
-        else:
-            # Normal flow: click findgear1.png first
-            if not self.wait_and_click_image("findgear1.png"):
-                print(f"[{self.device_id}] Failed to find findgear1.png")
-                return set()
+        # Phase 1: Navigation with Home-screen recovery
+        print(f"[{self.device_id}] Navigating to Gear screen...")
         
-        # Click findgear2.png -> findgear3.png
-        if not self.wait_and_click_image("findgear2.png"):
+        # 1. Back to home screen if needed (press Back until findgear1.png or findgear2.png is visible)
+        for i in range(8):
+             self.capture_screen()
+             if self.exists_in_cache("img/findgear1.png") or self.exists_in_cache("img/findgear2.png"):
+                 print(f"[{self.device_id}] [NAVI-GEAR] At Gear-accessible screen.")
+                 break
+             print(f"[{self.device_id}] [NAVI-GEAR] Not at Gear screen (attempt {i+1}/8), pressing BACK...")
+             self.adb_shell("input keyevent 4")
+             sleep(0.5)
+             self.capture_screen()
+             if self.exists_in_cache("img/cancel.png"):
+                 self.click("img/cancel.png")
+                 sleep(0.3)
+
+        # 2. Click findgear1.png if visible (Main menu Gear button)
+        self.capture_screen()
+        if self.exists_in_cache("img/findgear1.png"):
+            if not self.wait_and_click_image("findgear1.png", timeout=10):
+                print(f"[{self.device_id}] Failed to click findgear1.png")
+                return set()
+            sleep(0.5)
+        
+        # 3. Click findgear2.png (Gear inventory tab)
+        if not self.wait_and_click_image("findgear2.png", timeout=15):
             print(f"[{self.device_id}] Failed to find findgear2.png")
             return set()
         
-        if not self.wait_and_click_image("findgear3.png"):
+        # 4. Click findgear3.png (Ranger gear button)
+        if not self.wait_and_click_image("findgear3.png", timeout=15):
             print(f"[{self.device_id}] Failed to find findgear3.png")
             return set()
         
@@ -2457,7 +2478,7 @@ class RangerGearBot(threading.Thread):
             # checkgear3 สำเร็จ -> สแกน OCR ปกติ
             print(f"[{self.device_id}] [GEAR] checkgear3 found! Scanning OCR...")
             all_found_gears.update(self.check_gear_by_text())
-            sleep(2)
+            sleep(0.5)
             
             # ยังสแกน weapons tabs ต่อตามปกติ
             self.capture_screen()
@@ -2465,18 +2486,18 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/weapons1.png"):
                 print(f"\n[{self.device_id}] Checking weapons1 tab...")
                 self.click("img/weapons1.png")
-                sleep(2)
+                sleep(0.5)
                 all_found_gears.update(self.check_gear_by_text())
-                sleep(1)
+                sleep(0.3)
             
             self.capture_screen()
             self.check_floating_popups()
             if self.exists_in_cache("img/weapons2.png"):
                 print(f"\n[{self.device_id}] Checking weapons2 tab...")
                 self.click("img/weapons2.png")
-                sleep(2)
+                sleep(0.5)
                 all_found_gears.update(self.check_gear_by_text())
-                sleep(1)
+                sleep(0.3)
         else:
             # === checkgear3 ไม่เจอ -> กด weapons1 แล้วสแกน ===
             print(f"[{self.device_id}] [GEAR] checkgear3 NOT found after 15s! Falling back to weapons1...")
@@ -2485,9 +2506,9 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/weapons1.png"):
                 print(f"[{self.device_id}] [GEAR] Clicking weapons1.png and scanning...")
                 self.click("img/weapons1.png")
-                sleep(2)
+                sleep(0.5)
                 all_found_gears.update(self.check_gear_by_text())
-                sleep(1)
+                sleep(0.3)
             else:
                 print(f"[{self.device_id}] [GEAR] weapons1.png not found on screen")
             
@@ -2504,7 +2525,7 @@ class RangerGearBot(threading.Thread):
                 # checkgear3 สำเร็จรอบ 2 -> สแกน OCR
                 print(f"[{self.device_id}] [GEAR] checkgear3 found on attempt 2! Scanning OCR...")
                 all_found_gears.update(self.check_gear_by_text())
-                sleep(2)
+                sleep(0.5)
             else:
                 # === checkgear3 ไม่เจออีก -> กด weapons2 แล้วสแกน ===
                 print(f"[{self.device_id}] [GEAR] checkgear3 NOT found again (15s)! Falling back to weapons2...")
@@ -2513,9 +2534,9 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache("img/weapons2.png"):
                     print(f"[{self.device_id}] [GEAR] Clicking weapons2.png and scanning...")
                     self.click("img/weapons2.png")
-                    sleep(2)
+                    sleep(0.5)
                     all_found_gears.update(self.check_gear_by_text())
-                    sleep(1)
+                    sleep(0.3)
                 else:
                     print(f"[{self.device_id}] [GEAR] weapons2.png not found on screen")
         
@@ -2554,7 +2575,7 @@ class RangerGearBot(threading.Thread):
     def clear_and_restart(self):
         """Clear app and prepare for next file"""
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-        sleep(2)
+        sleep(0.5)
 
     # =========================================================
     # Main Login
@@ -2565,11 +2586,11 @@ class RangerGearBot(threading.Thread):
         
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-        sleep(2)
+        sleep(0.5)
         
         # เปิดแอปด้วย am start (เร็วกว่าและเสถียรกว่าคลิก icon.png)
         self.open_app()
-        sleep(3)
+        sleep(1)
         
         # === Black Screen Check หลังเปิดแอพ (15 วิ ถ้ายังดำ/เทา > 80% → clear + restart) ===
         for black_attempt in range(3):  # ลองได้ 3 ครั้ง
@@ -2594,13 +2615,13 @@ class RangerGearBot(threading.Thread):
                         is_stuck = True
                 else:
                     is_stuck = True
-                sleep(1)
+                sleep(0.5)
             
             if is_stuck:
                 print(f"[{self.device_id}] [BLACK] Dark screen 15s after launch! (attempt {black_attempt+1}/3) Clearing...")
                 self.clear_and_restart()
                 self.open_app()
-                sleep(3)
+                sleep(1)
             else:
                 break  # แอพโหลดสำเร็จ ออกจาก loop
             
@@ -2639,17 +2660,17 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/fixnetv2.png"):
                 print(f"[{self.device_id}] [POPUP] fixnetv2.png detected in login loop, clicking...")
                 self.click("img/fixnetv2.png")
-                sleep(2)
+                sleep(0.5)
                 self.capture_screen()
                 if self.exists_in_cache("img/fixnetv2ok.png"):
                     self.click("img/fixnetv2ok.png")
-                    sleep(1)
+                    sleep(0.3)
                 continue
 
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
                 self.click("img/fixplay.png")
-                sleep(2)
+                sleep(0.5)
                 # Force wait for check-ok1.png after fixplay
                 print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png after fixplay...")
                 for _ in range(120):
@@ -2657,9 +2678,9 @@ class RangerGearBot(threading.Thread):
                     if self.exists_in_cache("img/check-ok1.png"):
                         print(f"[{self.device_id}] [POPUP] check-ok1.png found, clicking...")
                         self.click("img/check-ok1.png")
-                        sleep(1)
+                        sleep(0.3)
                         break
-                    sleep(1)
+                    sleep(0.5)
                 continue
 
             # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (ปรับ similarity 0.8)
@@ -2685,7 +2706,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] ⚠️ fixokk.png ค้างอยู่ครบ 5 วินาที! ทำการกด...")
                     self.click("img/fixokk.png", similarity=0.8)
                     self._fixokk_start_time = None
-                    sleep(2)
+                    sleep(0.5)
             else:
                 self._fixokk_start_time = None
 
@@ -2699,7 +2720,7 @@ class RangerGearBot(threading.Thread):
                     self.clear_and_restart()
                     self.open_app()
                     self._alert2_start_time = None
-                    sleep(3)
+                    sleep(1)
                     continue
             else:
                 self._alert2_start_time = None
@@ -2722,15 +2743,15 @@ class RangerGearBot(threading.Thread):
                 
                 # 1) กด fikcheck
                 print(f"[{self.device_id}] Step 1: waiting for fikcheck.png (10s timeout)...")
-                sleep(1.5) # ให้หน้าจอเสถียรหลัง re-route
+                sleep(0.5) # ให้หน้าจอเสถียรหลัง re-route
                 for _ in range(10): # Timeout 10s
                     self.capture_screen()
                     if self.exists_in_cache("img/fikcheck.png", similarity=0.8):
                         self.click("img/fikcheck.png", similarity=0.8)
                         print(f"[{self.device_id}] Clicked fikcheck.png")
-                        sleep(2)
+                        sleep(0.5)
                         break
-                    sleep(1)
+                    sleep(0.5)
                 
                 # 2) กด refresh
                 print(f"[{self.device_id}] Step 2: clicking refresh.png (10s timeout)...")
@@ -2739,9 +2760,9 @@ class RangerGearBot(threading.Thread):
                     if self.exists_in_cache("img/refresh.png"):
                         self.click("img/refresh.png")
                         print(f"[{self.device_id}] Clicked refresh.png")
-                        sleep(3)
+                        sleep(0.5)
                         break
-                    sleep(1)
+                    sleep(0.5)
                 
                 # 3) รอ check.png แล้วกด
                 print(f"[{self.device_id}] Step 3: waiting for check.png (60s timeout)...")
@@ -2751,7 +2772,7 @@ class RangerGearBot(threading.Thread):
                     if self.exists_in_cache("img/check.png"):
                         print(f"[{self.device_id}] Found check.png! Clicking...")
                         self.click("img/check.png")
-                        sleep(2)
+                        sleep(0.5)
                         # หลังกด check -> รอดู fixid ก่อน 2 วิ
                         found_fixid_after_check = False
                         for _ in range(2):
@@ -2760,7 +2781,7 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{self.device_id}] Found fixid.png right after check! Re-routing...")
                                 found_fixid_after_check = True
                                 break
-                            sleep(1)
+                            sleep(0.5)
                         
                         if found_fixid_after_check:
                             break
@@ -2768,9 +2789,9 @@ class RangerGearBot(threading.Thread):
                         if self.exists_in_cache("img/fikcheck.png", similarity=0.8):
                             print(f"[{self.device_id}] Found fikcheck.png after check! Clicking...")
                             self.click("img/fikcheck.png", similarity=0.8)
-                            sleep(1)
+                            sleep(0.5)
                         break
-                    sleep(1)
+                    sleep(0.5)
                 
                 continue
 
@@ -2778,7 +2799,7 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/refresh.png"):
                 print(f"[{self.device_id}] Found refresh.png (no fixid), clicking refresh -> check...")
                 self.click("img/refresh.png")
-                sleep(3)
+                sleep(0.5)
                 
                 check_wait_start = time.time()
                 while time.time() - check_wait_start < 60:
@@ -2786,26 +2807,26 @@ class RangerGearBot(threading.Thread):
                     if self.exists_in_cache("img/check.png"):
                         print(f"[{self.device_id}] Found check.png! Clicking...")
                         self.click("img/check.png")
-                        sleep(2)
+                        sleep(0.5)
                         # หลังกด check -> รอดู fixid ก่อน 2 วิ
                         found_fixid_after_check = False
-                        for _ in range(2):
+                        for _ in range(4):
                             self.capture_screen()
                             if self.exists_in_cache("img/fixid.png"):
                                 print(f"[{self.device_id}] Found fixid.png right after check! Re-routing...")
                                 found_fixid_after_check = True
                                 break
-                            sleep(1)
+                            sleep(0.5)
                         
                         if found_fixid_after_check:
                             break
-
+ 
                         if self.exists_in_cache("img/fikcheck.png", similarity=0.8):
                             print(f"[{self.device_id}] Found fikcheck.png after check! Clicking...")
                             self.click("img/fikcheck.png", similarity=0.8)
-                            sleep(1)
+                            sleep(0.3)
                         break
-                    sleep(1)
+                    sleep(0.5)
                 
                 continue
             # ====================================================
@@ -2819,7 +2840,7 @@ class RangerGearBot(threading.Thread):
                 if not pid_result.stdout.strip():
                     print(f"[{self.device_id}] App crashed during login. Relaunching...")
                     self.open_app()
-                    sleep(5)
+                    sleep(1)
                     loop_count = 0
                     continue
             except:
@@ -2829,7 +2850,7 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/fixalerterror1.png"):
                 print(f"[{self.device_id}] Alert error detected. Dimissing...")
                 self.click("img/fixalerterror1.png")
-                sleep(2)
+                sleep(0.5)
                 loop_count = 0
                 continue
 
@@ -2837,7 +2858,7 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/fixcak.png"):
                 print(f"[{self.device_id}] Fixcak detected (fix bug login). Dismissing...")
                 self.click("img/fixcak.png")
-                sleep(2)
+                sleep(0.5)
                 loop_count = 0
                 continue
                 
@@ -2845,7 +2866,7 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/kaiby.png", similarity=0.8) or self.exists_in_cache("img/kaiby1.png", similarity=0.8):
                 print(f"[{self.device_id}] ⚠️ พบ kaiby.png! (ไก่บี้เด้งระหว่าง Login) เคลียร์แอพและส่งเข้าโฟลเดอร์ kaiby...")
                 self.clear_and_restart()
-                sleep(2)
+                sleep(0.5)
                 return "kaiby"
 
             # *** SUCCESS -> Just Login and Backup ***
@@ -2889,22 +2910,25 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [DEBUG] Ranger scan SKIPPED (do_ranger={self.do_ranger})")
                 
                 # Then run gear process if enabled
+                # Then run gear process if enabled
                 if self.do_gear:
-                    # If both ranger and gear, skip findgear1 since we're already in the app
-                    skip_gear1 = self.do_ranger and self.do_gear
-                    print(f"[{self.device_id}] [DEBUG] Starting Gear scan (skip_findgear1={skip_gear1})...")
-                    gear_results = self.process_check_gear(current_filename, ranger_results, skip_findgear1=skip_gear1)
-                    print(f"[{self.device_id}] [DEBUG] Gear results: {gear_results}")
+                    self.update_gui_status("Checking Gear")
+                    print(f"[{self.device_id}] Starting Gear scan (do_gear={self.do_gear})...")
+                    gear_results = self.process_check_gear(current_filename, ranger_results)
+                    print(f"[{self.device_id}] Gear scan done. Found: {gear_results}")
                 else:
-                    print(f"[{self.device_id}] [DEBUG] Gear scan SKIPPED (do_gear={self.do_gear})")
+                    print(f"[{self.device_id}] Gear scan SKIPPED (do_gear={self.do_gear})")
                 
                 # Ruby and Ticket Check
                 ruby_count = None
                 ticket_count = None
-                is_rt_enabled = config.get("check_ruby_ticket", 0) or config.get("find_all", 1)
-                print(f"[{self.device_id}] [DEBUG] check_ruby_ticket config: {config.get('check_ruby_ticket')}, find_all: {config.get('find_all')}")
+                is_rt_enabled = (config.get("check_ruby_ticket", 0) == 1) or (config.get("find_all", 1) == 1)
+                
                 if is_rt_enabled:
+                    self.update_gui_status("Ruby/Ticket Check")
+                    print(f"[{self.device_id}] Starting Resource check (is_rt_enabled={is_rt_enabled})...")
                     ruby_count, ticket_count = self.process_check_ruby_ticket()
+                    print(f"[{self.device_id}] Resource check done. Ruby: {ruby_count}, Ticket: {ticket_count}")
                 
                 # Combine results and backup
                 filename = self.current_original_filename or "unknown.xml"
@@ -3000,7 +3024,9 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] No results from ranger or gear - backing up to not-found")
                     self.backup_to_not_found(filename, source_path)
                 
-                # Clear app and restart
+                # Clear app and restart (Wait 8s as requested by user to ensure completion)
+                print(f"[{self.device_id}] Success! Waiting 8s before clearing...")
+                sleep(8.0)
                 self.clear_and_restart()
                 return "success"
                 
@@ -3024,11 +3050,11 @@ class RangerGearBot(threading.Thread):
                 if error_found in ["fixbug", "unkhow"]:
                     img = "img/fixbuglogin.png" if error_found == "fixbug" else "img/unkhow.png"
                     self.click(img)
-                    sleep(2)
+                    sleep(0.5)
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                sleep(3)
+                sleep(0.5)
                 self.open_app()
-                sleep(5)
+                sleep(1)
                 loop_count = 0
                 continue
             
@@ -3044,9 +3070,9 @@ class RangerGearBot(threading.Thread):
                 event_passed = True  # หลังจากนี้หยุดเช็ค fixok
                 print(f"[{self.device_id}] Event popup detected. Clicking then Back...")
                 self.click("img/event.png")
-                sleep(1)
+                sleep(0.5)
                 self.adb_shell("input keyevent 4")  # Back button
-                sleep(2)
+                sleep(1)
                 
                 # เช็ค cancel.png เฉพาะหลังเจอ event เท่านั้น
                 self.capture_screen()
@@ -3058,7 +3084,7 @@ class RangerGearBot(threading.Thread):
                 loop_count -= 1
                 continue
             
-            sleep(2)
+            sleep(0.5)
             if loop_count > 500:
                 print(f"[{self.device_id}] Login timeout after 500 iterations")
                 status = "timeout"
