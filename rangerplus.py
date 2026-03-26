@@ -1628,6 +1628,13 @@ class RangerPlusBot(multiprocessing.Process):
                 print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
                 break
 
+        # fixnetv3.png: Network error popup - tap (472, 361) to dismiss
+        if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
+            print(f"[{self.device_id}] [POPUP] fixnetv3.png detected, tapping (472, 361)...")
+            self.tap(472, 361)
+            sleep(1.5)
+            self._raw_capture()
+
         if self.exists_in_cache("img/fixaccep.png"):
             print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
             self.click("img/fixaccep.png")
@@ -2018,34 +2025,27 @@ class RangerPlusBot(multiprocessing.Process):
             
         return "success"
 
-    def wait_and_click_image(self, img_name, timeout=480):
+    def wait_and_click_image(self, img_name, timeout=30, similarity=0.95):
         """Wait for image and click it, return True if found (timeout in seconds)"""
-        # Add img/ prefix if not already present
         if not img_name.startswith('img'):
             img_path = f"img/{img_name}"
         else:
             img_path = img_name
         
-        print(f"[{self.device_id}] Waiting for {img_name} (timeout {timeout}s)...")
-        start = 0
-        while start < timeout:
+        start = time.time()
+        while time.time() - start < timeout:
             try:
-                if start > 0 and start % 30 == 0:
-                    print(f"[{self.device_id}] Still searching for {img_name}... ({start}/{timeout}s)")
-                
                 self.capture_screen()
                 # ---- Check floating popups on every iteration ----
                 self.check_floating_popups()
                 # --------------------------------------------------
-                if self.exists_in_cache(img_path):
-                    print(f"[{self.device_id}] Found {img_name}! Clicking...")
-                    self.click(img_path)
-                    sleep(0.5)
+                if self.exists_in_cache(img_path, similarity=similarity):
+                    print(f"[{self.device_id}] Found {img_name} (sim={similarity})! Clicking...")
+                    self.click(img_path, similarity=similarity)
                     return True
-                start += 1
-                sleep(1)
             except Exception as e:
                 print(f"[{self.device_id}] Error while waiting for {img_name}: {e}")
+            sleep(0.2)
                 
         print(f"[{self.device_id}] Timeout waiting for {img_name} ({timeout}s)")
         return False
@@ -2395,6 +2395,15 @@ class RangerPlusBot(multiprocessing.Process):
                 pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
+            self.check_floating_popups()
+
+            # fixnetv3.png Check in login loop
+            if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
+                print(f"[{self.device_id}] [POPUP] fixnetv3.png detected in login loop! Tapping (472, 361)...")
+                self.tap(472, 361)
+                sleep(0.5)
+                continue
+
             if self.exists_in_cache("img/fixplay.png"):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clicking...")
                 self.click("img/fixplay.png")

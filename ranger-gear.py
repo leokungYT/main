@@ -1621,6 +1621,12 @@ class RangerGearBot(threading.Thread):
             self.click("img/fixaccep.png")
             sleep(0.3)
 
+        # fixnetv3.png: Global Network Popup Check (Special coordinates 472, 361)
+        if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
+            print(f"[{self.device_id}] [POPUP] fixnetv3.png detected! Tapping (472, 361)...")
+            self.tap(472, 361)
+            sleep(0.5)
+
     def _raw_capture(self):
         """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน)"""
         try:
@@ -2695,6 +2701,13 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times in login, breaking")
                     break
             if fixnet1_login_clicks > 0:
+                continue
+
+            # fixnetv3.png Check in login loop
+            if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
+                print(f"[{self.device_id}] [POPUP] fixnetv3.png detected in login loop! Tapping (472, 361)...")
+                self.tap(472, 361)
+                sleep(0.5)
                 continue
 
             # === fixokk.png Persistence Check (รอค้างครบ 5 วิ ถึงจะกด) ===
