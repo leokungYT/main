@@ -1871,6 +1871,9 @@ class RangerPlusBot(multiprocessing.Process):
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
         
+        # ปลดล็อก Read-only (ถ้ามี)
+        self.adb_shell("su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'")
+        
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
         
