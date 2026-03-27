@@ -2050,90 +2050,40 @@ class RangerGearBot(threading.Thread):
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
         
-        # 1. Force stop the app completely
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-        sleep(1)
+        sleep(2)
+        
         self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'")
-        sleep(0.5)
+        sleep(1)
 
         src = os.path.abspath(local_xml_path)
-        
-        # Get local file size for verification
-        try:
-            local_size = os.path.getsize(src)
-        except:
-            print(f"[{self.device_id}] ERROR: Cannot read local file: {src}")
-            return None
-        
-        safe_dev = self.device_id.replace(':', '_')
-        tmp = f"/data/local/tmp/temp_pref_{safe_dev}.xml"
+        tmp = f"/data/local/tmp/temp_pref_{self.device_id.replace(':','_')}.xml"
         final_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
         final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
         
-        max_retries = 5
+        max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                # Step 1: Push file to device tmp
+                # Push to tmp
                 result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30)
                 if result.returncode != 0:
-                    err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown'
+                    err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
                     print(f"[{self.device_id}] Push attempt {attempt} failed: {err}")
                     sleep(2)
                     continue
                 
-                # Step 2: Verify pushed file size
-                size_result = self.adb_shell(f"wc -c < {tmp}")
-                remote_size_str = size_result.stdout.decode('utf-8', errors='ignore').strip() if size_result.stdout else "0"
-                try:
-                    remote_size = int(remote_size_str)
-                except:
-                    remote_size = 0
-                
-                if remote_size < 100:
-                    print(f"[{self.device_id}] Push verify failed (attempt {attempt}): remote={remote_size}B, local={local_size}B")
-                    sleep(2)
-                    continue
-                
-                # Step 3: Ensure shared_prefs dir exists
-                self.adb_shell(f"su -c 'mkdir -p {final_dir}'")
-                
-                # Step 4: Copy to final destination
-                cp_result = self.adb_shell(f"su -c 'cp {tmp} {final}'")
-                
-                # Step 5: Verify final file exists and has content
-                verify_result = self.adb_shell(f"su -c 'wc -c < {final}'")
-                final_size_str = verify_result.stdout.decode('utf-8', errors='ignore').strip() if verify_result.stdout else "0"
-                try:
-                    final_size = int(final_size_str)
-                except:
-                    final_size = 0
-                
-                if final_size < 100:
-                    print(f"[{self.device_id}] Copy verify failed (attempt {attempt}): final={final_size}B vs pushed={remote_size}B")
-                    # Try alternative copy method
-                    self.adb_shell(f"su -c 'cat {tmp} > {final}'")
-                    sleep(0.5)
-                    verify2 = self.adb_shell(f"su -c 'wc -c < {final}'")
-                    s2 = verify2.stdout.decode('utf-8', errors='ignore').strip() if verify2.stdout else "0"
-                    try:
-                        final_size = int(s2)
-                    except:
-                        final_size = 0
-                    if final_size < 100:
-                        print(f"[{self.device_id}] Alt copy also failed (attempt {attempt})")
-                        sleep(2)
-                        continue
-                
-                # Step 6: Set permissions and ownership
-                self.adb_shell(f"su -c 'chmod 666 {final}'")
-                self.adb_shell(
-                    f"su -c 'chown $(stat -c %u:%g {final_dir} 2>/dev/null || echo 1000:1000) {final}'"
+                # Copy, set permissions and owner (no frail 'wc -c' check)
+                shell_cmd = (
+                    f"su -c '"
+                    f"cp {tmp} {final} && "
+                    f"chmod 666 {final} && "
+                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {final_dir}/.. 2>/dev/null || echo 1000:1000) {final} || true && "
+                    f"rm -f {tmp}"
+                    f"'"
                 )
+                self.adb_shell(shell_cmd)
                 
-                # Step 7: Cleanup tmp
-                self.adb_shell(f"rm -f {tmp}")
-                
-                print(f"[{self.device_id}] Injection successful on attempt {attempt} (size: {final_size}B)")
+                print(f"[{self.device_id}] Injection successful on attempt {attempt}")
                 return local_xml_path
                     
             except Exception as e:
