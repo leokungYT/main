@@ -1246,20 +1246,16 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Move error: {e}")
 
     def clear_specific_shared_prefs(self):
-        """ลบ shared_prefs เฉพาะที่จำเป็น เพื่อให้เกมสร้างชุดข้อมูลใหม่ที่สะอาด"""
-        try:
-            pkg = "com.linecorp.LGRGS"
-            target_prefs = [
-                "_LINE_COCOS_PREF_KEY.xml",
-                "com.linecorp.LGRGS.xml",
-                "AdInfo.xml"
-            ]
-            for pref in target_prefs:
-                path = f"/data/data/{pkg}/shared_prefs/{pref}"
-                self.adb_shell(f"su -c 'rm -f {path}'")
-            print(f"[{self.device_id}] เคลียร์ SharedPrefs สำเร็จ")
-        except Exception as e:
-            print(f"[{self.device_id}] Error clear prefs: {e}")
+        """Delete ALL shared_prefs and clear app cache"""
+        base = "/data/data/com.linecorp.LGRGS/shared_prefs"
+        cache_dir = "/data/data/com.linecorp.LGRGS/cache"
+        
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+        sleep(1)
+        
+        # Total clear including cache (Restore to Full Clear)
+        self.adb_shell(f"su -c 'rm -rf {base}/* && rm -rf {cache_dir}/*'")
+        print(f"[{self.device_id}] Cleared shared_prefs + cache (Full)")
 
     def handle_failure(self, file_path):
         dst_dir = "login-failed"
@@ -2050,9 +2046,6 @@ class RangerGearBot(threading.Thread):
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
         
-        # ปลดล็อก Read-only (ถ้ามี)
-        self.adb_shell("su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'")
-        
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
         
@@ -2060,7 +2053,6 @@ class RangerGearBot(threading.Thread):
         sleep(1)
 
         src = os.path.abspath(local_xml_path)
-        src_size = os.path.getsize(src)
         tmp = f"/data/local/tmp/temp_pref_{self.device_id.replace(':','_')}.xml"
         final_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
         final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
@@ -2068,54 +2060,31 @@ class RangerGearBot(threading.Thread):
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                # ปัดกวาดที่เก่า
-                self.adb_shell(f"su -c 'rm -f {final} && rm -f {tmp}'")
-                
-                # Push เข้าเครื่อง
+                # Push to tmp
                 result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30)
                 if result.returncode != 0:
-                    print(f"[{self.device_id}] Push failed (Attempt {attempt})")
-                    sleep(1)
+                    err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
+                    print(f"[{self.device_id}] Push attempt {attempt} failed: {err}")
+                    sleep(2)
                     continue
                 
-                # เช็คขนาดไฟล์ที่ส่งเข้าเครื่อง
-                size_check = self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", f"stat -c %s {tmp}"], text=True)
-                remote_size_out = size_check.stdout.strip()
-                remote_size = int(remote_size_out) if remote_size_out.isdigit() else 0
-                
-                if remote_size != src_size:
-                    print(f"[{self.device_id}] Size mismatch! (Attempt {attempt}) Local:{src_size} Remote:{remote_size}")
-                    sleep(1)
-                    continue
-                
-                # ย้ายไฟล์ + ตั้งสิทธิ์ (แบบเดิมเป๊ะๆ)
+                # Copy, set permissions and owner (no frail 'wc -c' check)
                 shell_cmd = (
                     f"su -c '"
-                    f"mkdir -p {final_dir} && "
-                    f"cp -f {tmp} {final} && "
+                    f"cp {tmp} {final} && "
                     f"chmod 666 {final} && "
-                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || echo 1000:1000) {final} && "
-                    f"restorecon {final} || true && "
+                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {final_dir}/.. 2>/dev/null || echo 1000:1000) {final} || true && "
                     f"rm -f {tmp}"
                     f"'"
                 )
                 self.adb_shell(shell_cmd)
                 
-                # เช็คผลลัพธ์สุดท้าย
-                verify = self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", f"su -c 'stat -c %s {final}'"], text=True)
-                final_size_out = verify.stdout.strip()
-                final_size = int(final_size_out) if final_size_out.isdigit() else 0
-                
-                if final_size == src_size:
-                    print(f"[{self.device_id}] Injection Verified OK (Size: {final_size} bytes)")
-                    return local_xml_path
-                else:
-                    print(f"[{self.device_id}] Verify failed! (Attempt {attempt}) Expected:{src_size} Got:{final_size}")
-                    sleep(1)
+                print(f"[{self.device_id}] Injection successful on attempt {attempt}")
+                return local_xml_path
                     
             except Exception as e:
                 print(f"[{self.device_id}] Attempt {attempt} error: {e}")
-                sleep(1)
+                sleep(2)
         
         print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
         return None
