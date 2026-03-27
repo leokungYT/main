@@ -1812,11 +1812,11 @@ class RangerGearBot(threading.Thread):
             enlarged = cv2.resize(cropped, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
             
             reader = get_ocr_reader()
-            # Allow comma and dot to be read but filter them out in code
-            results = reader.readtext(enlarged, allowlist='0123456789,.', detail=0)
+            # Allow only digits to avoid confusion with commas/dots
+            results = reader.readtext(enlarged, allowlist='0123456789', detail=0)
             
             if results:
-                # Combine all text parts and remove non-digit characters (like commas)
+                # Combine all text parts and remove non-digit characters if any
                 import re
                 combined = "".join(results)
                 clean_number = re.sub(r'[^\d]', '', combined)
