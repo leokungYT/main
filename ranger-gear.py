@@ -987,59 +987,47 @@ class RangerGearBot(threading.Thread):
         self.adb_cmd = adb_path
         self._screen = None
         self._screen_color = None
+        self._screen_raw_png = None  # raw PNG bytes for lazy color decode
         self._template_cache = {}
         self._black_start_time = None
         self._fixnetv3_count = 0
         self._need_restart = False
         self._running = True
+        self._capture_count = 0  # throttle popup checks
         
         # Start background monitor thread
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
     def _popup_monitor_loop(self):
-        """Background thread to monitor fixnetv3.png regardless of main loop state"""
+        """Background thread to monitor fixnetv3.png - reuses main thread's screen to save CPU"""
         while self._running:
             try:
-                # 1. Capture screen for monitor (raw, no popup check recursion)
-                # Note: We use a separate capture to avoid interfering with main thread's _screen
-                # exec-out screencap is very fast.
-                kwargs = {}
-                if os.name == 'nt':
-                    kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-                result = subprocess.run(
-                    [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                    capture_output=True, timeout=10, **kwargs
-                )
-                
-                if result.returncode == 0 and len(result.stdout) > 100:
-                    img_array = np.frombuffer(result.stdout, np.uint8)
-                    mon_screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-                    
-                    if mon_screen is not None:
-                        tmpl = self._get_template("img/fixnetv3.png")
-                        if tmpl is not None:
-                            # matchTemplate
-                            res = cv2.matchTemplate(mon_screen, tmpl, cv2.TM_CCOEFF_NORMED)
-                            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                # Reuse the main thread's last captured screen instead of doing a separate screencap
+                mon_screen = self._screen
+                if mon_screen is not None:
+                    tmpl = self._get_template("img/fixnetv3.png")
+                    if tmpl is not None:
+                        res = cv2.matchTemplate(mon_screen, tmpl, cv2.TM_CCOEFF_NORMED)
+                        _, max_val, _, _ = cv2.minMaxLoc(res)
+                        
+                        if max_val >= 0.8:
+                            self._fixnetv3_count += 1
+                            print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
+                            self.tap(472, 361)
                             
-                            if max_val >= 0.8:
-                                self._fixnetv3_count += 1
-                                print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
-                                self.tap(472, 361)
-                                
-                                if self._fixnetv3_count >= 8:
-                                    print(f"[{self.device_id}] [MONITOR] fixnetv3.png persists after 8 clicks! Force-stopping app...")
-                                    self._need_restart = True
-                                    self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                                    self._fixnetv3_count = 0
-                            else:
-                                if self._fixnetv3_count > 0:
-                                    self._fixnetv3_count = 0
+                            if self._fixnetv3_count >= 8:
+                                print(f"[{self.device_id}] [MONITOR] fixnetv3.png persists after 8 clicks! Force-stopping app...")
+                                self._need_restart = True
+                                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                                self._fixnetv3_count = 0
+                        else:
+                            if self._fixnetv3_count > 0:
+                                self._fixnetv3_count = 0
                 
             except Exception:
                 pass
-            time.sleep(2.5) # Check every 2.5 seconds
+            time.sleep(3)  # Check every 3 seconds (lighter than 2.5)
 
     def open_app(self):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
@@ -1420,8 +1408,7 @@ class RangerGearBot(threading.Thread):
             capture_output=True, timeout=timeout)
 
     def capture_screen(self):
-        """Capture screen and load into RAM"""
-        sleep(0.05)  # minimal CPU brake
+        """Capture screen and load into RAM (optimized: lazy color decode)"""
         try:
             kwargs = {}
             if os.name == 'nt':
@@ -1435,26 +1422,37 @@ class RangerGearBot(threading.Thread):
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
                 self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-                self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+                self._screen_raw_png = result.stdout  # save raw for lazy color decode
+                self._screen_color = None  # reset color cache (will decode on demand)
             else:
                 with open(self.filename, "wb") as f:
                     f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
+                self._screen_raw_png = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
                 
-            # Global popup checks (like fixnet1.png) - หาตลอดคลุมทั้งการทำงาน!
-            if not getattr(self, "_in_popup_check", False):
-                self._in_popup_check = True
-                try:
-                    self.check_floating_popups()
-                except Exception as e:
-                    print(f"[{self.device_id}] Popup check error: {e}")
-                self._in_popup_check = False
+            # Popup check every 3rd capture to reduce CPU load (background thread also monitors)
+            self._capture_count += 1
+            if self._capture_count % 3 == 0:
+                if not getattr(self, "_in_popup_check", False):
+                    self._in_popup_check = True
+                    try:
+                        self.check_floating_popups()
+                    except Exception as e:
+                        print(f"[{self.device_id}] Popup check error: {e}")
+                    self._in_popup_check = False
                 
         except Exception as e:
             print(f"[{self.device_id}] Capture error: {e}")
             if hasattr(self, "_in_popup_check"):
                 self._in_popup_check = False
+
+    def get_screen_color(self):
+        """Lazy-load color screen (only decode when actually needed)"""
+        if self._screen_color is None and self._screen_raw_png is not None:
+            img_array = np.frombuffer(self._screen_raw_png, np.uint8)
+            self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        return self._screen_color
 
     def _find_in_screen(self, template_path, similarity=0.95):
         """Find template in cached screen image (no new capture)"""
@@ -1516,15 +1514,9 @@ class RangerGearBot(threading.Thread):
         return False
     
     def tap(self, x, y):
-        """Direct tap without image search - uses a short swipe with random jitter for reliability"""
-        import random
-        # 1. Minimal jitter for speed
-        jitter = random.uniform(0.02, 0.08)
-        sleep(jitter) 
-        
-        # 2. Using swipe with 100ms duration for fast registration
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
-                     str(x), str(y), str(x), str(y), "100"])
+        """Direct tap without image search"""
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap", 
+                     str(x), str(y)])
         
     def type_text(self, text):
         """Type text via ADB (for search box) - clears it first to avoid double typing"""
@@ -1709,11 +1701,13 @@ class RangerGearBot(threading.Thread):
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
                 self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-                self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+                self._screen_raw_png = result.stdout
+                self._screen_color = None  # lazy decode
             else:
                 with open(self.filename, "wb") as f:
                     f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
+                self._screen_raw_png = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
         except Exception as e:
             print(f"[{self.device_id}] Raw capture error: {e}")
@@ -1725,7 +1719,7 @@ class RangerGearBot(threading.Thread):
         self.check_floating_popups()
 
         # ===== CRITICAL ERROR CHECKS (ย้ายไฟล์กลับ/สำรองล้ว restart) =====
-        critical = check_critical_errors(self, self._screen_color, "check_error_images")
+        critical = check_critical_errors(self, self.get_screen_color(), "check_error_images")
         if critical: return critical
         
         # Check for Black/Stuck screen
@@ -1837,10 +1831,11 @@ class RangerGearBot(threading.Thread):
 
     def read_ticket_and_ruby(self):
         """Read Ticket and Ruby counts from screen using OCR"""
-        if self._screen_color is None:
+        color = self.get_screen_color()
+        if color is None:
             return None, None
             
-        img = self._screen_color
+        img = color
         ticket_value = None
         ruby_value = None
         
@@ -1959,11 +1954,12 @@ class RangerGearBot(threading.Thread):
     # =========================================================
     def ocr_read_region(self, x, y, w, h):
         """Read text from a specific region of the cached color screen using EasyOCR."""
-        if self._screen_color is None or not self.do_gear:
+        color = self.get_screen_color()
+        if color is None or not self.do_gear:
             return []
         
         # Crop region from color image
-        img = self._screen_color[y:y+h, x:x+w]
+        img = color[y:y+h, x:x+w]
         
         if img is None or img.size == 0:
             print(f"[{self.device_id}] OCR crop region empty!")
@@ -1986,7 +1982,8 @@ class RangerGearBot(threading.Thread):
 
     def ocr_read_full_screen(self):
         """Read all text from the full cached color screen."""
-        if self._screen_color is None or not self.do_gear:
+        color = self.get_screen_color()
+        if color is None or not self.do_gear:
             return ""
         
         region = self.ocr_region

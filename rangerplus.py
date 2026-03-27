@@ -1000,56 +1000,46 @@ class RangerPlusBot(multiprocessing.Process):
         self.adb_cmd = adb_path
         self._screen = None
         self._screen_color = None
+        self._screen_raw_png = None  # raw PNG for lazy color decode
         self._template_cache = {}
         self._black_start_time = None
         self._fixnetv3_count = 0
         self._need_restart = False
         self._running = True
+        self._capture_count = 0  # throttle popup checks
         
         # Start background monitor thread (since we are in a process, this thread will run inside the child process)
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
     def _popup_monitor_loop(self):
-        """Background thread to monitor fixnetv3.png regardless of main loop state"""
+        """Background thread to monitor fixnetv3.png - reuses main thread's screen to save CPU"""
         while self._running:
             try:
-                # 1. Capture screen for monitor
-                kwargs = {}
-                if os.name == 'nt':
-                    kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-                result = subprocess.run(
-                    [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap", "-p"],
-                    capture_output=True, timeout=10, **kwargs
-                )
-                
-                if result.returncode == 0 and len(result.stdout) > 100:
-                    img_array = np.frombuffer(result.stdout, np.uint8)
-                    mon_screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-                    
-                    if mon_screen is not None:
-                        tmpl = self._get_template("img/fixnetv3.png")
-                        if tmpl is not None:
-                            res = cv2.matchTemplate(mon_screen, tmpl, cv2.TM_CCOEFF_NORMED)
-                            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                mon_screen = self._screen
+                if mon_screen is not None:
+                    tmpl = self._get_template("img/fixnetv3.png")
+                    if tmpl is not None:
+                        res = cv2.matchTemplate(mon_screen, tmpl, cv2.TM_CCOEFF_NORMED)
+                        _, max_val, _, _ = cv2.minMaxLoc(res)
+                        
+                        if max_val >= 0.8:
+                            self._fixnetv3_count += 1
+                            print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
+                            self.tap(472, 361)
                             
-                            if max_val >= 0.8:
-                                self._fixnetv3_count += 1
-                                print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
-                                self.tap(472, 361)
-                                
-                                if self._fixnetv3_count >= 8:
-                                    print(f"[{self.device_id}] [MONITOR] fixnetv3.png persists after 8 clicks! Force-stopping app...")
-                                    self._need_restart = True
-                                    self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-                                    self._fixnetv3_count = 0
-                            else:
-                                if self._fixnetv3_count > 0:
-                                    self._fixnetv3_count = 0
+                            if self._fixnetv3_count >= 8:
+                                print(f"[{self.device_id}] [MONITOR] fixnetv3.png persists after 8 clicks! Force-stopping app...")
+                                self._need_restart = True
+                                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                                self._fixnetv3_count = 0
+                        else:
+                            if self._fixnetv3_count > 0:
+                                self._fixnetv3_count = 0
                 
             except Exception:
                 pass
-            time.sleep(2.5)
+            time.sleep(3)
 
     def open_app(self):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
@@ -1432,8 +1422,7 @@ class RangerPlusBot(multiprocessing.Process):
             capture_output=True, timeout=timeout)
 
     def capture_screen(self):
-        """Capture screen and load into RAM"""
-        sleep(0.3)  # เบรกลดภาระ CPU
+        """Capture screen and load into RAM (optimized: lazy color decode)"""
         try:
             kwargs = {}
             if os.name == 'nt':
@@ -1446,26 +1435,37 @@ class RangerPlusBot(multiprocessing.Process):
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
                 self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-                self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+                self._screen_raw_png = result.stdout
+                self._screen_color = None  # lazy decode
             else:
                 with open(self.filename, "wb") as f:
                     f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
+                self._screen_raw_png = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
                 
-            # Global popup checks (like fixnet1.png) - หาตลอดคลุมทั้งการทำงาน!
-            if not getattr(self, "_in_popup_check", False):
-                self._in_popup_check = True
-                try:
-                    self.check_floating_popups()
-                except Exception as e:
-                    print(f"[{self.device_id}] Popup check error: {e}")
-                self._in_popup_check = False
+            # Popup check every 3rd capture to reduce CPU (background thread also monitors)
+            self._capture_count += 1
+            if self._capture_count % 3 == 0:
+                if not getattr(self, "_in_popup_check", False):
+                    self._in_popup_check = True
+                    try:
+                        self.check_floating_popups()
+                    except Exception as e:
+                        print(f"[{self.device_id}] Popup check error: {e}")
+                    self._in_popup_check = False
                 
         except Exception as e:
             print(f"[{self.device_id}] Capture error: {e}")
             if hasattr(self, "_in_popup_check"):
                 self._in_popup_check = False
+
+    def get_screen_color(self):
+        """Lazy-load color screen (only decode when actually needed)"""
+        if self._screen_color is None and self._screen_raw_png is not None:
+            img_array = np.frombuffer(self._screen_raw_png, np.uint8)
+            self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        return self._screen_color
 
     def _find_in_screen(self, template_path, similarity=0.95):
         """Find template in cached screen image (no new capture)"""
@@ -1527,15 +1527,9 @@ class RangerPlusBot(multiprocessing.Process):
         return False
     
     def tap(self, x, y):
-        """Direct tap without image search - uses a short swipe with random jitter for reliability"""
-        import random
-        # 1. Faster jitter for multi-process mode
-        jitter = random.uniform(0.05, 0.25)
-        sleep(0.1 + jitter) 
-        
-        # 2. Using swipe with 300ms duration for better registration
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
-                     str(x), str(y), str(x), str(y), "300"])
+        """Direct tap without image search"""
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap", 
+                     str(x), str(y)])
         
     def type_text(self, text):
         """Type text via ADB (for search box) - clears it first to avoid double typing"""
@@ -1718,11 +1712,13 @@ class RangerPlusBot(multiprocessing.Process):
             if result.returncode == 0 and len(result.stdout) > 100:
                 img_array = np.frombuffer(result.stdout, np.uint8)
                 self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-                self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+                self._screen_raw_png = result.stdout
+                self._screen_color = None  # lazy decode
             else:
                 with open(self.filename, "wb") as f:
                     f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
+                self._screen_raw_png = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
         except Exception as e:
             print(f"[{self.device_id}] Raw capture error: {e}")
