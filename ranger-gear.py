@@ -1806,14 +1806,11 @@ class RangerGearBot(threading.Thread):
             cropped = img[y1:y2, x1:x2]
             if cropped is None or cropped.size == 0:
                 return None
-                
-            # Scale image 3x for better OCR accuracy
-            scale = 3
-            enlarged = cv2.resize(cropped, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
             
+            # Use raw cropped image (no zooming) for better accuracy on original pixels
             reader = get_ocr_reader()
             # Allow digits, comma and dot to ensure robust scanning, then filter them out
-            results = reader.readtext(enlarged, allowlist='0123456789,.', detail=0)
+            results = reader.readtext(cropped, allowlist='0123456789,.', detail=0)
             
             if results:
                 # Combine all text parts and remove non-digit characters (like commas/dots)
@@ -1828,8 +1825,7 @@ class RangerGearBot(threading.Thread):
     def read_ticket_and_ruby(self):
         """Read Ticket and Ruby counts from screen using OCR"""
         color = self.get_screen_color()
-        if color is None:
-            return None, None
+        if color is None: return None, None
             
         img = color
         ticket_value = None
@@ -1839,22 +1835,22 @@ class RangerGearBot(threading.Thread):
         ticket_match = self.find_template_ocr(img, 'img/checktiket.png', threshold=0.7)
         if ticket_match:
             x, y, w, h = ticket_match['x'], ticket_match['y'], ticket_match['width'], ticket_match['height']
-            # Crop to the right for values
-            ocr_x = x + int(w * 0.70)
-            ocr_y = y + 5
-            ocr_w = int(w * 0.28)
-            ocr_h = h - 10
+            # Wide crop to include potential large numbers - No scaling used in read_number_from_region
+            ocr_x = x + int(w * 0.45)
+            ocr_y = y + 2
+            ocr_w = int(w * 0.50)
+            ocr_h = h - 4
             ticket_value = self.read_number_from_region(img, ocr_x, ocr_y, ocr_w, ocr_h)
         
         # Search for checkruby.png
         ruby_match = self.find_template_ocr(img, 'img/checkruby.png', threshold=0.7)
         if ruby_match:
             rx, ry, rw, rh = ruby_match['x'], ruby_match['y'], ruby_match['width'], ruby_match['height']
-            # Crop to values between icon and + button
-            ruby_ocr_x = rx + int(rw * 0.22)
-            ruby_ocr_y = ry + 3
-            ruby_ocr_w = int(rw * 0.50)
-            ruby_ocr_h = rh - 6
+            # Wider crop for ruby values
+            ruby_ocr_x = rx + int(rw * 0.15)
+            ruby_ocr_y = ry + 2
+            ruby_ocr_w = int(rw * 0.70)
+            ruby_ocr_h = rh - 4
             ruby_value = self.read_number_from_region(img, ruby_ocr_x, ruby_ocr_y, ruby_ocr_w, ruby_ocr_h)
         
         return ticket_value, ruby_value
