@@ -1798,10 +1798,10 @@ class RangerGearBot(threading.Thread):
         """Read number from specified region using EasyOCR"""
         try:
             h, w = img.shape[:2]
-            x1 = max(0, x)
-            y1 = max(0, y)
-            x2 = min(w, x + width)
-            y2 = min(h, y + height)
+            x1 = max(0, int(x))
+            y1 = max(0, int(y))
+            x2 = min(w, int(x + width))
+            y2 = min(h, int(y + height))
             
             cropped = img[y1:y2, x1:x2]
             if cropped is None or cropped.size == 0:
@@ -1812,11 +1812,11 @@ class RangerGearBot(threading.Thread):
             enlarged = cv2.resize(cropped, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
             
             reader = get_ocr_reader()
-            # Allow only digits to avoid confusion with commas/dots
-            results = reader.readtext(enlarged, allowlist='0123456789', detail=0)
+            # Allow digits, comma and dot to ensure robust scanning, then filter them out
+            results = reader.readtext(enlarged, allowlist='0123456789,.', detail=0)
             
             if results:
-                # Combine all text parts and remove non-digit characters if any
+                # Combine all text parts and remove non-digit characters (like commas/dots)
                 import re
                 combined = "".join(results)
                 clean_number = re.sub(r'[^\d]', '', combined)
