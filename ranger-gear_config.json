@@ -102,5 +102,6 @@
         "denji": 0
     },
     "kaibyskip": 1,
-    "kaibycheck": 0
+    "kaibycheck": 0,
+    "debug_ocr": 1
 }

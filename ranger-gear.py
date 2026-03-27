@@ -177,6 +177,7 @@ if GUI_AVAILABLE:
             self.add_switch("First Loop Process", "first_loop")
             self.add_switch("Custom Mode", "custommode")
             self.add_switch("Check Ruby/Ticket", "check_ruby_ticket")
+            self.add_switch("OCR Scans Debug (Images)", "debug_ocr")
             self.add_switch("Skip Kaiby Shop (3s)", "kaibyskip")
             self.add_switch("Force Kaiby Check (Proceed)", "kaibycheck")
             
@@ -939,10 +940,18 @@ class RangerGearBot(threading.Thread):
             ui_stats.update_device(self.device_id, {'step': step, 'status': status})
         self.update_gui_status = update_gui_status.__get__(self, RangerGearBot)
         
-        # Determine which modes to run
+        # 1. Initialize attributes with defaults (CRITICAL Fix: prevents missing attribute errors)
+        self.characters = []
+        self.ranger_files = []
+        self.ranger_image_mapping = {}
+        self.gear_names = {}
+        self.weapon_names = {}
+        self.ocr_region = {"x": 463, "y": 153, "w": 397, "h": 321}
+        self.current_original_filename = None
+        
+        # 2. Determine initial modes and load values
         self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
         self.do_gear = config.get("find_gear", 0) or config.get("find_all", 1)
-        
         print(f"[{self.device_id}] Mode - Ranger: {self.do_ranger}, Gear: {self.do_gear}")
         
         # Unique filename for this thread
@@ -950,35 +959,23 @@ class RangerGearBot(threading.Thread):
         self.filename = os.path.join(tempfile.gettempdir(), f"screen-{safe_dev}.png")
         self.first_loop_done = not config.get("first_loop", True)
         
-        # Ranger Config
-        if self.do_ranger:
-            if config.get("custommode") == 1:
-                custom_data = config.get("custom", {})
-                self.characters = custom_data.get("characters", [])
-                print(f"[{self.device_id}] Custom mode (custommode=1) -> searching: {self.characters}")
-            else:
-                self.characters = config.get("characters", [])
-                print(f"[{self.device_id}] Find-all ranger mode -> searching {len(self.characters)} characters")
-            
-            # Auto-scan img/ranger/ folder for all png files
-            self.ranger_image_mapping = config.get("ranger_images", {})
-            ranger_folder = os.path.join("img", "ranger")
-            self.ranger_files = []
-            if os.path.exists(ranger_folder):
-                for f in sorted(os.listdir(ranger_folder)):
-                    if f.lower().endswith(".png"):
-                        self.ranger_files.append(f"ranger/{f}")
-                print(f"[{self.device_id}] Auto-loaded {len(self.ranger_files)} ranger images from img/ranger/")
+        # Load values from config regardless of current mode to allow switching
+        if config.get("custommode") == 1:
+            custom_data = config.get("custom", {})
+            self.characters = custom_data.get("characters", [])
+        else:
+            self.characters = config.get("characters", [])
         
-        # Gear Config
-        if self.do_gear:
-            self.gear_names = config.get("gearname", {})
-            self.weapon_names = config.get("weaponname", {})
-            self.ocr_region = config.get("ocr_region", {"x": 463, "y": 153, "w": 397, "h": 321})
-            print(f"[{self.device_id}] Gear mode -> {len(self.gear_names)} gears to check")
+        self.ranger_image_mapping = config.get("ranger_images", {})
+        ranger_folder = os.path.normpath(os.path.join("img", "ranger"))
+        if os.path.exists(ranger_folder):
+            for f in sorted(os.listdir(ranger_folder)):
+                if f.lower().endswith(".png"):
+                    self.ranger_files.append(f"ranger/{f}")
         
-        # Store original filename for backup
-        self.current_original_filename = None
+        self.gear_names = config.get("gearname", {})
+        self.weapon_names = config.get("weaponname", {})
+        self.ocr_region = config.get("ocr_region", self.ocr_region)
         
         # Sequence Definitions (Reverted to use coordinates for checkboxes)
         self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png']
@@ -1794,7 +1791,7 @@ class RangerGearBot(threading.Thread):
         except Exception:
             return None
 
-    def read_number_from_region(self, img, x, y, width, height):
+    def read_number_from_region(self, img, x, y, width, height, label="OCR"):
         """Read number from specified region using EasyOCR"""
         try:
             h, w = img.shape[:2]
@@ -1807,19 +1804,43 @@ class RangerGearBot(threading.Thread):
             if cropped is None or cropped.size == 0:
                 return None
             
-            # Use raw cropped image (no zooming) for better accuracy on original pixels
+            # --- Visual Debug Save (Red Rectangle) ---
+            # Save the crop area to a dedicated folder if enabled in config
+            if config.get("debug_ocr", 0) == 1:
+                debug_dir = "debug_ocr"
+                if not os.path.exists(debug_dir):
+                    os.makedirs(debug_dir)
+                
+                debug_img = img.copy()
+                cv2.rectangle(debug_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                cv2.putText(debug_img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                safe_dev = self.device_id.replace(":", "_")
+                save_path = os.path.join(debug_dir, f"debug_ocr_{safe_dev}_{label}.png")
+                cv2.imwrite(save_path, debug_img)
+            # ------------------------------------------
+
+            # Natural Focus Pre-processing
+            gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+            v_norm = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
+            v_norm = cv2.resize(v_norm, None, fx=2, fy=1.5, interpolation=cv2.INTER_CUBIC)
+            
+            # Binary Threshold for extreme clarity
+            _, v_bin = cv2.threshold(v_norm, 160, 255, cv2.THRESH_BINARY_INV)
+            
+            # --- STRICT DIGITS ONLY POLICY ---
             reader = get_ocr_reader()
-            # Allow digits, comma and dot to ensure robust scanning, then filter them out
-            results = reader.readtext(cropped, allowlist='0123456789,.', detail=0)
+            # Lock to digits only
+            results = reader.readtext(v_bin, allowlist='0123456789', detail=0)
             
             if results:
-                # Combine all text parts and remove non-digit characters (like commas/dots)
-                import re
-                combined = "".join(results)
-                clean_number = re.sub(r'[^\d]', '', combined)
-                return clean_number if clean_number else None
+                print(f"[{self.device_id}] [STRICT-OCR] {label} Result: {results}")
+                # Combine digits from all result block
+                final_digits = "".join(results)
+                return final_digits if final_digits else None
+                
             return None
-        except Exception:
+        except Exception as e:
+            print(f"[{self.device_id}] [STRICT-OCR ERROR] {e}")
             return None
 
     def read_ticket_and_ruby(self):
@@ -1831,81 +1852,81 @@ class RangerGearBot(threading.Thread):
         ticket_value = None
         ruby_value = None
         
-        # Search for checktiket.png
-        ticket_match = self.find_template_ocr(img, 'img/checktiket.png', threshold=0.7)
-        if ticket_match:
-            x, y, w, h = ticket_match['x'], ticket_match['y'], ticket_match['width'], ticket_match['height']
-            # Wide crop to include potential large numbers - No scaling used in read_number_from_region
-            ocr_x = x + int(w * 0.45)
-            ocr_y = y + 2
-            ocr_w = int(w * 0.50)
-            ocr_h = h - 4
-            ticket_value = self.read_number_from_region(img, ocr_x, ocr_y, ocr_w, ocr_h)
+        # --- HIGH-PRECISION FOCUS MODE (Minimalist ROI) ---
+        # Ruby area (Centered on digits)
+        rx, ry, rw, rh = 428, 20, 52, 16
+        ruby_value = self.read_number_from_region(img, rx, ry, rw, rh, label="RUBY")
         
-        # Search for checkruby.png
-        ruby_match = self.find_template_ocr(img, 'img/checkruby.png', threshold=0.7)
-        if ruby_match:
-            rx, ry, rw, rh = ruby_match['x'], ruby_match['y'], ruby_match['width'], ruby_match['height']
-            # Wider crop for ruby values
-            ruby_ocr_x = rx + int(rw * 0.15)
-            ruby_ocr_y = ry + 2
-            ruby_ocr_w = int(rw * 0.70)
-            ruby_ocr_h = rh - 4
-            ruby_value = self.read_number_from_region(img, ruby_ocr_x, ruby_ocr_y, ruby_ocr_w, ruby_ocr_h)
+        # Ticket area (User specified: 558 20 614 36)
+        tx, ty, tw, th = 558, 20, 56, 16
+        ticket_value = self.read_number_from_region(img, tx, ty, tw, th, label="TICKET")
+        
+        # Backup: Search using templates only if fixed scan fails
+        if ruby_value is None and ticket_value is None:
+             print(f"[{self.device_id}] [RESOURCE] Fixed ROI failed, trying Template backup...")
+             ruby_match = self.find_template_ocr(img, 'img/checkruby.png', threshold=0.7)
+             if ruby_match:
+                 rx_b, ry_b, rw_b, rh_b = ruby_match['x'], ruby_match['y'], ruby_match['width'], ruby_match['height']
+                 ruby_value = self.read_number_from_region(img, rx_b + int(rw_b * 0.45), ry_b + 2, int(rw_b * 0.50), rh_b - 4, label="RUBY_B")
+             
+             ticket_match = self.find_template_ocr(img, 'img/checktiket.png', threshold=0.65)
+             if ticket_match:
+                 tx_b, ty_b, tw_b, th_b = ticket_match['x'], ticket_match['y'], ticket_match['width'], ticket_match['height']
+                 ticket_value = self.read_number_from_region(img, tx_b + int(tw_b * 0.45), ty_b + 2, int(tw_b * 0.50), th_b - 4, label="TICKET_B")
         
         return ticket_value, ruby_value
+
 
     def process_check_ruby_ticket(self):
         """Navigate to gacha screen and check rubies/tickets"""
         print(f"[{self.device_id}] Starting Ruby and Ticket check...")
 
-        # 1. Back to home screen if needed (press Back until gotogacha1.png is visible)
-        for i in range(8):
-             self.capture_screen()
-             if self.exists_in_cache("img/gotogacha1.png"):
-                 print(f"[{self.device_id}] [NAVI-RUBY] At Home screen.")
-                 break
-             print(f"[{self.device_id}] [NAVI-RUBY] Not at Home (attempt {i+1}/8), pressing BACK...")
-             self.adb_shell("input keyevent 4")
-             sleep(0.5)
-             # Also clear any popups
-             self.capture_screen()
-             if self.exists_in_cache("img/cancel.png"):
-                 self.click("img/cancel.png")
-                 sleep(0.3)
+        # Mode Check: Pure Resource Scan (do_ranger=0, do_gear=0) or Mixed Scan
+        is_pure_resource_check = (not self.do_ranger and not self.do_gear)
         
-        # Navigation: gotogacha1 -> gotogacha2 (replacing gacha.png)
-        # First ensure we clear any popup that might block (like cancel.png)
-        for _ in range(3):
+        if is_pure_resource_check:
+            # === Pure Resource Mode ===
+            print(f"[{self.device_id}] [NAVI-RUBY] Resource check only -> Searching for gacha.png...")
+            self.wait_and_click_image("gacha.png", timeout=15)
+        else:
+            # === Mixed Mode ===
+            print(f"[{self.device_id}] [NAVI-RUBY] Mixed mode -> Navigating to Gacha screen...")
+            if not self.wait_and_click_image("gotogacha1.png", timeout=15):
+                 print(f"[{self.device_id}] gotogacha1.png not found")
+            sleep(0.5)
+            if not self.wait_and_click_image("gotogacha2.png", timeout=15):
+                 print(f"[{self.device_id}] gotogacha2.png not found")
+        
+        # --- Mandatory Stable Wait (Visible ONLY, No Click!) ---
+        print(f"[{self.device_id}] [RESOURCE-WAIT] Waiting for waitgacha.png (stable screen)...")
+        wait_start = time.time()
+        found_stable_screen = False
+        while time.time() - wait_start < 25:
             self.capture_screen()
-            if self.exists_in_cache("img/cancel.png"):
-                print(f"[{self.device_id}] Clearing popup with cancel.png")
-                self.click("img/cancel.png")
-                sleep(0.3)
+            # ONLY Check visibility (exists_in_cache), DO NOT CLICK waitgacha.png
+            if self.exists_in_cache("img/waitgacha.png", similarity=0.95):
+                print(f"[{self.device_id}] [RESOURCE-WAIT] Screen confirmed stable (waitgacha found). Scanning now.")
+                found_stable_screen = True
                 break
-            sleep(0.2)
             
-        # Navigation to gacha screen
-        if not self.wait_and_click_image("gotogacha1.png", timeout=15):
-             print(f"[{self.device_id}] gotogacha1.png not found")
-             # Fallback to gacha if needed or error
-        sleep(0.5)
+            # Auto-clear popups if they appear during transition
+            self.check_floating_popups() 
+            sleep(0.5)
         
-        if not self.wait_and_click_image("gotogacha2.png", timeout=15):
-             print(f"[{self.device_id}] gotogacha2.png not found")
+        if not found_stable_screen:
+            print(f"[{self.device_id}] [RESOURCE-WAIT] Warning: waitgacha.png not detected after 25s. Scanning anyway.")
         
-        # Wait for gacha screen to settle fully (User requested around 8s total if needed)
-        print(f"[{self.device_id}] Waiting 3s for Gacha UI to settle...")
-        sleep(3.0)
+        # Settle wait
+        sleep(1.0)
         
         ruby = None
         ticket = None
         
-        # Retry loop for OCR (Up to 3 attempts, total wait approx 8s)
+        # Retry loop for OCR (Up to 3 attempts, total wait approx 5-8s)
         for attempt in range(3):
             if attempt > 0:
-                print(f"[{self.device_id}] OCR returned None, retrying in 2s (Attempt {attempt+1}/3)...")
-                sleep(2.0)
+                print(f"[{self.device_id}] OCR returned None, retrying in 1s (Attempt {attempt+1}/3)...")
+                sleep(1.0)
             
             self.capture_screen() 
             ticket, ruby = self.read_ticket_and_ruby()
@@ -2001,12 +2022,13 @@ class RangerGearBot(threading.Thread):
             
             # Combine all OCR text into one string (lowercase for matching)
             all_text = " ".join([text for text, conf in ocr_results]).lower()
+            print(f"[{self.device_id}] Reading screen text with OCR...")
             print(f"[{self.device_id}] OCR Text: {all_text}")
             
-            # Match against gear names from config
             found_gears = set()
+            
+            # Check config gears (Only what user specified)
             for gear_key, gear_data in self.gear_names.items():
-                # Support new format: {"ocr": "search text", "name": "custom name"}
                 if isinstance(gear_data, dict):
                     ocr_text = gear_data.get("ocr", gear_key)
                     gear_name = gear_data.get("name", gear_key)
@@ -2300,13 +2322,13 @@ class RangerGearBot(threading.Thread):
                 pass
 
             # Check if we are already at sec2
-            if self.exists_in_cache("img/sec2.png"):
+            if self.exists_in_cache("img/sec2.png", similarity=0.95):
                 print(f"[{self.device_id}] Reached search screen (sec2), clicking to confirm...")
                 self.click("img/sec2.png")
                 break
                 
             # Try clicking sec1 only once
-            if not sec1_clicked and self.exists_in_cache("img/sec1.png"):
+            if not sec1_clicked and self.exists_in_cache("img/sec1.png", similarity=0.95):
                 print(f"[{self.device_id}] Found sec1, clicking once then waiting for sec2...")
                 self.click("img/sec1.png")
                 sec1_clicked = True
@@ -2322,22 +2344,31 @@ class RangerGearBot(threading.Thread):
         for i, character in enumerate(self.characters):
             print(f"\n[{self.device_id}] --- Character {i+1}/{len(self.characters)}: {character} ---")
             
+            # 0. Safety Check: Close popups like Detail window if it accidentally opened
+            if self.exists_in_cache("img/cancelsec.png", similarity=0.9):
+                print(f"[{self.device_id}] Recovery: Closing detail popup (cancelsec.png)")
+                self.click("img/cancelsec.png")
+                sleep(0.5)
+
             # a) Tap search box position first
             print(f"[{self.device_id}] Tapping search box (388, 288)")
             self.tap(388, 288)
-            sleep(0.1)
+            sleep(0.3) # Increased to wait for keyboard
             
             # b) Type character name
             print(f"[{self.device_id}] Typing: {character}")
             self.type_text(character)
             sleep(0.2)
+            # Auto-Enter to dismiss keyboard so sec3 is visible
+            self.adb_shell("input keyevent 66") 
+            sleep(0.6) # Wait for keyboard to disappear and UI to settle
             
             # c) Click sec3
             print(f"[{self.device_id}] Clicking sec3.png")
             if not self.wait_and_click_image("sec3.png", timeout=15, similarity=0.95):
                 print(f"[{self.device_id}] Failed to find sec3, skipping character")
                 continue
-            sleep(0.1)
+            sleep(0.3) # Wait for animation
             
             # d) Click sec4
             print(f"[{self.device_id}] Clicking sec4.png")
@@ -2345,9 +2376,9 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] Failed to find sec4, skipping character")
                 continue
             
-            # Add longer wait for search results to appear
-            print(f"[{self.device_id}] Waiting 0.8s for results...")
-            sleep(0.8)
+            # Add longer wait for search results to appear fully
+            print(f"[{self.device_id}] Waiting 1.0s for results...")
+            sleep(1.0)
             
             # e) Scan ranger images with RETRY (to be sure)
             current_found_in_iteration = False
@@ -2395,17 +2426,26 @@ class RangerGearBot(threading.Thread):
             else:
                 print(f"[{self.device_id}] No rangers found for character: {character}")
             
-            # f) Click sec5
+            # f) Click sec5 (Close)
             print(f"[{self.device_id}] Clicking sec5.png")
-            if not self.wait_and_click_image("sec5.png", timeout=15):
+            if not self.wait_and_click_image("sec5.png", timeout=15, similarity=0.95):
                 print(f"[{self.device_id}] Failed to find sec5, continuing")
-            sleep(0.1)
+            sleep(0.6) # Give time for search results to close
             
             # g) Click sec2 again for next character (if not last)
             if i < len(self.characters) - 1:
-                if not self.wait_and_click_image("sec2.png", timeout=15):
-                    print(f"[{self.device_id}] Failed to find sec2 for next iteration")
+                # Extra check for Detail window before next
+                if self.exists_in_cache("img/cancelsec.png", similarity=0.9):
+                    self.click("img/cancelsec.png")
+                    sleep(0.5)
+
+                print(f"[{self.device_id}] Waiting 0.5s for UI to settle before sec2...")
+                sleep(0.5)
+                print(f"[{self.device_id}] Clicking sec2.png to start search for next character...")
+                if not self.wait_and_click_image("sec2.png", timeout=15, similarity=0.95):
+                    print(f"[{self.device_id}] CRITICAL: Failed to find sec2 for next iteration. Search might be blocked.")
                     break
+                sleep(0.5) # Wait for input box to open
         
         # Print final results
         print(f"\n[{self.device_id}] ========== FIND-RANGER RESULTS ==========")
@@ -2530,85 +2570,36 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Failed to find findgear3.png")
             return set()
         
-        # Step 2: Read gear names with OCR
-        print(f"\n[{self.device_id}] Starting gear OCR check...")
+        # Step 2: Read gear names with OCR (Linear, one-way scan)
+        print(f"\n[{self.device_id}] Starting streamlined gear OCR check...")
         all_found_gears = set()
         
-        # === Attempt 1: checkgear2 -> checkgear3 -> scan ===
-        print(f"[{self.device_id}] [GEAR] Attempt 1: checkgear2 -> checkgear3...")
-        if not self.wait_and_click_image("checkgear2.png"):
-            print(f"[{self.device_id}] Failed to find checkgear2.png")
+        # 1. Try initial screen scan (checkgear2/3 point)
+        print(f"[{self.device_id}] [GEAR] Phase 1: checkgear2 -> checkgear3...")
+        if self.wait_and_click_image("checkgear2.png", timeout=8, similarity=0.92):
+            if self.wait_and_click_image("checkgear3.png", timeout=10, similarity=0.92):
+                print(f"[{self.device_id}] [GEAR] Detailed view opened, scanning...")
+                all_found_gears.update(self.check_gear_by_text())
+                sleep(0.5)
         
-        checkgear3_found = self.wait_and_click_image("checkgear3.png", timeout=15)
-        
-        if checkgear3_found:
-            # checkgear3 สำเร็จ -> สแกน OCR ปกติ
-            print(f"[{self.device_id}] [GEAR] checkgear3 found! Scanning OCR...")
-            all_found_gears.update(self.check_gear_by_text())
-            sleep(0.5)
-            
-            # ยังสแกน weapons tabs ต่อตามปกติ
-            self.capture_screen()
-            self.check_floating_popups()
-            if self.exists_in_cache("img/weapons1.png"):
-                print(f"\n[{self.device_id}] Checking weapons1 tab...")
-                self.click("img/weapons1.png")
-                sleep(0.5)
-                all_found_gears.update(self.check_gear_by_text())
-                sleep(0.3)
-            
-            self.capture_screen()
-            self.check_floating_popups()
-            if self.exists_in_cache("img/weapons2.png"):
-                print(f"\n[{self.device_id}] Checking weapons2 tab...")
-                self.click("img/weapons2.png")
-                sleep(0.5)
-                all_found_gears.update(self.check_gear_by_text())
-                sleep(0.3)
-        else:
-            # === checkgear3 ไม่เจอ -> กด weapons1 แล้วสแกน ===
-            print(f"[{self.device_id}] [GEAR] checkgear3 NOT found after 15s! Falling back to weapons1...")
-            self.capture_screen()
-            self.check_floating_popups()
-            if self.exists_in_cache("img/weapons1.png"):
-                print(f"[{self.device_id}] [GEAR] Clicking weapons1.png and scanning...")
-                self.click("img/weapons1.png")
-                sleep(0.5)
-                all_found_gears.update(self.check_gear_by_text())
-                sleep(0.3)
-            else:
-                print(f"[{self.device_id}] [GEAR] weapons1.png not found on screen")
-            
-            # === Attempt 2: checkgear2 -> checkgear3 อีกรอบ ===
-            print(f"\n[{self.device_id}] [GEAR] Attempt 2: checkgear2 -> checkgear3...")
-            self.capture_screen()
-            self.check_floating_popups()
-            if not self.wait_and_click_image("checkgear2.png"):
-                print(f"[{self.device_id}] [GEAR] checkgear2 not found on attempt 2")
-            
-            checkgear3_found_2 = self.wait_and_click_image("checkgear3.png", timeout=15)
-            
-            if checkgear3_found_2:
-                # checkgear3 สำเร็จรอบ 2 -> สแกน OCR
-                print(f"[{self.device_id}] [GEAR] checkgear3 found on attempt 2! Scanning OCR...")
-                all_found_gears.update(self.check_gear_by_text())
-                sleep(0.5)
-            else:
-                # === checkgear3 ไม่เจออีก -> กด weapons2 แล้วสแกน ===
-                print(f"[{self.device_id}] [GEAR] checkgear3 NOT found again (15s)! Falling back to weapons2...")
+        # 2. Sequential tab scan (Always move forward and scan all steps)
+        # We explicitly wait and click each tab to ensure they are visited
+        gear_tabs = ["weapons1.png", "weapons2.png"]
+        for tab_img in gear_tabs:
+            print(f"[{self.device_id}] [GEAR] Attempting to access tab: {tab_img}...")
+            # Use lower similarity for tab buttons as they might be partially obscured or highlighted
+            if self.wait_and_click_image(tab_img, timeout=10, similarity=0.90):
+                print(f"[{self.device_id}] [GEAR] Tab {tab_img} opened, waiting for content...")
+                sleep(1.2) # Increased to ensure gear icons load fully
                 self.capture_screen()
                 self.check_floating_popups()
-                if self.exists_in_cache("img/weapons2.png"):
-                    print(f"[{self.device_id}] [GEAR] Clicking weapons2.png and scanning...")
-                    self.click("img/weapons2.png")
-                    sleep(0.5)
-                    all_found_gears.update(self.check_gear_by_text())
-                    sleep(0.3)
-                else:
-                    print(f"[{self.device_id}] [GEAR] weapons2.png not found on screen")
+                all_found_gears.update(self.check_gear_by_text())
+                sleep(0.3)
+            else:
+                print(f"[{self.device_id}] [GEAR] Warning: Failed to find/click tab {tab_img}")
         
         # Return gear results (will be combined with ranger results in main_login)
-        print(f"\n[{self.device_id}] Gear results: {all_found_gears if all_found_gears else 'none'}")
+        print(f"\n[{self.device_id}] Gear scan done. Found: {all_found_gears if all_found_gears else 'none'}")
         return all_found_gears
 
     def backup_to_not_found(self, filename, source_path):
