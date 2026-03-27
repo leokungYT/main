@@ -1795,52 +1795,58 @@ class RangerGearBot(threading.Thread):
         """Read number from specified region using EasyOCR"""
         try:
             h, w = img.shape[:2]
-            x1 = max(0, int(x))
-            y1 = max(0, int(y))
-            x2 = min(w, int(x + width))
-            y2 = min(h, int(y + height))
+            
+            # --- Padding Selection ---
+            # Reduced padding for RUBY to avoid catching icons or nearby UI noise
+            PAD = 2 if "RUBY" in label else 10
+            x1 = max(0, int(x) - PAD)
+            y1 = max(0, int(y) - PAD)
+            x2 = min(w, int(x + width) + PAD)
+            y2 = min(h, int(y + height) + PAD)
             
             cropped = img[y1:y2, x1:x2]
             if cropped is None or cropped.size == 0:
                 return None
             
             # --- Visual Debug Save (Red Rectangle) ---
-            # Save the crop area to a dedicated folder if enabled in config
             if config.get("debug_ocr", 0) == 1:
                 debug_dir = "debug_ocr"
                 if not os.path.exists(debug_dir):
                     os.makedirs(debug_dir)
                 
                 debug_img = img.copy()
-                cv2.rectangle(debug_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                cv2.putText(debug_img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.rectangle(debug_img, (int(x), int(y)), (int(x + width), int(y + height)), (0, 0, 255), 2)
+                cv2.putText(debug_img, label, (int(x), int(y) - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                 safe_dev = self.device_id.replace(":", "_")
                 save_path = os.path.join(debug_dir, f"debug_ocr_{safe_dev}_{label}.png")
                 cv2.imwrite(save_path, debug_img)
             # ------------------------------------------
 
-            # Natural Focus Pre-processing
+            # Pre-processing
             gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-            v_norm = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
-            v_norm = cv2.resize(v_norm, None, fx=2, fy=1.5, interpolation=cv2.INTER_CUBIC)
             
-            # Binary Threshold for extreme clarity
-            _, v_bin = cv2.threshold(v_norm, 160, 255, cv2.THRESH_BINARY_INV)
+            # Scale based on height like test_ocr.py (6x for small, 3x for others)
+            scale = 6 if height < 30 else 3
+            v_scaled = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
             
-            # --- STRICT DIGITS ONLY POLICY ---
+            # --- Preprocessing Selection (All use manual_180 threshold for precision) ---
+            # manual_180 is very reliable for white text on dark background
+            _, v_bin = cv2.threshold(v_scaled, 180, 255, cv2.THRESH_BINARY_INV)
+            
             reader = get_ocr_reader()
-            # Lock to digits only
-            results = reader.readtext(v_bin, allowlist='0123456789', detail=0)
+            results = reader.readtext(v_bin, allowlist='0123456789,', detail=0)
             
             if results:
-                print(f"[{self.device_id}] [STRICT-OCR] {label} Result: {results}")
-                # Combine digits from all result block
-                final_digits = "".join(results)
-                return final_digits if final_digits else None
+                print(f"[{self.device_id}] [STRICT-OCR] {label} raw={results}")
+                combined = "".join(results)
+                final_digits = "".join([c for c in combined if c.isdigit()])
+                if final_digits:
+                    print(f"[{self.device_id}] [STRICT-OCR] {label} Final: {final_digits}")
+                    return final_digits
                 
             return None
         except Exception as e:
-            print(f"[{self.device_id}] [STRICT-OCR ERROR] {e}")
+            print(f"[{self.device_id}] [STRICT-OCR ERROR] {label} failed: {e}")
             return None
 
     def read_ticket_and_ruby(self):
@@ -1852,12 +1858,12 @@ class RangerGearBot(threading.Thread):
         ticket_value = None
         ruby_value = None
         
-        # --- HIGH-PRECISION FOCUS MODE (Minimalist ROI) ---
-        # Ruby area (Centered on digits)
-        rx, ry, rw, rh = 428, 20, 52, 16
+        # --- HYBRID PRECISION ROI ---
+        # Ruby area (New Expanded for Thousands)
+        rx, ry, rw, rh = 427, 20, 51, 16
         ruby_value = self.read_number_from_region(img, rx, ry, rw, rh, label="RUBY")
         
-        # Ticket area (User specified: 558 20 614 36)
+        # Ticket area (Reverted to Classic)
         tx, ty, tw, th = 558, 20, 56, 16
         ticket_value = self.read_number_from_region(img, tx, ty, tw, th, label="TICKET")
         
