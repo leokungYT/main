@@ -1,10 +1,17 @@
 {
   "success_count": 0,
   "fail_count": 0,
-  "random_fail_count": 0,
-  "hero_found_list": {},
-  "device_statuses": {},
-  "last_update": 1775641385.1494439,
+  "random_fail_count": 1,
+  "hero_found_list": {
+    "สุ่มไม่ได้": 1
+  },
+  "device_statuses": {
+    "127.0.0.1:5557": {
+      "step": "Logging in...",
+      "status": "working"
+    }
+  },
+  "last_update": 1775659648.3511562,
   "total_login_time": 0.0,
   "login_time_count": 0
 }

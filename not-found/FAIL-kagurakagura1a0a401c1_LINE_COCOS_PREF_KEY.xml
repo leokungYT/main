@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="_ENC_LF_AC_KEY">FKed5GRYn2lKHcaGlhS6eRGflDC1AHX1gH9lgAG19B/4/2We4HkA2Z9c+1II/Omf9Ajls7UpWe++&#10;RC25dAcULrWtJBAA6Ii6C5u4D7EJeZ5/4vkSdwttS1hhInmpWI+Af0ag28YeiqTaGsVnuiZhBfeG&#10;E+El+jaxIMcqArXlL2aH0A+VRxZDF383XieMy2toID1GUEbaox/opTe6n2YgZ8CD18CxpIYJtFnR&#10;i5fnWeYxQwUl1lWDd1vIPMPb0TeBHPU6WjgxE9VtA7pAbWU+EaEZKl/p997LRR9G+aZpSa5wULhs&#10;oFmNYLL65EKuV1hmhUrtxSZr/+ncwUGyhfvwj7TPk7doy0trXVqF9CyfpOSRz3Z8j/AsW8OtYwZu&#10;nFXCgqVLHnZm1KSfAXDI74u0dA==&#10;    </string>
+    <string name="_LF_UT_KEY">GUEST</string>
+    <string name="USER_NATION_CODE">LA</string>
+    <int name="INPUT_MAX_LENGTH" value="12" />
+    <string name="LANGUAGE_TYPE_SETTING_KEY">en</string>
+    <string name="_DEVICE_UUID_KEY">4a0b9c2ce1ac46909e1372b05ea35897</string>
+</map>
