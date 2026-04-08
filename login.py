@@ -1755,7 +1755,7 @@ class RangerGearBot(threading.Thread):
                     remaining = timeout - (time.time() - check_start)
                     check_count += 1
                     device.capture_screen()
-                    img = device._screen_color
+                    img = device.get_screen_color()
                     gachaout_pos = ImgSearchADB(img, 'img/gachaout.png') or ImgSearchADB(img, 'img/gachaout1.png')
                     if gachaout_pos:
                         print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ พบ gachaout.png ก่อน {action_name} - จบ swap_shop ทันที! (ไม่ใช้เพชร)")
@@ -1783,7 +1783,7 @@ class RangerGearBot(threading.Thread):
                 while time.time() - check_start < check_gachaout_time:
                     try:
                         device.capture_screen()
-                        img = device._screen_color
+                        img = device.get_screen_color()
                         gachaout_pos = ImgSearchADB(img, 'img/gachaout.png') or ImgSearchADB(img, 'img/gachaout1.png')
                         if gachaout_pos:
                             print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ [SAFE TAP] พบ gachaout.png หลังกด {image_name}! จบ swap_shop ทันที!")
@@ -1808,7 +1808,7 @@ class RangerGearBot(threading.Thread):
             while time.time() - check_start_time < 3:
                 try:
                     device.capture_screen()
-                    check_img = device._screen_color
+                    check_img = device.get_screen_color()
                     swapgacha1_pos = ImgSearchADB(check_img, 'img/swapgacha1.png')
                     if swapgacha1_pos:
                         if not swapgacha1_found:
@@ -1961,7 +1961,7 @@ class RangerGearBot(threading.Thread):
                                 while time.time() - gachaout_check_start < 5:
                                     try:
                                         device.capture_screen()
-                                        if ImgSearchADB(device._screen_color, 'img/gachaout.png'):
+                                        if ImgSearchADB(device.get_screen_color(), 'img/gachaout.png'):
                                             found_gachaout = True
                                             break
                                         time.sleep(0.5)
@@ -2058,11 +2058,11 @@ class RangerGearBot(threading.Thread):
                             try:
                                 device.capture_screen()
                                 if not found_waitgacha:
-                                    if ImgSearchADB(device._screen_color, 'img/waitgacha.png'):
+                                    if ImgSearchADB(device.get_screen_color(), 'img/waitgacha.png'):
                                         found_waitgacha = True
                                         start_time = time.time()
                                 if found_waitgacha:
-                                    fixnewgacha_pos = ImgSearchADB(device._screen_color, 'img/fixnewgacha.png')
+                                    fixnewgacha_pos = ImgSearchADB(device.get_screen_color(), 'img/fixnewgacha.png')
                                     if fixnewgacha_pos:
                                         device.tap(476, 394)
                                         checked_waitgacha = True
