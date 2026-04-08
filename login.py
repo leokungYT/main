@@ -1970,48 +1970,10 @@ class RangerGearBot(threading.Thread):
         
         def handle_gachaout_sequence():
             """
-            Handle gachaout sequence: gachaout -> gachaout2 -> gachaout3 -> backgachashop
-            Returns True if completed, False otherwise
+            Handle gachaout - เจอแล้ว clear app จบการทำงานเลย วน ID ใหม่
             """
-            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] เริ่มจัดการลำดับ gachaout...")
-            
-            gachaout_sequence = ['img/gachaout2.png', 'img/gachaout3.png', 'img/backgachashop.png']
-            
-            for seq_img in gachaout_sequence:
-                img_name = seq_img.split('/')[-1]
-                print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ค้นหา {img_name}...")
-                
-                # ค้นหา image ได้นาน 10 วิ
-                search_start = time.time()
-                found = False
-                
-                while time.time() - search_start < 10:
-                    try:
-                        device.capture_screen()
-                        adb_check_img = device.get_screen_color()
-                        img_pos = ImgSearchADB(adb_check_img, seq_img)
-                        
-                        if img_pos and len(img_pos) > 0:
-                            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] พบ {img_name}")
-                            
-                            # กดถ้าเป็น gachaout2 หรือ gachaout3 หรือ backgachashop
-                            if img_name in ['gachaout2.png', 'gachaout3.png', 'backgachashop.png']:
-                                device.tap(img_pos[0][0], img_pos[0][1])
-                                print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] กด {img_name}")
-                                time.sleep(2)  # รอปกติหลังกด
-                            
-                            found = True
-                            break
-                        
-                        time.sleep(0.5)
-                    except Exception as e:
-                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Error ค้นหา {img_name}: {e}")
-                        time.sleep(0.5)
-                
-                if not found:
-                    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ไม่พบ {img_name} ในระหว่าง 10 วิ - ข้ามไป")
-                    # ไม่พบ แต่ยังคงดำเนินการต่อ
-            
+            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] พบ gachaout - clear app จบการทำงานเลย")
+            device.clear_and_restart()
             return True
         
         def check_gachaout_after_click(timeout=3):
