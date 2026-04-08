@@ -1707,11 +1707,18 @@ class RangerGearBot(threading.Thread):
                             shopgachastop_check = ImgSearchADB(check_img, 'img/shopgachastop.png')
                             if shopgachastop_check:
                                 print(f"พบ shopgachastop.png หลังจากกด {current_img}")
-                                print(f"กำลังทำ backup ไปที่ random-Fail...")
-                                self.backup_game_data()
-                                print(f"กำลัง clear app และเริ่มการทำงานใหม่...")
-                                self.clear_and_restart()
-                                return "restart"
+                                # ตรวจสอบ config: ถ้า swap_shop=1 ให้เชื่อมต่อไป swap_shop แทนการ clear app
+                                swap_shop_enabled = self.cfg.get("swap_shop", 0)
+                                swap_shopevent_enabled = self.cfg.get("swap_shopevent", 0)
+                                if swap_shop_enabled or swap_shopevent_enabled:
+                                    print(f"shopgacha=1, swap_shop=1 -> เชื่อมต่อไป swap_shop (ไม่เคลียร์แอป)")
+                                    return "chained_to_swap_shop"
+                                else:
+                                    print(f"กำลังทำ backup ไปที่ random-Fail...")
+                                    self.backup_game_data()
+                                    print(f"กำลัง clear app และเริ่มการทำงานใหม่...")
+                                    self.clear_and_restart()
+                                    return "restart"
                             
                             shopgachastop1_check = ImgSearchADB(check_img, 'img/shopgachastop1.png')
                             if shopgachastop1_check:
@@ -1817,11 +1824,18 @@ class RangerGearBot(threading.Thread):
                             shopgachastop_check = ImgSearchADB(check_img, 'img/shopgachastop.png')
                             if shopgachastop_check:
                                 print(f"พบ shopgachastop.png หลังจากกด {img}")
-                                print(f"กำลังทำ backup ไปที่ random-Fail...")
-                                self.backup_game_data()
-                                print(f"กำลัง clear app และเริ่มการทำงานใหม่...")
-                                self.clear_and_restart()
-                                return "restart"
+                                # ตรวจสอบ config: ถ้า swap_shop=1 ให้เชื่อมต่อไป swap_shop แทนการ clear app
+                                swap_shop_enabled = self.cfg.get("swap_shop", 0)
+                                swap_shopevent_enabled = self.cfg.get("swap_shopevent", 0)
+                                if swap_shop_enabled or swap_shopevent_enabled:
+                                    print(f"shopgacha=1, swap_shop=1 -> เชื่อมต่อไป swap_shop (ไม่เคลียร์แอป)")
+                                    return "chained_to_swap_shop"
+                                else:
+                                    print(f"กำลังทำ backup ไปที่ random-Fail...")
+                                    self.backup_game_data()
+                                    print(f"กำลัง clear app และเริ่มการทำงานใหม่...")
+                                    self.clear_and_restart()
+                                    return "restart"
                             
                             shopgachastop1_check = ImgSearchADB(check_img, 'img/shopgachastop1.png')
                             if shopgachastop1_check:
