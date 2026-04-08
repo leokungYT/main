@@ -1,12 +1,14 @@
 {
-  "success_count": 0,
+  "success_count": 1,
   "fail_count": 0,
-  "hero_found_list": {},
+  "hero_found_list": {
+    "conyslot": 1
+  },
   "device_statuses": {
     "emulator-5556": {
       "step": "Logging in...",
       "status": "working"
     }
   },
-  "last_update": 1774614038.8204772
+  "last_update": 1774614358.3290331
 }
