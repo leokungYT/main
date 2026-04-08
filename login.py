@@ -1626,10 +1626,10 @@ class RangerGearBot(threading.Thread):
                 if critical_error:
                     return critical_error
                 
-                # ตรวจสอบ shopgachastop.png ก่อนเสมอ
+                # ✅ ค้นหา shopgachastop.png ตลอดเวลา ถ้าเจอให้ break ออด
                 shopgachastop_pos = ImgSearchADB(adb_img, 'img/shopgachastop.png')
                 if shopgachastop_pos and len(shopgachastop_pos) > 0:
-                    print(f"[{self.device_id}] ✓ พบ shopgachastop.png! -> ทำขั้นตอน gachaout3 -> backgachashop -> gacha1 แล้ว swap_shop")
+                    print(f"[{self.device_id}] ✓ พบ shopgachastop.png ตรง loop! -> ทำขั้นตอน gachaout3 -> backgachashop -> gacha1 แล้ว swap_shop")
                     self.tap(shopgachastop_pos[0][0], shopgachastop_pos[0][1])
                     time.sleep(2)
                     
@@ -1640,7 +1640,7 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] ค้นหา {img_name}...")
                         
                         search_start = time.time()
-                        timeout_val = 10 if img_name == 'gachaout3.png' else 10  # 10 วิสำหรับทั้งหมด
+                        timeout_val = 10
                         found = False
                         
                         while time.time() - search_start < timeout_val:
@@ -4101,7 +4101,7 @@ class RangerGearBot(threading.Thread):
         
         # เลือก sequence ตามว่าเจอ shopgachastop หรือไม่
         if found_shopgachastop:
-            # PATH A: shopgachastop -> gachaout3 -> backgachashop -> gacha1
+            # PATH A: shopgachastop -> gachaout3 (10s wait) -> backgachashop -> gacha1
             sequence = ['img/gachaout3.png', 'img/backgachashop.png', 'img/gacha1.png']
             print(f"[{self.device_id}] ทำตาม PATH A (shopgachastop found)")
         else:
@@ -4110,7 +4110,7 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] ทำตาม PATH B (shopgachastop not found)")
         
         # ทำงาน sequence
-        for seq_img in sequence:
+        for seq_idx, seq_img in enumerate(sequence):
             img_name = seq_img.split('/')[-1]
             print(f"กำลังค้นหา {img_name} บนอุปกรณ์ {self.device_id}")
             
@@ -4126,7 +4126,14 @@ class RangerGearBot(threading.Thread):
                     if img_pos and len(img_pos) > 0:
                         print(f"พบและกด {img_name} บนอุปกรณ์ {self.device_id}")
                         self.tap(img_pos[0][0], img_pos[0][1])
-                        time.sleep(2)
+                        
+                        # Special handling for gachaout3: wait 10 seconds
+                        if img_name == 'gachaout3.png':
+                            print(f"[{self.device_id}] รอ {img_name} ทำงาน 10 วินาที...")
+                            time.sleep(10)
+                        else:
+                            time.sleep(2)
+                        
                         found = True
                         break
                     
