@@ -1722,7 +1722,7 @@ class RangerGearBot(threading.Thread):
             while time.time() - start_time < timeout:
                 try:
                     device.capture_screen()
-                    adb_img = device._screen_color
+                    adb_img = device.get_screen_color()
                     gachaout_pos = ImgSearchADB(adb_img, 'img/gachaout.png')
                     if gachaout_pos:
                         if gachaout_found_time is None:
@@ -1885,7 +1885,7 @@ class RangerGearBot(threading.Thread):
                 return None
 
         device.capture_screen()
-        adb_img = device._screen_color
+        adb_img = device.get_screen_color()
         event_pos = ImgSearchADB(adb_img, 'img/event.png')
         if event_pos:
             print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] กด event")
@@ -1898,7 +1898,7 @@ class RangerGearBot(threading.Thread):
         while running:
             try:
                 device.capture_screen()
-                adb_img = device._screen_color
+                adb_img = device.get_screen_color()
                 current_time = time.time()
                 critical_error = check_critical_errors(device, adb_img, "process_swap_shop")
                 if critical_error: return critical_error
