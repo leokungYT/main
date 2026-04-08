@@ -1629,12 +1629,43 @@ class RangerGearBot(threading.Thread):
                 # ตรวจสอบ shopgachastop.png ก่อนเสมอ
                 shopgachastop_pos = ImgSearchADB(adb_img, 'img/shopgachastop.png')
                 if shopgachastop_pos and len(shopgachastop_pos) > 0:
-                    print(f"พบ shopgachastop.png บนอุปกรณ์ {self.device_id}")
-                    print(f"กำลังทำ backup ไปที่ random-Fail...")
-                    self.backup_game_data()
-                    print(f"กำลัง clear app และเริ่มการทำงานใหม่...")
-                    self.clear_and_restart()
-                    return "restart"
+                    print(f"[{self.device_id}] ✓ พบ shopgachastop.png! -> ทำขั้นตอน gachaout3 -> backgachashop -> gacha1 แล้ว swap_shop")
+                    self.tap(shopgachastop_pos[0][0], shopgachastop_pos[0][1])
+                    time.sleep(2)
+                    
+                    # ทำขั้นตอน: gachaout3 (10s) -> backgachashop -> gacha1
+                    sequence_for_shopgachastop = ['img/gachaout3.png', 'img/backgachashop.png', 'img/gacha1.png']
+                    for seq_img in sequence_for_shopgachastop:
+                        img_name = seq_img.split('/')[-1]
+                        print(f"[{self.device_id}] ค้นหา {img_name}...")
+                        
+                        search_start = time.time()
+                        timeout_val = 10 if img_name == 'gachaout3.png' else 10  # 10 วิสำหรับทั้งหมด
+                        found = False
+                        
+                        while time.time() - search_start < timeout_val:
+                            try:
+                                self.capture_screen()
+                                check_img = self.get_screen_color()
+                                img_pos = ImgSearchADB(check_img, seq_img)
+                                
+                                if img_pos and len(img_pos) > 0:
+                                    print(f"[{self.device_id}] พบ {img_name} -> กด")
+                                    self.tap(img_pos[0][0], img_pos[0][1])
+                                    time.sleep(2)
+                                    found = True
+                                    break
+                                time.sleep(0.5)
+                            except Exception as e:
+                                print(f"Error: {e}")
+                                time.sleep(0.5)
+                        
+                        if not found:
+                            print(f"[{self.device_id}] ไม่พบ {img_name} ในระหว่าง {timeout_val} วิ")
+                    
+                    # เชื่อมต่อไปยัง swap_shop (เหมือนกรณี gachaout)
+                    print(f"[{self.device_id}] จบ shopgachastop sequence -> เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
+                    return "chained_to_swap_shop"
                 
                 # ตรวจสอบ shopgachastop1.png
                 shopgachastop1_pos = ImgSearchADB(adb_img, 'img/shopgachastop1.png')
