@@ -1626,46 +1626,11 @@ class RangerGearBot(threading.Thread):
                 if critical_error:
                     return critical_error
                 
-                # ✅ ค้นหา shopgachastop.png ตลอดเวลา ถ้าเจอให้ break ออด
+                # ✅ ค้นหา shopgachastop.png ตลอดเวลา ถ้าเจอให้ทำ sequence แล้ว chain ไป swap_shop
                 shopgachastop_pos = ImgSearchADB(adb_img, 'img/shopgachastop.png')
                 if shopgachastop_pos and len(shopgachastop_pos) > 0:
-                    print(f"[{self.device_id}] ✓ พบ shopgachastop.png ตรง loop! -> ทำขั้นตอน gachaout3 -> backgachashop -> gacha1 แล้ว swap_shop")
-                    self.tap(shopgachastop_pos[0][0], shopgachastop_pos[0][1])
-                    time.sleep(2)
-                    
-                    # ทำขั้นตอน: gachaout3 (10s) -> backgachashop -> gacha1
-                    sequence_for_shopgachastop = ['img/gachaout3.png', 'img/backgachashop.png', 'img/gacha1.png']
-                    for seq_img in sequence_for_shopgachastop:
-                        img_name = seq_img.split('/')[-1]
-                        print(f"[{self.device_id}] ค้นหา {img_name}...")
-                        
-                        search_start = time.time()
-                        timeout_val = 10
-                        found = False
-                        
-                        while time.time() - search_start < timeout_val:
-                            try:
-                                self.capture_screen()
-                                check_img = self.get_screen_color()
-                                img_pos = ImgSearchADB(check_img, seq_img)
-                                
-                                if img_pos and len(img_pos) > 0:
-                                    print(f"[{self.device_id}] พบ {img_name} -> กด")
-                                    self.tap(img_pos[0][0], img_pos[0][1])
-                                    time.sleep(2)
-                                    found = True
-                                    break
-                                time.sleep(0.5)
-                            except Exception as e:
-                                print(f"Error: {e}")
-                                time.sleep(0.5)
-                        
-                        if not found:
-                            print(f"[{self.device_id}] ไม่พบ {img_name} ในระหว่าง {timeout_val} วิ")
-                    
-                    # เชื่อมต่อไปยัง swap_shop (เหมือนกรณี gachaout)
-                    print(f"[{self.device_id}] จบ shopgachastop sequence -> เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
-                    return "chained_to_swap_shop"
+                    print(f"[{self.device_id}] ✓ พบ shopgachastop.png ตรง loop! -> ทำ for loop: backgachashop -> backgachashop1 -> gacha1")
+                    return self.handle_shopgacha_end_with_backgachashop()
                 
                 # ตรวจสอบ shopgachastop1.png
                 shopgachastop1_pos = ImgSearchADB(adb_img, 'img/shopgachastop1.png')
@@ -1707,23 +1672,11 @@ class RangerGearBot(threading.Thread):
                             shopgachastop_check = ImgSearchADB(check_img, 'img/shopgachastop.png')
                             if shopgachastop_check:
                                 print(f"พบ shopgachastop.png หลังจากกด {current_img}")
-                                # ตรวจสอบ config: ถ้า swap_shop=1 ให้เชื่อมต่อไป swap_shop แทนการ clear app
-                                swap_shop_enabled = self.cfg.get("swap_shop", 0)
-                                swap_shopevent_enabled = self.cfg.get("swap_shopevent", 0)
-                                if swap_shop_enabled or swap_shopevent_enabled:
-                                    print(f"shopgacha=1, swap_shop=1 -> เชื่อมต่อไป swap_shop (ไม่เคลียร์แอป)")
-                                    return "chained_to_swap_shop"
-                                else:
-                                    print(f"กำลังทำ backup ไปที่ random-Fail...")
-                                    self.backup_game_data()
-                                    print(f"กำลัง clear app และเริ่มการทำงานใหม่...")
-                                    self.clear_and_restart()
-                                    return "restart"
+                                return self.handle_shopgacha_end_with_backgachashop()
                             
                             shopgachastop1_check = ImgSearchADB(check_img, 'img/shopgachastop1.png')
                             if shopgachastop1_check:
                                 print(f"พบ shopgachastop1.png หลังจากกด {current_img}")
-                                print(f"จบการทำงาน - กำลังค้นหา backgachashop ก่อน...")
                                 return self.handle_shopgacha_end_with_backgachashop()
                         continue
                     else:
@@ -1824,23 +1777,11 @@ class RangerGearBot(threading.Thread):
                             shopgachastop_check = ImgSearchADB(check_img, 'img/shopgachastop.png')
                             if shopgachastop_check:
                                 print(f"พบ shopgachastop.png หลังจากกด {img}")
-                                # ตรวจสอบ config: ถ้า swap_shop=1 ให้เชื่อมต่อไป swap_shop แทนการ clear app
-                                swap_shop_enabled = self.cfg.get("swap_shop", 0)
-                                swap_shopevent_enabled = self.cfg.get("swap_shopevent", 0)
-                                if swap_shop_enabled or swap_shopevent_enabled:
-                                    print(f"shopgacha=1, swap_shop=1 -> เชื่อมต่อไป swap_shop (ไม่เคลียร์แอป)")
-                                    return "chained_to_swap_shop"
-                                else:
-                                    print(f"กำลังทำ backup ไปที่ random-Fail...")
-                                    self.backup_game_data()
-                                    print(f"กำลัง clear app และเริ่มการทำงานใหม่...")
-                                    self.clear_and_restart()
-                                    return "restart"
+                                return self.handle_shopgacha_end_with_backgachashop()
                             
                             shopgachastop1_check = ImgSearchADB(check_img, 'img/shopgachastop1.png')
                             if shopgachastop1_check:
                                 print(f"พบ shopgachastop1.png หลังจากกด {img}")
-                                print(f"จบการทำงาน - กำลังค้นหา backgachashop ก่อน...")
                                 return self.handle_shopgacha_end_with_backgachashop()
                             break
                     
@@ -3358,70 +3299,54 @@ class RangerGearBot(threading.Thread):
 
         # 3. LEONARD Gacha Shop
         # ============================================================
-        # 📋 POST-LOGIN TASKS: 3 CASE SCENARIOS
-        # ============================================================
-        # CASE 1: shopgacha=1, swap_shop=1
-        #   → shopgacha ทำงาน → shopgachastop1 → handle_shopgacha_end_with_backgachashop()
-        #   → return "chained_to_swap_shop" (ไม่เคลียร์แอป)
-        #   → process_swap_shop(chained_from_shopgacha=True)
-        #   → ข้าม gacha1.png, รอ waitgacha.png, ทำงานตามปกติ
-        #
-        # CASE 2: shopgacha=1, swap_shop=0
-        #   → shopgacha ทำงาน → shopgachastop1 → handle_shopgacha_end_with_backgachashop()
-        #   → return "restart" (clear_and_restart() + return)
-        #   → กลับไปวน ID ใหม่
-        #
-        # CASE 3: shopgacha=0, swap_shop=1
-        #   → ข้าม process_shopgacha()
-        #   → process_swap_shop() (default chained_from_shopgacha=False)
-        #   → ทำงาน gacha1.png, ทำงานตามปกติ
+        # shopgacha ทำงาน -> process_shopgacha() -> ถ้าเชื่อมต่อ swap_shop จะ return "chained_to_swap_shop"
         # ============================================================
 
+        chained_to_swap_shop = False
         if self.cfg.get("shopgacha"):
             print(f"[{self.device_id}] Task Check: Leonard Gacha Shop...")
             try:
                 result = self.process_shopgacha()
                 
-                # ถ้า shopgacha เชื่อมต่อไปยัง swap_shop โดยไม่เคลียร์แอป (CASE 3: shopgacha=1, swap_shop=1)
+                # ตรวจสอบว่าเชื่อมต่อไปยัง swap_shop หรือไม่
                 if result == "chained_to_swap_shop":
-                    print(f"[{self.device_id}] shopgacha เชื่อมต่อไปยัง swap_shop - เรียก process_swap_shop...")
-                    # เรียก process_swap_shop โดยตรงโดยไม่รอ
-                    if self.cfg.get("swap_shop") or self.cfg.get("swap_shopevent") or self.cfg.get("auto_trade", {}).get("enabled"):
-                        # เมื่อเชื่อมจาก shopgacha ให้เรียก swap_shop ทันทีโดยไม่ต้องรอหา gacha.png
-                        res = self.process_swap_shop(chained_from_shopgacha=True)
-                        if res in ["restart", "fixid", "fixunkown", "apple"]:
-                            return "restart"
-                        if res == "random-Fail":
-                            return "random-Fail"
-                        if res == "backup_complete":
-                            return "backup_complete"
-                        if res == "kaiby":
-                            return "kaiby"
-                        if res == "swap_shopevent":
-                            self.process_swap_shopevent()
-                        time.sleep(2)
-                
-                # CASE 1: shopgacha=1, swap_shop=0 → shopgacha clear app + restart + return "restart"
+                    print(f"[{self.device_id}] shopgacha เชื่อมต่อไปยัง swap_shop - เหมือนกรณี gachaout")
+                    chained_to_swap_shop = True
+                    # ไม่ return ที่นี่ เพื่อให้ดำเนินการต่อไปยัง process_swap_shop
                 elif result == "restart":
-                    print(f"[{self.device_id}] [CASE 1] shopgacha จบการทำงาน (swap_shop ปิด) - ย้ายไปวน ID ใหม่")
-                    # clear_and_restart() ได้เรียกแล้ว ใน handle_shopgacha_end_with_backgachashop()
-                    sleep(3)
-                    return "restart"
-                
-                elif result == "error":
-                    print(f"[{self.device_id}] Gacha shop returned error, continuing anyway")
+                    print(f"[{self.device_id}] shopgacha ออกแล้ว - Clear app และไปวน ID ใหม่")
                     sleep(2)
+                    return "restart"
+                else:
+                    # Handle other results from shopgacha
+                    print(f"[{self.device_id}] shopgacha เสร็จแล้ว")
+                    sleep(2)
+                
             except Exception as e:
                 print(f"[{self.device_id}] Exception in shopgacha: {e}")
                 import traceback
                 traceback.print_exc()
 
-        # 4. Swap Shop (Auto Trade) - CASE 1 & CASE 3
-        # CASE 1: ถ้า chained_from_shopgacha=True, ข้าม block นี้ (เสร็จแล้วข้างบน)
-        # CASE 3: ถ้า shopgacha disabled, ทำงาน swap_shop ปกติที่นี่
-        if self.cfg.get("swap_shop") or self.cfg.get("swap_shopevent") or self.cfg.get("auto_trade", {}).get("enabled"):
+        # 4. Swap Shop (Auto Trade)
+        # shopgacha ออกแล้ว → ข้าม swap_shop block นี้
+        # หรือ shopgacha disabled → ทำงาน swap_shop ปกติที่นี่
+        if chained_to_swap_shop or self.cfg.get("swap_shop") or self.cfg.get("swap_shopevent") or self.cfg.get("auto_trade", {}).get("enabled"):
             print(f"[{self.device_id}] Task Check: Auto Trade / Swap Shop...")
-            # We check for gacha.png as entry point for the new process_swap_shop
+            
+            # ถ้าเชื่อมจาก shopgacha ให้เรียก process_swap_shop ด้วย chained_from_shopgacha=True
+            if chained_to_swap_shop:
+                print(f"[{self.device_id}] Calling process_swap_shop (chained from shopgacha, skip gacha1.png, wait for waitgacha.png)...")
+                res = self.process_swap_shop(chained_from_shopgacha=True)
+                if res in ["restart", "fixid", "fixunkown", "apple"]: return "restart"
+                if res == "random-Fail": return "random-Fail"
+                if res == "backup_complete": return "backup_complete"
+                if res == "kaiby": return "kaiby"
+                if res == "swap_shopevent":
+                    self.process_swap_shopevent()
+                sleep(2)
+                return "restart"  # After swap_shop chained from shopgacha, clear app
+            
+            # Otherwise, check for gacha.png as normal entry point
             if check_task_available("img/gacha.png"):
                 res = self.process_swap_shop()
                 if res in ["restart", "fixid", "fixunkown", "apple"]: return "restart"
@@ -4066,110 +3991,60 @@ class RangerGearBot(threading.Thread):
     
     def handle_shopgacha_end_with_backgachashop(self):
         """
-        Handle end of shopgacha with 2 paths:
+        Handle end of shopgacha - Execute full sequence with for loop
         
-        Path A (shopgachastop found): shopgachastop -> gachaout3 -> backgachashop -> gacha1
-        Path B (shopgachastop not found): gachaout2 -> gachaout3 -> backgachashop
+        Sequence: กด backgachashop (รอ 30s) -> กด backgachashop1 (รอ 30s) -> กด gacha1
+        ใช้ for loop ให้กดครบทุกขั้นตอนก่อน
         
-        Then chain to swap_shop or restart based on config
-        
-        Returns: "chained_to_swap_shop" if should chain to swap_shop, "restart" if should clear+restart
+        Returns: "chained_to_swap_shop" to chain to swap_shop without clearing app
         """
-        print(f"จบการทำงาน shopgacha - กำลังค้นหา shopgachastop.png...")
+        print(f"[{self.device_id}] จบการทำงาน shopgacha - ทำ for loop: backgachashop -> backgachashop1 -> gacha1")
         
-        # ตรวจเช็ก shopgachastop.png ก่อน (ค้นหา 10 วิ)
-        found_shopgachastop = False
-        search_start = time.time()
+        # Sequence: (image, wait_after_click)
+        # กดแล้วไม่ต้องรอ ไปขั้นตอนถัดไปเลย
+        sequence = [
+            ('img/backgachashop.png', 2),
+            ('img/backgachashop1.png', 2),
+            ('img/gacha.png', 2),
+        ]
         
-        while time.time() - search_start < 10:
-            try:
-                self.capture_screen()
-                adb_check_img = self.get_screen_color()
-                shopgachastop_pos = ImgSearchADB(adb_check_img, 'img/shopgachastop.png')
-                
-                if shopgachastop_pos and len(shopgachastop_pos) > 0:
-                    print(f"[{self.device_id}] ✓ พบ shopgachastop.png -> ใช้ PATH A")
-                    self.tap(shopgachastop_pos[0][0], shopgachastop_pos[0][1])
-                    time.sleep(2)
-                    found_shopgachastop = True
-                    break
-                
-                time.sleep(0.5)
-            except Exception as e:
-                print(f"Error ค้นหา shopgachastop.png: {e}")
-                time.sleep(0.5)
-        
-        # เลือก sequence ตามว่าเจอ shopgachastop หรือไม่
-        if found_shopgachastop:
-            # PATH A: shopgachastop -> gachaout3 (10s wait) -> backgachashop -> gacha1
-            sequence = ['img/gachaout3.png', 'img/backgachashop.png', 'img/gacha1.png']
-            print(f"[{self.device_id}] ทำตาม PATH A (shopgachastop found)")
-        else:
-            # PATH B: gachaout2 -> gachaout3 -> backgachashop
-            sequence = ['img/gachaout2.png', 'img/gachaout3.png', 'img/backgachashop.png']
-            print(f"[{self.device_id}] ทำตาม PATH B (shopgachastop not found)")
-        
-        # ทำงาน sequence
-        for seq_idx, seq_img in enumerate(sequence):
+        # ทำงาน sequence ด้วย for loop บังคับให้กดครบก่อน
+        for seq_idx, (seq_img, wait_after) in enumerate(sequence):
             img_name = seq_img.split('/')[-1]
-            print(f"กำลังค้นหา {img_name} บนอุปกรณ์ {self.device_id}")
+            print(f"[{self.device_id}] (Step {seq_idx + 1}/{len(sequence)}) กำลังค้นหา {img_name} (รอหลังกด {wait_after}s)")
             
             search_start = time.time()
+            search_timeout = 30  # รอค้นหาสูงสุด 30 วินาที
             found = False
             
-            while time.time() - search_start < 10:
+            while time.time() - search_start < search_timeout:
                 try:
                     self.capture_screen()
                     adb_check_img = self.get_screen_color()
                     img_pos = ImgSearchADB(adb_check_img, seq_img)
                     
                     if img_pos and len(img_pos) > 0:
-                        print(f"พบและกด {img_name} บนอุปกรณ์ {self.device_id}")
+                        print(f"[{self.device_id}] พบและกด {img_name}")
                         self.tap(img_pos[0][0], img_pos[0][1])
                         
-                        # Special handling for gachaout3: wait 10 seconds
-                        if img_name == 'gachaout3.png':
-                            print(f"[{self.device_id}] รอ {img_name} ทำงาน 10 วินาที...")
-                            time.sleep(10)
-                        else:
-                            time.sleep(2)
+                        # รอตามที่กำหนดไว้ (30s สำหรับ backgachashop/backgachashop1)
+                        print(f"[{self.device_id}] รอ {wait_after} วินาทีหลังกด {img_name}...")
+                        time.sleep(wait_after)
                         
                         found = True
                         break
                     
                     time.sleep(0.5)
                 except Exception as e:
-                    print(f"Error ค้นหา {img_name}: {e}")
+                    print(f"[{self.device_id}] Error ค้นหา {img_name}: {e}")
                     time.sleep(0.5)
             
             if not found:
-                print(f"ไม่พบ {img_name} ในระหว่าง 10 วิ - ข้ามไป")
+                print(f"[{self.device_id}] ไม่พบ {img_name} ใน {search_timeout}s - ข้ามไป")
         
-        # =====================================================================
-        # ตรวจสอบการตั้งค่า shopgacha และ swap_shop เพื่อแบ่งเป็น 2 กรณี
-        # =====================================================================
-        shopgacha_enabled = self.cfg.get("shopgacha", 0)
-        swap_shop_enabled = self.cfg.get("swap_shop", 0)
-        swap_shopevent_enabled = self.cfg.get("swap_shopevent", 0)
-        
-        print(f"[{self.device_id}] Config Check: shopgacha={shopgacha_enabled}, swap_shop={swap_shop_enabled}, swap_shopevent={swap_shopevent_enabled}")
-        
-        # กรณีที่ 1: shopgacha=1, swap_shop=0 (และ swap_shopevent=0)
-        if shopgacha_enabled and not swap_shop_enabled and not swap_shopevent_enabled:
-            print(f"[{self.device_id}] [Case 1] shopgacha=1, swap_shop=0 → Clear app และไปวน ID ใหม่")
-            self.clear_and_restart()
-            return "restart"
-        
-        # กรณีที่ 2: shopgacha=1, swap_shop=1 (หรือ swap_shopevent=1)
-        elif shopgacha_enabled and (swap_shop_enabled or swap_shopevent_enabled):
-            print(f"[{self.device_id}] [Case 2] shopgacha=1, swap_shop=1 → เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
-            return "chained_to_swap_shop"
-        
-        # Default: ถ้าไม่เข้ากรณีไหน ให้ restart
-        else:
-            print(f"[{self.device_id}] [Default] ไม่ตรงกับกรณีไหน → Clear app และเริ่มใหม่")
-            self.clear_and_restart()
-            return "restart"
+        # เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)
+        print(f"[{self.device_id}] จบ shopgacha sequence -> เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
+        return "chained_to_swap_shop"
 
     # =========================================================
     # Main Login
