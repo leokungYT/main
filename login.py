@@ -4020,14 +4020,14 @@ class RangerGearBot(threading.Thread):
         
         Returns: "chained_to_swap_shop" to chain to swap_shop without clearing app
         """
-        print(f"[{self.device_id}] จบการทำงาน shopgacha - ทำ for loop: backgachashop -> backgachashop1 -> gacha1")
+        print(f"[{self.device_id}] จบการทำงาน shopgacha - ทำ for loop: backgachashop -> backgachashop1 -> event 10s -> gacha")
         
         # Sequence: (image, wait_after_click)
-        # กดแล้วไม่ต้องรอ ไปขั้นตอนถัดไปเลย
         sequence = [
             ('img/backgachashop.png', 2),
             ('img/backgachashop1.png', 2),
-            ('img/gacha.png', 2),
+            ('img/event.png', 10),
+            ('img/gacha.png', 30),
         ]
         
         # ทำงาน sequence ด้วย for loop บังคับให้กดครบก่อน
@@ -4089,12 +4089,12 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] พบ shopgachastop1 - ทำ for loop: gachaout2 -> gachaout3 -> backgachashop -> backgachashop1 -> event 10s -> gacha")
         
         sequence = [
-            ('img/gachaout2.png', 2),
+            ('img/gachaout2.png', 30),
             ('img/gachaout3.png', 2),
             ('img/backgachashop.png', 2),
             ('img/backgachashop1.png', 2),
             ('img/event.png', 10),
-            ('img/gacha.png', 2),
+            ('img/gacha.png', 30),
         ]
         
         for seq_idx, (seq_img, wait_after) in enumerate(sequence):
