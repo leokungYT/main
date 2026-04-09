@@ -1274,20 +1274,69 @@ def check_hero_images(bot, adb_img):
 
 def search_gachaslot_image(bot):
     """Search for gachaslot.png with swiping logic from mainLG.py"""
+    print(f"[{bot.device_id}] ค้นหา gachaslot.png ก่อนเลื่อนหน้าจอ...")
+    # ให้เวลาหน้าจอโหลดนานขึ้นหน่อย (รวมประมาณ 5 วินาที)
+    for i in range(6):
+        bot.capture_screen()
+        adb_img = bot.get_screen_color()  # ใช้ get_screen_color() เพื่อโหลดภาพสีจริงๆ (lazy decode)
+        
+        # เพิ่มระบบเช็คความเหมือนสูงสุดแบบ debug เพื่อดูว่ามันมองเห็นอะไร
+        try:
+            find_img = cv2.imread('img/gachaslot.png', cv2.IMREAD_COLOR)
+            if find_img is not None and adb_img is not None:
+                result = cv2.matchTemplate(adb_img, find_img, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                print(f"[{bot.device_id}] --- Testing Threshold: 0.85 ---")
+                print(f"[{bot.device_id}]    -> Max Similarity: {max_val:.4f} at {cv2.minMaxLoc(result)[3]}")
+        except Exception:
+            pass
+            
+        gachaslot_pos = ImgSearchADB(adb_img, 'img/gachaslot.png', threshold=0.85)
+        if gachaslot_pos:
+            tx, ty = gachaslot_pos[0]
+            print(f"[{bot.device_id}] ✓ Found {len(gachaslot_pos)} locations at threshold 0.85: [({tx}, {ty})]")
+            print(f"[{bot.device_id}] >> Tapping location ({tx}, {ty}) immediately!")
+            bot.adb_shell(f"input tap {tx} {ty}")
+            print(f"[{bot.device_id}] >> เจอรูปเป้าหมายและกดไปแล้ว ยุติการทดสอบ (ไม่ต้องเลื่อนหน้าจอ)")
+            return gachaslot_pos[0]
+            
+        if i < 5:
+            time.sleep(1)
+            
+    # ถ้ายังไม่เจอ ค่อยเริ่มการเลื่อนหน้าจอ
     max_swipes = 5
     swipe_count = 0
-    while swipe_count <= max_swipes:
+    while swipe_count < max_swipes:
+        print(f"\n[{bot.device_id}] --- Testing Swipe System ---")
+        print(f"[{bot.device_id}] Simulating swipe #{swipe_count + 1} (input swipe 824 240 808 109 3000)...")
+        bot.adb_shell("input swipe 824 240 808 109 3000")
+        time.sleep(1.5)
+        
         bot.capture_screen()
-        adb_img = bot._screen_color
-        gachaslot_pos = ImgSearchADB(adb_img, 'img/gachaslot.png')
+        adb_img = bot.get_screen_color()  # ใช้ get_screen_color() ทีนี่ด้วย
+        
+        # แสดงค่าความเหมือนหลังเลื่อนหน้าจอด้วย
+        try:
+            find_img = cv2.imread('img/gachaslot.png', cv2.IMREAD_COLOR)
+            if find_img is not None and adb_img is not None:
+                result = cv2.matchTemplate(adb_img, find_img, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                print(f"[{bot.device_id}] Testing search after swipe at Threshold: 0.85")
+                print(f"[{bot.device_id}]    -> Max Similarity: {max_val:.4f} at {cv2.minMaxLoc(result)[3]}")
+        except Exception:
+            pass
+            
+        gachaslot_pos = ImgSearchADB(adb_img, 'img/gachaslot.png', threshold=0.85)
         if gachaslot_pos:
+            tx, ty = gachaslot_pos[0]
+            print(f"[{bot.device_id}] ✓ Found {len(gachaslot_pos)} locations after swipe #{swipe_count + 1} at threshold 0.85: [({tx}, {ty})]")
+            print(f"[{bot.device_id}] >> Tapping location ({tx}, {ty}) immediately!")
+            bot.adb_shell(f"input tap {tx} {ty}")
+            print(f"[{bot.device_id}] >> เจอรูปเป้าหมายหลังเลื่อนหน้าจอและกดไปแล้ว ยุติการทำงาน")
             return gachaslot_pos[0]
-        if swipe_count < max_swipes:
-            print(f"[{bot.device_id}] ไม่พบ gachaslot.png - เลื่อนหน้าจอครั้งที่ {swipe_count + 1}")
-            bot.adb_shell("input swipe 824 240 808 109 1000")
-            time.sleep(1)
-            swipe_count += 1
-        else: return None
+            
+        swipe_count += 1
+        
     return None
 
 def get_next_backup_id():
@@ -1477,7 +1526,7 @@ class RangerGearBot(threading.Thread):
             original_name = getattr(self, "current_original_filename", "unknown.xml")
             if not original_name.endswith(".xml"): original_name += ".xml"
             
-            dest_filename = f"FAIL-{original_name}"
+            dest_filename = original_name
             dest_path = os.path.join(backup_dir, dest_filename)
             source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
             temp_path = f"/data/local/tmp/fail_backup_{self.device_id.replace(':','_')}.xml"
@@ -1648,8 +1697,8 @@ class RangerGearBot(threading.Thread):
                             
                             # ถ้าเป็น shopgacha2.png ให้รอก่อนกด
                             if current_img == 'shopgacha2.png':
-                                print(f"รอ 5 วินาทีก่อนกด shopgacha2.png...")
-                                time.sleep(5)
+                                print(f"รอ 3 วินาทีก่อนกด shopgacha2.png...")
+                                time.sleep(3)
                             
                             self.tap(pos[0][0], pos[0][1])
                             print(f"กด {current_img} แล้ว")
@@ -1659,9 +1708,9 @@ class RangerGearBot(threading.Thread):
                             
                             # รอนานขึ้นหลังจากกด shopgacha2.png
                             if current_img == 'shopgacha2.png':
-                                time.sleep(3)
+                                time.sleep(2)
                             else:
-                                time.sleep(1)
+                                time.sleep(0.5)
                             
                             # ตรวจสอบ shopgachastop.png หลังจากกด
                             self.capture_screen()
@@ -1766,7 +1815,7 @@ class RangerGearBot(threading.Thread):
                                 shopgacha5_clicked = True
                                 check_shopgacha2_count = 0
                             
-                            time.sleep(2)  # เพิ่มเวลารอให้หน้าจอโหลด
+                            time.sleep(0.7)  # เพิ่มเวลารอให้หน้าจอโหลด (Optimized Speed)
                             
                             # ตรวจสอบ shopgachastop.png หลังจากกดแต่ละปุ่ม
                             self.capture_screen()
@@ -2179,6 +2228,19 @@ class RangerGearBot(threading.Thread):
                     screen_img = device.get_screen_color()
                     if ImgSearchADB(screen_img, 'img/waitgacha.png'):
                         print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] [CHAINED] พบ waitgacha.png - เริ่มทำงาน swap_shop...")
+                        fixnewgacha_pos = ImgSearchADB(screen_img, 'img/fixnewgacha.png')
+                        if fixnewgacha_pos:
+                            device.tap(476, 394)
+                            checked_waitgacha = True
+                            if check_gachaout_after_click(): return "random-Fail"
+                            time.sleep(1)
+                            
+                        channel_pos = get_channel_position()
+                        if channel_pos and len(channel_pos) == 2:
+                            device.tap(channel_pos[0], channel_pos[1])
+                            if check_gachaout_after_click(): return "random-Fail"
+                            if swap_shopevent_enabled: return "swap_shopevent"
+                            
                         checked_waitgacha = True
                         time.sleep(1.5)
                         break
@@ -3877,14 +3939,14 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache(img_path):
                     print(f"[{self.device_id}] Found {item}, clicking...")
                     self.click(img_path)
-                    sleep(0.8) # Fast transition for images
+                    sleep(0.3) # Optimized transition for images
 
                     # === SPECIAL CASE: box1.png logic ===
                     if item == 'box1.png':
-                        print(f"[{self.device_id}] [BOX] box1 clicked. Waiting 20s for box2.png or end_box.png...")
+                        print(f"[{self.device_id}] [BOX] box1 clicked. Waiting for box2.png or end_box.png (High Speed)...")
                         found_cont = False
                         wait_box_started = time.time()
-                        while time.time() - wait_box_started < 20:
+                        while time.time() - wait_box_started < 15: # Reduced from 20s
                             self.capture_screen()
                             if self.exists_in_cache("img/box2.png"):
                                 print(f"[{self.device_id}] [BOX] box2.png detected. Proceeding...")
@@ -3892,24 +3954,23 @@ class RangerGearBot(threading.Thread):
                                 break
                             if self.exists_in_cache("img/end_box.png"):
                                 print(f"[{self.device_id}] [BOX] end_box.png detected. Stopping box sequence.")
-                                # We don't set found_cont=True because we want to jump to box5
                                 break
-                            sleep(1)
+                            sleep(0.3) # Faster polling
                         
                         if not found_cont:
-                            print(f"[{self.device_id}] [BOX] Box2 not found or end reached. Clicking box5.png and finishing.")
-                            # Try to click box5.png to close
-                            for _ in range(10):
+                            print(f"[{self.device_id}] [BOX] Box2 not found or end reached. Fast-searching box5.png to close.")
+                            # Try to click box5.png to close (Optimized)
+                            for _ in range(20): # More attempts but faster
                                 self.capture_screen()
                                 if self.exists_in_cache("img/box5.png"):
                                     self.click("img/box5.png")
                                     print(f"[{self.device_id}] [BOX] Clicked box5.png")
                                     break
-                                sleep(1)
+                                sleep(0.3)
                             return "success" # Exit this sequence early
 
                     break
-                sleep(0.5) # Fast loop search
+                sleep(0.3) # Faster loop search
             
         return "success"
 
@@ -4003,9 +4064,18 @@ class RangerGearBot(threading.Thread):
             if not found:
                 print(f"[{self.device_id}] ไม่พบ {img_name} ใน {search_timeout}s - ข้ามไป")
         
-        # เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)
-        print(f"[{self.device_id}] จบ shopgacha sequence -> เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
-        return "chained_to_swap_shop"
+        # เช็ค config: ถ้า swap_shop=1 ให้เชื่อมต่อไป swap_shop แทนการ clear app
+        swap_shop_enabled = self.cfg.get("swap_shop", 0)
+        swap_shopevent_enabled = self.cfg.get("swap_shopevent", 0)
+        auto_trade_enabled = self.cfg.get("auto_trade", {}).get("enabled", 0)
+        
+        if swap_shop_enabled or swap_shopevent_enabled or auto_trade_enabled:
+            print(f"[{self.device_id}] จบ shopgacha sequence -> เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
+            return "chained_to_swap_shop"
+        else:
+            print(f"[{self.device_id}] จบ shopgacha sequence (swap_shop=0) -> เคลียร์แอพและไปวน ID ใหม่")
+            self.clear_and_restart()
+            return "restart"
 
     def handle_shopgachastop1_sequence(self):
         """
@@ -4055,8 +4125,18 @@ class RangerGearBot(threading.Thread):
             if not found:
                 print(f"[{self.device_id}] ไม่พบ {img_name} ใน {search_timeout}s - ข้ามไป")
         
-        print(f"[{self.device_id}] จบ shopgachastop1 sequence -> เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
-        return "chained_to_swap_shop"
+        # เช็ค config: ถ้า swap_shop=1 ให้เชื่อมต่อไป swap_shop แทนการ clear app
+        swap_shop_enabled = self.cfg.get("swap_shop", 0)
+        swap_shopevent_enabled = self.cfg.get("swap_shopevent", 0)
+        auto_trade_enabled = self.cfg.get("auto_trade", {}).get("enabled", 0)
+        
+        if swap_shop_enabled or swap_shopevent_enabled or auto_trade_enabled:
+            print(f"[{self.device_id}] จบ shopgachastop1 sequence -> เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
+            return "chained_to_swap_shop"
+        else:
+            print(f"[{self.device_id}] จบ shopgachastop1 sequence (swap_shop=0) -> เคลียร์แอพและไปวน ID ใหม่")
+            self.clear_and_restart()
+            return "restart"
 
     # =========================================================
     # Main Login

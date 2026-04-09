@@ -1,15 +1,17 @@
 {
   "success_count": 0,
   "fail_count": 0,
-  "random_fail_count": 0,
-  "hero_found_list": {},
+  "random_fail_count": 2,
+  "hero_found_list": {
+    "สุ่มไม่ได้": 2
+  },
   "device_statuses": {
     "emulator-5556": {
-      "step": "Waiting for files",
-      "status": "waiting"
+      "step": "Logging in...",
+      "status": "working"
     }
   },
-  "last_update": 1775673036.8109863,
+  "last_update": 1775723237.0605602,
   "total_login_time": 0.0,
   "login_time_count": 0
 }
