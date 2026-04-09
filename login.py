@@ -1678,7 +1678,7 @@ class RangerGearBot(threading.Thread):
                 # ✅ ค้นหา shopgachastop.png ตลอดเวลา ถ้าเจอให้ทำ sequence แล้ว chain ไป swap_shop
                 shopgachastop_pos = ImgSearchADB(adb_img, 'img/shopgachastop.png')
                 if shopgachastop_pos and len(shopgachastop_pos) > 0:
-                    print(f"[{self.device_id}] ✓ พบ shopgachastop.png ตรง loop! -> ทำ for loop: backgachashop -> backgachashop1 -> gacha1")
+                    print(f"[{self.device_id}] ✓ พบ shopgachastop.png ตรง loop! -> ทำ for loop: backgachashop -> backgachashop1 -> event 10s -> gacha1")
                     return self.handle_shopgacha_end_with_backgachashop()
                 
                 # ตรวจสอบ shopgachastop1.png
@@ -4086,13 +4086,14 @@ class RangerGearBot(threading.Thread):
         
         Returns: "chained_to_swap_shop" to chain to swap_shop without clearing app
         """
-        print(f"[{self.device_id}] พบ shopgachastop1 - ทำ for loop: gachaout2 -> gachaout3 -> backgachashop -> backgachashop1 -> gacha")
+        print(f"[{self.device_id}] พบ shopgachastop1 - ทำ for loop: gachaout2 -> gachaout3 -> backgachashop -> backgachashop1 -> event 10s -> gacha")
         
         sequence = [
             ('img/gachaout2.png', 2),
             ('img/gachaout3.png', 2),
             ('img/backgachashop.png', 2),
             ('img/backgachashop1.png', 2),
+            ('img/event.png', 10),
             ('img/gacha.png', 2),
         ]
         
