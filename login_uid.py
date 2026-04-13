@@ -12,6 +12,8 @@ import concurrent.futures
 import socket
 import re
 import shutil
+import ctypes
+from ctypes import wintypes
 from typing import List
 import getpass
 from datetime import datetime
@@ -21,6 +23,7 @@ import json
 import pyperclip
 import sys
 import io
+import argparse
 
 # Fix encoding issue for Windows console
 if sys.platform == 'win32':
@@ -161,7 +164,8 @@ def get_backup_folder():
         os.makedirs(path, exist_ok=True)
     return path
 
-source_folder = get_backup_folder()
+source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+if not os.path.exists(source_folder): os.makedirs(source_folder, exist_ok=True)
 
 def has_xml_files():
     try:
@@ -187,38 +191,61 @@ def update_file_queue():
         return 0
 
 def safe_clipboard_operation(device, callback):
-    """Safely handles the shared system clipboard for multi-device UID extraction."""
-    # เราใช้ Lock บังคับให้เพียง 1 หน้าจอเข้าถึงคลิปบอร์ดได้ในเวลาเดียวกัน 
-    # แม้จะรัน 20 จอ ระบบจะต่อคิวกันเพื่อป้องกันข้อมูลปนกัน (Collision)
-    with device_state.clipboard_lock:
-        print(f"[{device.serial}] [CLIPBOARD] Locked for UID extraction (Serial access mode)...")
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                # เคลียร์คลิปบอร์ดก่อนเริ่ม เพื่อให้แน่ใจว่าค่าที่ได้มาใหม่คือของจอนี้จริงๆ
-                pyperclip.copy("")
-                result = callback()
-                
-                if result:
-                    result = result.strip()
-                    # ตรวจสอบเบื้องต้นว่าค่าที่ได้เป็น UID จริง (ส่วนใหญ่เป็นเลข/ตัวอักษร)
-                    if len(result) > 5: # UID Ranger ปกติจะยาว
-                        if result in device_state.clipboard_processing:
-                            print(f"{Fore.YELLOW}[DEVICE {device.serial}] UID {result} already being processed, skipping...{Style.RESET_ALL}")
-                            return None
-                        
-                        device_state.clipboard_processing.add(result)
-                        print(f"[{device.serial}] [CLIPBOARD] Successfully captured: {result}")
-                        return result
-                
-                print(f"[{device.serial}] [CLIPBOARD] Attempt {attempt+1} empty or invalid. Retrying...")
-                time.sleep(1.5) # รออีกนิดหากคลิปบอร์ดอาจจะยังไม่พร้อม
-            except Exception as e:
-                print(f"{Fore.RED}[DEVICE {device.serial}] Clipboard Error (Attempt {attempt+1}): {e}{Style.RESET_ALL}")
-                time.sleep(1)
-        
-        print(f"[{device.serial}] [CLIPBOARD] FAILED to capture UID after {max_retries} attempts.")
+    """
+    Safely handles the shared system clipboard for multi-process UID extraction.
+    ใช้ Windows Global Mutex เพื่อล้อคข้ามหน้าต่าง CMD (Cross-process synchronization)
+    """
+    # Create or open a Global Mutex
+    # 'Global\\' prefix makes it visible across all user sessions if needed, 
+    # but for MuMu usually 'LGR_Clipboard_Lock' is enough.
+    mutex_name = "Global\\LGR_Clipboard_Lock"
+    kernel32 = ctypes.windll.kernel32
+    
+    # Try to wait for the mutex
+    print(f"[{device.serial}] [CLIPBOARD] Waiting for Global Mutex (Cross-CMD Lock)...")
+    
+    # CreateMutex will return an existing one if it already exists
+    mutex = kernel32.CreateMutexW(None, False, mutex_name)
+    if not mutex:
+        print(f"[{device.serial}] [CLIPBOARD] Error creating mutex")
         return None
+
+    # Wait for ownership (Infinite timeout is risky, but we need the UID)
+    # WAIT_OBJECT_0 is 0
+    wait_res = kernel32.WaitForSingleObject(mutex, 60000) # Wait up to 60s
+    
+    if wait_res == 0 or wait_res == 0x80: # WAIT_OBJECT_0 or WAIT_ABANDONED
+        try:
+            print(f"[{device.serial}] [CLIPBOARD] Global Mutex Acquired.")
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    pyperclip.copy("")
+                    result = callback()
+                    if result:
+                        result = result.strip()
+                        if len(result) > 5:
+                            # Note: clipboard_processing check here only works within ONE process.
+                            # For cross-process dup check, we'd need a shared file/DB.
+                            # But with Global Mutex, collision is already prevented.
+                            print(f"[{device.serial}] [CLIPBOARD] Successfully captured: {result}")
+                            return result
+                    
+                    print(f"[{device.serial}] [CLIPBOARD] Attempt {attempt+1} empty. Retrying...")
+                    time.sleep(2)
+                except Exception as e:
+                    print(f"[{device.serial}] Clipboard Error: {e}")
+                    time.sleep(1)
+        finally:
+            # Release the mutex and CloseHandle
+            kernel32.ReleaseMutex(mutex)
+            kernel32.CloseHandle(mutex)
+            print(f"[{device.serial}] [CLIPBOARD] Global Mutex Released.")
+    else:
+        kernel32.CloseHandle(mutex)
+        print(f"[{device.serial}] [CLIPBOARD] Timeout waiting for Global Mutex. Mixing possible!")
+    
+    return None
 
 def release_clipboard_uid(uid):
     with device_state.clipboard_lock:
@@ -379,13 +406,15 @@ def save_fail(device):
         fail_dir = os.path.join(os.getcwd(), "login-fail")
         os.makedirs(fail_dir, exist_ok=True)
         
-        src_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
-        orig_name = device_state.original_filenames.get(device.serial)
-        if not orig_name: return False
+        # ใช้ su -c ก้อปปี้ไปที่ tmp ก่อนกดยกออกมา (เลี่ยง Permission Denied)
+        tmp_pull = f"/data/local/tmp/dump_{device.serial.replace(':','_')}.xml"
+        device.shell(f"su -c 'cp /data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml {tmp_pull} && chmod 666 {tmp_pull}'")
         
-        dst_path = os.path.join(fail_dir, orig_name)
-        cmd = f'{adb_path} -s {device.serial} pull "{src_path}" "{dst_path}"'
+        cmd = f'{adb_path} -s {device.serial} pull "{tmp_pull}" "{dst_path}"'
         res = subprocess.run(cmd, shell=True, capture_output=True, timeout=15)
+        
+        # ล้างไฟล์ชั่วคราวบนเครื่อง
+        device.shell(f"su -c 'rm {tmp_pull}'")
         
         if res.returncode == 0 and os.path.exists(dst_path):
             ui_stats.update(fail=ui_stats.failed_logins + 1)
@@ -501,13 +530,15 @@ def main_login(device, current_filename="unknown.xml"):
     print(f"[{device.serial}] Starting Main Login (Robust Transformed Mode)...")
     _login_fixid_count = 0
     
-    # Clear app
-    clear_app(device)
-    time.sleep(2)
-    
-    # เปิดแอป
-    open_app(device)
-    time.sleep(3)
+    # เราจะไม่สั่ง clear_app ซ้ำซ้อนที่นี่ เพราะเรียกจาก process_single_device มาแล้ว
+    # แค่เช็คเพื่อให้แน่ใจว่าแอปเปิดอยู่จริงๆ
+    # check_pid...
+    try:
+        pid = device.shell("pidof com.linecorp.LGRGS")
+        if not pid.strip():
+            open_app(device)
+            time.sleep(5)
+    except: pass
     
     # === Black Screen Check หลังเปิดแอพ ===
     for black_attempt in range(3):
@@ -603,12 +634,13 @@ def main_login(device, current_filename="unknown.xml"):
             else:
                 _fixokk_start_time = None
 
-            # alert2.png Persistence Check
-            if ImgSearchADB(adb_img, 'img/alert2.png', threshold=0.8):
+            # alert2.png Persistence Check (รอค้างครบ 8 วิ ให้ clear app แล้วเปิดใหม่)
+            # ปรับ similarity เป็น 0.9 เพื่อป้องกันการจำผิดตอนจอกำลังโหลด
+            if ImgSearchADB(adb_img, 'img/alert2.png', threshold=0.9):
                 if _alert2_start_time is None:
-                    _alert2_start_time = time.time(); print(f"[{device.serial}] Detected alert2.png... waiting 8s to clear app")
+                    _alert2_start_time = time.time(); print(f"[{device.serial}] Detected alert2.png (Network/Update)... waiting 8s")
                 elif time.time() - _alert2_start_time >= 8:
-                    print(f"[{device.serial}] alert2.png stuck for 8s! Restarting...")
+                    print(f"[{device.serial}] alert2.png stuck for 8s! Restarting app...")
                     clear_app(device); open_app(device); _alert2_start_time = None; time.sleep(3); continue
             else: _alert2_start_time = None
 
@@ -721,7 +753,15 @@ def main_login(device, current_filename="unknown.xml"):
                             if uid:
                                 orig = device_state.original_filenames.get(device.serial, "unknown.xml")
                                 out = os.path.join(uid_folder, f"[{uid}]+{orig}")
-                                subprocess.run(f'{adb_path} -s {device.serial} pull "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml" "{out}"', shell=True)
+                                
+                                # ใช้ su -c ก้อปปี้ออกมาที่ tmp ก่อนเพื่อเลี่ยง Permission Denied (MuMu/Root)
+                                tmp_pull = f"/data/local/tmp/pull_{device.serial.replace(':','_')}.xml"
+                                device.shell(f"su -c 'cp /data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml {tmp_pull} && chmod 666 {tmp_pull}'")
+                                
+                                subprocess.run(f'{adb_path} -s {device.serial} pull "{tmp_pull}" "{out}"', shell=True)
+                                
+                                # ลบไฟล์ขยะบนเครื่อง
+                                device.shell(f"su -c 'rm {tmp_pull}'")
                                 release_clipboard_uid(uid); return "normal_complete"
                             time.sleep(1)
                         else:
@@ -987,56 +1027,79 @@ def get_connected_devices():
         return []
 
 def main():
-    ui_stats.force_update()
-    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--device", help="Run worker for specific device serial")
+    args = parser.parse_args()
+
     if not find_adb_executable():
-        print(f"{Fore.RED}[ERROR] Could not find adb.exe. Please ensure it is in the adb/ folder or system PATH.{Style.RESET_ALL}")
+        print(f"{Fore.RED}[ERROR] Could not find adb.exe.{Style.RESET_ALL}")
         return
 
+    # --- Mode: Single Device Run (Manual Focus) ---
+    if args.device:
+        adb_client = AdbClient(host="127.0.0.1", port=5037)
+        for dev in adb_client.devices():
+            if dev.serial == args.device:
+                process_single_device(dev)
+                return
+        print(f"Device {args.device} not found."); return
+
+    # --- Mode: Unified Master UI (Threads) ---
+    # เรากลับมาใช้หน้าต่างเดียว (Integrated) ตามคำขอเพื่อให้ไม่รกหน้าจอ
+    # แต่ยังคงใช้ระบบ Global Mutex ล็อคคลิปบอร์ดระดับ Windows เพื่อไม่ให้ข้อมูลมั่ว
+    ui_stats.force_update()
     started_serials = set()
+    
+    print(f"{Fore.CYAN}>>> INTEGRATED MODE: Running all devices in one window <<<{Style.RESET_ALL}")
+    
     while True:
         try:
-            print(f"{Fore.CYAN}[SYSTEM] Scanning for devices...{Style.RESET_ALL}")
             connect_known_ports()
             devices = get_connected_devices()
             
-            if not devices:
-                ui_stats.print_simple_message("No devices found. Ensure MuMu is running.")
-                time.sleep(10)
-                continue
-                
-            ui_stats.update(devices=len(devices))
+            # Update Total Files
+            xml_count = 0
+            if os.path.exists(source_folder):
+                xml_count = len([f for f in os.listdir(source_folder) if f.endswith('.xml')])
+            ui_stats.update(total=xml_count, devices=len(devices))
             
-            if devices:
-                dev = devices[0] # Pick ONLY the first device
+            for dev in devices:
                 if dev.serial not in started_serials:
+                    print(f"{Fore.GREEN}[SYSTEM] Integrating device: {dev.serial}{Style.RESET_ALL}")
+                    # รันเป็น Thread ในหน้าต่างเดิม แต่ละตัวจะแยกกันทำงานอิสระ
                     worker = Thread(target=process_single_device, args=(dev,))
                     worker.daemon = True
                     worker.start()
                     started_serials.add(dev.serial)
+                    time.sleep(2)
             
-            # Keep main thread alive and monitor resources
+            ui_stats.update(devices=len(started_serials))
+            
+            # Monitor loop
             while True:
                 cpu, mem = get_resource_usage()
-                if cpu > 90 or mem > 1500: clean_memory()
-                time.sleep(30)
+                if cpu > 90 or mem > 2000: clean_memory()
                 ui_stats.update()
                 
-                # Dynamic device re-scan
+                # Scan for new devices dynamically
                 current_devices = get_connected_devices()
-                if current_devices and not started_serials:
-                    d = current_devices[0]
-                    worker = Thread(target=process_single_device, args=(d,))
-                    worker.daemon = True
-                    worker.start()
-                    started_serials.add(d.serial)
+                for d in current_devices:
+                    if d.serial not in started_serials:
+                        print(f"{Fore.GREEN}[SYSTEM] Adding new device: {d.serial}{Style.RESET_ALL}")
+                        worker = Thread(target=process_single_device, args=(d,))
+                        worker.daemon = True
+                        worker.start()
+                        started_serials.add(d.serial)
+                        time.sleep(2)
+                
                 ui_stats.update(devices=len(started_serials))
+                time.sleep(30)
                 
         except KeyboardInterrupt:
-            print(f"\n{Fore.GREEN}Exiting gracefully...{Style.RESET_ALL}")
+            print(f"\n{Fore.GREEN}Stopping all sessions...{Style.RESET_ALL}")
             break
         except Exception as e:
-            ui_stats.print_simple_message(f"Fatal System Error: {e}")
+            print(f"Master UI Error: {e}")
             time.sleep(10)
 
 if __name__ == '__main__':

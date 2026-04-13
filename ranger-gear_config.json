@@ -4,10 +4,25 @@
     "find_ranger": 0,
     "find_gear": 0,
     "find_all": 1,
-    "custommode": 0,
+    "custommode": 1,
     "custom": {
         "characters": [
-            "Anya"
+            "Anya",
+            "Yor",
+            "Denji",
+            "power",
+            "shion",
+            "taiyo",
+            "enji",
+            "rudo",
+            "kappa",
+            "radish",
+            "fairy",
+            "vocalist",
+            "chip",
+            "pew",
+            "outlaw",
+            "soji"
         ]
     },
     "characters": [
