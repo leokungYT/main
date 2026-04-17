@@ -1799,7 +1799,7 @@ class RangerGearBot(threading.Thread):
                                 
                                 if gachaout_found:
                                     # จบการทำงาน shopgacha - ไม่กด shopgacha4
-                                    self.clear_and_restart()
+                                    # ไม่ต้อง clear_and_restart() ตรงนี้ เพราะ main_login จะ clear ให้ตอน return "success"
                                     return "complete"
                                 
                                 print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ไม่พบ gachaout.png - กด shopgacha4.png ต่อ")
@@ -4073,9 +4073,9 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] จบ shopgacha sequence -> เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
             return "chained_to_swap_shop"
         else:
-            print(f"[{self.device_id}] จบ shopgacha sequence (swap_shop=0) -> เคลียร์แอพและไปวน ID ใหม่")
-            self.clear_and_restart()
-            return "restart"
+            print(f"[{self.device_id}] จบ shopgacha sequence (swap_shop=0) -> ดำเนินการต่อให้จบ success")
+            # ไม่ต้อง clear_and_restart() ตรงนี้ เพราะ main_login จะ clear ให้ตอน return "success"
+            return "complete"
 
     def handle_shopgachastop1_sequence(self):
         """
@@ -4135,9 +4135,9 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] จบ shopgachastop1 sequence -> เชื่อมต่อไปยัง swap_shop (ไม่เคลียร์แอป)")
             return "chained_to_swap_shop"
         else:
-            print(f"[{self.device_id}] จบ shopgachastop1 sequence (swap_shop=0) -> เคลียร์แอพและไปวน ID ใหม่")
-            self.clear_and_restart()
-            return "restart"
+            print(f"[{self.device_id}] จบ shopgachastop1 sequence (swap_shop=0) -> ดำเนินการต่อให้จบ success")
+            # ไม่ต้อง clear_and_restart() ตรงนี้ เพราะ main_login จะ clear ให้ตอน return "success"
+            return "complete"
 
     # =========================================================
     # Main Login

@@ -2,11 +2,6 @@
   "success_count": 0,
   "fail_count": 0,
   "hero_found_list": {},
-  "device_statuses": {
-    "127.0.0.1:5557": {
-      "step": "Checking Gear",
-      "status": "working"
-    }
-  },
-  "last_update": 1776047284.8354297
+  "device_statuses": {},
+  "last_update": 1776097144.5226119
 }
