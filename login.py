@@ -3275,7 +3275,7 @@ class RangerGearBot(threading.Thread):
             start = time.time()
             while time.time() - start < timeout:
                 self.capture_screen()
-                if self.exists_in_cache(img_name): return True
+                if self.exists_in_cache(img_name, similarity=0.8): return True
                 sleep(1)
             return False
 
@@ -3286,7 +3286,7 @@ class RangerGearBot(threading.Thread):
         while time.time() - lobby_start < 20:
             self.capture_screen()
             # เช็คว่าเจอไอคอนหลักๆ ในหน้า Lobby หรือยัง (เช่น กล่อง หรือ กาชา หรือ 7วัน)
-            if self.exists_in_cache("img/box1.png") or self.exists_in_cache("img/gacha.png") or self.exists_in_cache("img/7day.png"):
+            if self.exists_in_cache("img/box1.png", similarity=0.8) or self.exists_in_cache("img/gacha.png", similarity=0.8) or self.exists_in_cache("img/7day.png", similarity=0.8):
                 print(f"[{self.device_id}] Lobby ready! Icons detected.")
                 lobby_ready = True
                 break
@@ -3307,6 +3307,7 @@ class RangerGearBot(threading.Thread):
 
         # 2. Open Gift Boxes (Round 1)
         box_cfg = self.cfg.get("box_settings", {})
+        print(f"[{self.device_id}] DEBUG box_cfg loaded: {box_cfg}")
         if box_cfg.get("first_round"):
             print(f"[{self.device_id}] Task Check: Opening Boxes (Round 1)...")
             # Usually box icon is always there or we can just try once

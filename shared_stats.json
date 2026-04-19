@@ -3,13 +3,8 @@
   "fail_count": 0,
   "random_fail_count": 0,
   "hero_found_list": {},
-  "device_statuses": {
-    "emulator-5556": {
-      "step": "Logging in...",
-      "status": "working"
-    }
-  },
-  "last_update": 1776484535.0964394,
+  "device_statuses": {},
+  "last_update": 1776600089.7205777,
   "total_login_time": 0.0,
   "login_time_count": 0
 }
