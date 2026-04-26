@@ -45,5 +45,5 @@ echo       Starting program...
 echo =========================================
 echo.
 
-python login.py --cli
+python login.py
 pause

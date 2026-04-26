@@ -720,11 +720,18 @@ if GUI_AVAILABLE:
                     m.pack(fill="x", pady=1)
                     self.device_monitors[dev] = m
                     
-                    # Start bot thread
+                    # Start bot process (แยก process เหมือน CLI mode)
                     if getattr(self, 'is_started', False) and not getattr(self.args, 'no_start', False):
-                        bot = RangerGearBot(dev, self.args)
-                        bot.start()
-                        self.bot_threads.append(bot)
+                        import multiprocessing
+                        args_dict = vars(self.args) if hasattr(self.args, '__dict__') else {}
+                        p = multiprocessing.Process(
+                            target=run_bot_process,
+                            args=(dev, args_dict),
+                            name=f"Bot-{dev}"
+                        )
+                        p.daemon = True
+                        p.start()
+                        self.bot_threads.append(p)
                     self.log("SUCCESS", f"Connected new device: {dev}")
             
             if new_count > 0:
@@ -740,10 +747,17 @@ if GUI_AVAILABLE:
             self.log_text.configure(state="disabled")
 
         def _start_single_bot(self, device_id):
-            bot = RangerGearBot(device_id, self.args)
-            bot.start()
-            self.bot_threads.append(bot)
-            self.log("INFO", f"🚀 Started bot on {device_id}")
+            import multiprocessing
+            args_dict = vars(self.args) if hasattr(self.args, '__dict__') else {}
+            p = multiprocessing.Process(
+                target=run_bot_process,
+                args=(device_id, args_dict),
+                name=f"Bot-{device_id}"
+            )
+            p.daemon = True
+            p.start()
+            self.bot_threads.append(p)
+            self.log("INFO", f"🚀 Started bot process on {device_id} (PID: {p.pid})")
 
         def start_bot(self):
             if getattr(self, 'is_started', False):
@@ -755,7 +769,7 @@ if GUI_AVAILABLE:
             self.lbl_auto_start.configure(text="[ BOT IS RUNNING ]", text_color="#4caf50")
             
             delay_sec = config.get("thread_delay", 5)
-            self.log("INFO", f"Starting Bot Threads (Delay: {delay_sec}s per device)...")
+            self.log("INFO", f"Starting Bot Processes (Delay: {delay_sec}s per device)...")
             
             for i, device_id in enumerate(self.devices):
                 delay_ms = i * int(delay_sec) * 1000
