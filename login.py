@@ -4291,6 +4291,29 @@ class RangerGearBot(threading.Thread):
         
         return status
 
+def run_bot_process(device_id, cli_args_dict):
+    """แต่ละ process จะรัน bot สำหรับ 1 device (แยก CPU core กัน)
+    ต้องอยู่นอก if __name__ == '__main__' เพื่อให้ Windows multiprocessing (spawn) หาเจอ
+    """
+    try:
+        # Re-initialize everything in the new process
+        load_config()
+        find_adb_executable()
+        
+        # Recreate args namespace from dict
+        class Args:
+            pass
+        _args = Args()
+        for k, v in cli_args_dict.items():
+            setattr(_args, k, v)
+        
+        bot = RangerGearBot(device_id, _args)
+        bot.run()  # Call run() directly (not start() since we're already in a separate process)
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"[{device_id}] Process crashed: {e}")
+
 
 if __name__ == "__main__":
     import multiprocessing
@@ -4416,28 +4439,6 @@ if __name__ == "__main__":
     print(f"\n{Fore.CYAN}Starting bot in CLI Mode (Multiprocessing)...{Style.RESET_ALL}")
     
     import multiprocessing
-    
-    def run_bot_process(device_id, cli_args_dict):
-        """แต่ละ process จะรัน bot สำหรับ 1 device (แยก CPU core กัน)"""
-        try:
-            # Re-initialize everything in the new process
-            load_config()
-            find_adb_executable()
-            
-            # Recreate args namespace from dict
-            class Args:
-                pass
-            _args = Args()
-            for k, v in cli_args_dict.items():
-                setattr(_args, k, v)
-            
-            bot = RangerGearBot(device_id, _args)
-            bot.run()  # Call run() directly (not start() since we're already in a separate process)
-        except KeyboardInterrupt:
-            pass
-        except Exception as e:
-            print(f"[{device_id}] Process crashed: {e}")
-    
     # If device is specified, only run that one (useful for multi-window mode)
     targets = [args.device] if args.device else devices
     
