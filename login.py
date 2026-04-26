@@ -2807,6 +2807,18 @@ class RangerGearBot(threading.Thread):
             self.click("img/fixaccep.png")
             sleep(1)
 
+        # fixpop.png: เช็คตลอดเจอก็กดรัวๆ เหมือน fixnet (ลอยๆ เจอก็กด)
+        fixpop_clicks = 0
+        while self.exists_in_cache("img/fixpop.png", similarity=0.8):
+            fixpop_clicks += 1
+            print(f"[{self.device_id}] [POPUP] fixpop.png detected (click #{fixpop_clicks}), clicking...")
+            self.click("img/fixpop.png", similarity=0.8)
+            sleep(1.5)
+            self._raw_capture()
+            if fixpop_clicks >= 10:
+                print(f"[{self.device_id}] [POPUP] fixpop.png clicked 10 times, breaking to avoid infinite loop")
+                break
+
     def _raw_capture(self):
         """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน) - ใช้ raw screencap เร็วขึ้น"""
         try:
