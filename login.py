@@ -2437,7 +2437,6 @@ class RangerGearBot(threading.Thread):
             full_path = os.path.normpath(full_path)
             
             if not os.path.exists(full_path):
-                print(f"[WARN] Image file not found: {full_path}")
                 cls._template_cache_cls[template_path] = None
                 return None
                 
