@@ -1871,11 +1871,19 @@ class RangerGearBot(threading.Thread):
                 return False
         
         def check_hero_images(adb_img):
+            # ค้นหาจาก img/ranger-gacha/ ก่อน (ตรงกับ HERO_MAPPING keys โดยตรง)
+            gacha_hero_images = ['gachahero1.png', 'gachahero2.png', 'gachahero3.png', 'gachahero4.png']
+            for hero_img in gacha_hero_images:
+                hero_pos = ImgSearchADB(adb_img, f'img/ranger-gacha/{hero_img}')
+                if hero_pos:
+                    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] พบ {hero_img} (ranger-gacha)")
+                    return hero_img
+            # Fallback: ค้นหาจาก img/ranger/ (heroo1-4.png)
             hero_images = ['heroo1.png', 'heroo2.png', 'heroo3.png', 'heroo4.png']
             for hero_img in hero_images:
                 hero_pos = ImgSearchADB(adb_img, f'img/ranger/{hero_img}')
                 if hero_pos:
-                    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] พบ {hero_img}")
+                    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] พบ {hero_img} (ranger)")
                     return hero_img
             return None
 
@@ -1958,14 +1966,17 @@ class RangerGearBot(threading.Thread):
                     if not found_hero: 
                         device.backup_failed_game_data()
                         ui_stats.update_hero("สุ่มไม่ได้")
+                        device.clear_and_restart()
+                        time.sleep(2)
+                        return "random-Fail"
                     else:
                         hero_key = found_hero.replace(".png", "").replace("heroo", "gachahero")
                         display_name = config.get("HERO_MAPPING", {}).get(hero_key, found_hero)
                         ui_stats.update_hero(display_name)
                         device.backup_game_data(display_name)
-                    device.clear_and_restart()
-                    time.sleep(2)
-                    return "random-Fail"
+                        device.clear_and_restart()
+                        time.sleep(2)
+                        return "backup_complete"
                 gacha3_pos = ImgSearchADB(adb_img, 'img/gacha3.png')
                 if gacha3_pos:
                     if gacha3_start_time is None: gacha3_start_time = current_time
@@ -2055,13 +2066,17 @@ class RangerGearBot(threading.Thread):
                         if not found_hero: 
                             device.backup_failed_game_data()
                             ui_stats.update_hero("สุ่มไม่ได้")
+                            device.clear_and_restart()
+                            time.sleep(2)
+                            return "random-Fail"
                         else:
                             hero_key = found_hero.replace(".png", "").replace("heroo", "gachahero")
                             display_name = config.get("HERO_MAPPING", {}).get(hero_key, found_hero)
                             ui_stats.update_hero(display_name)
-                        device.clear_and_restart()
-                        time.sleep(2)
-                        return "random-Fail"
+                            device.backup_game_data(display_name)
+                            device.clear_and_restart()
+                            time.sleep(2)
+                            return "backup_complete"
                 if not found_initial_swap_shop:
                     swap_shop_pos = ImgSearchADB(adb_img, 'img/gacha.png')
                     if swap_shop_pos:
