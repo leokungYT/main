@@ -1,0 +1,20 @@
+Line 171: def update_hero(self, hero_name, count=1):
+Line 1480: def backup_failed_game_data(self):
+Line 1780: ui_stats.update_hero("สุ่มไม่ได้")
+Line 1808: ui_stats.update_hero("สุ่มไม่ได้")
+Line 1944: ui_stats.update_hero("สุ่มไม่ได้")
+Line 1967: device.backup_failed_game_data()
+Line 1968: ui_stats.update_hero("สุ่มไม่ได้")
+Line 1975: ui_stats.update_hero(display_name)
+Line 2014: ui_stats.update_hero(display_name)
+Line 2048: ui_stats.update_hero("สุ่มไม่ได้")
+Line 2049: device.backup_failed_game_data()
+Line 2067: device.backup_failed_game_data()
+Line 2068: ui_stats.update_hero("สุ่มไม่ได้")
+Line 2075: ui_stats.update_hero(display_name)
+Line 2129: ui_stats.update_hero("สุ่มไม่ได้")
+Line 2240: ui_stats.update_hero("❌ ไก่บี้")
+Line 2244: self.handle_random_fail(xml_file)
+Line 2383: def handle_random_fail(self, file_path):
+Line 4226: ui_stats.update_hero(f"Found: {len(all_found)} items")
+Line 4228: ui_stats.update_hero("Success")

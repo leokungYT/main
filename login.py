@@ -814,6 +814,19 @@ if GUI_AVAILABLE:
                     hero_raw_data = ui_stats.get_hero_combo_stats()
                     hero_data = hero_raw_data.copy()
                     
+                    # --- Realtime counting of backup-id folder ---
+                    backup_id_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup-id")
+                    if os.path.exists(backup_id_folder):
+                        backup_id_counts = {}
+                        for f in os.listdir(backup_id_folder):
+                            if os.path.isfile(os.path.join(backup_id_folder, f)) and f.lower().endswith(".xml"):
+                                prefix = f.split("-")[0].replace(".xml", "").replace(".XML", "")
+                                backup_id_counts[prefix] = backup_id_counts.get(prefix, 0) + 1
+                        
+                        # Overwrite hero_data with physical file counts
+                        for prefix, count in backup_id_counts.items():
+                            hero_data[prefix] = count
+                    
                     # Handle Login Failures (fixid x 8)
                     login_fail_count = ui_stats.fail_count
                     if login_fail_count > 0:
@@ -823,7 +836,7 @@ if GUI_AVAILABLE:
                     random_fail_count = ui_stats.random_fail_count
                     # Also collect raw "สุ่มไม่ได้" from hero_found_list
                     raw_random_fail = hero_data.pop("สุ่มไม่ได้", 0)
-                    total_gacha_fail = random_fail_count + raw_random_fail
+                    total_gacha_fail = max(random_fail_count, raw_random_fail)
                     if total_gacha_fail > 0:
                         hero_data["❌ สุ่มไม่ได้"] = total_gacha_fail
                     
@@ -2029,8 +2042,8 @@ class RangerGearBot(threading.Thread):
                     stopgacha4_clicked = True
                     stopgacha4_last_position = stopgacha4_pos[0]
                     stopgacha4_last_seen = current_time
-                    if safe_tap(stopgacha4_pos[0][0], stopgacha4_pos[0][1], "stopgacha4 (1)", 0, 0, 0) == "gachaout_found": return "complete"
-                    if safe_tap(stopgacha4_pos[0][0], stopgacha4_pos[0][1], "stopgacha4 (2)", 0, 0, 0.3) == "gachaout_found": return "complete"
+                    if safe_tap(stopgacha4_pos[0][0], stopgacha4_pos[0][1], "stopgacha4 (1)", 0, 0, 0) == "gachaout_found": return "random-Fail"
+                    if safe_tap(stopgacha4_pos[0][0], stopgacha4_pos[0][1], "stopgacha4 (2)", 0, 0, 0.3) == "gachaout_found": return "random-Fail"
                     if check_and_count_swapgacha1() == "complete_gacha":
                         device.clear_and_restart()
                         time.sleep(2)
