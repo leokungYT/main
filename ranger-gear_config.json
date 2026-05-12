@@ -4,7 +4,7 @@
     "find_ranger": 0,
     "find_gear": 0,
     "find_all": 1,
-    "custommode": 1,
+    "custommode": 0,
     "custom": {
         "characters": [
             "Anya",
@@ -22,7 +22,8 @@
             "chip",
             "pew",
             "outlaw",
-            "soji"
+            "soji",
+            "kukuru"
         ]
     },
     "characters": [
@@ -43,7 +44,8 @@
         "pew",
         "maid",
         "radish",
-        "new soldier"
+        "new soldier",
+        "kukuru"
     ],
     "ranger_images": {},
     "gearname": {
