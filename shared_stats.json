@@ -1,16 +1,18 @@
 {
-  "success_count": 3,
+  "success_count": 1,
   "fail_count": 0,
+  "random_fail_count": 1,
   "hero_found_list": {
-    "anya+kappa+kukuru+yorU": 1,
-    "anya+kappa+kukuruU+yor": 1,
-    "anya+kappa+kukuru+yor": 1
+    "kappa+": 1,
+    "สุ่มไม่ได้": 1
   },
   "device_statuses": {
     "emulator-5556": {
-      "step": "Waiting for files",
-      "status": "waiting"
+      "step": "Post-Login Tasks",
+      "status": "working"
     }
   },
-  "last_update": 1778596956.6290576
+  "last_update": 1781452874.0199256,
+  "total_login_time": 443.5924210548401,
+  "login_time_count": 1
 }
