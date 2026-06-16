@@ -800,7 +800,8 @@ if GUI_AVAILABLE:
                     source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
                     qsize = 0
                     if os.path.exists(source_folder):
-                        qsize = len([f for f in os.listdir(source_folder) if f.lower().endswith(".xml")])
+                        for _root, _dirs, _files in os.walk(source_folder):
+                            qsize += len([f for f in _files if f.lower().endswith(".xml")])
                     
                     self.lbl_file_count.configure(text=f"📁 {qsize}")
                     self.lbl_succ_count.configure(text=f"✅ {ui_stats.success_count}")
@@ -2564,7 +2565,9 @@ class RangerGearBot(threading.Thread):
         lock_dir = os.path.join(tempfile.gettempdir(), "ranger-locks")
         if not os.path.exists(lock_dir):
             os.makedirs(lock_dir, exist_ok=True)
-        lock_name = os.path.basename(xml_file) + ".lock"
+        # ใช้ hash ของ full path กัน lock ชนกันกรณีไฟล์ชื่อซ้ำในคนละโฟลเดอร์ย่อย
+        full = os.path.abspath(xml_file)
+        lock_name = hashlib.md5(full.encode("utf-8")).hexdigest() + "_" + os.path.basename(xml_file) + ".lock"
         return os.path.join(lock_dir, lock_name)
 
     def _get_next_available_file(self):
@@ -2572,7 +2575,12 @@ class RangerGearBot(threading.Thread):
         source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
         if not os.path.exists(source_folder): return None
         
-        files = [os.path.join(source_folder, f) for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
+        # เดินเข้าทุกโฟลเดอร์ย่อยใน backup/ เพื่อดึงไฟล์ .xml ทั้งหมด (ลากทั้งโฟลเดอร์มาวางได้เลย)
+        files = []
+        for root, dirs, filenames in os.walk(source_folder):
+            for f in filenames:
+                if f.lower().endswith(".xml"):
+                    files.append(os.path.join(root, f))
         # Shuffle files so multiple processes don't hit the exact same order
         import random
         random.shuffle(files)
@@ -4736,9 +4744,11 @@ if __name__ == "__main__":
     # Setup Queue (Still needed for GUI but threads will use directory scanning)
     source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
     if os.path.exists(source_folder):
-        files = [f for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
+        files = []
+        for _root, _dirs, _fs in os.walk(source_folder):
+            files += [f for f in _fs if f.lower().endswith(".xml")]
         ui_stats.update(total=len(files))
-        print(f"[FILE] Found {len(files)} files in {source_folder}")
+        print(f"[FILE] Found {len(files)} files in {source_folder} (รวมโฟลเดอร์ย่อย)")
     
     # Selection
     if not args.cli and GUI_AVAILABLE:
