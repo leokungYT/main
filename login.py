@@ -2194,7 +2194,16 @@ class RangerGearBot(threading.Thread):
                     device.clear_and_restart()
                     time.sleep(6)
                     return "kaiby"
-                
+
+                # Check for clear-ruby -> clear app + ส่งไป random-fail + เริ่มไฟล์ใหม่
+                clearruby_pos = ImgSearchADB(adb_img, 'img/clear-ruby.bmp')
+                if clearruby_pos:
+                    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ พบ clear-ruby - clear app + ส่งไป random-fail")
+                    ui_stats.update_hero("สุ่มไม่ได้")
+                    device.clear_and_restart()
+                    time.sleep(6)
+                    return "random-Fail"
+
                 if not all_in_mode:
                     gachaout_priority_pos = ImgSearchADB(adb_img, 'img/gachaout.png') or ImgSearchADB(adb_img, 'img/gachaout1.png')
                     if gachaout_priority_pos:
