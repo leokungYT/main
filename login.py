@@ -1415,26 +1415,47 @@ class RangerGearBot(threading.Thread):
     def open_app(self):
         self.last_activity_time = time.time()
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
+        # เช็คครั้งเดียวว่าเกมติดตั้งอยู่ไหม - ถ้าไม่ติดตั้งจะ retry กี่ครั้งก็เปิดไม่ได้
+        try:
+            pm_res = self.adb_run([
+                self.adb_cmd, "-s", self.device_id, "shell",
+                "pm", "list", "packages", "com.linecorp.LGRGS"
+            ], timeout=8)
+            pm_out = (pm_res.stdout or b"").decode("utf-8", "ignore").strip()
+            if "com.linecorp.LGRGS" not in pm_out:
+                print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS บนเครื่องนี้! (ยังไม่ได้ติดตั้ง/ชื่อ package ไม่ตรง) - หยุด retry")
+                return False
+        except Exception as e:
+            print(f"[{self.device_id}] [WARN] เช็ค package ไม่ได้: {e} - ลองเปิดต่อ")
+
         attempt = 0
         while attempt < 5:
             attempt += 1
             try:
                 # สลับวิธีเปิด: am start กับ monkey
                 if attempt % 2 == 1:
-                    self.adb_run([
+                    res = self.adb_run([
                         self.adb_cmd, "-s", self.device_id, "shell",
                         "am", "start", "-S", "-n",
                         "com.linecorp.LGRGS/com.linecorp.common.activity.LineActivity"
                     ], timeout=10)
                 else:
-                    self.adb_run([
+                    res = self.adb_run([
                         self.adb_cmd, "-s", self.device_id, "shell",
                         "monkey", "-p", "com.linecorp.LGRGS",
                         "-c", "android.intent.category.LAUNCHER", "1"
                     ], timeout=10)
-                
+
+                # เก็บ output ของคำสั่งเปิดแอปไว้ดูสาเหตุจริงตอนเปิดไม่ติด
+                launch_out = ""
+                try:
+                    launch_out = ((res.stdout or b"").decode("utf-8", "ignore") +
+                                  (res.stderr or b"").decode("utf-8", "ignore")).strip().replace("\n", " | ")
+                except Exception:
+                    pass
+
                 sleep(3)
-                
+
                 # ตรวจว่าแอปยังรันอยู่ด้วย pidof
                 try:
                     pid_result = subprocess.run(
@@ -1444,18 +1465,18 @@ class RangerGearBot(threading.Thread):
                     pid = pid_result.stdout.strip()
                 except Exception:
                     pid = ""
-                
+
                 if pid:
                     print(f"[{self.device_id}] ✓ App running (PID: {pid}) - attempt {attempt}")
                     return True
                 else:
-                    print(f"[{self.device_id}] ✗ App crashed/bounced! (attempt {attempt}) Retrying...")
+                    print(f"[{self.device_id}] ✗ App crashed/bounced! (attempt {attempt}) Retrying... | สาเหตุจาก launch: {launch_out[:250] or '(ไม่มี output)'}")
                     sleep(2)
-                    
+
             except Exception as e:
                 print(f"[{self.device_id}] Error opening app (attempt {attempt}): {e}")
                 sleep(2)
-        
+
         print(f"[{self.device_id}] Failed to open app after 5 attempts!")
         return False
 
