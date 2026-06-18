@@ -224,6 +224,7 @@ if GUI_AVAILABLE:
             self.add_switch(scroll_frame, "⏩ ข้ามเช็คไก่บี้ (kaibycheck)", "kaibycheck")
             self.add_switch(scroll_frame, "ใช้ตั๋วทั้งหมด", "all-tiket")
             self.add_switch(scroll_frame, "ระบบ Link", "link")
+            self.add_switch(scroll_frame, "🎯 ทำเควส (Mission)", "misson")
             self.add_switch(scroll_frame, "ใช้เพชรในการสุ่ม", "all-in")
             
             # Max Gacha - ใส่ตัวเลข
@@ -4039,6 +4040,231 @@ class RangerGearBot(threading.Thread):
         sleep(2)
 
     # =========================================================
+    # Mission Sequence (ported from misson.py)
+    # =========================================================
+    def process_mission_sequence(self):
+        """ทำ mission sequence - มีการตรวจสอบ fixnet.png อย่างต่อเนื่อง (ผ่าน check_floating_popups)"""
+        MISSION_SIM = 0.8
+        try:
+            print(f"[{self.device_id}] Starting mission sequence")
+
+            # ขั้นตอนที่ 1: หา misson.png
+            mission_found = False
+            timeout = 30
+            start_time = time.time()
+
+            print(f"[{self.device_id}] Looking for misson.png...")
+            while time.time() - start_time < timeout:
+                try:
+                    self.capture_screen()
+                    self.check_floating_popups()  # ⭐ ตรวจสอบ fixnet.png ก่อนเสมอ
+
+                    mission_pos = self._find_in_screen('img/misson.png', MISSION_SIM)
+                    if mission_pos:
+                        self.tap(mission_pos[0], mission_pos[1])
+                        mission_found = True
+                        print(f"[{self.device_id}] Found misson.png!")
+                        sleep(2)
+                        break
+
+                    sleep(1)
+                except Exception:
+                    continue
+
+            if not mission_found:
+                print(f"[{self.device_id}] misson.png not found")
+                return False
+
+            # วนลูปทำ mission จนกว่าจะหา misson2.png ไม่เจอ
+            mission_cycle = 1
+            while True:
+                print(f"[{self.device_id}] Mission cycle {mission_cycle}")
+
+                # ขั้นตอนที่ 2: หา misson1.png
+                print(f"[{self.device_id}] Looking for misson1.png...")
+                misson1_click_count = 0
+                misson1_ever_found = False
+
+                while True:
+                    try:
+                        self.capture_screen()
+                        self.check_floating_popups()  # ⭐ ตรวจสอบ fixnet.png ก่อนเสมอ
+
+                        mission1_pos = self._find_in_screen('img/misson1.png', MISSION_SIM)
+                        if mission1_pos:
+                            self.tap(mission1_pos[0], mission1_pos[1])
+                            misson1_click_count += 1
+                            misson1_ever_found = True
+                            print(f"[{self.device_id}] Clicked misson1.png #{misson1_click_count}")
+                            sleep(1)
+                        else:
+                            if misson1_ever_found:
+                                print(f"[{self.device_id}] misson1.png gone after {misson1_click_count} clicks")
+                                break
+                            sleep(1)
+                    except Exception as e:
+                        print(f"[{self.device_id}] Error: {str(e)}")
+                        continue
+
+                # ขั้นตอนที่ 3: หา missonnew1.png และกดตำแหน่งเดิม 25 รอบ
+                missonnew1_found = False
+                saved_position = None
+                timeout = 5
+                start_time = time.time()
+
+                print(f"[{self.device_id}] Looking for missonnew1.png...")
+                while time.time() - start_time < timeout:
+                    try:
+                        self.capture_screen()
+                        self.check_floating_popups()  # ⭐ ตรวจสอบ fixnet.png ก่อนเสมอ
+
+                        missonnew1_pos = self._find_in_screen('img/missonnew1.png', MISSION_SIM)
+                        if missonnew1_pos:
+                            saved_position = (missonnew1_pos[0], missonnew1_pos[1])
+                            self.tap(saved_position[0], saved_position[1])
+                            missonnew1_found = True
+                            print(f"[{self.device_id}] Found missonnew1.png!")
+                            sleep(1)
+                            break
+
+                        sleep(1)
+                    except Exception:
+                        continue
+
+                # กดตำแหน่งเดิม 25 รอบ (พร้อมเช็ค fixnet)
+                if missonnew1_found and saved_position:
+                    print(f"[{self.device_id}] Tapping saved position 25 times...")
+                    for i in range(25):
+                        # ⭐ เช็ค fixnet.png ทุกๆ 5 ครั้ง
+                        if i % 5 == 0:
+                            try:
+                                self.capture_screen()
+                                self.check_floating_popups()
+                            except Exception:
+                                pass
+
+                        self.tap(saved_position[0], saved_position[1])
+                        print(f"[{self.device_id}] Tap {i+1}/25")
+                        sleep(0.5)
+
+                # ขั้นตอนที่ 4: หา misson2.png
+                mission2_found = False
+                timeout = 5
+                start_time = time.time()
+
+                print(f"[{self.device_id}] Looking for misson2.png...")
+                while time.time() - start_time < timeout:
+                    try:
+                        self.capture_screen()
+                        self.check_floating_popups()  # ⭐ ตรวจสอบ fixnet.png ก่อนเสมอ
+
+                        mission2_pos = self._find_in_screen('img/misson2.png', MISSION_SIM)
+                        if mission2_pos:
+                            self.tap(mission2_pos[0], mission2_pos[1])
+                            mission2_found = True
+                            print(f"[{self.device_id}] Found misson2.png!")
+                            sleep(2)
+                            break
+
+                        sleep(1)
+                    except Exception:
+                        continue
+
+                if not mission2_found:
+                    print(f"[{self.device_id}] misson2.png not found - mission complete!")
+                    print(f"[{self.device_id}] Clearing app...")
+                    self.clear_and_restart()
+                    sleep(2)
+                    return True
+
+                # ขั้นตอนที่ 5-6: วนหา misson3.png และ missonnew4.png
+                mission3_cycle = 1
+                while True:
+                    print(f"[{self.device_id}] Mission3 cycle {mission3_cycle}")
+
+                    # ขั้นตอนที่ 5: หา misson3.png
+                    mission3_found = False
+                    timeout = 15
+                    start_time = time.time()
+
+                    print(f"[{self.device_id}] Looking for misson3.png (15s timeout)...")
+                    while time.time() - start_time < timeout:
+                        try:
+                            self.capture_screen()
+                            self.check_floating_popups()  # ⭐ ตรวจสอบ fixnet.png ก่อนเสมอ
+
+                            mission3_pos = self._find_in_screen('img/misson3.png', MISSION_SIM)
+                            if mission3_pos:
+                                self.tap(mission3_pos[0], mission3_pos[1])
+                                print(f"[{self.device_id}] Found misson3.png!")
+                                mission3_found = True
+                                sleep(3)
+                                break
+
+                            elapsed = time.time() - start_time
+                            print(f"[{self.device_id}] Searching... ({elapsed:.1f}s / 15s)")
+                            sleep(1)
+                        except Exception:
+                            continue
+
+                    if not mission3_found:
+                        print(f"[{self.device_id}] misson3.png timeout - completing")
+                        self.clear_and_restart()
+                        sleep(2)
+                        return True
+
+                    print(f"[{self.device_id}] Looking for missonnew4.png...")
+
+                    # ขั้นตอนที่ 6: หา missonnew4.png
+                    missonnew4_found = False
+                    timeout = 5
+                    start_time = time.time()
+
+                    while time.time() - start_time < timeout:
+                        try:
+                            self.capture_screen()
+                            self.check_floating_popups()  # ⭐ ตรวจสอบ fixnet.png ก่อนเสมอ
+
+                            missonnew4_pos = self._find_in_screen('img/missonnew4.png', MISSION_SIM)
+                            if missonnew4_pos:
+                                self.tap(missonnew4_pos[0], missonnew4_pos[1])
+                                missonnew4_found = True
+                                print(f"[{self.device_id}] Found missonnew4.png!")
+                                sleep(2)
+                                break
+
+                            sleep(1)
+                        except Exception:
+                            continue
+
+                    if not missonnew4_found:
+                        print(f"[{self.device_id}] missonnew4.png not found")
+                    else:
+                        print(f"[{self.device_id}] Mission3 cycle completed!")
+
+                    mission3_cycle += 1
+
+                    if mission3_cycle > 20:
+                        print(f"[{self.device_id}] Mission3 limit reached")
+                        self.clear_and_restart()
+                        sleep(2)
+                        return True
+
+                mission_cycle += 1
+
+                if mission_cycle > 10:
+                    print(f"[{self.device_id}] Mission cycle limit reached")
+                    self.clear_and_restart()
+                    sleep(2)
+                    return True
+
+        except Exception as e:
+            print(f"[{self.device_id}] Error: {str(e)}")
+            self.clear_and_restart()
+            sleep(2)
+            return False
+
+    # =========================================================
     # Main Login
     # =========================================================
     def main_login(self, current_filename):
@@ -4511,7 +4737,13 @@ class RangerGearBot(threading.Thread):
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
-                
+
+                # --- Mission Sequence (config misson=1) ---
+                if config.get("misson", 0) == 1:
+                    print(f"[{self.device_id}] config misson=1: Running mission sequence...")
+                    self.update_gui_status("Mission Sequence")
+                    self.process_mission_sequence()
+
                 # --- NEW: Perform tasks and scans according to config ---
                 ranger_results = {}
                 gear_results = set()
