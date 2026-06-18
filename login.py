@@ -1305,7 +1305,7 @@ def search_gachaslot_image(bot):
             return gachaslot_pos[0]
         if swipe_count < max_swipes:
             print(f"[{bot.device_id}] ไม่พบ gachaslot.png - เลื่อนหน้าจอครั้งที่ {swipe_count + 1}")
-            bot.adb_shell("input swipe 824 240 808 109 1000")
+            bot.adb_shell("input swipe 824 240 808 109 5000")
             time.sleep(1)
             swipe_count += 1
         else: return None
@@ -4829,4 +4829,4 @@ if __name__ == "__main__":
         for p in processes:
             if p.is_alive():
                 p.terminate()
-    print("\n[DONE] All tasks completed.")
+    print("\n[DONE] All tasks completed.")
