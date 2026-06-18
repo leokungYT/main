@@ -2181,8 +2181,8 @@ class RangerGearBot(threading.Thread):
                     if not isinstance(channel_pos, list) or len(channel_pos) != 2: return None
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ช่อง: {selected_channel}")
                     if selected_channel in ['ch4', 'ch5']:
-                        for _ in range(5):
-                            device.swipe(852, 316, 855, 116, 600)
+                        for _ in range(2):
+                            device.swipe(852, 316, 855, 116, 2000)
                             time.sleep(0.2)
                     return channel_pos
             except Exception as e:
