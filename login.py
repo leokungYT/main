@@ -4044,7 +4044,7 @@ class RangerGearBot(threading.Thread):
     # =========================================================
     def process_mission_sequence(self):
         """ทำ mission sequence - มีการตรวจสอบ fixnet.png อย่างต่อเนื่อง (ผ่าน check_floating_popups)"""
-        MISSION_SIM = 0.8
+        MISSION_SIM = 0.95
         try:
             print(f"[{self.device_id}] Starting mission sequence")
 
@@ -4193,7 +4193,7 @@ class RangerGearBot(threading.Thread):
                             self.capture_screen()
                             self.check_floating_popups()  # ⭐ ตรวจสอบ fixnet.png ก่อนเสมอ
 
-                            mission3_pos = self._find_in_screen('img/misson3.png', MISSION_SIM)
+                            mission3_pos = self._find_in_screen('img/misson3.png', 0.95)
                             if mission3_pos:
                                 self.tap(mission3_pos[0], mission3_pos[1])
                                 print(f"[{self.device_id}] Found misson3.png!")
