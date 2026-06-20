@@ -310,7 +310,26 @@ if GUI_AVAILABLE:
             self.auto_trade_shopkom9star.insert(0, str(auto_trade_cfg.get("swap_shopkom9star", 1)))
             self.auto_trade_shopkom9star.pack(side="left", padx=5)
             ctk.CTkLabel(shopkom9_frame, text="ครั้ง", anchor="w").pack(side="left")
-            
+
+            # =============================================
+            # ส่วนย้ายไฟล์ login-success → input-id (ตั้งเวลา + ย้ายเอง)
+            # =============================================
+            ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
+            ctk.CTkLabel(scroll_frame, text="📤 ย้ายไฟล์ Success → input-id", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(5, 5), anchor="w")
+
+            move_cfg = self.cfg.get("move_success", {})
+            self.move_success_enabled = ctk.BooleanVar(value=bool(move_cfg.get("enabled", 0)))
+            ctk.CTkSwitch(scroll_frame, text="เปิดย้ายอัตโนมัติตามเวลา", variable=self.move_success_enabled).pack(pady=5, padx=20, anchor="w")
+
+            move_time_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            move_time_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(move_time_frame, text="เวลาที่ย้าย (HH:MM):", anchor="w").pack(side="left")
+            self.move_time_entry = ctk.CTkEntry(move_time_frame, width=80)
+            self.move_time_entry.insert(0, str(move_cfg.get("time", "09:00")))
+            self.move_time_entry.pack(side="left", padx=10)
+
+            ctk.CTkButton(scroll_frame, text="📤 ย้ายเลยตอนนี้", command=self.manual_move_success, fg_color="#3b8ed0", hover_color="#2f72a8", width=150).pack(pady=5, padx=20, anchor="w")
+
             btn_frame = ctk.CTkFrame(self, fg_color="transparent")
             btn_frame.pack(fill="x", padx=20, pady=10)
             
@@ -331,7 +350,22 @@ if GUI_AVAILABLE:
             var = ctk.BooleanVar(value=bool(val))
             self.vars[key] = var
             ctk.CTkSwitch(parent, text=label, variable=var).pack(pady=5, padx=20, anchor="w")
-            
+
+        def manual_move_success(self):
+            """ย้ายไฟล์จาก login-success ไป input-id เดี๋ยวนี้ (กดเอง)"""
+            try:
+                move_cfg = self.cfg.get("move_success", {})
+                src = move_cfg.get("source", "login-success")
+                dst = move_cfg.get("dest", "input-id")
+                moved, msg = move_success_to_input(src, dst)
+                messagebox.showinfo("ย้ายไฟล์", msg)
+                try:
+                    self.parent.log("INFO", f"📤 {msg}")
+                except Exception:
+                    pass
+            except Exception as e:
+                messagebox.showerror("Error", f"ย้ายไม่สำเร็จ: {e}")
+
         def save(self):
             try:
                 for key, var in self.vars.items():
@@ -375,7 +409,15 @@ if GUI_AVAILABLE:
                     self.cfg["auto_trade"]["swap_shopkom9star"] = int(self.auto_trade_shopkom9star.get())
                 except:
                     self.cfg["auto_trade"]["swap_shopkom9star"] = 1
-                
+
+                # Save move_success settings (ย้ายไฟล์ login-success → input-id)
+                if "move_success" not in self.cfg:
+                    self.cfg["move_success"] = {}
+                self.cfg["move_success"]["enabled"] = 1 if self.move_success_enabled.get() else 0
+                self.cfg["move_success"]["time"] = (self.move_time_entry.get().strip() or "09:00")
+                self.cfg["move_success"].setdefault("source", "login-success")
+                self.cfg["move_success"].setdefault("dest", "input-id")
+
                 with open('configmain.json', 'w', encoding='utf-8') as f:
                     json.dump(self.cfg, f, indent=4, ensure_ascii=False)
                 
@@ -575,14 +617,17 @@ if GUI_AVAILABLE:
             self.hero_rows = {}
             self.hero_filter_text = ""
             self.is_started = False
-            
+            self._last_move_date = None  # กันย้ายซ้ำในวันเดียวกัน (scheduled move)
+
             self.setup_ui()
-            
+
             # Handle window close
             self.protocol("WM_DELETE_WINDOW", self.on_closing)
-            
+
             # Use after to start the stats loop without blocking the constructor
             self.after(100, self.update_realtime_stats)
+            # Scheduled file-move checker (login-success → input-id)
+            self.after(5000, self.check_scheduled_move)
             
             # Ensure window is visible
             self.deiconify()
@@ -700,6 +745,7 @@ if GUI_AVAILABLE:
             ctk.CTkButton(bottom_bar, text="⚙ Config", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=self.open_config).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="📁 Backup", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{backup_folder}"')).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="🦸 Heroes", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{heroes_folder}"')).pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="📤 ย้าย Success", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#3b8ed0", command=self.move_success_now).pack(side="left", padx=3, pady=4)
             ctk.CTkLabel(bottom_bar, text="v3.2.0", font=ctk.CTkFont(size=10), text_color="#888888").pack(side="right", padx=8)
 
         def connect_missing_devices(self):
@@ -919,6 +965,38 @@ if GUI_AVAILABLE:
 
         def open_config(self): MainConfigWindow(self)
         def open_heroes(self): HeroConfigWindow(self)
+
+        def move_success_now(self):
+            """ปุ่มย้ายไฟล์เดี๋ยวนี้ (login-success → input-id)"""
+            try:
+                load_config()
+                move_cfg = config.get("move_success", {})
+                src = move_cfg.get("source", "login-success")
+                dst = move_cfg.get("dest", "input-id")
+                moved, msg = move_success_to_input(src, dst)
+                self.log("INFO", f"📤 {msg}")
+            except Exception as e:
+                self.log("ERROR", f"ย้ายไฟล์ไม่สำเร็จ: {e}")
+
+        def check_scheduled_move(self):
+            """เช็คทุก 30 วิ ถ้าถึงเวลาที่ตั้งไว้และเปิดใช้งาน -> ย้ายไฟล์ (วันละครั้ง)"""
+            try:
+                load_config()
+                move_cfg = config.get("move_success", {})
+                if move_cfg.get("enabled", 0) == 1:
+                    target_time = str(move_cfg.get("time", "09:00")).strip()
+                    now = datetime.now()
+                    current_hm = now.strftime("%H:%M")
+                    today = now.strftime("%Y-%m-%d")
+                    if current_hm == target_time and self._last_move_date != today:
+                        self._last_move_date = today
+                        src = move_cfg.get("source", "login-success")
+                        dst = move_cfg.get("dest", "input-id")
+                        moved, msg = move_success_to_input(src, dst)
+                        self.log("INFO", f"📤 [ตั้งเวลา {target_time}] {msg}")
+            except Exception as e:
+                print(f"[MOVE] scheduler error: {e}")
+            self.after(30000, self.check_scheduled_move)
 
 # =============================================================
 # Global Config
@@ -1329,6 +1407,33 @@ def get_next_backup_id():
             if id_part.isdigit(): ids.append(int(id_part))
         except: continue
     return (max(ids) + 1 if ids else 1), filename_prefix
+
+
+def move_success_to_input(source_dir="login-success", dest_dir="input-id"):
+    """ย้ายไฟล์ .xml ทั้งหมดจาก source_dir ไป dest_dir (กันชื่อซ้ำด้วย timestamp)
+    คืนค่า (จำนวนไฟล์ที่ย้าย, ข้อความสรุป)
+    """
+    base = os.path.dirname(os.path.abspath(__file__))
+    src = os.path.join(base, source_dir)
+    dst = os.path.join(base, dest_dir)
+    if not os.path.exists(src):
+        return 0, f"ไม่พบโฟลเดอร์ {source_dir}"
+    os.makedirs(dst, exist_ok=True)
+    moved = 0
+    for f in os.listdir(src):
+        sp = os.path.join(src, f)
+        if os.path.isfile(sp) and f.lower().endswith(".xml"):
+            try:
+                target = os.path.join(dst, f)
+                # กันชื่อซ้ำ: ถ้ามีไฟล์ชื่อเดิมอยู่แล้ว เติม timestamp ต่อท้าย
+                if os.path.exists(target):
+                    name, ext = os.path.splitext(f)
+                    target = os.path.join(dst, f"{name}_{int(time.time())}{ext}")
+                shutil.move(sp, target)
+                moved += 1
+            except Exception as e:
+                print(f"[MOVE] error moving {f}: {e}")
+    return moved, f"ย้าย {moved} ไฟล์ จาก {source_dir} → {dest_dir}"
 
 # =============================================================
 # RangerGearBot Class - Unified Bot for Ranger + Gear
@@ -2206,9 +2311,19 @@ class RangerGearBot(threading.Thread):
                 device.capture_screen()
                 adb_img = device._screen_color
                 current_time = time.time()
+
+                # ⭐ เช็ค fixrandom1 ลอยๆ ตลอดทั้งกระบวนการ - เจอเมื่อไหร่กด fixrandom2 ทันที
+                if ImgSearchADB(adb_img, 'img/fixrandom1.bmp'):
+                    fixrandom2_pos = ImgSearchADB(adb_img, 'img/fixrandom2.bmp')
+                    if fixrandom2_pos:
+                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] 🎲 พบ fixrandom1 - กด fixrandom2")
+                        device.tap(fixrandom2_pos[0][0], fixrandom2_pos[0][1])
+                        time.sleep(1)
+                        continue
+
                 critical_error = check_critical_errors(device, adb_img, "process_swap_shop")
                 if critical_error: return critical_error
-                
+
                 # Check for kaibyswap_shop.png
                 kaibyswap_pos = ImgSearchADB(adb_img, 'img/kaibyswap_shop.png')
                 if kaibyswap_pos:
