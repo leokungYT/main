@@ -1040,12 +1040,18 @@ def load_config():
     global config
     
     # 1. Load main config from ranger-gear_config.json
+    #    ไฟล์นี้ใช้เป็น "ข้อมูลพื้นฐาน" เท่านั้น (ชื่อเกียร์/ตัวละคร/ocr_region/ranger_images)
+    #    สวิตช์โหมด find_ranger/find_gear/find_all เป็นของบอท ranger-gear.py (สคริปต์แยก)
+    #    login.py ต้องกำหนดโหมด "STRICTLY from configmain.json" จึงตัด key เหล่านี้ทิ้ง
+    #    ไม่ให้รั่วมาบังคับให้ login.py วิ่งกระบวนการ FIND-RANGER/CHECK-GEAR เอง
     main_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ranger-gear_config.json")
     if os.path.exists(main_config_file):
         try:
             with open(main_config_file, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
-                config.update(loaded)
+            for mode_key in ("find_ranger", "find_gear", "find_all"):
+                loaded.pop(mode_key, None)
+            config.update(loaded)
             print(f"[CONFIG] Base Loaded: {main_config_file}")
         except Exception as e:
             print(f"[WARN] Error loading base config: {e}")
