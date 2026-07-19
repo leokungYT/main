@@ -4659,16 +4659,20 @@ class RangerGearBot(threading.Thread):
                 
             # *** SUCCESS -> Just Login and Backup ***
             if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
-                # [DIST CHECK] แวะเช็คหา distcheck หรือ distskip 5วิ
-                print(f"[{self.device_id}] stoplogin found, checking for distcheck/distskip (5s)...")
+                # [DIST CHECK] แวะเช็คหา distcheck / distskip / fixbylv 5วิ
+                print(f"[{self.device_id}] stoplogin found, checking for distcheck/distskip/fixbylv (5s)...")
                 found_distcheck = False
                 found_distskip_early = False
+                found_fixbylv = False
                 for _ in range(5):
                     if self.exists_in_cache("img/distcheck.png"):
                         found_distcheck = True
                         break
                     if self.exists_in_cache("img/distskip.png"):
                         found_distskip_early = True
+                        break
+                    if any(self.exists_in_cache(f"img/fixbylv{i}.bmp", similarity=0.8) for i in range(1, 10)):
+                        found_fixbylv = True
                         break
                     sleep(1)
                     self.capture_screen()
@@ -4828,6 +4832,29 @@ class RangerGearBot(threading.Thread):
                             break
                     
                     print(f"[{self.device_id}] [DIST] dist sequence complete.")
+
+                elif found_fixbylv:
+                    # [FIXBYLV] เจอ fixbylv -> วนกดตัวที่เจอ (fixbylv1 ถึง fixbylv9) จนกว่าจะไม่เจอ
+                    print(f"[{self.device_id}] [FIXBYLV] fixbylv detected! Clicking fixbylv1-9 until gone...")
+                    fixbylv_start = time.time()
+                    while True:
+                        if time.time() - fixbylv_start > 120:
+                            print(f"[{self.device_id}] [FIXBYLV] Timeout (120s). Stopping.")
+                            break
+                        self.capture_screen()
+                        if self.check_error_images() == "icon": self.open_app()
+                        clicked_any = False
+                        for i in range(1, 10):
+                            fixbylv_img = f"img/fixbylv{i}.bmp"
+                            if self.exists_in_cache(fixbylv_img, similarity=0.8):
+                                self.click(fixbylv_img, similarity=0.8)
+                                print(f"[{self.device_id}] [FIXBYLV] Clicked fixbylv{i}.bmp")
+                                clicked_any = True
+                                sleep(1.2)
+                                break
+                        if not clicked_any:
+                            print(f"[{self.device_id}] [FIXBYLV] No fixbylv found - sequence complete.")
+                            break
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
