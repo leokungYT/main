@@ -1,10 +1,17 @@
 {
-  "success_count": 0,
+  "success_count": 4,
   "fail_count": 0,
   "random_fail_count": 0,
-  "hero_found_list": {},
-  "device_statuses": {},
-  "last_update": 1781978329.0495179,
-  "total_login_time": 0.0,
-  "login_time_count": 0
+  "hero_found_list": {
+    "Success": 4
+  },
+  "device_statuses": {
+    "emulator-5556": {
+      "step": "Waiting for files",
+      "status": "waiting"
+    }
+  },
+  "last_update": 1784444329.9600399,
+  "total_login_time": 502.285879611969,
+  "login_time_count": 4
 }

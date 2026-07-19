@@ -55,7 +55,7 @@
     "black_screen_timeout": 8,
     "loop1": 0,
     "first_loop": 0,
-    "kaibyskip": 1,
+    "kaibyskip": 0,
     "kaibycheck": 0,
     "misson": 0,
     "move_success": {
