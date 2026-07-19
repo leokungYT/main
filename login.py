@@ -3794,6 +3794,36 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Find-Ranger complete.")
         return results
 
+    def run_fixbylv_sequence(self):
+        """[FIXBYLV] วนกดตัวที่เจอ (fixbylv1 ถึง fixbylv9) จนกว่าจะไม่เจอ
+        กันกดซ้ำ: รูปเดิมกดได้สูงสุด 3 ครั้ง ครบแล้วข้ามรูปนั้นเลย (เช่นปุ่ม SKIP ที่อยู่บนจอตลอด)"""
+        print(f"[{self.device_id}] [FIXBYLV] Clicking fixbylv1-9 until gone (max 3 clicks each)...")
+        fixbylv_start = time.time()
+        fixbylv_click_counts = {}
+        while True:
+            if time.time() - fixbylv_start > 120:
+                print(f"[{self.device_id}] [FIXBYLV] Timeout (120s). Stopping.")
+                break
+            self.capture_screen()
+            if self.check_error_images() == "icon": self.open_app()
+            clicked_any = False
+            for i in range(1, 10):
+                if fixbylv_click_counts.get(i, 0) >= 3:
+                    continue  # กดครบ 3 ครั้งแล้ว ข้ามรูปนี้
+                fixbylv_img = f"img/fixbylv{i}.bmp"
+                # fixbylv1 เป็นข้อความ ใช้ 0.7 (0.8 จับไม่ติด) / ปุ่ม 2-9 คง 0.8 กัน false match
+                sim = 0.7 if i == 1 else 0.8
+                if self.exists_in_cache(fixbylv_img, similarity=sim):
+                    self.click(fixbylv_img, similarity=sim)
+                    fixbylv_click_counts[i] = fixbylv_click_counts.get(i, 0) + 1
+                    print(f"[{self.device_id}] [FIXBYLV] Clicked fixbylv{i}.bmp ({fixbylv_click_counts[i]}/3)")
+                    clicked_any = True
+                    sleep(1.2)
+                    break
+            if not clicked_any:
+                print(f"[{self.device_id}] [FIXBYLV] No fixbylv left to click - sequence complete.")
+                break
+
     def backup_ranger_results(self, results, gear_results=None):
         """Save backup based on results"""
         filename = self.current_original_filename or "unknown.xml"
@@ -4931,6 +4961,22 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{self.device_id}] [DIST] BACK spam reached 30 - proceeding to distskip step")
                                 break
 
+                    # 2.5 แวะหา fixbylv1.bmp อีก 3 วิ - เจอค่อยเข้าลูป fixbylv / ไม่เจอข้ามไป distskip เลย
+                    print(f"[{self.device_id}] [DIST] Checking for fixbylv1.bmp (3s)...")
+                    fixbylv_found_mid = False
+                    fixbylv_check_start = time.time()
+                    while time.time() - fixbylv_check_start < 3:
+                        self.capture_screen()
+                        if self.exists_in_cache("img/fixbylv1.bmp", similarity=0.7):
+                            fixbylv_found_mid = True
+                            break
+                        sleep(0.5)
+                    if fixbylv_found_mid:
+                        print(f"[{self.device_id}] [DIST] fixbylv1 found! Running fixbylv sequence...")
+                        self.run_fixbylv_sequence()
+                    else:
+                        print(f"[{self.device_id}] [DIST] fixbylv1 not found in 3s - skipping to distskip step")
+
                     # 6. distskip -> stagespecal.png -> backdist -> กด ESC
                     print(f"[{self.device_id}] [DIST] Waiting for distskip.png...")
                     skip_start = time.time()
@@ -4981,34 +5027,9 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [DIST] dist sequence complete.")
 
                 elif found_fixbylv:
-                    # [FIXBYLV] เจอ fixbylv -> วนกดตัวที่เจอ (fixbylv1 ถึง fixbylv9) จนกว่าจะไม่เจอ
-                    # กันกดซ้ำ: รูปเดิมกดได้สูงสุด 3 ครั้ง ครบแล้วข้ามรูปนั้นเลย (เช่นปุ่ม SKIP ที่อยู่บนจอตลอด)
-                    print(f"[{self.device_id}] [FIXBYLV] fixbylv detected! Clicking fixbylv1-9 until gone (max 3 clicks each)...")
-                    fixbylv_start = time.time()
-                    fixbylv_click_counts = {}
-                    while True:
-                        if time.time() - fixbylv_start > 120:
-                            print(f"[{self.device_id}] [FIXBYLV] Timeout (120s). Stopping.")
-                            break
-                        self.capture_screen()
-                        if self.check_error_images() == "icon": self.open_app()
-                        clicked_any = False
-                        for i in range(1, 10):
-                            if fixbylv_click_counts.get(i, 0) >= 3:
-                                continue  # กดครบ 3 ครั้งแล้ว ข้ามรูปนี้
-                            fixbylv_img = f"img/fixbylv{i}.bmp"
-                            # fixbylv1 เป็นข้อความ ใช้ 0.7 (0.8 จับไม่ติด) / ปุ่ม 2-9 คง 0.8 กัน false match
-                            sim = 0.7 if i == 1 else 0.8
-                            if self.exists_in_cache(fixbylv_img, similarity=sim):
-                                self.click(fixbylv_img, similarity=sim)
-                                fixbylv_click_counts[i] = fixbylv_click_counts.get(i, 0) + 1
-                                print(f"[{self.device_id}] [FIXBYLV] Clicked fixbylv{i}.bmp ({fixbylv_click_counts[i]}/3)")
-                                clicked_any = True
-                                sleep(1.2)
-                                break
-                        if not clicked_any:
-                            print(f"[{self.device_id}] [FIXBYLV] No fixbylv left to click - sequence complete.")
-                            break
+                    # [FIXBYLV] เจอ fixbylv1 -> เข้าลูปกด fixbylv1-9
+                    print(f"[{self.device_id}] [FIXBYLV] fixbylv detected!")
+                    self.run_fixbylv_sequence()
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
