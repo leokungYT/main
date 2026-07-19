@@ -3676,11 +3676,12 @@ class RangerGearBot(threading.Thread):
                 self.adb_run([self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, dst])
                 print(f"[{self.device_id}] Backed up to: {dst}")
             else:
-                not_found_dir = "not-found"
-                if not os.path.exists(not_found_dir): os.makedirs(not_found_dir)
-                dst = os.path.join(not_found_dir, filename)
+                # ล็อกอินสำเร็จแต่ไม่เจอ hero/gear -> เก็บเข้า login-success (ไม่ใช่ not-found)
+                success_dir = "login-success"
+                if not os.path.exists(success_dir): os.makedirs(success_dir)
+                dst = os.path.join(success_dir, filename)
                 self.adb_run([self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, dst])
-                print(f"[{self.device_id}] Backed up to not-found: {dst}")
+                print(f"[{self.device_id}] Backed up to login-success: {dst}")
             
             self.adb_shell(f"rm -f {temp_remote}")
         except Exception as e:
