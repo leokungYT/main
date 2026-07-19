@@ -1658,6 +1658,31 @@ class RangerGearBot(threading.Thread):
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
+    def _resolve_game_activity(self):
+        """หา launcher activity จริงของเกมจากเครื่อง (ชื่อเปลี่ยนตามเวอร์ชันเกม) แล้ว cache ไว้
+        - เดิม hardcode com.linecorp.common.activity.LineActivity ซึ่งเกมเวอร์ชันใหม่เปลี่ยนเป็น .LineRangersAdr แล้ว
+        - ถามจากเครื่องตรงๆ จะได้ไม่พังอีกเวลาเกมเปลี่ยนชื่อ activity"""
+        cached = getattr(self, "_game_activity", None)
+        if cached:
+            return cached
+        try:
+            r = self.adb_run([
+                self.adb_cmd, "-s", self.device_id, "shell",
+                "cmd", "package", "resolve-activity", "--brief", "com.linecorp.LGRGS"
+            ], timeout=8)
+            out = (r.stdout or b"").decode("utf-8", "ignore")
+            for line in out.splitlines():
+                line = line.strip()
+                if line.startswith("com.linecorp.LGRGS/"):
+                    self._game_activity = line
+                    print(f"[{self.device_id}] [APP] Launcher activity: {line}")
+                    return line
+        except Exception:
+            pass
+        # fallback: ชื่อ activity ของเกมเวอร์ชันปัจจุบัน
+        self._game_activity = "com.linecorp.LGRGS/.LineRangersAdr"
+        return self._game_activity
+
     def open_app(self):
         self.last_activity_time = time.time()
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
@@ -1691,7 +1716,7 @@ class RangerGearBot(threading.Thread):
                     res = self.adb_run([
                         self.adb_cmd, "-s", self.device_id, "shell",
                         "am", "start", "-S", "-n",
-                        "com.linecorp.LGRGS/com.linecorp.common.activity.LineActivity"
+                        self._resolve_game_activity()
                     ], timeout=10)
                 else:
                     res = self.adb_run([
@@ -3950,8 +3975,8 @@ class RangerGearBot(threading.Thread):
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                # Push to tmp
-                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30)
+                # Push to tmp (60 วิ: ตอนรันหลายจอพร้อมกัน ดิสก์หนัก 30 วิอาจไม่พอ)
+                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=60)
                 if result.returncode != 0:
                     err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
                     print(f"[{self.device_id}] Push attempt {attempt} failed: {err}")
