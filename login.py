@@ -4665,14 +4665,15 @@ class RangerGearBot(threading.Thread):
                 found_distskip_early = False
                 found_fixbylv = False
                 for _ in range(5):
+                    # เช็ค fixbylv ก่อน (กันหน้าจอ fixbylv ที่มีปุ่ม SKIP ไปแมตช์ distskip โดยผิด)
+                    if any(self.exists_in_cache(f"img/fixbylv{i}.bmp", similarity=0.8) for i in range(1, 10)):
+                        found_fixbylv = True
+                        break
                     if self.exists_in_cache("img/distcheck.png"):
                         found_distcheck = True
                         break
                     if self.exists_in_cache("img/distskip.png"):
                         found_distskip_early = True
-                        break
-                    if any(self.exists_in_cache(f"img/fixbylv{i}.bmp", similarity=0.8) for i in range(1, 10)):
-                        found_fixbylv = True
                         break
                     sleep(1)
                     self.capture_screen()
