@@ -4659,8 +4659,8 @@ class RangerGearBot(threading.Thread):
                 
             # *** SUCCESS -> Just Login and Backup ***
             if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
-                # [DIST CHECK] แวะเช็คหา distcheck / distskip / fixbylv 5วิ
-                print(f"[{self.device_id}] stoplogin found, checking for distcheck/distskip/fixbylv (5s)...")
+                # [DIST CHECK] แวะเช็คหา fixbylv / distcheck / distskip 5วิ (ตามลำดับนี้)
+                print(f"[{self.device_id}] stoplogin found, checking for fixbylv/distcheck/distskip (5s)...")
                 found_distcheck = False
                 found_distskip_early = False
                 found_fixbylv = False
