@@ -3921,14 +3921,25 @@ class RangerGearBot(threading.Thread):
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
-        
+
+        # ขั้นเตรียมทั้งหมดเป็น best-effort: timeout/พัง = เตือนแล้วไปต่อ ไม่ให้ล้มทั้ง inject
+        # (เดิมคำสั่ง mount ค้างเกิน 10 วิ -> TimeoutExpired เด้งออกเป็น Critical Error ทั้งที่เป็นแค่ขั้นเตรียม)
         # ปลดล็อก Read-only (ถ้ามี)
-        self.adb_shell("su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'")
-        
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+        try:
+            self.adb_shell("su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'", timeout=15)
+        except Exception as e:
+            print(f"[{self.device_id}] [WARN] remount ข้ามไป (ไม่ critical): {e}")
+
+        try:
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
+        except Exception as e:
+            print(f"[{self.device_id}] [WARN] force-stop ข้ามไป (ไม่ critical): {e}")
         sleep(2)
-        
-        self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'")
+
+        try:
+            self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
+        except Exception as e:
+            print(f"[{self.device_id}] [WARN] killall ข้ามไป (ไม่ critical): {e}")
         sleep(1)
 
         src = os.path.abspath(local_xml_path)
@@ -3956,8 +3967,8 @@ class RangerGearBot(threading.Thread):
                     f"rm -f {tmp}"
                     f"'"
                 )
-                self.adb_shell(shell_cmd)
-                
+                self.adb_shell(shell_cmd, timeout=20)
+
                 print(f"[{self.device_id}] Injection successful on attempt {attempt}")
                 return local_xml_path
                     
