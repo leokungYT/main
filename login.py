@@ -4738,76 +4738,47 @@ class RangerGearBot(threading.Thread):
                             return "kaiby"
                     # ====================================================================
 
-                    # 1. รอเจอ dist1.png และกด
-                    print(f"[{self.device_id}] [DIST] Waiting for dist1.png...")
-                    dist1_found = False
-                    dist1_start = time.time()
-                    while not dist1_found:
-                        if time.time() - dist1_start > 120:
-                            print(f"[{self.device_id}] [DIST] Timeout waiting for dist1.png (120s). Skipping.")
-                            break
-                        self.capture_screen()
-                        if self.check_error_images() == "icon": self.open_app()
-                        if self.exists_in_cache("img/dist1.png", similarity=0.8):
-                            self.click("img/dist1.png", similarity=0.8)
-                            print(f"[{self.device_id}] [DIST] Clicked dist1.png")
-                            dist1_found = True
-                        sleep(1)
-
-                    # 2. รอเจอ waitdist.png
-                    print(f"[{self.device_id}] [DIST] Waiting for waitdist.png...")
+                    # 1. รอเจอ dist1.png แล้วกดซ้ำๆ จนกว่าจะเจอ waitdist.png ค่อยหยุด
+                    print(f"[{self.device_id}] [DIST] Waiting for dist1.png (click repeatedly until waitdist appears)...")
                     dist_pos = None
-                    dist_wait_start = time.time()
+                    dist1_start = time.time()
                     while dist_pos is None:
-                        if time.time() - dist_wait_start > 120:
+                        if time.time() - dist1_start > 120:
                             print(f"[{self.device_id}] [DIST] Timeout waiting for waitdist.png (120s). Skipping.")
                             break
                         self.capture_screen()
                         if self.check_error_images() == "icon": self.open_app()
+                        # เจอ waitdist ค่อยหยุด
                         dist_pos = self._find_in_screen("img/waitdist.png", similarity=0.8)
                         if dist_pos:
-                            print(f"[{self.device_id}] [DIST] Found waitdist at {dist_pos}")
+                            print(f"[{self.device_id}] [DIST] Found waitdist at {dist_pos} - stop clicking dist1")
+                            break
+                        # ยังไม่เจอ waitdist -> กด dist1.png ซ้ำๆ
+                        if self.exists_in_cache("img/dist1.png", similarity=0.8):
+                            self.click("img/dist1.png", similarity=0.8)
+                            print(f"[{self.device_id}] [DIST] Clicked dist1.png")
                         sleep(1)
 
-                    # 3. รอเจอ dist2.png และกด
+                    # 2. หลังเจอ waitdist -> กด BACK รัวๆ จนเจอ cancel.png แล้วกด cancel -> ไปขั้นตอน distskip เลย
                     if dist_pos:
-                        print(f"[{self.device_id}] [DIST] Waiting for dist2.png...")
-                        dist2_found = False
-                        dist2_start = time.time()
-                        while not dist2_found:
-                            if time.time() - dist2_start > 120:
-                                print(f"[{self.device_id}] [DIST] Timeout waiting for dist2.png (120s). Skipping.")
-                                break
+                        print(f"[{self.device_id}] [DIST] waitdist found - spamming BACK until cancel.png appears...")
+                        back_press_count = 0
+                        while True:
+                            self.adb_shell("input keyevent KEYCODE_BACK")
+                            self.adb_shell("input keyevent KEYCODE_BACK")
+                            self.adb_shell("input keyevent KEYCODE_BACK")
+                            back_press_count += 3
+                            print(f"[{self.device_id}] [DIST] Triple Back spam! (Total: {back_press_count})")
+                            sleep(0.3)
                             self.capture_screen()
-                            if self.check_error_images() == "icon": self.open_app()
-                            if self.exists_in_cache("img/dist2.png", similarity=0.8):
-                                self.click("img/dist2.png", similarity=0.8)
-                                print(f"[{self.device_id}] [DIST] Clicked dist2.png")
-                                dist2_found = True
-                            sleep(1)
-
-                        # 4. กดตำแหน่ง waitdist 30 รอบ
-                        if dist2_found:
-                            print(f"[{self.device_id}] [DIST] Clicking saved position {dist_pos} 30 times...")
-                            for _ in range(30):
-                                self.tap(dist_pos[0], dist_pos[1])
-                                sleep(0.05)
-
-                            # 5. รอเจอ dist3.png และกด
-                            print(f"[{self.device_id}] [DIST] Waiting for dist3.png...")
-                            dist3_found = False
-                            dist3_start = time.time()
-                            while not dist3_found:
-                                if time.time() - dist3_start > 120:
-                                    print(f"[{self.device_id}] [DIST] Timeout waiting for dist3.png (120s). Skipping.")
-                                    break
-                                self.capture_screen()
-                                if self.check_error_images() == "icon": self.open_app()
-                                if self.exists_in_cache("img/dist3.png", similarity=0.8):
-                                    self.click("img/dist3.png", similarity=0.8)
-                                    print(f"[{self.device_id}] [DIST] Clicked dist3.png - Sequence Complete")
-                                    dist3_found = True
+                            if self.exists_in_cache("img/cancel.png", similarity=0.8):
+                                print(f"[{self.device_id}] [DIST] cancel.png appeared - clicking cancel, stop back spam")
+                                self.click("img/cancel.png", similarity=0.8)
                                 sleep(1)
+                                break
+                            if back_press_count >= 30:
+                                print(f"[{self.device_id}] [DIST] BACK spam reached 30 - proceeding to distskip step")
+                                break
 
                     # 6. distskip -> stagespecal.png -> backdist -> กด ESC
                     print(f"[{self.device_id}] [DIST] Waiting for distskip.png...")
