@@ -1241,8 +1241,33 @@ def get_connected_devices():
                     pass
             seen.add(d)
             final_devices.append(d)
-        
-        return final_devices
+
+        # กรองซ้ำขั้นสอง: เช็ค boot_id ของแต่ละเครื่อง
+        # (VM เดียวกันอาจโผล่ 2 ช่องทาง เช่น emulator-5562 กับ 127.0.0.1:5563 หรือพอร์ต TCP แฝด)
+        # boot_id เหมือนกัน = เครื่องเดียวกัน -> เก็บไว้ตัวเดียว
+        unique_devices = []
+        seen_boot_ids = {}
+        for d in final_devices:
+            boot_id = None
+            try:
+                r = subprocess.run(
+                    [adb_path, "-s", d, "shell", "cat", "/proc/sys/kernel/random/boot_id"],
+                    capture_output=True, text=True, timeout=3
+                )
+                boot_id = (r.stdout or "").strip()
+                # boot_id ต้องหน้าตาเป็น uuid ถ้า error/ว่าง ให้ถือว่าเช็คไม่ได้
+                if len(boot_id) < 30 or " " in boot_id:
+                    boot_id = None
+            except Exception:
+                pass
+            if boot_id:
+                if boot_id in seen_boot_ids:
+                    print(f"[ADB] ข้าม {d} (เครื่องเดียวกับ {seen_boot_ids[boot_id]} - boot_id ซ้ำ)")
+                    continue
+                seen_boot_ids[boot_id] = d
+            unique_devices.append(d)
+
+        return unique_devices
     except Exception as e:
         print(f"[ERR] get_connected_devices: {e}")
         return []
@@ -1527,15 +1552,23 @@ class RangerGearBot(threading.Thread):
     def open_app(self):
         self.last_activity_time = time.time()
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
-        # เช็คครั้งเดียวว่าเกมติดตั้งอยู่ไหม - ถ้าไม่ติดตั้งจะ retry กี่ครั้งก็เปิดไม่ได้
+        # เช็คว่าเกมติดตั้งอยู่ไหม - retry 3 รอบก่อนตัดสิน
+        # (ตอน VM เพิ่งบูต pm อาจตอบว่างเปล่าทั้งที่แอปติดตั้งอยู่ -> อย่าเพิ่งฟันธงจากรอบเดียว)
         try:
-            pm_res = self.adb_run([
-                self.adb_cmd, "-s", self.device_id, "shell",
-                "pm", "list", "packages", "com.linecorp.LGRGS"
-            ], timeout=8)
-            pm_out = (pm_res.stdout or b"").decode("utf-8", "ignore").strip()
-            if "com.linecorp.LGRGS" not in pm_out:
-                print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS บนเครื่องนี้! (ยังไม่ได้ติดตั้ง/ชื่อ package ไม่ตรง) - หยุด retry")
+            app_found = False
+            for pm_attempt in range(3):
+                pm_res = self.adb_run([
+                    self.adb_cmd, "-s", self.device_id, "shell",
+                    "pm", "list", "packages", "com.linecorp.LGRGS"
+                ], timeout=8)
+                pm_out = (pm_res.stdout or b"").decode("utf-8", "ignore").strip()
+                if "com.linecorp.LGRGS" in pm_out:
+                    app_found = True
+                    break
+                print(f"[{self.device_id}] [WARN] pm ยังไม่เจอแอป (รอบ {pm_attempt+1}/3) - รอ 2 วิแล้วเช็คใหม่...")
+                sleep(2)
+            if not app_found:
+                print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS บนเครื่องนี้! (เช็คแล้ว 3 รอบ - ยังไม่ได้ติดตั้ง/ชื่อ package ไม่ตรง/เครื่อง ghost) - หยุด retry")
                 return False
         except Exception as e:
             print(f"[{self.device_id}] [WARN] เช็ค package ไม่ได้: {e} - ลองเปิดต่อ")
