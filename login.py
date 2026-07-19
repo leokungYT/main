@@ -1150,14 +1150,104 @@ def find_adb_executable():
     return False
 
 
+_MUMU_MANAGER_CACHE = None
+
+def find_mumu_manager():
+    """หา path ของ MuMuManager.exe (วิธีเดียวกับ pes) - ลองข้างๆ adb ก่อน แล้วค่อยไล่ตาม install ทั่วไป"""
+    global _MUMU_MANAGER_CACHE
+    if _MUMU_MANAGER_CACHE and os.path.exists(_MUMU_MANAGER_CACHE):
+        return _MUMU_MANAGER_CACHE
+    candidates = []
+    # ถ้า adb ที่ใช้อยู่เป็นของ MuMu (…\shell\adb.exe) ลองหา MuMuManager ใน install เดียวกันก่อน
+    try:
+        if adb_path and adb_path.lower().endswith("adb.exe"):
+            root = os.path.dirname(os.path.dirname(adb_path))
+            candidates.append(os.path.join(root, "nx_main", "MuMuManager.exe"))
+            candidates.append(os.path.join(root, "shell", "MuMuManager.exe"))
+    except Exception:
+        pass
+    bases = [r"C:\Program Files\Netease", r"C:\Program Files (x86)\Netease",
+             r"D:\Program Files\Netease", r"E:\Program Files\Netease",
+             r"F:\Program Files\Netease", r"F:\MuMuPlayerGlobal-12.0"]
+    subs = [r"MuMuPlayer\nx_main\MuMuManager.exe",
+            r"MuMuPlayerGlobal-12.0\nx_main\MuMuManager.exe",
+            r"MuMuPlayer-12.0\nx_main\MuMuManager.exe",
+            r"MuMuPlayerGlobal-12.0\shell\MuMuManager.exe",
+            r"MuMu Player 12\shell\MuMuManager.exe",
+            r"MuMuPlayer\shell\MuMuManager.exe"]
+    for b in bases:
+        for s in subs:
+            candidates.append(os.path.join(b, s))
+    for p in candidates:
+        if os.path.exists(p):
+            _MUMU_MANAGER_CACHE = p
+            return p
+    # ท้ายสุด: ไล่ walk หาใน bases
+    for b in bases:
+        if os.path.isdir(b):
+            try:
+                for r, _d, files in os.walk(b):
+                    if "MuMuManager.exe" in files:
+                        _MUMU_MANAGER_CACHE = os.path.join(r, "MuMuManager.exe")
+                        return _MUMU_MANAGER_CACHE
+            except Exception:
+                pass
+    return None
+
+
+def get_mumu_instances():
+    """ถาม MuMuManager (info -v all) ว่า instance ไหนเปิด Android อยู่จริง + adb port อะไร
+    คืน list ของ (index, "ip:port") เฉพาะที่รันอยู่ / คืน None ถ้าใช้ MuMuManager ไม่ได้ (ให้ fallback วิธีเดิม)
+    นี่คือแหล่งความจริง - พอร์ต ghost ที่ไม่ใช่ instance จริงจะไม่อยู่ในลิสต์นี้"""
+    exe = find_mumu_manager()
+    if not exe:
+        return None
+    try:
+        kwargs = {'creationflags': 0x08000000} if os.name == 'nt' else {}
+        r = subprocess.run([exe, "info", "-v", "all"], capture_output=True,
+                           text=True, timeout=30, **kwargs)
+        raw = (r.stdout or "").strip()
+        if not raw:
+            return None
+        data = json.loads(raw)
+        # กรณีมี instance เดียว MuMuManager คืน object เดี่ยว ไม่ใช่ dict ของหลายตัว
+        if "index" in data and "adb_port" in data:
+            data = {str(data.get("index", "0")): data}
+        out = []
+        for key, inf in data.items():
+            if not isinstance(inf, dict):
+                continue
+            if inf.get("is_android_started") and inf.get("adb_port"):
+                ip = inf.get("adb_host_ip", "127.0.0.1")
+                out.append((str(inf.get("index", key)), f"{ip}:{inf['adb_port']}"))
+        return out
+    except Exception as e:
+        print(f"[MuMu] อ่านข้อมูล instance ไม่ได้: {e}")
+        return None
+
+
 def connect_known_ports():
-    """Auto-scan ALL emulator ports, connect everything that responds"""
+    """เชื่อมต่อ emulator: ถาม MuMuManager ก่อน (แม่นสุด ไม่มี ghost) ถ้าไม่ได้ค่อย fallback scan พอร์ต"""
     try:
         # Kill & start adb server
         subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=3)
         time.sleep(0.1)
         subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
         time.sleep(0.5)
+
+        # === วิธีใหม่ (จาก pes): ถาม MuMuManager ตรงๆ ว่ามี instance ไหนเปิดอยู่ ===
+        instances = get_mumu_instances()
+        if instances:
+            print(f"\n--- [ADB] MuMuManager รายงาน {len(instances)} instance ที่เปิดอยู่ ---")
+            for idx, serial in instances:
+                try:
+                    subprocess.run([adb_path, "connect", serial], capture_output=True, timeout=3)
+                    print(f"[ADB] เชื่อม instance {idx} -> {serial}")
+                except Exception:
+                    pass
+            print("--- Scan Complete (MuMuManager) ---\n")
+            return
+        # === Fallback: scan พอร์ตแบบเดิม (กรณีหา MuMuManager ไม่เจอ) ===
 
         # สแกนพอร์ตคี่ตั้งแต่ 5555-5755 (รองรับ 100 จอ MuMu)
         ports = list(range(5555, 5756, 2))  # [5555, 5557, 5559, ..., 5755]
@@ -1241,6 +1331,25 @@ def get_connected_devices():
                     pass
             seen.add(d)
             final_devices.append(d)
+
+        # กรองด้วยรายชื่อจริงจาก MuMuManager (ถ้ามี): พอร์ตที่ไม่อยู่ในลิสต์ = ghost -> ตัดทิ้ง
+        mumu_instances = get_mumu_instances()
+        if mumu_instances:
+            allowed = {s for _i, s in mumu_instances}
+            filtered = []
+            for d in final_devices:
+                serial = d
+                # แปลง emulator-XXXX -> 127.0.0.1:(XXXX+1) เพื่อเทียบกับลิสต์ MuMuManager
+                if d.startswith("emulator-"):
+                    try:
+                        serial = f"127.0.0.1:{int(d.split('-')[1]) + 1}"
+                    except (ValueError, IndexError):
+                        pass
+                if d in allowed or serial in allowed:
+                    filtered.append(d)
+                else:
+                    print(f"[ADB] ข้าม {d} (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)")
+            final_devices = filtered
 
         # กรองซ้ำขั้นสอง: เช็ค boot_id ของแต่ละเครื่อง
         # (VM เดียวกันอาจโผล่ 2 ช่องทาง เช่น emulator-5562 กับ 127.0.0.1:5563 หรือพอร์ต TCP แฝด)
