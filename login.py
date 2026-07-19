@@ -4666,10 +4666,11 @@ class RangerGearBot(threading.Thread):
                 found_distskip_early = False
                 found_fixbylv = False
                 for _ in range(5):
-                    # เช็ค fixbylv ก่อน โดยใช้ fixbylv1.bmp เป็นตัวจับสัญญาณ (anchor) เท่านั้น
-                    # -> จะเข้าขั้นตอน fixbylv ก็ต่อเมื่อเจอ fixbylv1.bmp เท่านั้น (กัน fixbylv2-9 ทำงานเองโดยผิด)
-                    # -> และเช็คก่อน distskip กันหน้าจอที่มีปุ่ม SKIP ไปแมตช์ distskip โดยผิด
-                    if self.exists_in_cache("img/fixbylv1.bmp", similarity=0.8):
+                    # เช็ค fixbylv ก่อน โดยใช้ fixbylv1.bmp ("for you") เป็นตัวจับสัญญาณ (anchor) เท่านั้น
+                    # -> จะเข้าขั้นตอน fixbylv ก็ต่อเมื่อเจอ fixbylv1.bmp เท่านั้น (กัน fixbylv2-9 ปุ่มต่างๆ ทำงานเองโดยผิด)
+                    # -> similarity 0.7: fixbylv1 เป็นข้อความ ค่าจริงมักได้ ~0.75 (0.8 สูงไปเลยจับไม่ติด)
+                    #    วัดจริงบนจอที่ไม่มีข้อความนี้ได้แค่ ~0.35 จึงมี margin เหลือเยอะ ไม่เสี่ยง false match
+                    if self.exists_in_cache("img/fixbylv1.bmp", similarity=0.7):
                         found_fixbylv = True
                         break
                     if self.exists_in_cache("img/distcheck.png"):
@@ -4850,8 +4851,10 @@ class RangerGearBot(threading.Thread):
                         clicked_any = False
                         for i in range(1, 10):
                             fixbylv_img = f"img/fixbylv{i}.bmp"
-                            if self.exists_in_cache(fixbylv_img, similarity=0.8):
-                                self.click(fixbylv_img, similarity=0.8)
+                            # fixbylv1 เป็นข้อความ ใช้ 0.7 (0.8 จับไม่ติด) / ปุ่ม 2-9 คง 0.8 กัน false match
+                            sim = 0.7 if i == 1 else 0.8
+                            if self.exists_in_cache(fixbylv_img, similarity=sim):
+                                self.click(fixbylv_img, similarity=sim)
                                 print(f"[{self.device_id}] [FIXBYLV] Clicked fixbylv{i}.bmp")
                                 clicked_any = True
                                 sleep(1.2)
