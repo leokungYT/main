@@ -3365,11 +3365,13 @@ class RangerGearBot(threading.Thread):
             except:
                 pass  # ถ้าเช็คไม่ได้ก็ข้ามไป
             
-        if self.exists_in_cache("img/kaiby.png"):
-            return "kaiby"
+        # ตรวจ kaiby เฉพาะเมื่อเปิด kaibyskip (ปิด = ไม่ต้องหลบ, login ปกติ)
+        if config.get("kaibyskip", 0) == 1:
+            if self.exists_in_cache("img/kaiby.png"):
+                return "kaiby"
 
-        if self.exists_in_cache("img/kaiby1.png"):
-            return "kaiby"
+            if self.exists_in_cache("img/kaiby1.png"):
+                return "kaiby"
 
         error_images = ["img/failed1.png", "img/fixalerterror1.png"]
         for err in error_images:
@@ -4648,8 +4650,8 @@ class RangerGearBot(threading.Thread):
                 loop_count = 0
                 continue
                 
-            # kaiby.png / kaiby1.png Check
-            if self.exists_in_cache("img/kaiby.png", similarity=0.8) or self.exists_in_cache("img/kaiby1.png", similarity=0.8):
+            # kaiby.png / kaiby1.png Check (เฉพาะเมื่อเปิด kaibyskip)
+            if config.get("kaibyskip", 0) == 1 and (self.exists_in_cache("img/kaiby.png", similarity=0.8) or self.exists_in_cache("img/kaiby1.png", similarity=0.8)):
                 print(f"[{self.device_id}] ⚠️ พบ kaiby.png! (ไก่บี้เด้งระหว่าง Login) เคลียร์แอพและส่งเข้าโฟลเดอร์ kaiby...")
                 self.clear_and_restart()
                 sleep(2)
@@ -4922,8 +4924,8 @@ class RangerGearBot(threading.Thread):
                 self.clear_and_restart()
                 return "success"
                 
-            # Kaiby / Kaiby1 Check (High Priority)
-            if self.exists_in_cache("img/kaiby.png") or self.exists_in_cache("img/kaiby1.png"):
+            # Kaiby / Kaiby1 Check (High Priority) — เฉพาะเมื่อเปิด kaibyskip
+            if config.get("kaibyskip", 0) == 1 and (self.exists_in_cache("img/kaiby.png") or self.exists_in_cache("img/kaiby1.png")):
                 reason = "kaiby1.png" if self.exists_in_cache("img/kaiby1.png") else "kaiby.png"
                 print(f"[{self.device_id}] {reason} detected! Stopping login...")
                 return "kaiby"
