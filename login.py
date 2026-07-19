@@ -4840,8 +4840,10 @@ class RangerGearBot(threading.Thread):
 
                 elif found_fixbylv:
                     # [FIXBYLV] เจอ fixbylv -> วนกดตัวที่เจอ (fixbylv1 ถึง fixbylv9) จนกว่าจะไม่เจอ
-                    print(f"[{self.device_id}] [FIXBYLV] fixbylv detected! Clicking fixbylv1-9 until gone...")
+                    # กันกดซ้ำ: รูปเดิมกดได้สูงสุด 3 ครั้ง ครบแล้วข้ามรูปนั้นเลย (เช่นปุ่ม SKIP ที่อยู่บนจอตลอด)
+                    print(f"[{self.device_id}] [FIXBYLV] fixbylv detected! Clicking fixbylv1-9 until gone (max 3 clicks each)...")
                     fixbylv_start = time.time()
+                    fixbylv_click_counts = {}
                     while True:
                         if time.time() - fixbylv_start > 120:
                             print(f"[{self.device_id}] [FIXBYLV] Timeout (120s). Stopping.")
@@ -4850,17 +4852,20 @@ class RangerGearBot(threading.Thread):
                         if self.check_error_images() == "icon": self.open_app()
                         clicked_any = False
                         for i in range(1, 10):
+                            if fixbylv_click_counts.get(i, 0) >= 3:
+                                continue  # กดครบ 3 ครั้งแล้ว ข้ามรูปนี้
                             fixbylv_img = f"img/fixbylv{i}.bmp"
                             # fixbylv1 เป็นข้อความ ใช้ 0.7 (0.8 จับไม่ติด) / ปุ่ม 2-9 คง 0.8 กัน false match
                             sim = 0.7 if i == 1 else 0.8
                             if self.exists_in_cache(fixbylv_img, similarity=sim):
                                 self.click(fixbylv_img, similarity=sim)
-                                print(f"[{self.device_id}] [FIXBYLV] Clicked fixbylv{i}.bmp")
+                                fixbylv_click_counts[i] = fixbylv_click_counts.get(i, 0) + 1
+                                print(f"[{self.device_id}] [FIXBYLV] Clicked fixbylv{i}.bmp ({fixbylv_click_counts[i]}/3)")
                                 clicked_any = True
                                 sleep(1.2)
                                 break
                         if not clicked_any:
-                            print(f"[{self.device_id}] [FIXBYLV] No fixbylv found - sequence complete.")
+                            print(f"[{self.device_id}] [FIXBYLV] No fixbylv left to click - sequence complete.")
                             break
 
 
