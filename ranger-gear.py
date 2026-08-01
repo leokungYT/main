@@ -55,67 +55,83 @@ class SimpleUIStats:
         self.fail_count = 0    # Matches bot fail_count
         # hero found list with counts
         self.hero_found_list = {}  # {hero_combo: count} e.g. {'Yor': 1, 'Yor+Anya': 2}
-        
+        # --- Disk sync throttling (กัน UI ค้างตอนรันหลายเครื่องพร้อมกัน) ---
+        self._last_save = 0.0
+        self._save_interval = 2.0   # เขียน shared_stats.json อย่างมากทุก 2 วิ
+        self._last_load = 0.0
+        self._load_interval = 1.0   # อ่าน shared_stats.json อย่างมากทุก 1 วิ
+        self._dirty = False
+
     def _get_shared_file(self):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared_stats.json")
 
-    def save_shared(self):
-        """Save stats to a shared file for multi-process sync (Atomic write)"""
+    def save_shared(self, force=False):
+        """Save stats to shared file (debounced + disk I/O นอก lock กัน UI ค้าง)"""
+        now = time.time()
+        # snapshot ข้อมูลใต้ lock อย่างเร็ว แล้วค่อยเขียนดิสก์ข้างนอก
+        with self.lock:
+            if not force and (now - self._last_save) < self._save_interval:
+                self._dirty = True   # ยังไม่ถึงเวลาเขียน ค่อยเขียนรอบถัดไป
+                return
+            self._last_save = now
+            self._dirty = False
+            data = {
+                "success_count": self.success_count,
+                "fail_count": self.fail_count,
+                "hero_found_list": dict(self.hero_found_list),
+                "device_statuses": dict(self.device_statuses),
+                "last_update": now
+            }
+        # ---- disk I/O อยู่นอก lock: ไม่บล็อก worker อื่น/GUI ----
         try:
-            with self.lock:
-                data = {
-                    "success_count": self.success_count,
-                    "fail_count": self.fail_count,
-                    "hero_found_list": self.hero_found_list,
-                    "device_statuses": self.device_statuses,
-                    "last_update": time.time()
-                }
-                path = self._get_shared_file()
-                tmp_path = path + ".tmp"
-                with open(tmp_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                
-                # Atomic replace with retry for Windows WinError 32
-                for _ in range(5):
-                    try:
-                        os.replace(tmp_path, path)
-                        break
-                    except OSError:
-                        time.sleep(0.1)
-                else:
-                    # Fallback if replace keeps failing
-                    if os.path.exists(tmp_path):
-                        os.remove(tmp_path)
+            path = self._get_shared_file()
+            tmp_path = f"{path}.{os.getpid()}.tmp"  # tmp แยกต่อ process กันชนกัน
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            for _ in range(5):
+                try:
+                    os.replace(tmp_path, path)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            else:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
         except Exception as e:
             print(f"[DEBUG] save_shared error: {e}")
 
-    def load_shared(self):
-        """Load stats from the shared file with retries"""
+    def load_shared(self, force=False):
+        """Load stats from shared file (throttled + parse นอก lock กัน UI ค้าง)"""
+        now = time.time()
+        with self.lock:
+            if not force and (now - self._last_load) < self._load_interval:
+                return
+            self._last_load = now
+
         shared_file = self._get_shared_file()
         if not os.path.exists(shared_file):
             return
-            
-        for _ in range(5): # Retry up to 5 times
+
+        data = None
+        for _ in range(3):  # อ่านดิสก์นอก lock
             try:
                 with open(shared_file, "r", encoding="utf-8") as f:
                     content = f.read()
-                    if not content: continue
-                    data = json.loads(content)
-                    with self.lock:
-                        # Only update if shared data is newer or to merge
-                        self.success_count = max(self.success_count, data.get("success_count", 0))
-                        self.fail_count = max(self.fail_count, data.get("fail_count", 0))
-                        
-                        # Merge hero lists (take max count)
-                        shared_heroes = data.get("hero_found_list", {})
-                        for h, count in shared_heroes.items():
-                            self.hero_found_list[h] = max(self.hero_found_list.get(h, 0), count)
-                            
-                        # Update device statuses
-                        self.device_statuses.update(data.get("device_statuses", {}))
+                if not content:
+                    time.sleep(0.02); continue
+                data = json.loads(content)
                 break
-            except Exception as e:
-                time.sleep(0.1)
+            except Exception:
+                time.sleep(0.02)
+        if data is None:
+            return
+
+        with self.lock:  # merge ใต้ lock (เร็ว ไม่มี disk I/O)
+            self.success_count = max(self.success_count, data.get("success_count", 0))
+            self.fail_count = max(self.fail_count, data.get("fail_count", 0))
+            for h, count in data.get("hero_found_list", {}).items():
+                self.hero_found_list[h] = max(self.hero_found_list.get(h, 0), count)
+            self.device_statuses.update(data.get("device_statuses", {}))
 
     def update(self, total=None, processed=None, success=None, fail=None, devices=None, hero_found=None, hero_not_found=None):
         self.load_shared() # Pull latest from others first to avoid overwriting counts
