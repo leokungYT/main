@@ -625,7 +625,8 @@ adb_path = "adb"
 
 # EasyOCR reader - loaded once globally
 _ocr_reader = None
-_ocr_lock = threading.Lock()  # Thread-safe OCR init
+_ocr_lock = threading.Lock()      # Thread-safe OCR init
+_ocr_run_lock = threading.Lock()  # Serialize readtext กัน CPU ตันตอนรันหลายเครื่องพร้อมกัน
 
 def get_ocr_reader():
     """Get or create EasyOCR reader (singleton, thread-safe)"""
@@ -634,6 +635,12 @@ def get_ocr_reader():
         with _ocr_lock:
             if _ocr_reader is None:
                 import easyocr
+                # จำกัด PyTorch ให้ใช้ 1 thread/การอ่าน กัน CPU oversubscribe ตอนรันหลายเครื่อง
+                try:
+                    import torch
+                    torch.set_num_threads(1)
+                except Exception:
+                    pass
                 print("[INFO] Loading EasyOCR model (first time only)...")
                 _ocr_reader = easyocr.Reader(['en'], gpu=False)
                 print("[OK] EasyOCR model loaded!")
@@ -1834,7 +1841,8 @@ class RangerGearBot(threading.Thread):
             _, v_bin = cv2.threshold(v_scaled, 180, 255, cv2.THRESH_BINARY_INV)
             
             reader = get_ocr_reader()
-            results = reader.readtext(v_bin, allowlist='0123456789,', detail=0)
+            with _ocr_run_lock:  # OCR ทีละเครื่อง กัน CPU ตัน
+                results = reader.readtext(v_bin, allowlist='0123456789,', detail=0)
             
             if results:
                 print(f"[{self.device_id}] [STRICT-OCR] {label} raw={results}")
@@ -1992,7 +2000,8 @@ class RangerGearBot(threading.Thread):
         
         try:
             reader = get_ocr_reader()
-            results = reader.readtext(img, detail=1)
+            with _ocr_run_lock:  # OCR ทีละเครื่อง กัน CPU ตัน
+                results = reader.readtext(img, detail=1)
             
             text_results = []
             for (bbox, text, conf) in results:
