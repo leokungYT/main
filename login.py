@@ -1150,14 +1150,104 @@ def find_adb_executable():
     return False
 
 
+_MUMU_MANAGER_CACHE = None
+
+def find_mumu_manager():
+    """หา path ของ MuMuManager.exe (วิธีเดียวกับ pes) - ลองข้างๆ adb ก่อน แล้วค่อยไล่ตาม install ทั่วไป"""
+    global _MUMU_MANAGER_CACHE
+    if _MUMU_MANAGER_CACHE and os.path.exists(_MUMU_MANAGER_CACHE):
+        return _MUMU_MANAGER_CACHE
+    candidates = []
+    # ถ้า adb ที่ใช้อยู่เป็นของ MuMu (…\shell\adb.exe) ลองหา MuMuManager ใน install เดียวกันก่อน
+    try:
+        if adb_path and adb_path.lower().endswith("adb.exe"):
+            root = os.path.dirname(os.path.dirname(adb_path))
+            candidates.append(os.path.join(root, "nx_main", "MuMuManager.exe"))
+            candidates.append(os.path.join(root, "shell", "MuMuManager.exe"))
+    except Exception:
+        pass
+    bases = [r"C:\Program Files\Netease", r"C:\Program Files (x86)\Netease",
+             r"D:\Program Files\Netease", r"E:\Program Files\Netease",
+             r"F:\Program Files\Netease", r"F:\MuMuPlayerGlobal-12.0"]
+    subs = [r"MuMuPlayer\nx_main\MuMuManager.exe",
+            r"MuMuPlayerGlobal-12.0\nx_main\MuMuManager.exe",
+            r"MuMuPlayer-12.0\nx_main\MuMuManager.exe",
+            r"MuMuPlayerGlobal-12.0\shell\MuMuManager.exe",
+            r"MuMu Player 12\shell\MuMuManager.exe",
+            r"MuMuPlayer\shell\MuMuManager.exe"]
+    for b in bases:
+        for s in subs:
+            candidates.append(os.path.join(b, s))
+    for p in candidates:
+        if os.path.exists(p):
+            _MUMU_MANAGER_CACHE = p
+            return p
+    # ท้ายสุด: ไล่ walk หาใน bases
+    for b in bases:
+        if os.path.isdir(b):
+            try:
+                for r, _d, files in os.walk(b):
+                    if "MuMuManager.exe" in files:
+                        _MUMU_MANAGER_CACHE = os.path.join(r, "MuMuManager.exe")
+                        return _MUMU_MANAGER_CACHE
+            except Exception:
+                pass
+    return None
+
+
+def get_mumu_instances():
+    """ถาม MuMuManager (info -v all) ว่า instance ไหนเปิด Android อยู่จริง + adb port อะไร
+    คืน list ของ (index, "ip:port") เฉพาะที่รันอยู่ / คืน None ถ้าใช้ MuMuManager ไม่ได้ (ให้ fallback วิธีเดิม)
+    นี่คือแหล่งความจริง - พอร์ต ghost ที่ไม่ใช่ instance จริงจะไม่อยู่ในลิสต์นี้"""
+    exe = find_mumu_manager()
+    if not exe:
+        return None
+    try:
+        kwargs = {'creationflags': 0x08000000} if os.name == 'nt' else {}
+        r = subprocess.run([exe, "info", "-v", "all"], capture_output=True,
+                           text=True, timeout=30, **kwargs)
+        raw = (r.stdout or "").strip()
+        if not raw:
+            return None
+        data = json.loads(raw)
+        # กรณีมี instance เดียว MuMuManager คืน object เดี่ยว ไม่ใช่ dict ของหลายตัว
+        if "index" in data and "adb_port" in data:
+            data = {str(data.get("index", "0")): data}
+        out = []
+        for key, inf in data.items():
+            if not isinstance(inf, dict):
+                continue
+            if inf.get("is_android_started") and inf.get("adb_port"):
+                ip = inf.get("adb_host_ip", "127.0.0.1")
+                out.append((str(inf.get("index", key)), f"{ip}:{inf['adb_port']}"))
+        return out
+    except Exception as e:
+        print(f"[MuMu] อ่านข้อมูล instance ไม่ได้: {e}")
+        return None
+
+
 def connect_known_ports():
-    """Auto-scan ALL emulator ports, connect everything that responds"""
+    """เชื่อมต่อ emulator: ถาม MuMuManager ก่อน (แม่นสุด ไม่มี ghost) ถ้าไม่ได้ค่อย fallback scan พอร์ต"""
     try:
         # Kill & start adb server
         subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=3)
         time.sleep(0.1)
         subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
         time.sleep(0.5)
+
+        # === วิธีใหม่ (จาก pes): ถาม MuMuManager ตรงๆ ว่ามี instance ไหนเปิดอยู่ ===
+        instances = get_mumu_instances()
+        if instances:
+            print(f"\n--- [ADB] MuMuManager รายงาน {len(instances)} instance ที่เปิดอยู่ ---")
+            for idx, serial in instances:
+                try:
+                    subprocess.run([adb_path, "connect", serial], capture_output=True, timeout=3)
+                    print(f"[ADB] เชื่อม instance {idx} -> {serial}")
+                except Exception:
+                    pass
+            print("--- Scan Complete (MuMuManager) ---\n")
+            return
+        # === Fallback: scan พอร์ตแบบเดิม (กรณีหา MuMuManager ไม่เจอ) ===
 
         # สแกนพอร์ตคี่ตั้งแต่ 5555-5755 (รองรับ 100 จอ MuMu)
         ports = list(range(5555, 5756, 2))  # [5555, 5557, 5559, ..., 5755]
@@ -1241,8 +1331,52 @@ def get_connected_devices():
                     pass
             seen.add(d)
             final_devices.append(d)
-        
-        return final_devices
+
+        # กรองด้วยรายชื่อจริงจาก MuMuManager (ถ้ามี): พอร์ตที่ไม่อยู่ในลิสต์ = ghost -> ตัดทิ้ง
+        mumu_instances = get_mumu_instances()
+        if mumu_instances:
+            allowed = {s for _i, s in mumu_instances}
+            filtered = []
+            for d in final_devices:
+                serial = d
+                # แปลง emulator-XXXX -> 127.0.0.1:(XXXX+1) เพื่อเทียบกับลิสต์ MuMuManager
+                if d.startswith("emulator-"):
+                    try:
+                        serial = f"127.0.0.1:{int(d.split('-')[1]) + 1}"
+                    except (ValueError, IndexError):
+                        pass
+                if d in allowed or serial in allowed:
+                    filtered.append(d)
+                else:
+                    print(f"[ADB] ข้าม {d} (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)")
+            final_devices = filtered
+
+        # กรองซ้ำขั้นสอง: เช็ค boot_id ของแต่ละเครื่อง
+        # (VM เดียวกันอาจโผล่ 2 ช่องทาง เช่น emulator-5562 กับ 127.0.0.1:5563 หรือพอร์ต TCP แฝด)
+        # boot_id เหมือนกัน = เครื่องเดียวกัน -> เก็บไว้ตัวเดียว
+        unique_devices = []
+        seen_boot_ids = {}
+        for d in final_devices:
+            boot_id = None
+            try:
+                r = subprocess.run(
+                    [adb_path, "-s", d, "shell", "cat", "/proc/sys/kernel/random/boot_id"],
+                    capture_output=True, text=True, timeout=3
+                )
+                boot_id = (r.stdout or "").strip()
+                # boot_id ต้องหน้าตาเป็น uuid ถ้า error/ว่าง ให้ถือว่าเช็คไม่ได้
+                if len(boot_id) < 30 or " " in boot_id:
+                    boot_id = None
+            except Exception:
+                pass
+            if boot_id:
+                if boot_id in seen_boot_ids:
+                    print(f"[ADB] ข้าม {d} (เครื่องเดียวกับ {seen_boot_ids[boot_id]} - boot_id ซ้ำ)")
+                    continue
+                seen_boot_ids[boot_id] = d
+            unique_devices.append(d)
+
+        return unique_devices
     except Exception as e:
         print(f"[ERR] get_connected_devices: {e}")
         return []
@@ -1524,18 +1658,51 @@ class RangerGearBot(threading.Thread):
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
+    def _resolve_game_activity(self):
+        """หา launcher activity จริงของเกมจากเครื่อง (ชื่อเปลี่ยนตามเวอร์ชันเกม) แล้ว cache ไว้
+        - เดิม hardcode com.linecorp.common.activity.LineActivity ซึ่งเกมเวอร์ชันใหม่เปลี่ยนเป็น .LineRangersAdr แล้ว
+        - ถามจากเครื่องตรงๆ จะได้ไม่พังอีกเวลาเกมเปลี่ยนชื่อ activity"""
+        cached = getattr(self, "_game_activity", None)
+        if cached:
+            return cached
+        try:
+            r = self.adb_run([
+                self.adb_cmd, "-s", self.device_id, "shell",
+                "cmd", "package", "resolve-activity", "--brief", "com.linecorp.LGRGS"
+            ], timeout=8)
+            out = (r.stdout or b"").decode("utf-8", "ignore")
+            for line in out.splitlines():
+                line = line.strip()
+                if line.startswith("com.linecorp.LGRGS/"):
+                    self._game_activity = line
+                    print(f"[{self.device_id}] [APP] Launcher activity: {line}")
+                    return line
+        except Exception:
+            pass
+        # fallback: ชื่อ activity ของเกมเวอร์ชันปัจจุบัน
+        self._game_activity = "com.linecorp.LGRGS/.LineRangersAdr"
+        return self._game_activity
+
     def open_app(self):
         self.last_activity_time = time.time()
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
-        # เช็คครั้งเดียวว่าเกมติดตั้งอยู่ไหม - ถ้าไม่ติดตั้งจะ retry กี่ครั้งก็เปิดไม่ได้
+        # เช็คว่าเกมติดตั้งอยู่ไหม - retry 3 รอบก่อนตัดสิน
+        # (ตอน VM เพิ่งบูต pm อาจตอบว่างเปล่าทั้งที่แอปติดตั้งอยู่ -> อย่าเพิ่งฟันธงจากรอบเดียว)
         try:
-            pm_res = self.adb_run([
-                self.adb_cmd, "-s", self.device_id, "shell",
-                "pm", "list", "packages", "com.linecorp.LGRGS"
-            ], timeout=8)
-            pm_out = (pm_res.stdout or b"").decode("utf-8", "ignore").strip()
-            if "com.linecorp.LGRGS" not in pm_out:
-                print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS บนเครื่องนี้! (ยังไม่ได้ติดตั้ง/ชื่อ package ไม่ตรง) - หยุด retry")
+            app_found = False
+            for pm_attempt in range(3):
+                pm_res = self.adb_run([
+                    self.adb_cmd, "-s", self.device_id, "shell",
+                    "pm", "list", "packages", "com.linecorp.LGRGS"
+                ], timeout=8)
+                pm_out = (pm_res.stdout or b"").decode("utf-8", "ignore").strip()
+                if "com.linecorp.LGRGS" in pm_out:
+                    app_found = True
+                    break
+                print(f"[{self.device_id}] [WARN] pm ยังไม่เจอแอป (รอบ {pm_attempt+1}/3) - รอ 2 วิแล้วเช็คใหม่...")
+                sleep(2)
+            if not app_found:
+                print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS บนเครื่องนี้! (เช็คแล้ว 3 รอบ - ยังไม่ได้ติดตั้ง/ชื่อ package ไม่ตรง/เครื่อง ghost) - หยุด retry")
                 return False
         except Exception as e:
             print(f"[{self.device_id}] [WARN] เช็ค package ไม่ได้: {e} - ลองเปิดต่อ")
@@ -1549,7 +1716,7 @@ class RangerGearBot(threading.Thread):
                     res = self.adb_run([
                         self.adb_cmd, "-s", self.device_id, "shell",
                         "am", "start", "-S", "-n",
-                        "com.linecorp.LGRGS/com.linecorp.common.activity.LineActivity"
+                        self._resolve_game_activity()
                     ], timeout=10)
                 else:
                     res = self.adb_run([
@@ -3652,6 +3819,36 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Find-Ranger complete.")
         return results
 
+    def run_fixbylv_sequence(self):
+        """[FIXBYLV] วนกดตัวที่เจอ (fixbylv1 ถึง fixbylv9) จนกว่าจะไม่เจอ
+        กันกดซ้ำ: รูปเดิมกดได้สูงสุด 3 ครั้ง ครบแล้วข้ามรูปนั้นเลย (เช่นปุ่ม SKIP ที่อยู่บนจอตลอด)"""
+        print(f"[{self.device_id}] [FIXBYLV] Clicking fixbylv1-9 until gone (max 3 clicks each)...")
+        fixbylv_start = time.time()
+        fixbylv_click_counts = {}
+        while True:
+            if time.time() - fixbylv_start > 120:
+                print(f"[{self.device_id}] [FIXBYLV] Timeout (120s). Stopping.")
+                break
+            self.capture_screen()
+            if self.check_error_images() == "icon": self.open_app()
+            clicked_any = False
+            for i in range(1, 10):
+                if fixbylv_click_counts.get(i, 0) >= 3:
+                    continue  # กดครบ 3 ครั้งแล้ว ข้ามรูปนี้
+                fixbylv_img = f"img/fixbylv{i}.bmp"
+                # fixbylv1 เป็นข้อความ ใช้ 0.7 (0.8 จับไม่ติด) / ปุ่ม 2-9 คง 0.8 กัน false match
+                sim = 0.7 if i == 1 else 0.8
+                if self.exists_in_cache(fixbylv_img, similarity=sim):
+                    self.click(fixbylv_img, similarity=sim)
+                    fixbylv_click_counts[i] = fixbylv_click_counts.get(i, 0) + 1
+                    print(f"[{self.device_id}] [FIXBYLV] Clicked fixbylv{i}.bmp ({fixbylv_click_counts[i]}/3)")
+                    clicked_any = True
+                    sleep(1.2)
+                    break
+            if not clicked_any:
+                print(f"[{self.device_id}] [FIXBYLV] No fixbylv left to click - sequence complete.")
+                break
+
     def backup_ranger_results(self, results, gear_results=None):
         """Save backup based on results"""
         filename = self.current_original_filename or "unknown.xml"
@@ -3676,11 +3873,12 @@ class RangerGearBot(threading.Thread):
                 self.adb_run([self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, dst])
                 print(f"[{self.device_id}] Backed up to: {dst}")
             else:
-                not_found_dir = "not-found"
-                if not os.path.exists(not_found_dir): os.makedirs(not_found_dir)
-                dst = os.path.join(not_found_dir, filename)
+                # ล็อกอินสำเร็จแต่ไม่เจอ hero/gear -> เก็บเข้า login-success (ไม่ใช่ not-found)
+                success_dir = "login-success"
+                if not os.path.exists(success_dir): os.makedirs(success_dir)
+                dst = os.path.join(success_dir, filename)
                 self.adb_run([self.adb_cmd, '-s', self.device_id, 'pull', temp_remote, dst])
-                print(f"[{self.device_id}] Backed up to not-found: {dst}")
+                print(f"[{self.device_id}] Backed up to login-success: {dst}")
             
             self.adb_shell(f"rm -f {temp_remote}")
         except Exception as e:
@@ -3748,14 +3946,25 @@ class RangerGearBot(threading.Thread):
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
-        
+
+        # ขั้นเตรียมทั้งหมดเป็น best-effort: timeout/พัง = เตือนแล้วไปต่อ ไม่ให้ล้มทั้ง inject
+        # (เดิมคำสั่ง mount ค้างเกิน 10 วิ -> TimeoutExpired เด้งออกเป็น Critical Error ทั้งที่เป็นแค่ขั้นเตรียม)
         # ปลดล็อก Read-only (ถ้ามี)
-        self.adb_shell("su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'")
-        
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+        try:
+            self.adb_shell("su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'", timeout=15)
+        except Exception as e:
+            print(f"[{self.device_id}] [WARN] remount ข้ามไป (ไม่ critical): {e}")
+
+        try:
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
+        except Exception as e:
+            print(f"[{self.device_id}] [WARN] force-stop ข้ามไป (ไม่ critical): {e}")
         sleep(2)
-        
-        self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'")
+
+        try:
+            self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
+        except Exception as e:
+            print(f"[{self.device_id}] [WARN] killall ข้ามไป (ไม่ critical): {e}")
         sleep(1)
 
         src = os.path.abspath(local_xml_path)
@@ -3766,8 +3975,8 @@ class RangerGearBot(threading.Thread):
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                # Push to tmp
-                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30)
+                # Push to tmp (60 วิ: ตอนรันหลายจอพร้อมกัน ดิสก์หนัก 30 วิอาจไม่พอ)
+                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=60)
                 if result.returncode != 0:
                     err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
                     print(f"[{self.device_id}] Push attempt {attempt} failed: {err}")
@@ -3783,8 +3992,8 @@ class RangerGearBot(threading.Thread):
                     f"rm -f {tmp}"
                     f"'"
                 )
-                self.adb_shell(shell_cmd)
-                
+                self.adb_shell(shell_cmd, timeout=20)
+
                 print(f"[{self.device_id}] Injection successful on attempt {attempt}")
                 return local_xml_path
                     
@@ -4659,11 +4868,19 @@ class RangerGearBot(threading.Thread):
                 
             # *** SUCCESS -> Just Login and Backup ***
             if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
-                # [DIST CHECK] แวะเช็คหา distcheck หรือ distskip 5วิ
-                print(f"[{self.device_id}] stoplogin found, checking for distcheck/distskip (5s)...")
+                # [DIST CHECK] แวะเช็คหา fixbylv / distcheck / distskip 5วิ (ตามลำดับนี้)
+                print(f"[{self.device_id}] stoplogin found, checking for fixbylv/distcheck/distskip (5s)...")
                 found_distcheck = False
                 found_distskip_early = False
+                found_fixbylv = False
                 for _ in range(5):
+                    # เช็ค fixbylv ก่อน โดยใช้ fixbylv1.bmp ("for you") เป็นตัวจับสัญญาณ (anchor) เท่านั้น
+                    # -> จะเข้าขั้นตอน fixbylv ก็ต่อเมื่อเจอ fixbylv1.bmp เท่านั้น (กัน fixbylv2-9 ปุ่มต่างๆ ทำงานเองโดยผิด)
+                    # -> similarity 0.7: fixbylv1 เป็นข้อความ ค่าจริงมักได้ ~0.75 (0.8 สูงไปเลยจับไม่ติด)
+                    #    วัดจริงบนจอที่ไม่มีข้อความนี้ได้แค่ ~0.35 จึงมี margin เหลือเยอะ ไม่เสี่ยง false match
+                    if self.exists_in_cache("img/fixbylv1.bmp", similarity=0.7):
+                        found_fixbylv = True
+                        break
                     if self.exists_in_cache("img/distcheck.png"):
                         found_distcheck = True
                         break
@@ -4738,76 +4955,63 @@ class RangerGearBot(threading.Thread):
                             return "kaiby"
                     # ====================================================================
 
-                    # 1. รอเจอ dist1.png และกด
-                    print(f"[{self.device_id}] [DIST] Waiting for dist1.png...")
-                    dist1_found = False
-                    dist1_start = time.time()
-                    while not dist1_found:
-                        if time.time() - dist1_start > 120:
-                            print(f"[{self.device_id}] [DIST] Timeout waiting for dist1.png (120s). Skipping.")
-                            break
-                        self.capture_screen()
-                        if self.check_error_images() == "icon": self.open_app()
-                        if self.exists_in_cache("img/dist1.png", similarity=0.8):
-                            self.click("img/dist1.png", similarity=0.8)
-                            print(f"[{self.device_id}] [DIST] Clicked dist1.png")
-                            dist1_found = True
-                        sleep(1)
-
-                    # 2. รอเจอ waitdist.png
-                    print(f"[{self.device_id}] [DIST] Waiting for waitdist.png...")
+                    # 1. รอเจอ dist1.png แล้วกดซ้ำๆ จนกว่าจะเจอ waitdist.png ค่อยหยุด
+                    print(f"[{self.device_id}] [DIST] Waiting for dist1.png (click repeatedly until waitdist appears)...")
                     dist_pos = None
-                    dist_wait_start = time.time()
+                    dist1_start = time.time()
                     while dist_pos is None:
-                        if time.time() - dist_wait_start > 120:
+                        if time.time() - dist1_start > 120:
                             print(f"[{self.device_id}] [DIST] Timeout waiting for waitdist.png (120s). Skipping.")
                             break
                         self.capture_screen()
                         if self.check_error_images() == "icon": self.open_app()
+                        # เจอ waitdist ค่อยหยุด
                         dist_pos = self._find_in_screen("img/waitdist.png", similarity=0.8)
                         if dist_pos:
-                            print(f"[{self.device_id}] [DIST] Found waitdist at {dist_pos}")
+                            print(f"[{self.device_id}] [DIST] Found waitdist at {dist_pos} - stop clicking dist1")
+                            break
+                        # ยังไม่เจอ waitdist -> กด dist1.png ซ้ำๆ
+                        if self.exists_in_cache("img/dist1.png", similarity=0.8):
+                            self.click("img/dist1.png", similarity=0.8)
+                            print(f"[{self.device_id}] [DIST] Clicked dist1.png")
                         sleep(1)
 
-                    # 3. รอเจอ dist2.png และกด
+                    # 2. หลังเจอ waitdist -> กด BACK รัวๆ จนเจอ cancel.png แล้วกด cancel -> ไปขั้นตอน distskip เลย
                     if dist_pos:
-                        print(f"[{self.device_id}] [DIST] Waiting for dist2.png...")
-                        dist2_found = False
-                        dist2_start = time.time()
-                        while not dist2_found:
-                            if time.time() - dist2_start > 120:
-                                print(f"[{self.device_id}] [DIST] Timeout waiting for dist2.png (120s). Skipping.")
-                                break
+                        print(f"[{self.device_id}] [DIST] waitdist found - spamming BACK until cancel.png appears...")
+                        back_press_count = 0
+                        while True:
+                            self.adb_shell("input keyevent KEYCODE_BACK")
+                            self.adb_shell("input keyevent KEYCODE_BACK")
+                            self.adb_shell("input keyevent KEYCODE_BACK")
+                            back_press_count += 3
+                            print(f"[{self.device_id}] [DIST] Triple Back spam! (Total: {back_press_count})")
+                            sleep(0.3)
                             self.capture_screen()
-                            if self.check_error_images() == "icon": self.open_app()
-                            if self.exists_in_cache("img/dist2.png", similarity=0.8):
-                                self.click("img/dist2.png", similarity=0.8)
-                                print(f"[{self.device_id}] [DIST] Clicked dist2.png")
-                                dist2_found = True
-                            sleep(1)
-
-                        # 4. กดตำแหน่ง waitdist 30 รอบ
-                        if dist2_found:
-                            print(f"[{self.device_id}] [DIST] Clicking saved position {dist_pos} 30 times...")
-                            for _ in range(30):
-                                self.tap(dist_pos[0], dist_pos[1])
-                                sleep(0.05)
-
-                            # 5. รอเจอ dist3.png และกด
-                            print(f"[{self.device_id}] [DIST] Waiting for dist3.png...")
-                            dist3_found = False
-                            dist3_start = time.time()
-                            while not dist3_found:
-                                if time.time() - dist3_start > 120:
-                                    print(f"[{self.device_id}] [DIST] Timeout waiting for dist3.png (120s). Skipping.")
-                                    break
-                                self.capture_screen()
-                                if self.check_error_images() == "icon": self.open_app()
-                                if self.exists_in_cache("img/dist3.png", similarity=0.8):
-                                    self.click("img/dist3.png", similarity=0.8)
-                                    print(f"[{self.device_id}] [DIST] Clicked dist3.png - Sequence Complete")
-                                    dist3_found = True
+                            if self.exists_in_cache("img/cancel.png", similarity=0.8):
+                                print(f"[{self.device_id}] [DIST] cancel.png appeared - clicking cancel, stop back spam")
+                                self.click("img/cancel.png", similarity=0.8)
                                 sleep(1)
+                                break
+                            if back_press_count >= 30:
+                                print(f"[{self.device_id}] [DIST] BACK spam reached 30 - proceeding to distskip step")
+                                break
+
+                    # 2.5 แวะหา fixbylv1.bmp อีก 3 วิ - เจอค่อยเข้าลูป fixbylv / ไม่เจอข้ามไป distskip เลย
+                    print(f"[{self.device_id}] [DIST] Checking for fixbylv1.bmp (3s)...")
+                    fixbylv_found_mid = False
+                    fixbylv_check_start = time.time()
+                    while time.time() - fixbylv_check_start < 3:
+                        self.capture_screen()
+                        if self.exists_in_cache("img/fixbylv1.bmp", similarity=0.7):
+                            fixbylv_found_mid = True
+                            break
+                        sleep(0.5)
+                    if fixbylv_found_mid:
+                        print(f"[{self.device_id}] [DIST] fixbylv1 found! Running fixbylv sequence...")
+                        self.run_fixbylv_sequence()
+                    else:
+                        print(f"[{self.device_id}] [DIST] fixbylv1 not found in 3s - skipping to distskip step")
 
                     # 6. distskip -> stagespecal.png -> backdist -> กด ESC
                     print(f"[{self.device_id}] [DIST] Waiting for distskip.png...")
@@ -4857,6 +5061,11 @@ class RangerGearBot(threading.Thread):
                             break
                     
                     print(f"[{self.device_id}] [DIST] dist sequence complete.")
+
+                elif found_fixbylv:
+                    # [FIXBYLV] เจอ fixbylv1 -> เข้าลูปกด fixbylv1-9
+                    print(f"[{self.device_id}] [FIXBYLV] fixbylv detected!")
+                    self.run_fixbylv_sequence()
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
