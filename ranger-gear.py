@@ -1903,24 +1903,30 @@ class RangerGearBot(threading.Thread):
             if not self.wait_and_click_image("gotogacha2.png", timeout=15):
                  print(f"[{self.device_id}] gotogacha2.png not found")
         
-        # --- Mandatory Stable Wait (Visible ONLY, No Click!) ---
+        # --- Mandatory Stable Wait ---
+        # หา fixgems ตลอด (ลอยๆ) เจอ popup gems กดปิด 1 รอบ แล้ววนกลับไปหา waitgacha
+        # เจอ waitgacha.png ค่อยเริ่มสแกน (ไม่มี timeout)
+        WAITGACHA_SIM = 0.95
+        FIXGEMS_SIM = 0.85
         print(f"[{self.device_id}] [RESOURCE-WAIT] Waiting for waitgacha.png (stable screen)...")
-        wait_start = time.time()
-        found_stable_screen = False
-        while time.time() - wait_start < 25:
+        while True:
             self.capture_screen()
-            # ONLY Check visibility (exists_in_cache), DO NOT CLICK waitgacha.png
-            if self.exists_in_cache("img/waitgacha.png", similarity=0.95):
+
+            # หา fixgems ตลอด — เจอ fixgems แล้วกด fixgems1 (1 รอบ) แล้วกลับไปหา waitgacha
+            if self.exists_in_cache("img/fixgems.png", similarity=FIXGEMS_SIM):
+                print(f"[{self.device_id}] [RESOURCE-WAIT] fixgems found -> clicking fixgems1.")
+                self.click("img/fixgems1.png", similarity=FIXGEMS_SIM)
+                sleep(1.0)
+                continue
+
+            # เจอ waitgacha แล้วเริ่มสแกน (ONLY Check visibility, DO NOT CLICK)
+            if self.exists_in_cache("img/waitgacha.png", similarity=WAITGACHA_SIM):
                 print(f"[{self.device_id}] [RESOURCE-WAIT] Screen confirmed stable (waitgacha found). Scanning now.")
-                found_stable_screen = True
                 break
-            
+
             # Auto-clear popups if they appear during transition
-            self.check_floating_popups() 
+            self.check_floating_popups()
             sleep(0.5)
-        
-        if not found_stable_screen:
-            print(f"[{self.device_id}] [RESOURCE-WAIT] Warning: waitgacha.png not detected after 25s. Scanning anyway.")
         
         # Settle wait
         sleep(1.0)
@@ -2609,11 +2615,18 @@ class RangerGearBot(threading.Thread):
         return all_found_gears
 
     def backup_to_not_found(self, filename, source_path):
-        """Backup pref file to not-found folder"""
+        """Backup pref file to not-found folder (เปลี่ยน prefix ชื่อฮีโร่ -> noherofound)"""
         not_found_dir = "not-found"
         if not os.path.exists(not_found_dir):
             os.makedirs(not_found_dir)
-        
+
+        # ไม่เจอฮีโร่ -> เปลี่ยน prefix (เช่น (D1)Senshi) เป็น noherofound
+        # account id ขึ้นต้นด้วยตัวเลขเสมอ, prefix เป็นตัวอักษร -> ตัดตัวอักษรนำหน้าออก
+        import re
+        m = re.match(r'^(?:\(D\d+\))?[A-Za-z]*(\d.*)$', filename)
+        if m:
+            filename = "noherofound" + m.group(1)
+
         backup_path = os.path.join(not_found_dir, filename)
         
         # วิธีที่ได้ผล 100%: cp ไป /data/local/tmp → chmod → pull
