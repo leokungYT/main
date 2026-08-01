@@ -25,7 +25,7 @@ from PIL import Image, ImageTk
 try:
     import customtkinter as ctk
     GUI_AVAILABLE = True
-except ImportError:
+except ImportError: 
     GUI_AVAILABLE = False
     print("[WARN] customtkinter not found. GUI mode will be disabled. Run 'pip install customtkinter' to enable.")
 
@@ -1820,8 +1820,8 @@ class RangerGearBot(threading.Thread):
             h, w = img.shape[:2]
             
             # --- Padding Selection ---
-            # Reduced padding for RUBY to avoid catching icons or nearby UI noise
-            PAD = 2 if "RUBY" in label else 10
+            # RUBY/TICKET ใช้ pad น้อย กันขยายกรอบไปจับไอคอนข้างๆ (ไอคอนทำ OCR สับสน)
+            PAD = 2 if ("RUBY" in label or "TICKET" in label) else 10
             x1 = max(0, int(x) - PAD)
             y1 = max(0, int(y) - PAD)
             x2 = min(w, int(x + width) + PAD)
@@ -1855,10 +1855,15 @@ class RangerGearBot(threading.Thread):
             # --- Preprocessing Selection (All use manual_180 threshold for precision) ---
             # manual_180 is very reliable for white text on dark background
             _, v_bin = cv2.threshold(v_scaled, 180, 255, cv2.THRESH_BINARY_INV)
-            
+
+            # เติมขอบขาวรอบภาพ ช่วยให้ EasyOCR ตรวจเลขหลักเดียวโดดๆ (เช่น "4") ได้ (BINARY_INV -> พื้นหลังขาว=255)
+            v_bin = cv2.copyMakeBorder(v_bin, 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=255)
+
             reader = get_ocr_reader()
             with _ocr_run_lock:  # OCR ทีละเครื่อง กัน CPU ตัน
-                results = reader.readtext(v_bin, allowlist='0123456789,', detail=0)
+                # text_threshold/low_text ต่ำลง = detect เลขหลักเดียวเล็กๆ ได้ไวขึ้น
+                results = reader.readtext(v_bin, allowlist='0123456789,', detail=0,
+                                          text_threshold=0.5, low_text=0.3)
             
             if results:
                 print(f"[{self.device_id}] [STRICT-OCR] {label} raw={results}")
@@ -1891,19 +1896,21 @@ class RangerGearBot(threading.Thread):
         tx, ty, tw, th = 558, 20, 56, 16
         ticket_value = self.read_number_from_region(img, tx, ty, tw, th, label="TICKET")
         
-        # Backup: Search using templates only if fixed scan fails
-        if ruby_value is None and ticket_value is None:
-             print(f"[{self.device_id}] [RESOURCE] Fixed ROI failed, trying Template backup...")
-             ruby_match = self.find_template_ocr(img, 'img/checkruby.png', threshold=0.7)
-             if ruby_match:
-                 rx_b, ry_b, rw_b, rh_b = ruby_match['x'], ruby_match['y'], ruby_match['width'], ruby_match['height']
-                 ruby_value = self.read_number_from_region(img, rx_b + int(rw_b * 0.45), ry_b + 2, int(rw_b * 0.50), rh_b - 4, label="RUBY_B")
-             
-             ticket_match = self.find_template_ocr(img, 'img/checktiket.png', threshold=0.65)
-             if ticket_match:
-                 tx_b, ty_b, tw_b, th_b = ticket_match['x'], ticket_match['y'], ticket_match['width'], ticket_match['height']
-                 ticket_value = self.read_number_from_region(img, tx_b + int(tw_b * 0.45), ty_b + 2, int(tw_b * 0.50), th_b - 4, label="TICKET_B")
-        
+        # Backup: Template search แยกอิสระต่อค่า (เจอตัวไหน None ก็ backup ตัวนั้น)
+        if ruby_value is None:
+            print(f"[{self.device_id}] [RESOURCE] RUBY fixed ROI failed, trying Template backup...")
+            ruby_match = self.find_template_ocr(img, 'img/checkruby.png', threshold=0.7)
+            if ruby_match:
+                rx_b, ry_b, rw_b, rh_b = ruby_match['x'], ruby_match['y'], ruby_match['width'], ruby_match['height']
+                ruby_value = self.read_number_from_region(img, rx_b + int(rw_b * 0.45), ry_b + 2, int(rw_b * 0.50), rh_b - 4, label="RUBY_B")
+
+        if ticket_value is None:
+            print(f"[{self.device_id}] [RESOURCE] TICKET fixed ROI failed, trying Template backup...")
+            ticket_match = self.find_template_ocr(img, 'img/checktiket.png', threshold=0.65)
+            if ticket_match:
+                tx_b, ty_b, tw_b, th_b = ticket_match['x'], ticket_match['y'], ticket_match['width'], ticket_match['height']
+                ticket_value = self.read_number_from_region(img, tx_b + int(tw_b * 0.45), ty_b + 2, int(tw_b * 0.50), th_b - 4, label="TICKET_B")
+
         return ticket_value, ruby_value
 
 
@@ -1964,10 +1971,11 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] OCR returned None, retrying in 1s (Attempt {attempt+1}/3)...")
                 sleep(1.0)
             
-            self.capture_screen() 
+            self.capture_screen()
             ticket, ruby = self.read_ticket_and_ruby()
-            
-            if ruby is not None or ticket is not None:
+
+            # retry จนกว่าจะอ่านได้ครบทั้ง ruby และ ticket (หรือครบ 3 รอบ)
+            if ruby is not None and ticket is not None:
                 break
         
         print(f"[{self.device_id}] Result -> Ruby: {ruby}, Ticket: {ticket}")
@@ -2645,12 +2653,16 @@ class RangerGearBot(threading.Thread):
         if not os.path.exists(not_found_dir):
             os.makedirs(not_found_dir)
 
-        # ไม่เจอฮีโร่ -> เปลี่ยน prefix (เช่น (D1)Senshi) เป็น noherofound
-        # account id ขึ้นต้นด้วยตัวเลขเสมอ, prefix เป็นตัวอักษร -> ตัดตัวอักษรนำหน้าออก
+        # ไม่เจอฮีโร่ -> เปลี่ยน prefix ชื่อฮีโร่เป็น noherofound (คง ruby[]+ticket[] ข้างหน้าไว้)
         import re
-        m = re.match(r'^(?:\(D\d+\))?[A-Za-z]*(\d.*)$', filename)
+        # แยกส่วน tag ruby[]+ticket[] ข้างหน้าออกก่อน
+        mtag = re.match(r'^((?:ruby\[[^\]]*\]\+)?(?:ticket\[[^\]]*\]\+)?)(.*)$', filename)
+        tag_prefix, rest = mtag.group(1), mtag.group(2)
+        # account id ขึ้นต้นด้วยตัวเลขเสมอ, prefix เป็นตัวอักษร -> ตัดตัวอักษรนำหน้าออก
+        m = re.match(r'^(?:\(D\d+\))?[A-Za-z]*(\d.*)$', rest)
         if m:
-            filename = "noherofound" + m.group(1)
+            rest = "noherofound" + m.group(1)
+        filename = tag_prefix + rest
 
         backup_path = os.path.join(not_found_dir, filename)
         
@@ -3042,14 +3054,20 @@ class RangerGearBot(threading.Thread):
                 # Combine results and backup
                 filename = self.current_original_filename or "unknown.xml"
                 
-                # Handle Ruby/Ticket in filename (Strip existing tags)
+                # Handle Ruby/Ticket in filename — ย้าย tag มาไว้ข้างหน้า: ruby[]+ticket[]+ชื่อ
                 import re
-                clean_filename = re.sub(r'\+ruby\[[^\]]*\]', '', filename)
-                clean_filename = re.sub(r'\+ticket\[[^\]]*\]', '', clean_filename)
+                # strip tag ruby/ticket เดิม (อยู่หน้าหรือหลังก็ได้) ให้เหลือชื่อ base สะอาด
+                base = os.path.splitext(filename)[0]
+                base = re.sub(r'\+?ruby\[[^\]]*\]', '', base)
+                base = re.sub(r'\+?ticket\[[^\]]*\]', '', base)
+                base = re.sub(r'\+{2,}', '+', base).strip('+')
+                clean_filename = base + ".xml"
                 if ruby_count is not None or ticket_count is not None:
                     ruby_str = ruby_count if ruby_count else "0"
                     ticket_str = ticket_count if ticket_count else "0"
-                    filename = f"{os.path.splitext(clean_filename)[0]}+ruby[{ruby_str}]+ticket[{ticket_str}].xml"
+                    filename = f"ruby[{ruby_str}]+ticket[{ticket_str}]+{base}.xml"
+                else:
+                    filename = clean_filename
                 
                 source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
                 
@@ -3101,8 +3119,12 @@ class RangerGearBot(threading.Thread):
                     clean_base = os.path.splitext(clean_filename)[0]
                     if os.path.exists(backup_dir):
                         for old_f in os.listdir(backup_dir):
-                            # Stricter match: either account_name.xml OR account_name+tags.xml
-                            is_match = (old_f == (clean_base + ".xml")) or (old_f.startswith(clean_base + "+") and old_f.endswith(".xml"))
+                            # match ทั้งชื่อเก่า (tag ข้างหลัง) และใหม่ (tag ข้างหน้า) ด้วย account base
+                            is_match = old_f.endswith(".xml") and (
+                                old_f == (clean_base + ".xml")
+                                or old_f.startswith(clean_base + "+")          # เก่า: base+ruby[]+ticket[]
+                                or old_f.endswith("+" + clean_base + ".xml")   # ใหม่: ruby[]+ticket[]+base
+                            )
                             if is_match:
                                 try:
                                     os.remove(os.path.join(backup_dir, old_f))
