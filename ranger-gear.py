@@ -1117,6 +1117,7 @@ class RangerGearBot(threading.Thread):
         self._popups_clean_gen = -1
         self._tap_count = 0
         self._last_pidof_check = 0.0
+        self._app_gone_cached = False
         self._last_popup_scan = 0.0
         self._last_error_scan = 0.0
 
@@ -1568,10 +1569,19 @@ class RangerGearBot(threading.Thread):
             w, h, _fmt = struct.unpack('<III', raw_data[:12])
             if w <= 0 or h <= 0 or w > 4096 or h > 4096:
                 return False
-            if len(raw_data) < 12 + w * h * 4:
+
+            # Android 9+ appends a 4-byte colorSpace to the header. Pick the
+            # offset from the payload size rather than assuming - MuMu (Android
+            # 12) sends 16, and assuming 12 shifts the image by one pixel.
+            body = w * h * 4
+            if len(raw_data) >= 16 + body:
+                offset = 16
+            elif len(raw_data) >= 12 + body:
+                offset = 12
+            else:
                 return False
 
-            rgba = np.frombuffer(raw_data[12:12 + w * h * 4],
+            rgba = np.frombuffer(raw_data[offset:offset + body],
                                  dtype=np.uint8).reshape((h, w, 4))
             # cvtColor, not np.dot: np.dot builds a float64 intermediate and
             # measured 25x slower for an identical result.
@@ -1970,6 +1980,31 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] Raw capture error: {e}")
 
+    def _app_is_gone(self):
+        """True when the game process is not running.
+
+        Uses `pidof`, which needs a fresh adb process, so it is rate-limited to
+        one call per PIDOF_INTERVAL seconds. Between calls it reports the last
+        known answer rather than guessing, so a crash is spotted within one
+        interval instead of on every single frame.
+        """
+        now = time.time()
+        if (now - self._last_pidof_check) < self.PIDOF_INTERVAL:
+            return self._app_gone_cached
+        self._last_pidof_check = now
+        try:
+            kwargs = {}
+            if os.name == 'nt':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            pid_result = subprocess.run(
+                [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
+                capture_output=True, text=True, timeout=5, **kwargs
+            )
+            self._app_gone_cached = not pid_result.stdout.strip()
+        except Exception:
+            self._app_gone_cached = False   # can't tell -> assume alive, as before
+        return self._app_gone_cached
+
     def check_error_images(self, skip_fixcak=False, skip_icon=False):
         """Check error images using cached screen"""
 
@@ -1980,6 +2015,13 @@ class RangerGearBot(threading.Thread):
         # expensive thing in the whole loop (5 colour matches, ~250ms) and none of
         # these errors are transient, so a few sweeps a second is enough. Returning
         # None just means "nothing wrong right now" - what callers already expect.
+        #
+        # The app-alive check runs BEFORE the throttle: if the app died, every
+        # scan below is pointless anyway, and delaying the relaunch is the one
+        # thing here that really costs wall-clock. It has its own PIDOF_INTERVAL.
+        if not skip_icon and self._app_is_gone():
+            return "icon"
+
         now = time.time()
         if self.SCAN_INTERVAL > 0 and (now - self._last_error_scan) < self.SCAN_INTERVAL:
             return None
@@ -2012,22 +2054,6 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/unkhow.png"):
             return "unkhow"
 
-        # App crash check: เช็คว่าแอปยังรันอยู่ไหม (ใช้ pidof แทน icon.png)
-        # spawn adb ใหม่ทุกรอบแพงกว่าการสแกนรูปทั้งหมดรวมกัน และแอปไม่ได้ปิดถี่ขนาดนั้น
-        # เลยเช็คทุก PIDOF_INTERVAL วิ (ตรวจเจอช้าลงไม่กี่วิ เทียบกับ timeout 480 วิ)
-        if not skip_icon and (time.time() - self._last_pidof_check) >= self.PIDOF_INTERVAL:
-            self._last_pidof_check = time.time()
-            try:
-                pid_result = subprocess.run(
-                    [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
-                    capture_output=True, text=True, timeout=5
-                )
-                pid = pid_result.stdout.strip()
-                if not pid:
-                    return "icon"
-            except:
-                pass
-            
         if self.exists_in_cache("img/kaiby.png"):
             return "kaiby"
 

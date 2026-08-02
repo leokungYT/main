@@ -1760,6 +1760,7 @@ class RangerGearBot(threading.Thread):
         self._popups_clean_gen = -1
         self._tap_count = 0
         self._last_pidof_check = 0.0
+        self._app_gone_cached = False
         self._last_popup_scan = 0.0
         self._last_error_scan = 0.0
 
@@ -3221,19 +3222,30 @@ class RangerGearBot(threading.Thread):
         try:
             if len(raw_data) < 16:
                 return False
-            # Read header: width(4) + height(4) + format(4) = 12 bytes
+            # Header is width(4) + height(4) + format(4), and on Android 9+ a
+            # 4-byte colorSpace field as well. Pick the offset from the actual
+            # payload size instead of assuming - MuMu (Android 12) sends 16, and
+            # assuming 12 there shifts the whole image by one pixel.
             w, h, fmt = struct.unpack('<III', raw_data[:12])
-            
+
             # Validate dimensions (ป้องกัน corrupt data)
             if w <= 0 or h <= 0 or w > 4096 or h > 4096:
                 return False
-            
-            expected_size = 12 + w * h * 4  # 12 header + RGBA data
-            if len(raw_data) < expected_size:
+
+            body = w * h * 4
+            if len(raw_data) == 16 + body:
+                offset = 16
+            elif len(raw_data) == 12 + body:
+                offset = 12
+            elif len(raw_data) >= 16 + body:
+                offset = 16
+            elif len(raw_data) >= 12 + body:
+                offset = 12
+            else:
                 return False
-            
+
             # Create numpy array from raw RGBA data (ข้ามการ encode/decode PNG ทั้งหมด)
-            pixel_data = raw_data[12:12 + w * h * 4]
+            pixel_data = raw_data[offset:offset + body]
             rgba = np.frombuffer(pixel_data, dtype=np.uint8).reshape((h, w, 4))
 
             # cv2.cvtColor แทน np.dot: np.dot สร้าง float64 กลางทาง (540x960x3 = 12MB
@@ -3696,6 +3708,31 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] Raw capture error: {e}")
 
+    def _app_is_gone(self):
+        """True when the game process is not running.
+
+        Uses `pidof`, which needs a fresh adb process, so it is rate-limited to
+        one call per PIDOF_INTERVAL seconds. Between calls it reports the last
+        known answer rather than guessing, so a crash is spotted within one
+        interval instead of on every single frame.
+        """
+        now = time.time()
+        if (now - self._last_pidof_check) < self.PIDOF_INTERVAL:
+            return self._app_gone_cached
+        self._last_pidof_check = now
+        try:
+            kwargs = {}
+            if os.name == 'nt':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            pid_result = subprocess.run(
+                [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
+                capture_output=True, text=True, timeout=5, **kwargs
+            )
+            self._app_gone_cached = not pid_result.stdout.strip()
+        except Exception:
+            self._app_gone_cached = False   # can't tell -> assume alive, as before
+        return self._app_gone_cached
+
     def check_error_images(self, skip_fixcak=False, skip_icon=False):
         """Check error images using cached screen"""
 
@@ -3706,6 +3743,16 @@ class RangerGearBot(threading.Thread):
         # (they are dialogs that stay up), so scanning for them a few times a second
         # is enough. Returning None just means "nothing wrong right now", which is
         # what the callers already handle every iteration.
+        #
+        # The app-alive check runs BEFORE this throttle: if the app died, every
+        # template scan below is pointless anyway, and delaying the relaunch is
+        # the one thing here that actually costs a lot of wall-clock. It has its
+        # own PIDOF_INTERVAL throttle so it still is not one adb call per frame.
+        if not skip_icon:
+            crashed = self._app_is_gone()
+            if crashed:
+                return "icon"
+
         now = time.time()
         if self.SCAN_INTERVAL > 0 and (now - self._last_error_scan) < self.SCAN_INTERVAL:
             return None
@@ -3732,22 +3779,6 @@ class RangerGearBot(threading.Thread):
             
         if self.exists_in_cache("img/unkhow.png"):
             return "unkhow"
-            
-        # App crash check: เช็คว่าแอปยังรันอยู่ไหม (ใช้ pidof แทน icon.png)
-        # spawn adb ใหม่ทุกรอบแพงกว่าการสแกนรูปทั้งหมดรวมกัน และแอปไม่ได้ปิดถี่ขนาดนั้น
-        # เลยเช็คทุก PIDOF_INTERVAL วิ (ตรวจเจอช้าลงไม่กี่วิ เทียบกับ timeout 480 วิ)
-        if not skip_icon and (time.time() - self._last_pidof_check) >= self.PIDOF_INTERVAL:
-            self._last_pidof_check = time.time()
-            try:
-                pid_result = subprocess.run(
-                    [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
-                    capture_output=True, text=True, timeout=5
-                )
-                pid = pid_result.stdout.strip()
-                if not pid:
-                    return "icon"  # App not running → relaunch
-            except:
-                pass  # ถ้าเช็คไม่ได้ก็ข้ามไป
             
         # ตรวจ kaiby เฉพาะเมื่อเปิด kaibyskip (ปิด = ไม่ต้องหลบ, login ปกติ)
         if config.get("kaibyskip", 0) == 1:

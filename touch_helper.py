@@ -396,8 +396,31 @@ class MinitouchController:
         self._teardown()
 
 
+def any_binary_present():
+    """True if at least one minitouch binary is shipped.
+
+    Checked before touching adb at all: with no binaries, start() would spend an
+    `adb shell getprop` per device just to conclude it cannot run - and with many
+    emulators those calls serialise behind the caller's init lock.
+    """
+    if not os.path.isdir(MINITOUCH_DIR):
+        return False
+    for abi in os.listdir(MINITOUCH_DIR):
+        d = os.path.join(MINITOUCH_DIR, abi)
+        if not os.path.isdir(d):
+            continue
+        for name in ("minitouch", "minitouch.so"):
+            if os.path.exists(os.path.join(d, name)):
+                return True
+    return False
+
+
 def make_minitouch(adb_cmd, device_id, log=print):
     """Build and start a controller; returns it only if taps actually work."""
+    if not any_binary_present():
+        log(f"[{device_id}] minitouch is on but no binary in bin/minitouch/<abi>/ "
+            f"- using ADB taps (see bin/minitouch/README.md)")
+        return None
     ctrl = MinitouchController(adb_cmd, device_id, log=log)
     if ctrl.start():
         return ctrl
