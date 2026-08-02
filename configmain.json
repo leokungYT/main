@@ -63,5 +63,7 @@
         "time": "09:00",
         "source": "login-success",
         "dest": "input-id"
-    }
+    },
+    "minitouch": 1,
+    "pos_cache": 1
 }

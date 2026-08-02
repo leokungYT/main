@@ -1,17 +1,17 @@
 {
-  "success_count": 9,
-  "fail_count": 0,
+  "success_count": 2,
+  "fail_count": 1,
   "random_fail_count": 0,
   "hero_found_list": {
-    "ไม่เจอ": 9
+    "Success": 2
   },
   "device_statuses": {
-    "emulator-5556": {
-      "step": "Ruby/Ticket Check",
+    "127.0.0.1:16512": {
+      "step": "Injecting: (D3)brownthai7084f0fa_LINE_COCOS_PREF_KEY.xml",
       "status": "working"
     }
   },
-  "last_update": 1785604118.8000169,
-  "total_login_time": 0.0,
-  "login_time_count": 0
+  "last_update": 1785671658.3983488,
+  "total_login_time": 131.56690549850464,
+  "login_time_count": 2
 }

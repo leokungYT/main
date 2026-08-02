@@ -121,5 +121,8 @@
     },
     "kaibyskip": 1,
     "kaibycheck": 0,
-    "debug_ocr": 1
+    "debug_ocr": 1,
+    "minitouch": 0,
+    "pos_cache": 1,
+    "pos_cache_margin": 12
 }

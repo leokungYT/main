@@ -29,6 +29,16 @@ except ImportError:
     GUI_AVAILABLE = False
     print("[WARN] customtkinter not found. GUI mode will be disabled. Run 'pip install customtkinter' to enable.")
 
+# Shared tap/position helpers (minitouch + remembered button positions).
+# Optional: if the file is missing the bot keeps working the old way.
+try:
+    import touch_helper
+    TOUCH_HELPER_AVAILABLE = True
+except Exception as _touch_err:
+    touch_helper = None
+    TOUCH_HELPER_AVAILABLE = False
+    print(f"[WARN] touch_helper.py not loaded ({_touch_err}). Using plain ADB taps + full-screen search.")
+
 colorama.init(autoreset=True)
 
 # Fix SSL certificate error for downloading EasyOCR models
@@ -178,7 +188,7 @@ if GUI_AVAILABLE:
         def __init__(self, parent):
             super().__init__(parent)
             self.title("⚙ Config Settings")
-            self.geometry("350x450")
+            self.geometry("350x560")
             self.resizable(False, False)
             self.transient(parent)
             self.grab_set()
@@ -196,7 +206,9 @@ if GUI_AVAILABLE:
             self.add_switch("OCR Scans Debug (Images)", "debug_ocr")
             self.add_switch("Skip Kaiby Shop (3s)", "kaibyskip")
             self.add_switch("Force Kaiby Check (Proceed)", "kaibycheck")
-            
+            self.add_switch("⚡ Minitouch (กดเร็ว)", "minitouch")
+            self.add_switch("🧠 จำตำแหน่งปุ่ม (Pos Cache)", "pos_cache")
+
             # Thread delay entry
             delay_frame = ctk.CTkFrame(self, fg_color="transparent")
             delay_frame.pack(fill="x", padx=20, pady=5)
@@ -649,7 +661,11 @@ config = {
     "gearname": {},
     "weaponname": {},
     "ocr_region": {"x": 463, "y": 153, "w": 397, "h": 321},
-    "check_ruby_ticket": 0
+    "check_ruby_ticket": 0,
+    # Speed options (see touch_helper.py)
+    "minitouch": 0,         # 1 = tap via minitouch socket instead of `adb shell input tap`
+    "pos_cache": 1,         # 1 = remember where each button was found, re-check only that spot
+    "pos_cache_margin": 12  # px of slack around the remembered spot
 }
 
 adb_path = "adb"
@@ -658,6 +674,10 @@ adb_path = "adb"
 _ocr_reader = None
 _ocr_lock = threading.Lock()      # Thread-safe OCR init
 _ocr_run_lock = threading.Lock()  # Serialize readtext กัน CPU ตันตอนรันหลายเครื่องพร้อมกัน
+
+# Guards the one-time minitouch startup. Module-level on purpose: bot instances
+# must stay picklable for the multiprocessing variant of this bot family.
+_minitouch_init_lock = threading.Lock()
 
 def get_ocr_reader():
     """Get or create EasyOCR reader (singleton, thread-safe)"""
@@ -1029,14 +1049,40 @@ class RangerGearBot(threading.Thread):
         self._need_restart = False
         self._running = True
         self._capture_count = 0  # throttle popup checks
-        
+
+        # --- Speed helpers ---------------------------------------------------
+        # Remembered button positions: after the first full-screen match we only
+        # re-check a small ROI around the last hit instead of scanning again.
+        if TOUCH_HELPER_AVAILABLE:
+            self._pos_mem = touch_helper.PositionMemory(
+                enabled=bool(config.get("pos_cache", 1)),
+                margin=int(config.get("pos_cache_margin", 12)),
+                label=self.device_id,
+            )
+        else:
+            self._pos_mem = None
+        # minitouch is started lazily on the first tap so startup stays fast.
+        self._minitouch = None
+        self._minitouch_tried = False
+
         # Start background monitor thread
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
+    def _log_pos_cache(self, every_sec=120):
+        """Occasionally report how often the remembered positions are paying off."""
+        if self._pos_mem is None or not self._pos_mem.enabled:
+            return
+        now = time.time()
+        if now - getattr(self, "_pos_cache_logged_at", 0) < every_sec:
+            return
+        self._pos_cache_logged_at = now
+        print(f"[{self.device_id}] {self._pos_mem.summary()}")
+
     def _popup_monitor_loop(self):
         """Background thread to monitor fixnetv3.png - reuses main thread's screen to save CPU"""
         while self._running:
+            self._log_pos_cache()
             try:
                 # Reuse the main thread's last captured screen instead of doing a separate screencap
                 mon_screen = self._screen
@@ -1486,12 +1532,24 @@ class RangerGearBot(threading.Thread):
         return self._screen_color
 
     def _find_in_screen(self, template_path, similarity=0.95):
-        """Find template in cached screen image (no new capture)"""
+        """Find template in cached screen image (no new capture).
+
+        With pos_cache on, the first hit for a template is remembered and later
+        lookups only re-check a small ROI around it; a miss there falls straight
+        back to the full-screen scan below, so a moved button is still found.
+        """
         if self._screen is None:
             return None
         tmpl = self._get_template(template_path)
         if tmpl is None:
             return None
+
+        if self._pos_mem is not None:
+            # Cache key includes the threshold: the same image searched at a
+            # different similarity is a different question.
+            return self._pos_mem.find(self._screen, tmpl,
+                                      (template_path, similarity), similarity)
+
         try:
             result = cv2.matchTemplate(self._screen, tmpl, cv2.TM_CCOEFF_NORMED)
             loc = np.where(result >= similarity)
@@ -1544,11 +1602,37 @@ class RangerGearBot(threading.Thread):
             return True
         return False
     
+    def _touch(self):
+        """Return a live minitouch controller, or None to use ADB.
+
+        Started lazily on the first tap and only attempted once - if the binary
+        or the device says no, we quietly stay on ADB for the whole session.
+        """
+        if not config.get("minitouch", 0) or not TOUCH_HELPER_AVAILABLE:
+            return None
+        if self._minitouch is None and not self._minitouch_tried:
+            with _minitouch_init_lock:
+                if self._minitouch is None and not self._minitouch_tried:
+                    self._minitouch_tried = True
+                    self._minitouch = touch_helper.make_minitouch(
+                        self.adb_cmd, self.device_id, log=print)
+        ctrl = self._minitouch
+        if ctrl is not None and ctrl.ok:
+            # Taps are written in screenshot coordinates - keep minitouch scaled to them.
+            if self._screen is not None:
+                h, w = self._screen.shape[:2]
+                ctrl.update_screen_size(w, h)
+            return ctrl
+        return None
+
     def tap(self, x, y):
         """Direct tap without image search"""
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap", 
+        ctrl = self._touch()
+        if ctrl is not None and ctrl.tap(int(x), int(y)):
+            return
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap",
                      str(x), str(y)])
-        
+
     def type_text(self, text):
         """Type text via ADB (for search box) - clears it first to avoid double typing"""
         # 1. Clear text (Move to end then send backspaces)
@@ -1562,7 +1646,10 @@ class RangerGearBot(threading.Thread):
         sleep(0.2) # Brief wait for UI to process text input
 
     def swipe(self, x1, y1, x2, y2, duration=300):
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe", 
+        ctrl = self._touch()
+        if ctrl is not None and ctrl.swipe(int(x1), int(y1), int(x2), int(y2), duration):
+            return
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe",
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
     def check_black_screen(self):
@@ -2010,9 +2097,12 @@ class RangerGearBot(threading.Thread):
                 # ---- Check floating popups on every iteration ----
                 self.check_floating_popups()
                 # --------------------------------------------------
-                if self.exists_in_cache(img_path, similarity=similarity):
+                # Match once and click the position we just got (the old code
+                # searched, then made click() search the very same screen again).
+                pos = self._find_in_screen(img_path, similarity)
+                if pos:
                     print(f"[{self.device_id}] Found {img_name} (sim={similarity})! Clicking...")
-                    self.click(img_path, similarity=similarity)
+                    self.click(pos)
                     return True
             except Exception as e:
                 print(f"[{self.device_id}] Error while waiting for {img_name}: {e}")
@@ -2334,9 +2424,10 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Found stopcheck.png! Skipping to complete.")
                     return "complete"
                 
-                if self.exists_in_cache(img_path):
+                pos = self._find_in_screen(img_path)
+                if pos:
                     print(f"[{self.device_id}] Found {item}, clicking...")
-                    self.click(img_path)
+                    self.click(pos)
                     sleep(0.3) # Fast transition for images
                     break
                 sleep(0.2) # Fast loop search
