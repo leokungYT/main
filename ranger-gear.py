@@ -325,6 +325,24 @@ if GUI_AVAILABLE:
             else:
                 self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
 
+            # Initialize cached stats and start background thread to offload disk I/O from Main Thread
+            self.qsize = 0
+            self.bg_stats_thread = threading.Thread(target=self._bg_stats_counter_loop, daemon=True)
+            self.bg_stats_thread.start()
+
+        def _bg_stats_counter_loop(self):
+            while True:
+                try:
+                    # Count files in backup folder
+                    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+                    qsize = 0
+                    if os.path.exists(source_folder):
+                        qsize = len([f for f in os.listdir(source_folder) if f.lower().endswith(".xml")])
+                    self.qsize = qsize
+                except Exception as e:
+                    print(f"[GUI BG] Stats helper error: {e}")
+                time.sleep(5)  # Scan every 5 seconds
+
         def setup_ui(self):
             # 1. TOP TOOLBAR
             toolbar = ctk.CTkFrame(self, height=40, fg_color="#333333", corner_radius=0)
@@ -518,11 +536,8 @@ if GUI_AVAILABLE:
                 ui_stats.load_shared()
                 
                 with ui_stats.lock:
-                    # Count files real-time in the backup folder
-                    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
-                    qsize = 0
-                    if os.path.exists(source_folder):
-                        qsize = len([f for f in os.listdir(source_folder) if f.lower().endswith(".xml")])
+                    # Get cached file count from background thread
+                    qsize = getattr(self, "qsize", 0)
                     
                     self.lbl_file_count.configure(text=f"📁 {qsize}")
                     self.lbl_succ_count.configure(text=f"✅ {ui_stats.success_count}")

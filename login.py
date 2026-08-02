@@ -640,6 +640,36 @@ if GUI_AVAILABLE:
             else:
                 self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
 
+            # Initialize cached stats and start background thread to offload disk I/O from Main Thread
+            self.qsize = 0
+            self.backup_id_counts = {}
+            self.bg_stats_thread = threading.Thread(target=self._bg_stats_counter_loop, daemon=True)
+            self.bg_stats_thread.start()
+
+        def _bg_stats_counter_loop(self):
+            while True:
+                try:
+                    # 1. Count files in backup folder
+                    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+                    qsize = 0
+                    if os.path.exists(source_folder):
+                        for _root, _dirs, _files in os.walk(source_folder):
+                            qsize += len([f for f in _files if f.lower().endswith(".xml")])
+                    self.qsize = qsize
+
+                    # 2. Count files in backup-id folder
+                    backup_id_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup-id")
+                    counts = {}
+                    if os.path.exists(backup_id_folder):
+                        for f in os.listdir(backup_id_folder):
+                            if os.path.isfile(os.path.join(backup_id_folder, f)) and f.lower().endswith(".xml"):
+                                prefix = f.split("-")[0].replace(".xml", "").replace(".XML", "")
+                                counts[prefix] = counts.get(prefix, 0) + 1
+                    self.backup_id_counts = counts
+                except Exception as e:
+                    print(f"[GUI BG] Stats helper error: {e}")
+                time.sleep(5)  # Scan every 5 seconds
+
         def setup_ui(self):
             # 1. TOP TOOLBAR
             toolbar = ctk.CTkFrame(self, height=40, fg_color="#333333", corner_radius=0)
@@ -843,12 +873,8 @@ if GUI_AVAILABLE:
                 ui_stats.load_shared()
                 
                 with ui_stats.lock:
-                    # Count files real-time in the backup folder
-                    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
-                    qsize = 0
-                    if os.path.exists(source_folder):
-                        for _root, _dirs, _files in os.walk(source_folder):
-                            qsize += len([f for f in _files if f.lower().endswith(".xml")])
+                    # Get cached file count from background thread
+                    qsize = getattr(self, "qsize", 0)
                     
                     self.lbl_file_count.configure(text=f"📁 {qsize}")
                     self.lbl_succ_count.configure(text=f"✅ {ui_stats.success_count}")
@@ -862,18 +888,10 @@ if GUI_AVAILABLE:
                     hero_raw_data = ui_stats.get_hero_combo_stats()
                     hero_data = hero_raw_data.copy()
                     
-                    # --- Realtime counting of backup-id folder ---
-                    backup_id_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup-id")
-                    if os.path.exists(backup_id_folder):
-                        backup_id_counts = {}
-                        for f in os.listdir(backup_id_folder):
-                            if os.path.isfile(os.path.join(backup_id_folder, f)) and f.lower().endswith(".xml"):
-                                prefix = f.split("-")[0].replace(".xml", "").replace(".XML", "")
-                                backup_id_counts[prefix] = backup_id_counts.get(prefix, 0) + 1
-                        
-                        # Overwrite hero_data with physical file counts
-                        for prefix, count in backup_id_counts.items():
-                            hero_data[prefix] = count
+                    # Use cached backup-id file counts from background thread
+                    backup_id_counts = getattr(self, "backup_id_counts", {})
+                    for prefix, count in backup_id_counts.items():
+                        hero_data[prefix] = count
                     
                     # Handle Login Failures (fixid x 8)
                     login_fail_count = ui_stats.fail_count
