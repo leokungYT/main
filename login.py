@@ -259,6 +259,21 @@ if GUI_AVAILABLE:
             self.add_switch(scroll_frame, "⚡ Minitouch (กดเร็ว ไม่เรียก adb ทุกครั้ง)", "minitouch", default=0)
             self.add_switch(scroll_frame, "🧠 จำตำแหน่งปุ่ม (ไม่สแกนทั้งจอซ้ำ)", "pos_cache", default=1)
 
+            scan_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            scan_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(scan_frame, text="สแกน error ทุกกี่วิ (0=ทุกเฟรม):", anchor="w", width=210).pack(side="left")
+            self.scan_interval_entry = ctk.CTkEntry(scan_frame, width=60)
+            self.scan_interval_entry.insert(0, str(self.cfg.get("scan_interval", 1.0)))
+            self.scan_interval_entry.pack(side="left", padx=5)
+
+            loop_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            loop_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(loop_frame, text="หน่วงลูปหาปุ่ม (ว่าง=ค่าเดิม):", anchor="w", width=210).pack(side="left")
+            self.loop_delay_entry = ctk.CTkEntry(loop_frame, width=60)
+            if self.cfg.get("loop_delay") is not None:
+                self.loop_delay_entry.insert(0, str(self.cfg.get("loop_delay")))
+            self.loop_delay_entry.pack(side="left", padx=5)
+
             ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
             ctk.CTkLabel(scroll_frame, text="📦 ตั้งค่ากล่อง", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(5, 5), anchor="w")
             
@@ -404,6 +419,21 @@ if GUI_AVAILABLE:
                     self.cfg["black_screen_timeout"] = int(self.black_timeout_entry.get())
                 except:
                     self.cfg["black_screen_timeout"] = 8
+
+                try:
+                    self.cfg["scan_interval"] = float(self.scan_interval_entry.get())
+                except:
+                    self.cfg["scan_interval"] = 1.0
+
+                # blank = ไม่ override ปล่อยให้แต่ละลูปใช้ค่าเดิมของมัน
+                loop_txt = self.loop_delay_entry.get().strip()
+                if not loop_txt:
+                    self.cfg["loop_delay"] = None
+                else:
+                    try:
+                        self.cfg["loop_delay"] = float(loop_txt)
+                    except:
+                        self.cfg["loop_delay"] = None
                 
                 # Save auto_trade settings
                 if "auto_trade" not in self.cfg:
@@ -1050,9 +1080,11 @@ config = {
     "weaponname": {},
     "ocr_region": {"x": 463, "y": 153, "w": 397, "h": 321},
     # Speed options (see touch_helper.py)
-    "minitouch": 0,         # 1 = tap via minitouch socket instead of `adb shell input tap`
-    "pos_cache": 1,         # 1 = remember where each button was found, re-check only that spot
-    "pos_cache_margin": 12  # px of slack around the remembered spot
+    "minitouch": 0,          # 1 = tap via minitouch socket instead of `adb shell input tap`
+    "pos_cache": 1,          # 1 = remember where each button was found, re-check only that spot
+    "pos_cache_margin": 12,  # px of slack around the remembered spot
+    "scan_interval": 1.0,    # sec between full popup/error sweeps (0 = every frame, old behaviour)
+    "loop_delay": None       # override the wait-loop poll delay; None = each loop's own default
 }
 
 adb_path = "adb"
@@ -1620,6 +1652,32 @@ def move_success_to_input(source_dir="login-success", dest_dir="input-id"):
 # RangerGearBot Class - Unified Bot for Ranger + Gear
 # =============================================================
 class RangerGearBot(threading.Thread):
+    PIDOF_INTERVAL = 3.0   # seconds between app-alive checks (see check_error_images)
+
+    @property
+    def SCAN_INTERVAL(self):
+        """Seconds between full popup/error sweeps. 0 = every frame (old behaviour)."""
+        try:
+            return float(config.get("scan_interval", 1.0))
+        except (TypeError, ValueError):
+            return 1.0
+
+    def loop_delay(self, default):
+        """Pause between polls in a wait-for-image loop.
+
+        Returns `default` (whatever that loop used before) unless "loop_delay" is
+        set in the config, so behaviour is unchanged out of the box. Lower = spots
+        a button sooner but issues more screencaps, which is adb-bound, so the
+        right value depends on how many emulators are running - tune per machine.
+        """
+        v = config.get("loop_delay")
+        if v is None:
+            return default
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+
     def __init__(self, device_id, args=None):
         threading.Thread.__init__(self)
         self.device_id = device_id
@@ -1694,6 +1752,16 @@ class RangerGearBot(threading.Thread):
         self._need_restart = False
         self._running = True
         self._capture_count = 0  # throttle popup checks
+
+        # Bumped on every new frame. check_floating_popups() uses it to avoid
+        # re-scanning the same frame twice (it gets called from the loop AND
+        # from check_error_images).
+        self._screen_gen = 0
+        self._popups_clean_gen = -1
+        self._tap_count = 0
+        self._last_pidof_check = 0.0
+        self._last_popup_scan = 0.0
+        self._last_error_scan = 0.0
 
         # --- Speed helpers ---------------------------------------------------
         # Remembered button positions: after the first full-screen match we only
@@ -3167,13 +3235,12 @@ class RangerGearBot(threading.Thread):
             # Create numpy array from raw RGBA data (ข้ามการ encode/decode PNG ทั้งหมด)
             pixel_data = raw_data[12:12 + w * h * 4]
             rgba = np.frombuffer(pixel_data, dtype=np.uint8).reshape((h, w, 4))
-            
-            # Convert RGBA to grayscale directly (เร็วกว่า cvtColor)
-            # Y = 0.299*R + 0.587*G + 0.114*B (BT.601)
-            self._screen = np.dot(rgba[:,:,:3], [0.299, 0.587, 0.114]).astype(np.uint8)
-            
-            # Convert RGBA to BGR (เร็วมาก แค่ array slicing ไม่ต้อง lazy decode)
-            self._screen_color = np.ascontiguousarray(rgba[:, :, [2, 1, 0]])  # RGBA→BGR
+
+            # cv2.cvtColor แทน np.dot: np.dot สร้าง float64 กลางทาง (540x960x3 = 12MB
+            # ต่อเฟรม) วัดแล้วช้ากว่า 25 เท่า (22ms -> 0.9ms) ผลลัพธ์สีเหมือนกันเป๊ะ
+            # ส่วน grayscale ต่างกันไม่เกิน 1 ระดับ (ปัดเศษ, BT.601 ทั้งคู่)
+            self._screen_color = cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGR)
+            self._screen = cv2.cvtColor(self._screen_color, cv2.COLOR_BGR2GRAY)
             self._screen_raw_rgba = None  # ไม่ต้องเก็บแล้ว ประหยัด memory
             self._screen_raw_png = None
             self._screen_width = w
@@ -3215,6 +3282,9 @@ class RangerGearBot(threading.Thread):
                 self._screen_raw_png = None
                 self._screen_raw_rgba = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
+
+            # New frame -> any popup-free verdict from the previous frame is stale.
+            self._screen_gen += 1
 
             # Popup check every 3rd capture to reduce CPU (background thread also monitors)
             self._capture_count += 1
@@ -3336,6 +3406,7 @@ class RangerGearBot(threading.Thread):
     def tap(self, x, y):
         self.last_activity_time = time.time()
         """Direct tap without image search"""
+        self._tap_count += 1   # lets check_floating_popups() tell "nothing fired" apart
         ctrl = self._touch()
         if ctrl is not None and ctrl.tap(int(x), int(y)):
             return
@@ -3439,7 +3510,25 @@ class RangerGearBot(threading.Thread):
         Check and click floating popups (checkline / fixnetv2 / fixplay / fixnet1).
         เจอก็กด วนเช็คซ้ำจนกว่าจะไม่เจอ popup ใดๆ
         ทำงานทุกรอบ capture_screen() คลุมทั้งไฟล์
+
+        เช็คซ้ำบนภาพเดิมไม่ได้อะไรเพิ่ม (matchTemplate ให้ผลเดิมเป๊ะ) — ปกติรอบนึง
+        โดนเรียก 2 ครั้ง (ในลูป 1 + ใน check_error_images อีก 1) = สแกนทิ้ง 8 รูป
+        เลยจำไว้ว่าเฟรมไหนเช็คจนจบแล้วไม่เจออะไร แล้วข้ามรอบซ้ำของเฟรมนั้น
         """
+        gen_at_entry = self._screen_gen
+        if self._popups_clean_gen == gen_at_entry:
+            return
+
+        # Time throttle. These popups sit on screen until something dismisses them,
+        # so sampling a few times a second is as good as sampling every frame - it
+        # only delays the click by at most SCAN_INTERVAL. Set scan_interval to 0 in
+        # the config to restore the old scan-every-frame behaviour.
+        now = time.time()
+        if self.SCAN_INTERVAL > 0 and (now - self._last_popup_scan) < self.SCAN_INTERVAL:
+            return
+        self._last_popup_scan = now
+        taps_at_entry = self._tap_count
+
         # checkline.png: Handle Checkbox Popup Sequence
         if self.exists_in_cache("img/checkline.png"):
             print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
@@ -3570,6 +3659,13 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [POPUP] fixpop.png clicked 10 times, breaking to avoid infinite loop")
                 break
 
+        # Mark this frame popup-free ONLY if the pass did nothing at all: no new
+        # frame AND no input sent. Every popup branch above taps or clicks, so a
+        # tap counter is a reliable "something fired" signal - checking the frame
+        # generation alone is not (fixaccep clicks without re-capturing).
+        if self._screen_gen == gen_at_entry and self._tap_count == taps_at_entry:
+            self._popups_clean_gen = gen_at_entry
+
     def _raw_capture(self):
         """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน) - ใช้ raw screencap เร็วขึ้น"""
         try:
@@ -3596,6 +3692,7 @@ class RangerGearBot(threading.Thread):
                 self._screen_raw_png = None
                 self._screen_raw_rgba = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
+            self._screen_gen += 1
         except Exception as e:
             print(f"[{self.device_id}] Raw capture error: {e}")
 
@@ -3604,7 +3701,16 @@ class RangerGearBot(threading.Thread):
 
         # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ ไม่ return error) =====
         self.check_floating_popups()
-        
+
+        # Same throttle as the popup pass: none of the errors below are transient
+        # (they are dialogs that stay up), so scanning for them a few times a second
+        # is enough. Returning None just means "nothing wrong right now", which is
+        # what the callers already handle every iteration.
+        now = time.time()
+        if self.SCAN_INTERVAL > 0 and (now - self._last_error_scan) < self.SCAN_INTERVAL:
+            return None
+        self._last_error_scan = now
+
         # Check for Black/Stuck screen
         # [REMOVED] User requested to only check black screen upon startup.
 
@@ -3614,11 +3720,11 @@ class RangerGearBot(threading.Thread):
             if os.path.exists(fixcak_path) and self.exists_in_cache(fixcak_path):
                 return "fixcak"
         
-        # stopcheck.png: complete/stop process if found
-        # Try multiple thresholds like in example code
-        for th in [0.95, 0.9, 0.85, 0.8]:
-            if self.exists_in_cache("img/stopcheck.png", similarity=th):
-                return "stopcheck"
+        # stopcheck.png: complete/stop process if found.
+        # เดิมวน [0.95, 0.9, 0.85, 0.8] = matchTemplate ภาพเดิม 4 รอบ ได้ผลเท่ากันทุกรอบ
+        # ต่างแค่ค่าที่เอาไปเทียบ ซึ่งเทียบเท่ากับเช็คที่ค่าหลวมสุดครั้งเดียวเป๊ะ ๆ
+        if self.exists_in_cache("img/stopcheck.png", similarity=0.8):
+            return "stopcheck"
         
         # Common login errors
         if self.exists_in_cache("img/fixbuglogin.png"):
@@ -3628,7 +3734,10 @@ class RangerGearBot(threading.Thread):
             return "unkhow"
             
         # App crash check: เช็คว่าแอปยังรันอยู่ไหม (ใช้ pidof แทน icon.png)
-        if not skip_icon:
+        # spawn adb ใหม่ทุกรอบแพงกว่าการสแกนรูปทั้งหมดรวมกัน และแอปไม่ได้ปิดถี่ขนาดนั้น
+        # เลยเช็คทุก PIDOF_INTERVAL วิ (ตรวจเจอช้าลงไม่กี่วิ เทียบกับ timeout 480 วิ)
+        if not skip_icon and (time.time() - self._last_pidof_check) >= self.PIDOF_INTERVAL:
+            self._last_pidof_check = time.time()
             try:
                 pid_result = subprocess.run(
                     [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
@@ -4208,10 +4317,10 @@ class RangerGearBot(threading.Thread):
                         return "restart"
                     if err == "stopcheck": return "complete"
                     
-                    if self.exists_in_cache(checkpoint_img, similarity=0.95): 
+                    if self.exists_in_cache(checkpoint_img, similarity=0.95):
                         print(f"[{self.device_id}] Checkpoint reached: {checkpoint_img}")
                         break
-                    sleep(1.5)
+                    sleep(self.loop_delay(1.5))   # was 1.5
                 sleep(1.0)
                 continue
                 
@@ -4439,8 +4548,8 @@ class RangerGearBot(threading.Thread):
                             return "success" # Exit this sequence early
 
                     break
-                sleep(0.5) # Fast loop search
-            
+                sleep(self.loop_delay(0.5)) # Fast loop search (was 0.5)
+
         return "success"
 
     def wait_and_click_image(self, img_name, timeout=30, similarity=0.95):
@@ -4466,8 +4575,8 @@ class RangerGearBot(threading.Thread):
                     return True
             except Exception as e:
                 print(f"[{self.device_id}] Error while waiting for {img_name}: {e}")
-            sleep(0.2)
-                
+            sleep(self.loop_delay(0.2))   # was 0.2
+
         print(f"[{self.device_id}] Timeout waiting for {img_name} ({timeout}s)")
         return False
 

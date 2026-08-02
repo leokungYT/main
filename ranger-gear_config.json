@@ -124,5 +124,7 @@
     "debug_ocr": 1,
     "minitouch": 0,
     "pos_cache": 1,
-    "pos_cache_margin": 12
+    "pos_cache_margin": 12,
+    "scan_interval": 1.0,
+    "loop_delay": null
 }
