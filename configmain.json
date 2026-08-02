@@ -1,7 +1,7 @@
 {
     "7day": 0,
-    "shopgacha": 1,
-    "swap_shop": 1,
+    "shopgacha": 0,
+    "swap_shop": 0,
     "swap_shopevent": 0,
     "all-tiket": 0,
     "all-in": 0,
@@ -55,7 +55,7 @@
     "black_screen_timeout": 8,
     "loop1": 0,
     "first_loop": 0,
-    "kaibyskip": 1,
+    "kaibyskip": 0,
     "kaibycheck": 0,
     "misson": 0,
     "move_success": {

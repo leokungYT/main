@@ -1,8 +1,8 @@
 {
     "first_loop": 0,
     "thread_delay": 5,
-    "find_ranger": 1,
-    "find_gear": 1,
+    "find_ranger": 0,
+    "find_gear": 0,
     "find_all": 0,
     "custommode": 0,
     "custom": {
@@ -110,7 +110,7 @@
         "w": 397,
         "h": 321
     },
-    "check_ruby_ticket": 0,
+    "check_ruby_ticket": 1,
     "find_all_rangerplus": 0,
     "custom_plus": {
         "kappa": 0,
