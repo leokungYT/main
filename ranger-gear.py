@@ -3,6 +3,7 @@ import numpy as np
 import subprocess
 import os
 import struct
+import hashlib
 import time
 from time import sleep
 import sys
@@ -396,7 +397,9 @@ if GUI_AVAILABLE:
                     source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
                     qsize = 0
                     if os.path.exists(source_folder):
-                        qsize = len([f for f in os.listdir(source_folder) if f.lower().endswith(".xml")])
+                        # นับโฟลเดอร์ย่อยด้วย ให้ตรงกับที่ _get_next_available_file() หยิบได้จริง
+                        for _root, _dirs, _files in os.walk(source_folder):
+                            qsize += len([f for f in _files if f.lower().endswith(".xml")])
                     self.qsize = qsize
                 except Exception as e:
                     print(f"[GUI BG] Stats helper error: {e}")
@@ -1331,15 +1334,51 @@ class RangerGearBot(threading.Thread):
         lock_dir = os.path.join(tempfile.gettempdir(), "ranger-locks")
         if not os.path.exists(lock_dir):
             os.makedirs(lock_dir, exist_ok=True)
-        lock_name = os.path.basename(xml_file) + ".lock"
+        # ใช้ hash ของ full path กัน lock ชนกันกรณีไฟล์ชื่อซ้ำในคนละโฟลเดอร์ย่อย
+        full = os.path.abspath(xml_file)
+        lock_name = hashlib.md5(full.encode("utf-8")).hexdigest() + "_" + os.path.basename(xml_file) + ".lock"
         return os.path.join(lock_dir, lock_name)
 
+    @staticmethod
+    def _prune_if_empty(folder, root_folder):
+        """ลบโฟลเดอร์ย่อยใน backup/ ที่ไม่เหลืออะไรแล้ว
+
+        ใช้ os.rmdir เป็นตัวตัดสินเลย เพราะมันลบได้เฉพาะตอนที่โฟลเดอร์ว่างจริง ๆ
+        และเป็น operation เดียวจบ - ถ้าอีกเครื่องเพิ่งหย่อนไฟล์เข้ามาพอดี rmdir
+        จะ error แล้วเราข้ามไป ไม่มีทางลบไฟล์ของใครหาย
+        โฟลเดอร์ backup/ ตัวแม่ไม่ลบ และโฟลเดอร์ที่ยังมีไฟล์อื่นค้าง (เช่น .txt)
+        ก็ไม่ลบ เพื่อไม่ให้ข้อมูลใครหายโดยไม่ตั้งใจ
+        """
+        if os.path.abspath(folder) == os.path.abspath(root_folder):
+            return False
+        try:
+            os.rmdir(folder)
+        except OSError:
+            return False
+        try:
+            rel = os.path.relpath(folder, root_folder)
+        except ValueError:
+            rel = folder
+        print(f"[QUEUE] ใช้ไฟล์หมดแล้ว ลบโฟลเดอร์ว่าง: backup/{rel}")
+        return True
+
     def _get_next_available_file(self):
-        """Finds next .xml file in backup/ and attempts to lock it atomically."""
+        """Finds next .xml file in backup/ and attempts to lock it atomically.
+
+        เดินเข้าทุกโฟลเดอร์ย่อยใน backup/ (ลากทั้งโฟลเดอร์มาวางได้เลย) และเก็บกวาด
+        โฟลเดอร์ย่อยที่ใช้ไฟล์หมดแล้วทิ้งไปด้วย
+        """
         source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
         if not os.path.exists(source_folder): return None
-        
-        files = [os.path.join(source_folder, f) for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
+
+        files = []
+        # topdown=False = เดินจากในสุดออกมา โฟลเดอร์ซ้อนหลายชั้นที่ว่างหมดแล้ว
+        # จะถูกลบไล่จากชั้นในออกมาได้ครบในรอบเดียว
+        for root, dirs, filenames in os.walk(source_folder, topdown=False):
+            for f in filenames:
+                if f.lower().endswith(".xml"):
+                    files.append(os.path.join(root, f))
+            self._prune_if_empty(root, source_folder)
         # Shuffle files so multiple processes don't hit the exact same order
         import random
         random.shuffle(files)
@@ -1359,6 +1398,13 @@ class RangerGearBot(threading.Thread):
                 fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 with os.fdopen(fd, 'w') as f:
                     f.write(self.device_id)
+                # ไฟล์อาจถูกอีกเครื่องหยิบไปย้ายเรียบร้อยแล้วตั้งแต่ตอนที่เราไล่ list
+                # ถ้าหายไปแล้วก็คืน lock แล้วไปตัวถัดไป ดีกว่าเอา path ที่ไม่มีอยู่จริง
+                # ไปให้ inject_file แล้วไปเด้ง error ทีหลัง
+                if not os.path.exists(xml_file):
+                    try: os.remove(lock_file)
+                    except OSError: pass
+                    continue
                 return xml_file
             except FileExistsError:
                 continue
