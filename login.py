@@ -3386,15 +3386,18 @@ class RangerGearBot(threading.Thread):
 
 
     def handle_random_fail(self, file_path):
-        """Handle gacha/swap_shop failure by moving file to not-found/ folder"""
-        dst_dir = "not-found"
+        """สุ่มไม่ได้ -> เก็บไว้ที่ random-fail/ ใช้ชื่อไฟล์เดิม
+
+        ชื่อไฟล์คงเดิมทั้งดุ้น (ไม่เติม prefix อะไร) จะได้เอากลับไปใช้ต่อได้เลย
+        """
+        dst_dir = "random-fail"
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         base = os.path.basename(file_path)
         dst = os.path.join(dst_dir, base)
-        
-        print(f"[{self.device_id}] RANDOM/GACHA FAILED. Pulling file from device and moving to not-found...")
-        
+
+        print(f"[{self.device_id}] RANDOM/GACHA FAILED. Pulling file from device and moving to {dst_dir}/...")
+
         src_remote = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
         temp_remote = f"/data/local/tmp/random_fail_pref_{self.device_id.replace(':','_')}.xml"
         
@@ -3402,19 +3405,27 @@ class RangerGearBot(threading.Thread):
             self.adb_shell(f"su -c 'cp {src_remote} {temp_remote}'")
             self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
             self.adb_run([self.adb_cmd, "-s", self.device_id, "pull", temp_remote, dst])
-            print(f"[{self.device_id}] Saved random-fail file to {dst}")
+            self.adb_shell(f"su -c 'rm -f {temp_remote}'")
         except Exception as e:
             print(f"[{self.device_id}] Failed to pull remote file for random-fail: {e}")
+
+        # adb pull คืน exit code ไม่ raise ต่อให้ล้มเหลว เลยต้องเช็คว่าไฟล์โผล่จริงไหม
+        # ก่อนจะไปลบต้นทาง ไม่งั้นดึงไม่สำเร็จ = บัญชีหายไปเฉย ๆ ทั้งใบ
+        if os.path.exists(dst) and os.path.getsize(dst) > 0:
+            print(f"[{self.device_id}] Saved random-fail file to {dst}")
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception:
+                pass
+        else:
+            # ดึงจากเครื่องไม่ได้ - ย้ายไฟล์ต้นฉบับไปแทน ดีกว่าปล่อยให้หาย
+            print(f"[{self.device_id}] ดึงไฟล์จากเครื่องไม่สำเร็จ - ย้ายไฟล์ต้นฉบับไป {dst_dir}/ แทน")
             try:
                 if os.path.exists(file_path):
                     shutil.move(file_path, dst)
-            except: pass
-
-        # Clean up local backup file
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except: pass
+            except Exception as e:
+                print(f"[{self.device_id}] ย้ายไฟล์ต้นฉบับไม่สำเร็จ: {e} (ไฟล์ยังอยู่ที่เดิม)")
 
     def handle_kaiby(self, file_path):
         """Handle kaiby error by moving file to kaiby/ folder and clearing app"""
