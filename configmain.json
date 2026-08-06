@@ -38,10 +38,21 @@
         "swap_shopkom9star": 1
     },
     "HERO_MAPPING": {
-        "gachahero1": "bosslaw+",
-        "gachahero2": "kappa+",
-        "gachahero3": "som+",
-        "gachahero4": "anya+U"
+        "gachahero1": "Reno+",
+        "gachahero2": "hina+",
+        "gachahero3": "KafkaU+",
+        "gachahero4": "Kafka+"
+    },
+    "Hero_low": {
+        "enabled": 1,
+        "low1": {
+            "img": "low1.bmp",
+            "name": "kikoru+"
+        },
+        "low2": {
+            "img": "low2.bmp",
+            "name": "kikoruU+"
+        }
     },
     "link": 0,
     "ruby-gear200": 0,

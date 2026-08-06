@@ -549,7 +549,44 @@ if GUI_AVAILABLE:
                 entry.insert(0, name)
                 entry.pack(side="left", padx=5)
                 self.hero_entries[img] = entry
-        
+
+            # ---- Hero_low: ตัวรอง เจอแล้วไม่จบงาน แค่เอาชื่อไปต่อหน้าชื่อไฟล์ ----
+            ctk.CTkFrame(scroll, height=2, fg_color="gray30").pack(fill="x", pady=10)
+            ctk.CTkLabel(scroll, text="🔸 ตัวรอง (Hero_low)",
+                         font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(5, 2), anchor="w")
+            ctk.CTkLabel(
+                scroll,
+                text="เจอแล้ว 'ไม่จบงาน' แค่จดชื่อไว้แล้วสุ่มต่อ\n"
+                     "ถ้าเจอตัวหลักทีหลัง ชื่อไฟล์จะเป็น ตัวรอง+ตัวหลัก\n"
+                     "ถ้าสุ่มจนจบไม่เจอตัวหลัก ก็ยังเก็บเข้า backup-id ด้วยชื่อตัวรอง",
+                font=ctk.CTkFont(size=10), text_color="gray", justify="left").pack(anchor="w", padx=5)
+
+            low_cfg = self.cfg.get("Hero_low", {}) or {}
+            self.hero_low_enabled = ctk.BooleanVar(value=bool(low_cfg.get("enabled", 0)))
+            ctk.CTkSwitch(scroll, text="เปิดใช้ตัวรอง", variable=self.hero_low_enabled).pack(
+                pady=5, padx=5, anchor="w")
+
+            self.hero_low_entries = {}
+            for key in sorted(k for k in low_cfg.keys() if k != "enabled") or ["low1", "low2"]:
+                item = low_cfg.get(key)
+                if isinstance(item, dict):
+                    img_v, name_v = item.get("img", f"{key}.bmp"), item.get("name", "")
+                elif isinstance(item, str):
+                    img_v, name_v = f"{key}.bmp", item
+                else:
+                    img_v, name_v = f"{key}.bmp", ""
+                frame = ctk.CTkFrame(scroll, fg_color="transparent")
+                frame.pack(fill="x", pady=2)
+                ctk.CTkLabel(frame, text=f"{key}:", width=50, anchor="e").pack(side="left")
+                e_img = ctk.CTkEntry(frame, width=120, placeholder_text="low1.bmp")
+                e_img.insert(0, img_v)
+                e_img.pack(side="left", padx=3)
+                ctk.CTkLabel(frame, text="→", width=20).pack(side="left")
+                e_name = ctk.CTkEntry(frame, width=150, placeholder_text="kikoru+")
+                e_name.insert(0, name_v)
+                e_name.pack(side="left", padx=3)
+                self.hero_low_entries[key] = (e_img, e_name)
+
         def setup_gear_tab(self):
             tab = self.tabview.tab("⚙️ Gears")
             
@@ -598,7 +635,15 @@ if GUI_AVAILABLE:
                 for img, entry in self.hero_entries.items():
                     hero_mapping[img] = entry.get()
                 self.cfg["HERO_MAPPING"] = hero_mapping
-                
+
+                # Hero_low - เก็บเฉพาะแถวที่กรอกครบทั้งชื่อรูปและชื่อที่จะใส่ไฟล์
+                hero_low = {"enabled": 1 if self.hero_low_enabled.get() else 0}
+                for key, (e_img, e_name) in self.hero_low_entries.items():
+                    img_v, name_v = e_img.get().strip(), e_name.get().strip()
+                    if img_v and name_v:
+                        hero_low[key] = {"img": img_v, "name": name_v}
+                self.cfg["Hero_low"] = hero_low
+
                 gear_mapping = {}
                 for img, entry in self.gear_entries.items():
                     gear_mapping[img] = entry.get()
@@ -1585,6 +1630,69 @@ def check_hero_images(bot, adb_img):
         return False
     except: return False
 
+
+# =============================================================
+# Hero_low - ตัวรอง เจอแล้วไม่จบงาน แค่จดชื่อไว้ใส่ในชื่อไฟล์
+# =============================================================
+def load_hero_low():
+    """อ่าน config Hero_low -> [(ชื่อรูป, ชื่อที่จะใส่ในไฟล์), ...]
+
+    รูปแบบใน configmain.json:
+        "Hero_low": {
+            "enabled": 1,
+            "low1": {"img": "low1.bmp", "name": "kikoru+"},
+            "low2": {"img": "low2.bmp", "name": "kikoruU+"}
+        }
+    ปิดอยู่ (หรือไม่มี key) = คืน list ว่าง แปลว่าไม่ต้องหาอะไรเพิ่ม
+    """
+    try:
+        cfg = config.get("Hero_low", {}) or {}
+        if not cfg.get("enabled", 0):
+            return []
+        entries = []
+        # เรียงตามชื่อ key (low1, low2, ...) ให้ลำดับคงที่ทุกรอบ
+        for key in sorted(k for k in cfg.keys() if k != "enabled"):
+            item = cfg.get(key)
+            if isinstance(item, dict):
+                img, name = item.get("img"), item.get("name")
+            elif isinstance(item, str):
+                # เขียนสั้น ๆ แบบ "low1": "kikoru+" ก็ได้ ชื่อรูปเดาจาก key
+                img, name = f"{key}.bmp", item
+            else:
+                continue
+            if img and name:
+                entries.append((img, name))
+        return entries
+    except Exception as e:
+        print(f"[WARN] อ่าน Hero_low ไม่ได้: {e}")
+        return []
+
+
+def find_hero_low_images(bot, adb_img, already_found):
+    """หา low ทุกตัวบนจอ คืนเฉพาะ 'ชื่อ' ที่ยังไม่เคยเจอมาก่อน (เรียงตามที่เจอ)
+
+    หาไฟล์รูปจาก img/ranger-gacha/ ก่อน แล้วค่อย img/ เผื่อวางไว้คนละที่
+    """
+    found = []
+    for img_name, display in load_hero_low():
+        if display in already_found or display in found:
+            continue
+        for folder in ("img/ranger-gacha", "img"):
+            path = f"{folder}/{img_name}"
+            if not os.path.exists(path):
+                continue
+            try:
+                if ImgSearchADB(adb_img, path):
+                    print(f"[{bot.device_id}] 🔸 พบตัวรอง {img_name} -> {display} (จดไว้ ทำงานต่อ)")
+                    found.append(display)
+            except Exception:
+                pass
+            break   # เจอไฟล์รูปแล้ว ไม่ต้องลองโฟลเดอร์ถัดไป
+        else:
+            print(f"[{bot.device_id}] [WARN] Hero_low: ไม่พบไฟล์รูป {img_name} "
+                  f"(วางที่ img/ranger-gacha/ หรือ img/)")
+    return found
+
 def search_gachaslot_image(bot):
     """Search for gachaslot.png with swiping logic from mainLG.py"""
     max_swipes = 5
@@ -2398,6 +2506,40 @@ class RangerGearBot(threading.Thread):
         first_sequence_position = 0
         second_sequence_position = 0
         gacha_count = 0
+
+        # Hero_low: ตัวรองที่เจอระหว่างทาง เจอแล้ว "ไม่จบงาน" แค่จดชื่อไว้
+        # เอาไปต่อหน้าชื่อไฟล์ตอนจบ เรียงตามลำดับที่เจอ
+        found_low_names = []
+        hero_low_entries = load_hero_low()
+        if hero_low_entries:
+            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Hero_low เปิดอยู่ - "
+                  f"หาเพิ่ม {len(hero_low_entries)} ตัว: "
+                  f"{', '.join(n for _, n in hero_low_entries)}")
+
+        def build_prefix(main_name=None):
+            """ชื่อไฟล์ = ตัวรองที่เจอ (ตามลำดับ) + ตัวหลัก เช่น kikoru+Kafka+"""
+            parts = list(found_low_names)
+            if main_name:
+                parts.append(main_name)
+            return "".join(parts) if parts else None
+
+        def keep_low_if_any(reason):
+            """เงื่อนไขออกแบบไม่เจอตัวหลัก
+
+            ถ้าระหว่างทางเจอตัวรองไว้ ก็ยังเก็บไฟล์เข้า backup-id พร้อมชื่อตัวรอง
+            แทนที่จะทิ้งไป not-found คืน "backup_complete" ถ้าเก็บแล้ว
+            คืน None ถ้าไม่มีตัวรอง (ให้ผู้เรียกทำ flow เดิมต่อ)
+            """
+            if not found_low_names:
+                return None
+            low_prefix = build_prefix()
+            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] "
+                  f"{reason} - ไม่เจอตัวหลัก แต่ได้ตัวรอง {low_prefix} เก็บเข้า backup-id")
+            device.backup_game_data(low_prefix)
+            ui_stats.update_hero(low_prefix)
+            device.clear_and_restart()
+            time.sleep(2)
+            return "backup_complete"
         
         last_click_position = None
         last_image_hash = None
@@ -2610,6 +2752,15 @@ class RangerGearBot(threading.Thread):
                 adb_img = device._screen_color
                 current_time = time.time()
 
+                # Hero_low: หาตัวรองทุกรอบ ก่อนเช็คเงื่อนไขออกทุกตัว เจอแล้วแค่จดชื่อ
+                # ไม่ break ไม่ return - ปล่อยให้ลูปทำงานต่อตามปกติ
+                if hero_low_entries:
+                    new_lows = find_hero_low_images(device, adb_img, found_low_names)
+                    if new_lows:
+                        found_low_names.extend(new_lows)
+                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] "
+                              f"ตัวรองสะสม: {''.join(found_low_names)}")
+
                 # ⭐ เช็ค fixrandom1 ลอยๆ ตลอดทั้งกระบวนการ - เจอเมื่อไหร่กด fixrandom2 ทันที
                 if ImgSearchADB(adb_img, 'img/fixrandom1.bmp'):
                     fixrandom2_pos = ImgSearchADB(adb_img, 'img/fixrandom2.bmp')
@@ -2633,6 +2784,8 @@ class RangerGearBot(threading.Thread):
                 # Check for clear-ruby -> clear app + ส่งไป random-fail + เริ่มไฟล์ใหม่
                 clearruby_pos = ImgSearchADB(adb_img, 'img/clear-ruby.bmp')
                 if clearruby_pos:
+                    kept = keep_low_if_any("พบ clear-ruby")
+                    if kept: return kept
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ พบ clear-ruby - clear app + ส่งไป random-fail")
                     ui_stats.update_hero("สุ่มไม่ได้")
                     device.clear_and_restart()
@@ -2642,6 +2795,8 @@ class RangerGearBot(threading.Thread):
                 if not all_in_mode:
                     gachaout_priority_pos = ImgSearchADB(adb_img, 'img/gachaout.png') or ImgSearchADB(adb_img, 'img/gachaout1.png')
                     if gachaout_priority_pos:
+                        kept = keep_low_if_any("พบ gachaout.png")
+                        if kept: return kept
                         print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ พบ gachaout.png - จบ swap_shop")
                         ui_stats.update_hero("สุ่มไม่ได้")
                         device.clear_and_restart()
@@ -2651,6 +2806,8 @@ class RangerGearBot(threading.Thread):
                     # all-in: สุ่มด้วยเพชรไปเรื่อยๆ - หยุดเฉพาะเมื่อเจอ gachaout1 (ทับทิมหมดจริง) เท่านั้น
                     gachaout1_pos = ImgSearchADB(adb_img, 'img/gachaout1.png')
                     if gachaout1_pos:
+                        kept = keep_low_if_any("[ALL-IN] พบ gachaout1.png (ทับทิมหมด)")
+                        if kept: return kept
                         print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ [ALL-IN] พบ gachaout1.png (ทับทิมหมด) - จบ swap_shop")
                         ui_stats.update_hero("สุ่มไม่ได้")
                         device.backup_failed_game_data()
@@ -2684,6 +2841,8 @@ class RangerGearBot(threading.Thread):
                             safe_tap(ok_pos[0][0], ok_pos[0][1], "stopgacha6 (confirm spend - all-in)", 0, 0, 0)
                         continue
                     if not found_hero:
+                        kept = keep_low_if_any("พบ stopgacha7 (จบการสุ่ม)")
+                        if kept: return kept
                         device.backup_failed_game_data()
                         ui_stats.update_hero("สุ่มไม่ได้")
                         device.clear_and_restart()
@@ -2693,7 +2852,7 @@ class RangerGearBot(threading.Thread):
                         hero_key = found_hero.replace(".png", "").replace("heroo", "gachahero")
                         display_name = config.get("HERO_MAPPING", {}).get(hero_key, found_hero)
                         ui_stats.update_hero(display_name)
-                        device.backup_game_data(display_name)
+                        device.backup_game_data(build_prefix(display_name))
                         device.clear_and_restart()
                         time.sleep(2)
                         return "backup_complete"
@@ -2731,7 +2890,8 @@ class RangerGearBot(threading.Thread):
                 if found_hero:
                     hero_key = found_hero.replace(".png", "").replace("heroo", "gachahero")
                     display_name = config.get("HERO_MAPPING", {}).get(hero_key, found_hero)
-                    if device.backup_game_data(display_name):
+                    # เจอตัวหลักแล้วจบเลย ไม่หาตัวรองต่อ แต่ชื่อไฟล์เอาตัวรองที่เจอมาก่อนหน้ามาต่อหัว
+                    if device.backup_game_data(build_prefix(display_name)):
                         ui_stats.update_hero(display_name)
                         device.clear_and_restart()
                         time.sleep(2)
