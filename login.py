@@ -556,15 +556,17 @@ if GUI_AVAILABLE:
                          font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(5, 2), anchor="w")
             ctk.CTkLabel(
                 scroll,
-                text="เจอแล้ว 'ไม่จบงาน' แค่จดชื่อไว้แล้วสุ่มต่อ\n"
-                     "ถ้าเจอตัวหลักทีหลัง ชื่อไฟล์จะเป็น ตัวรอง+ตัวหลัก\n"
-                     "ถ้าสุ่มจนจบไม่เจอตัวหลัก ก็ยังเก็บเข้า backup-id ด้วยชื่อตัวรอง",
+                text="หาตัวรองเสมอถ้าตั้งรูปไว้ สวิตช์ข้างล่างคุมแค่ว่า 'เจอแล้วทำอะไรต่อ'\n"
+                     "  เปิด  = จดชื่อไว้แล้วสุ่มต่อ เจอตัวหลักทีหลัง -> ตัวรอง+ตัวหลัก\n"
+                     "          สุ่มจนจบไม่เจอตัวหลัก -> เก็บเข้า backup-id ด้วยชื่อตัวรอง\n"
+                     "  ปิด   = เจอแล้วจบเลย ส่งไฟล์ออกทันที ไม่สุ่มต่อ\n"
+                     "ไม่อยากให้หาเลย -> ลบชื่อในช่องข้างล่างให้ว่าง",
                 font=ctk.CTkFont(size=10), text_color="gray", justify="left").pack(anchor="w", padx=5)
 
             low_cfg = self.cfg.get("Hero_low", {}) or {}
             self.hero_low_enabled = ctk.BooleanVar(value=bool(low_cfg.get("enabled", 0)))
-            ctk.CTkSwitch(scroll, text="เปิดใช้ตัวรอง", variable=self.hero_low_enabled).pack(
-                pady=5, padx=5, anchor="w")
+            ctk.CTkSwitch(scroll, text="เจอตัวรองแล้วสุ่มต่อ  (ปิด = เจอแล้วจบเลย)",
+                          variable=self.hero_low_enabled).pack(pady=5, padx=5, anchor="w")
 
             self.hero_low_entries = {}
             for key in sorted(k for k in low_cfg.keys() if k != "enabled") or ["low1", "low2"]:
@@ -1636,6 +1638,21 @@ def check_hero_images(bot, adb_img):
 # =============================================================
 # Hero_low - ตัวรอง เจอแล้วไม่จบงาน แค่จดชื่อไว้ใส่ในชื่อไฟล์
 # =============================================================
+def hero_low_keeps_rolling():
+    """เจอตัวรองแล้วจะสุ่มต่อไหม
+
+    "enabled" ไม่ใช่สวิตช์เปิด/ปิดการหา - หาเสมอถ้าตั้งค่ารูปไว้ มันบอกแค่ว่า
+    เจอแล้วจะเอายังไงต่อ:
+        1 = จดชื่อไว้แล้วสุ่มต่อ เผื่อได้ตัวหลักทีหลัง
+        0 = เจอแล้วจบเลย ส่งไฟล์ออกทันที ไม่สุ่มต่อ
+    ถ้าไม่อยากให้หาเลย ให้ลบรายการ low ออก หรือเคลียร์ช่องชื่อใน GUI
+    """
+    try:
+        return bool((config.get("Hero_low", {}) or {}).get("enabled", 0))
+    except Exception:
+        return False
+
+
 def load_hero_low():
     """อ่าน config Hero_low -> [(ชื่อรูป, ชื่อที่จะใส่ในไฟล์), ...]
 
@@ -1645,12 +1662,11 @@ def load_hero_low():
             "low1": {"img": "low1.bmp", "name": "kikoru+"},
             "low2": {"img": "low2.bmp", "name": "kikoruU+"}
         }
-    ปิดอยู่ (หรือไม่มี key) = คืน list ว่าง แปลว่าไม่ต้องหาอะไรเพิ่ม
+    หาเสมอไม่ว่า enabled จะเป็น 0 หรือ 1 (enabled คุมแค่ว่าเจอแล้วทำต่อหรือจบ)
+    ไม่มี key หรือไม่ได้ตั้งรูป/ชื่อไว้ = คืน list ว่าง แปลว่าไม่ต้องหาอะไรเพิ่ม
     """
     try:
         cfg = config.get("Hero_low", {}) or {}
-        if not cfg.get("enabled", 0):
-            return []
         entries = []
         # เรียงตามชื่อ key (low1, low2, ...) ให้ลำดับคงที่ทุกรอบ
         for key in sorted(k for k in cfg.keys() if k != "enabled"):
@@ -2509,14 +2525,17 @@ class RangerGearBot(threading.Thread):
         second_sequence_position = 0
         gacha_count = 0
 
-        # Hero_low: ตัวรองที่เจอระหว่างทาง เจอแล้ว "ไม่จบงาน" แค่จดชื่อไว้
-        # เอาไปต่อหน้าชื่อไฟล์ตอนจบ เรียงตามลำดับที่เจอ
+        # Hero_low: ตัวรอง หาเสมอถ้าตั้งรูปไว้ ต่างกันแค่ "เจอแล้วทำอะไรต่อ"
+        #   enabled = 1 -> จดชื่อไว้ แล้วสุ่มต่อ เผื่อได้ตัวหลัก
+        #   enabled = 0 -> เจอแล้วจบเลย ส่งไฟล์ออกทันที
         found_low_names = []
         hero_low_entries = load_hero_low()
+        hero_low_continue = hero_low_keeps_rolling()
         if hero_low_entries:
-            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Hero_low เปิดอยู่ - "
-                  f"หาเพิ่ม {len(hero_low_entries)} ตัว: "
-                  f"{', '.join(n for _, n in hero_low_entries)}")
+            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Hero_low - "
+                  f"หาเพิ่ม {len(hero_low_entries)} ตัว "
+                  f"({', '.join(n for _, n in hero_low_entries)}) | "
+                  f"เจอแล้ว: {'สุ่มต่อ' if hero_low_continue else 'จบเลย'}")
 
         def build_prefix(main_name=None):
             """ชื่อไฟล์ = ตัวรองที่เจอ (ตามลำดับ) + ตัวหลัก เช่น kikoru+Kafka+"""
@@ -2754,14 +2773,31 @@ class RangerGearBot(threading.Thread):
                 adb_img = device._screen_color
                 current_time = time.time()
 
-                # Hero_low: หาตัวรองทุกรอบ ก่อนเช็คเงื่อนไขออกทุกตัว เจอแล้วแค่จดชื่อ
-                # ไม่ break ไม่ return - ปล่อยให้ลูปทำงานต่อตามปกติ
+                # Hero_low: หาตัวรองทุกรอบ ก่อนเช็คเงื่อนไขออกทุกตัว
                 if hero_low_entries:
                     new_lows = find_hero_low_images(device, adb_img, found_low_names)
                     if new_lows:
                         found_low_names.extend(new_lows)
                         print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] "
                               f"ตัวรองสะสม: {''.join(found_low_names)}")
+
+                        if not hero_low_continue:
+                            # enabled = 0 -> เจอแล้วจบเลย ไม่สุ่มต่อ
+                            # เช็คตัวหลักบนเฟรมเดียวกันก่อน เผื่อโผล่มาพร้อมกัน
+                            # จะได้ไม่ทิ้งตัวหลักไปเพราะรีบจบ
+                            main_hero = check_hero_images(adb_img)
+                            main_name = None
+                            if main_hero:
+                                hero_key = main_hero.replace(".png", "").replace("heroo", "gachahero")
+                                main_name = config.get("HERO_MAPPING", {}).get(hero_key, main_hero)
+                            prefix = build_prefix(main_name)
+                            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] "
+                                  f"เจอตัวรอง -> จบเลย (Hero_low enabled=0) ส่งไฟล์ {prefix}")
+                            device.backup_game_data(prefix)
+                            ui_stats.update_hero(main_name or prefix)
+                            device.clear_and_restart()
+                            time.sleep(2)
+                            return "backup_complete"
 
                 # ⭐ เช็ค fixrandom1 ลอยๆ ตลอดทั้งกระบวนการ - เจอเมื่อไหร่กด fixrandom2 ทันที
                 if ImgSearchADB(adb_img, 'img/fixrandom1.bmp'):
