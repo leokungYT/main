@@ -1,13 +1,13 @@
 {
     "7day": 0,
     "shopgacha": 0,
-    "swap_shop": 0,
+    "swap_shop": 1,
     "swap_shopevent": 0,
     "all-tiket": 0,
     "all-in": 0,
     "max-gacha": 0,
-    "channel": "ch2",
-    "channels_img": 0,
+    "channel": "ch1",
+    "channels_img": 1,
     "channels": {
         "ch1": [
             732,
@@ -61,7 +61,7 @@
     "check-gear": 0,
     "use_ocr": 0,
     "box_settings": {
-        "first_round": 0,
+        "first_round": 1,
         "second_round": 0
     },
     "black_screen_timeout": 8,
@@ -77,5 +77,7 @@
         "dest": "input-id"
     },
     "minitouch": 1,
-    "pos_cache": 1
+    "pos_cache": 1,
+    "scan_interval": 1.0,
+    "loop_delay": null
 }
