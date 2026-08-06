@@ -254,6 +254,20 @@ if GUI_AVAILABLE:
             self.add_switch(scroll_frame, "ใช้ OCR (อ่านข้อความ)", "use_ocr")
             
             ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
+            ctk.CTkLabel(scroll_frame, text="🔸 ตัวรอง (Hero_low)", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(5, 5), anchor="w")
+
+            low_cfg = self.cfg.get("Hero_low", {}) or {}
+            self.hero_low_search = ctk.BooleanVar(value=bool(low_cfg.get("search", 1)))
+            self.hero_low_mode = ctk.BooleanVar(value=bool(low_cfg.get("enabled", 0)))
+            ctk.CTkSwitch(scroll_frame, text="หาตัวรอง (low1 / low2)",
+                          variable=self.hero_low_search).pack(pady=5, padx=20, anchor="w")
+            ctk.CTkSwitch(scroll_frame, text="เจอแล้วสุ่มต่อ  (ปิด = เจอแล้วจบเลย)",
+                          variable=self.hero_low_mode).pack(pady=5, padx=20, anchor="w")
+            ctk.CTkLabel(scroll_frame,
+                         text="ตั้งชื่อรูป/ชื่อที่จะใส่ไฟล์ ได้ที่ปุ่ม 🏷 ตั้งชื่อ Ranger",
+                         font=ctk.CTkFont(size=10), text_color="gray").pack(anchor="w", padx=25)
+
+            ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
             ctk.CTkLabel(scroll_frame, text="🚀 ความเร็ว (Performance)", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(5, 5), anchor="w")
 
             self.add_switch(scroll_frame, "⚡ Minitouch (กดเร็ว ไม่เรียก adb ทุกครั้ง)", "minitouch", default=0)
@@ -419,6 +433,15 @@ if GUI_AVAILABLE:
                     self.cfg["black_screen_timeout"] = int(self.black_timeout_entry.get())
                 except:
                     self.cfg["black_screen_timeout"] = 8
+
+                # Hero_low - แตะแค่ 2 สวิตช์นี้ ชื่อรูป/ชื่อไฟล์ (low1, low2) เป็นของ
+                # หน้าต่าง "ตั้งชื่อ Ranger" ต้องคงไว้ ไม่งั้นกดบันทึกที่นี่แล้วชื่อหาย
+                low_cfg = self.cfg.get("Hero_low")
+                if not isinstance(low_cfg, dict):
+                    low_cfg = {}
+                low_cfg["search"] = 1 if self.hero_low_search.get() else 0
+                low_cfg["enabled"] = 1 if self.hero_low_mode.get() else 0
+                self.cfg["Hero_low"] = low_cfg
 
                 try:
                     self.cfg["scan_interval"] = float(self.scan_interval_entry.get())
@@ -639,7 +662,12 @@ if GUI_AVAILABLE:
                 self.cfg["HERO_MAPPING"] = hero_mapping
 
                 # Hero_low - เก็บเฉพาะแถวที่กรอกครบทั้งชื่อรูปและชื่อที่จะใส่ไฟล์
-                hero_low = {"enabled": 1 if self.hero_low_enabled.get() else 0}
+                # "search" เป็นของหน้าต่าง Config ต้องคงค่าเดิมไว้ ไม่งั้นบันทึกที่นี่
+                # แล้วสวิตช์ "หาตัวรอง" จะถูกรีเซ็ต
+                prev_low = self.cfg.get("Hero_low")
+                prev_search = prev_low.get("search", 1) if isinstance(prev_low, dict) else 1
+                hero_low = {"search": prev_search,
+                            "enabled": 1 if self.hero_low_enabled.get() else 0}
                 for key, (e_img, e_name) in self.hero_low_entries.items():
                     img_v, name_v = e_img.get().strip(), e_name.get().strip()
                     if img_v and name_v:
@@ -1658,15 +1686,18 @@ def load_hero_low():
 
     รูปแบบใน configmain.json:
         "Hero_low": {
-            "enabled": 1,
+            "search": 1,     <- หาตัวรองไหม (0 = ไม่หาเลย ไม่เสียเวลา match)
+            "enabled": 1,    <- เจอแล้วทำอะไร (1 = สุ่มต่อ, 0 = จบเลย)
             "low1": {"img": "low1.bmp", "name": "kikoru+"},
             "low2": {"img": "low2.bmp", "name": "kikoruU+"}
         }
-    หาเสมอไม่ว่า enabled จะเป็น 0 หรือ 1 (enabled คุมแค่ว่าเจอแล้วทำต่อหรือจบ)
-    ไม่มี key หรือไม่ได้ตั้งรูป/ชื่อไว้ = คืน list ว่าง แปลว่าไม่ต้องหาอะไรเพิ่ม
+    ไม่มี "search" ถือว่าเปิด (config เก่าจะได้ทำงานเหมือนเดิม)
+    ปิด search / ไม่มี key / ไม่ได้ตั้งรูปกับชื่อ = คืน list ว่าง = ไม่ต้องหาอะไรเพิ่ม
     """
     try:
         cfg = config.get("Hero_low", {}) or {}
+        if not cfg.get("search", 1):
+            return []
         entries = []
         # เรียงตามชื่อ key (low1, low2, ...) ให้ลำดับคงที่ทุกรอบ
         for key in sorted(k for k in cfg.keys() if k != "enabled"):

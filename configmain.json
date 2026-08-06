@@ -44,6 +44,7 @@
         "gachahero4": "Kafka+"
     },
     "Hero_low": {
+        "search": 1,
         "enabled": 1,
         "low1": {
             "img": "low1.bmp",
