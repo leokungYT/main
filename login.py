@@ -864,6 +864,8 @@ if GUI_AVAILABLE:
             
             ctk.CTkButton(bottom_bar, text="🔌 Connect Missing", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#4caf50", command=self.connect_missing_devices).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="⚙ Config", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=self.open_config).pack(side="left", padx=3, pady=4)
+            # HeroConfigWindow เคยไม่มีปุ่มเปิดเลย - ตั้งชื่อ Ranger/Gear/Weapon และ Hero_low อยู่ในนี้
+            ctk.CTkButton(bottom_bar, text="🏷 ตั้งชื่อ Ranger", width=100, height=22, font=ctk.CTkFont(size=10), fg_color="#7a5cc4", hover_color="#63499f", command=self.open_heroes).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="📁 Backup", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{backup_folder}"')).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="🦸 Heroes", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{heroes_folder}"')).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="📤 ย้าย Success", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#3b8ed0", command=self.move_success_now).pack(side="left", padx=3, pady=4)
