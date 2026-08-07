@@ -1,6 +1,6 @@
 {
     "7day": 0,
-    "shopgacha": 0,
+    "shopgacha": 1,
     "swap_shop": 1,
     "swap_shopevent": 0,
     "all-tiket": 0,
@@ -67,7 +67,7 @@
     "black_screen_timeout": 8,
     "loop1": 0,
     "first_loop": 0,
-    "kaibyskip": 0,
+    "kaibyskip": 1,
     "kaibycheck": 0,
     "misson": 0,
     "move_success": {
@@ -77,7 +77,7 @@
         "dest": "input-id"
     },
     "minitouch": 1,
-    "pos_cache": 1,
+    "pos_cache": 0,
     "scan_interval": 1.0,
     "loop_delay": null
 }
