@@ -2208,6 +2208,18 @@ class RangerGearBot(threading.Thread):
                     time.sleep(0.3)  # ให้เวลา UI อัปเดตเล็กน้อย
                     device.capture_screen()
 
+                    # ป๊อปอัพเพชรอาจเด้งมาระหว่างรัว BACK - เคลียร์มันก่อน
+                    # ไม่งั้น BACK จะไปโดนป๊อปอัพแทนที่จะถอยออกจากร้าน
+                    if ImgSearchADB(device._screen_color, 'img/fixgems.png', threshold=BTN_TH):
+                        g = ImgSearchADB(device._screen_color, 'img/fixgems1.png', threshold=BTN_TH)
+                        if g and len(g) > 0:
+                            print(f"[{device.device_id}] เจอ fixgems ระหว่างกด BACK - กด fixgems1 ก่อน")
+                            device.tap(g[0][0], g[0][1])
+                            time.sleep(1)
+                            device.capture_screen()   # เอาจอใหม่มาเช็ค cancel ต่อ
+                        else:
+                            print(f"[{device.device_id}] [WARN] เจอ fixgems ระหว่างกด BACK แต่ไม่เจอปุ่ม fixgems1")
+
                     if device.exists_in_cache("img/cancel.png"):
                         print(f"[{device.device_id}] เจอ cancel - กด cancel แล้วหยุด")
                         device.click("img/cancel.png")
@@ -2241,9 +2253,26 @@ class RangerGearBot(threading.Thread):
             print(f"[{device.device_id}] รอจอสุ่ม (waitgacha / waitgacha1)...")
             rounds = 0
             seen = None
+            wait_deadline = time.time() + 600
             while seen is None:
+                if time.time() > wait_deadline:
+                    # เพดานแข็งกันค้างถาวร - ปกติไม่ควรถึง เพราะจอสุ่มโผล่ในไม่กี่วิ
+                    print(f"[{device.device_id}] รอจอสุ่มเกิน 600 วิ - เลิกรอ ไป swap_shop")
+                    return finish_shopgacha()
+
                 device.capture_screen()
                 img = device._screen_color
+
+                # เน็ตหลุด / fixid / fixunkown / apple ต้องจัดการเหมือนลูปหลัก
+                # ไม่งั้นถ้าโผล่มาบังจอ จะรอ waitgacha ที่ไม่มีวันมาจนครบ 500s
+                # แล้วบัญชีถูกส่งไป login-failed แทนที่จะ backup + restart ให้ถูกทาง
+                if network_monitor.check_network(device, img):
+                    continue
+                crit = check_critical_errors(device, img, "process_shopgacha:wait_gacha")
+                if crit:
+                    print(f"[{device.device_id}] เจอ {crit} ระหว่างรอจอสุ่ม - ออกตามทางของมัน")
+                    return crit
+
                 for w in waits:
                     if ImgSearchADB(img, w, threshold=BTN_TH):
                         seen = os.path.basename(w)
@@ -2347,16 +2376,28 @@ class RangerGearBot(threading.Thread):
         max_not_found = 30
         loop_start_time = time.time()
         max_loop_time = 300
+        # เพดานแข็งของ "ช่วงรอในร้าน" - taps รีเซ็ตไม่ได้ ต่างจาก 500s inactivity
+        # เอาไว้กันเคสที่บอทเผลอกดป๊อปอัพ (fixnet ฯลฯ) วนไปเรื่อย ๆ จนตาข่าย 500s
+        # ไม่มีวันทำงาน แล้ว thread ค้างคาไฟล์นั้นถาวร
+        wait_in_shop_started = None
+        max_wait_in_shop = 600
 
         while True:
             try:
                 # ตรวจสอบ timeout - ยกเว้นตอนที่เข้าร้านได้แล้วและกำลังรอปุ่มถัดไป
                 # (in_loop=False + กดปุ่มแรกไปแล้ว) ตรงนั้นให้รอได้เรื่อย ๆ ตามที่ต้องการ
-                # ถ้าค้างจริงจะโดน 500s inactivity เด้งไปไฟล์ถัดไปเอง
                 waiting_in_shop = (not in_loop) and current_initial_step > 0
-                if not waiting_in_shop and time.time() - loop_start_time > max_loop_time:
-                    print(f"[{device.device_id}] หมดเวลา {max_loop_time} วินาที - รัว BACK จนเจอ cancel แล้วไป swap_shop")
-                    return finish_shopgacha()
+                if not waiting_in_shop:
+                    wait_in_shop_started = None
+                    if time.time() - loop_start_time > max_loop_time:
+                        print(f"[{device.device_id}] หมดเวลา {max_loop_time} วินาที - รัว BACK จนเจอ cancel แล้วไป swap_shop")
+                        return finish_shopgacha()
+                else:
+                    if wait_in_shop_started is None:
+                        wait_in_shop_started = time.time()
+                    elif time.time() - wait_in_shop_started > max_wait_in_shop:
+                        print(f"[{device.device_id}] รอในร้านเกิน {max_wait_in_shop} วินาที - เลิกรอ ไป swap_shop")
+                        return finish_shopgacha()
 
                 device.capture_screen()
                 adb_img = device._screen_color
@@ -2450,6 +2491,10 @@ class RangerGearBot(threading.Thread):
                     else:
                         in_loop = True
                         last_clicked_img = None
+                        # เริ่มจับเวลา 300 วิใหม่ตรงนี้ ไม่งั้นเวลาที่ใช้รอในร้าน
+                        # (ซึ่งตั้งใจให้ไม่มี timeout) จะกินโควตาของลูป shopgacha3-6
+                        # ไปหมด แล้วลูปได้วิ่งรอบเดียวก็โดนตัดจบ
+                        loop_start_time = time.time()
 
                 # ขั้นตอนที่สอง: วนลูปตามลำดับ
                 if in_loop:
