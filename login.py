@@ -2398,7 +2398,7 @@ class RangerGearBot(threading.Thread):
 
         # ตัวแปรสำหรับ timeout
         not_found_count = 0
-        max_not_found = 30
+        max_not_found = 90   # ~45 วิ ในช่วงหาปุ่มแรก / ~90 วิ ในลูป (หน่วงคนละค่า)
         loop_start_time = time.time()
         max_loop_time = 300
         # เพดานแข็งของ "ช่วงรอในร้าน" - taps รีเซ็ตไม่ได้ ต่างจาก 500s inactivity
