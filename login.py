@@ -2255,6 +2255,15 @@ class RangerGearBot(threading.Thread):
                 return pos[0]
             return device._find_in_screen(f'img/{name}', th)
 
+        def stop_hit(name):
+            """เงื่อนไขจบ (shopgachastop / shopgachastop1) - หาลอย ๆ ทั้งจอแบบ 2 ทาง
+            ที่ 0.95 เข้มเท่าเดิม: ภาพสีก่อน ไม่ติดค่อยเช็คภาพขาวดำ
+            กันเคสจอสีเพี้ยนแล้วมองไม่เห็นจอจบ ทำให้วนต่อทั้งที่ควรรัว BACK ออก"""
+            pos = ImgSearchADB(device._screen_color, f'img/{name}')
+            if pos and len(pos) > 0:
+                return True
+            return device.exists_in_cache(f'img/{name}')
+
         def finish_shopgacha():
             if swap_shop_enabled:
                 # เปิด swap_shop คู่กัน - รัว BACK (KEYCODE_BACK) จนเจอ cancel เหมือน event แล้วไป swap_shop
@@ -2340,7 +2349,7 @@ class RangerGearBot(threading.Thread):
                 if seen:
                     break
                 # จอจบ/ขายหมด อาจโผล่ระหว่างรอ - ต้องออกให้ถูกทาง ไม่ใช่รอค้าง
-                if ImgSearchADB(img, 'img/shopgachastop.png'):
+                if stop_hit('shopgachastop.png'):
                     if swap_shop_enabled:
                         print(f"[{device.device_id}] พบ shopgachastop.png ระหว่างรอจอสุ่ม - ไป swap_shop")
                         return finish_shopgacha()
@@ -2349,7 +2358,7 @@ class RangerGearBot(threading.Thread):
                     device.clear_and_restart()
                     time.sleep(6)
                     return "random-Fail"
-                if ImgSearchADB(img, 'img/shopgachastop1.png'):
+                if stop_hit('shopgachastop1.png'):
                     print(f"[{device.device_id}] พบ shopgachastop1.png ระหว่างรอจอสุ่ม - จบ shop gacha")
                     return finish_shopgacha()
                 rounds += 1
@@ -2468,9 +2477,8 @@ class RangerGearBot(threading.Thread):
                 if critical_error:
                     return critical_error
 
-                # ตรวจสอบ shopgachastop.png (SOLD OUT) ก่อนเสมอ
-                shopgachastop_pos = ImgSearchADB(adb_img, 'img/shopgachastop.png')
-                if shopgachastop_pos and len(shopgachastop_pos) > 0:
+                # ตรวจสอบ shopgachastop.png (SOLD OUT) ก่อนเสมอ - หาลอย ๆ ทุกรอบ
+                if stop_hit('shopgachastop.png'):
                     if swap_shop_enabled:
                         print(f"[{device.device_id}] พบ shopgachastop.png (SOLD OUT) - เปิด swap_shop คู่กัน ไป swap_shop ต่อ")
                         return finish_shopgacha()
@@ -2480,9 +2488,9 @@ class RangerGearBot(threading.Thread):
                     time.sleep(6)
                     return "random-Fail"
 
-                # ตรวจสอบ shopgachastop1.png
-                shopgachastop1_pos = ImgSearchADB(adb_img, 'img/shopgachastop1.png')
-                if shopgachastop1_pos and len(shopgachastop1_pos) > 0:
+                # ตรวจสอบ shopgachastop1.png - หาลอย ๆ ทุกรอบ เจอปุ๊บรัว BACK ออกเลย
+                # ไม่ต้องรอเช็ค shopgacha2 ให้ครบ 8 รอบ
+                if stop_hit('shopgachastop1.png'):
                     print(f"[{device.device_id}] พบ shopgachastop1.png - จบ shop gacha")
                     return finish_shopgacha()
 
@@ -2507,7 +2515,7 @@ class RangerGearBot(threading.Thread):
                             # ตรวจสอบ shopgachastop หลังจากกด
                             device.capture_screen()
                             check_img = device._screen_color
-                            if ImgSearchADB(check_img, 'img/shopgachastop.png'):
+                            if stop_hit('shopgachastop.png'):
                                 if swap_shop_enabled:
                                     print(f"[{device.device_id}] พบ shopgachastop.png (SOLD OUT) หลังกด {current_img} - เปิด swap_shop คู่กัน ไป swap_shop ต่อ")
                                     return finish_shopgacha()
@@ -2516,7 +2524,7 @@ class RangerGearBot(threading.Thread):
                                 device.clear_and_restart()
                                 time.sleep(6)
                                 return "random-Fail"
-                            if ImgSearchADB(check_img, 'img/shopgachastop1.png'):
+                            if stop_hit('shopgachastop1.png'):
                                 print(f"[{device.device_id}] พบ shopgachastop1.png หลังกด {current_img} - จบ shop gacha")
                                 return finish_shopgacha()
 
@@ -2637,7 +2645,7 @@ class RangerGearBot(threading.Thread):
                             # ตรวจสอบ shopgachastop หลังจากกดแต่ละปุ่ม
                             device.capture_screen()
                             check_img = device._screen_color
-                            if ImgSearchADB(check_img, 'img/shopgachastop.png'):
+                            if stop_hit('shopgachastop.png'):
                                 if swap_shop_enabled:
                                     print(f"[{device.device_id}] พบ shopgachastop.png (SOLD OUT) หลังกด {img} - เปิด swap_shop คู่กัน ไป swap_shop ต่อ")
                                     return finish_shopgacha()
@@ -2646,7 +2654,7 @@ class RangerGearBot(threading.Thread):
                                 device.clear_and_restart()
                                 time.sleep(6)
                                 return "random-Fail"
-                            if ImgSearchADB(check_img, 'img/shopgachastop1.png'):
+                            if stop_hit('shopgachastop1.png'):
                                 print(f"[{device.device_id}] พบ shopgachastop1.png หลังกด {img} - จบ shop gacha")
                                 return finish_shopgacha()
                             break
