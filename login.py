@@ -2511,10 +2511,14 @@ class RangerGearBot(threading.Thread):
                                 if not_found_count % 20 == 0:
                                     print(f"[{device.device_id}] ยังรอ {current_img} อยู่ ({not_found_count} รอบ) - รอต่อ")
                             else:
-                                # ยังเข้าร้านไม่ได้เลย - อันนี้ตัดจบ ไม่งั้นวนเงียบ ๆ ยาว
+                                # หา shopgacha1 ไม่เจอครบ 30 ครั้ง: ไม่ต้องรัว BACK ออกไป
+                                # swap_shop - ข้ามไปขั้น shopgacha2 ต่อเลย (บางจอไม่มี
+                                # shopgacha1 หรือเลยหน้านั้นมาแล้ว)
                                 if not_found_count >= max_not_found:
-                                    print(f"[{device.device_id}] ไม่พบ {current_img} ติดต่อกัน {max_not_found} ครั้ง - ข้ามไป swap_shop")
-                                    return finish_shopgacha()
+                                    print(f"[{device.device_id}] ไม่พบ {current_img} ติดต่อกัน {max_not_found} ครั้ง - ข้ามไปหา shopgacha2 ต่อเลย")
+                                    current_initial_step = 1
+                                    not_found_count = 0
+                                    continue
                                 if not_found_count % 5 == 0:
                                     print(f"[{device.device_id}] ยังไม่พบ {current_img} - ครั้งที่ {not_found_count}/{max_not_found}")
                             time.sleep(0.5)
