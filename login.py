@@ -2215,15 +2215,25 @@ class RangerGearBot(threading.Thread):
             img = device._screen_color
             if img is None:
                 return False
-            if not ImgSearchADB(img, 'img/fixgems.png', threshold=BTN_TH):
+            # จับป๊อปอัพด้วย 2 รูป: fixgems.png (คำว่า Gems.) หรือ fixnewgacha.png
+            # (ไอคอนเพชรม่วงบนป๊อปอัพเดียวกัน) - fixgems.png เป็น crop ที่บนจอจริง
+            # match ไม่ติด ส่วน fixnewgacha.png คือตัวที่ handler ใน swap_shop ใช้
+            # จับป๊อปอัพนี้ได้จริงที่ default 0.95 มาตลอด
+            hit = ImgSearchADB(img, 'img/fixgems.png', threshold=BTN_TH)
+            if not hit:
+                hit = ImgSearchADB(img, 'img/fixnewgacha.png')
+            if not hit:
                 return False
             g = ImgSearchADB(img, 'img/fixgems1.png', threshold=BTN_TH)
-            if not g or len(g) == 0:
-                print(f"[{device.device_id}] [WARN] เจอ fixgems แต่ไม่เจอปุ่ม fixgems1 - ข้ามไปก่อน")
-                return False
+            if g and len(g) > 0:
+                tap_x, tap_y = g[0][0], g[0][1]
+            else:
+                # หาปุ่ม OK จากรูปไม่เจอ - ใช้พิกัดปุ่ม OK ของป๊อปอัพนี้
+                # พิกัดเดียวกับ handler ใน swap_shop (tap 476,394) ที่ใช้งานจริงมาแล้ว
+                tap_x, tap_y = 476, 394
             gems_state["clears"] += 1
-            print(f"[{device.device_id}] เจอ fixgems - กด fixgems1 (ครั้งที่ {gems_state['clears']})")
-            device.tap(g[0][0], g[0][1])
+            print(f"[{device.device_id}] เจอป๊อปอัพเพชร (fixgems) - กด OK ที่ ({tap_x},{tap_y}) (ครั้งที่ {gems_state['clears']})")
+            device.tap(tap_x, tap_y)
             time.sleep(1)
             device.capture_screen()
             if gems_state["clears"] >= gems_state["max"]:
