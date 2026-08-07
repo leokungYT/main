@@ -2183,6 +2183,7 @@ class RangerGearBot(threading.Thread):
             return "error"
 
 
+
     def process_shopgacha(self):
         device = self  # map 'device' to 'self' for snippet compatibility
         shop_gacha_enabled = config.get('shopgacha', 0)
