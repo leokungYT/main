@@ -2215,15 +2215,25 @@ class RangerGearBot(threading.Thread):
             img = device._screen_color
             if img is None:
                 return False
-            if not ImgSearchADB(img, 'img/fixgems.png', threshold=BTN_TH):
+            # จับป๊อปอัพด้วย 2 รูป: fixgems.png (ข้อความ Gems.) หรือ fixnewgacha.png
+            # (ไอคอนเพชรม่วงบนป๊อปอัพเดียวกัน) - fixgems.png เป็นรูป crop ใหม่ที่อาจ
+            # match ไม่ติด ส่วน fixnewgacha.png คือตัวที่ handler ใน swap_shop ใช้
+            # จับป๊อปอัพนี้ได้จริงที่ default 0.95 มาตลอด
+            hit = ImgSearchADB(img, 'img/fixgems.png', threshold=BTN_TH)
+            if not hit:
+                hit = ImgSearchADB(img, 'img/fixnewgacha.png')
+            if not hit:
                 return False
             g = ImgSearchADB(img, 'img/fixgems1.png', threshold=BTN_TH)
-            if not g or len(g) == 0:
-                print(f"[{device.device_id}] [WARN] เจอ fixgems แต่ไม่เจอปุ่ม fixgems1 - ข้ามไปก่อน")
-                return False
+            if g and len(g) > 0:
+                tap_x, tap_y = g[0][0], g[0][1]
+            else:
+                # หาปุ่ม OK จากรูปไม่เจอ - ใช้พิกัดปุ่ม OK ของป๊อปอัพนี้
+                # พิกัดเดียวกับ handler เดิม (tap 476,394) ที่ใช้งานจริงมาแล้ว
+                tap_x, tap_y = 476, 394
             gems_state["clears"] += 1
-            print(f"[{device.device_id}] เจอ fixgems - กด fixgems1 (ครั้งที่ {gems_state['clears']})")
-            device.tap(g[0][0], g[0][1])
+            print(f"[{device.device_id}] เจอป๊อปอัพเพชร (fixgems) - กด OK ที่ ({tap_x},{tap_y}) (ครั้งที่ {gems_state['clears']})")
+            device.tap(tap_x, tap_y)
             time.sleep(1)
             device.capture_screen()
             if gems_state["clears"] >= gems_state["max"]:
@@ -2507,6 +2517,14 @@ class RangerGearBot(threading.Thread):
 
                             not_found_count = 0
                         else:
+                            # เคสป๊อปอัพเพชรกินจังหวะ shopgacha1 ไปแล้ว: กด OK ปิดแล้ว
+                            # จอถัดไปโชว์หน้ายืนยันเลย - ถ้าเจอ shopgacha2 โผล่แทน
+                            # ให้ข้ามไปขั้น shopgacha2 ทันที ไม่ต้องรอ shopgacha1 ที่ไม่มีแล้ว
+                            if current_img == 'shopgacha1.png' and ImgSearchADB(adb_img, 'img/shopgacha2.png', threshold=BTN_TH):
+                                print(f"[{device.device_id}] ไม่เจอ shopgacha1 แต่เจอ shopgacha2 - ข้ามไปขั้น shopgacha2")
+                                current_initial_step = 1
+                                not_found_count = 0
+                                continue
                             not_found_count += 1
                             if current_initial_step > 0:
                                 # เข้าร้านได้แล้ว (กดปุ่มแรกไปแล้ว) - รอปุ่มถัดไปได้เรื่อย ๆ
