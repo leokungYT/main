@@ -2202,7 +2202,54 @@ class RangerGearBot(threading.Thread):
         # ปกติเด้งไม่กี่ครั้ง ถ้าถึงเพดานแปลว่ากดแล้วมันไม่ยอมปิด - เลิกสนใจมัน
         # แล้วปล่อยให้ตัวนับ/timeout ปกติทำงานแทน ไม่งั้นลูปจะเอาแต่กดป๊อปอัพ
         # จนไม่ได้นับ miss เลยสักครั้ง
-        gems_state = {"clears": 0, "max": 15}
+        # "scale" = ขนาดที่ต้องย่อ/ขยายรูป fixgems ก่อน match
+        # ถ้ารูปถูกตัดมาจากจอคนละความละเอียด match ตรง ๆ จะไม่ติดเลยสักครั้ง
+        # เลยมีตัว calibrate คอยลองย่อ/ขยายหาขนาดที่ใช้ได้ ทำนาน ๆ ที ไม่กินเวลา
+        gems_state = {"clears": 0, "max": 15, "scale": 1.0, "last_probe": 0.0}
+
+        def _gems_hit(img, name):
+            """หา img/<name> บนจอ คืนจุดกึ่งกลาง หรือ None - เคารพสเกลที่ calibrate ไว้"""
+            t = device._get_template_color(f"img/{name}")
+            if t is None:
+                return None
+            s = gems_state["scale"]
+            if s != 1.0:
+                t = cv2.resize(t, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+            if t.shape[0] > img.shape[0] or t.shape[1] > img.shape[1]:
+                return None
+            r = cv2.matchTemplate(img, t, cv2.TM_CCOEFF_NORMED)
+            _, mx, _, loc = cv2.minMaxLoc(r)
+            if mx < BTN_TH:
+                return None
+            return (loc[0] + t.shape[1] // 2, loc[1] + t.shape[0] // 2)
+
+        def _calibrate_gems(img):
+            """ลองย่อ/ขยาย fixgems หาขนาดที่ match ได้ - ทำทุก 15 วิเป็นอย่างมาก
+
+            เรียกเฉพาะตอนที่ขนาดปัจจุบันหาไม่เจอ ถ้าเจอขนาดที่ใช้ได้จะจำไว้ใช้ต่อ
+            """
+            now = time.time()
+            if now - gems_state["last_probe"] < 15:
+                return False
+            gems_state["last_probe"] = now
+            base = device._get_template_color("img/fixgems.png")
+            if base is None:
+                return False
+            best_score, best_scale = 0.0, None
+            for pct in range(60, 145, 5):
+                s = pct / 100.0
+                t = cv2.resize(base, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+                if t.shape[0] > img.shape[0] or t.shape[1] > img.shape[1]:
+                    continue
+                mx = float(cv2.matchTemplate(img, t, cv2.TM_CCOEFF_NORMED).max())
+                if mx > best_score:
+                    best_score, best_scale = mx, s
+            if best_scale and best_score >= BTN_TH and best_scale != gems_state["scale"]:
+                gems_state["scale"] = best_scale
+                print(f"[{device.device_id}] ปรับขนาดรูป fixgems เป็น {best_scale*100:.0f}% "
+                      f"(คะแนน {best_score:.2f}) - รูปถูกตัดมาจากจอคนละความละเอียด")
+                return True
+            return False
 
         def clear_fixgems():
             """ป๊อปอัพเพชรลอย ๆ - เจอที่ไหนก็เคลียร์ก่อน คืน True ถ้ากดไปจริง
@@ -2215,15 +2262,19 @@ class RangerGearBot(threading.Thread):
             img = device._screen_color
             if img is None:
                 return False
-            if not ImgSearchADB(img, 'img/fixgems.png', threshold=BTN_TH):
-                return False
-            g = ImgSearchADB(img, 'img/fixgems1.png', threshold=BTN_TH)
-            if not g or len(g) == 0:
+            if _gems_hit(img, "fixgems.png") is None:
+                # ไม่เจอ - อาจเป็นเพราะรูปคนละขนาด ลอง calibrate (นาน ๆ ที)
+                if not _calibrate_gems(img):
+                    return False
+                if _gems_hit(img, "fixgems.png") is None:
+                    return False
+            g = _gems_hit(img, "fixgems1.png")
+            if g is None:
                 print(f"[{device.device_id}] [WARN] เจอ fixgems แต่ไม่เจอปุ่ม fixgems1 - ข้ามไปก่อน")
                 return False
             gems_state["clears"] += 1
             print(f"[{device.device_id}] เจอ fixgems - กด fixgems1 (ครั้งที่ {gems_state['clears']})")
-            device.tap(g[0][0], g[0][1])
+            device.tap(g[0], g[1])
             time.sleep(1)
             device.capture_screen()
             if gems_state["clears"] >= gems_state["max"]:
@@ -3702,6 +3753,32 @@ class RangerGearBot(threading.Thread):
             cls._template_cache_cls[template_path] = tmpl
             
         return cls._template_cache_cls[template_path]
+
+    @classmethod
+    def _get_template_color(cls, template_path):
+        """เหมือน _get_template แต่เก็บภาพสี - ใช้กับการ match บน _screen_color"""
+        if not hasattr(cls, '_template_cache_color'):
+            cls._template_cache_color = {}
+
+        if template_path not in cls._template_cache_color:
+            if not os.path.isabs(template_path):
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                full_path = os.path.join(script_dir, template_path)
+            else:
+                full_path = template_path
+            full_path = os.path.normpath(full_path)
+
+            if not os.path.exists(full_path):
+                print(f"[WARN] ไม่พบไฟล์รูป: {full_path}")
+                cls._template_cache_color[template_path] = None
+                return None
+
+            tmpl = cv2.imread(full_path, cv2.IMREAD_COLOR)
+            if tmpl is None:
+                print(f"[WARN] อ่านรูปไม่ได้: {full_path}")
+            cls._template_cache_color[template_path] = tmpl
+
+        return cls._template_cache_color[template_path]
 
     def adb_run(self, args, timeout=10, **kwargs):
         if 'creationflags' not in kwargs and os.name == 'nt':
