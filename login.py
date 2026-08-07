@@ -2346,36 +2346,37 @@ class RangerGearBot(threading.Thread):
         # วนหา 8 วิเท่ากับ check_task_available ที่เพิ่งยืนยันว่า gacha.png อยู่บนจอ
         # ก่อนเรียกฟังก์ชันนี้ - ยิงครั้งเดียวแล้วพลาดได้ถ้าจอกำลังขยับ/โหลดอยู่
         # และหาด้วยทั้งภาพขาวดำ (แบบเดียวกับตัวเช็คนั้น) และภาพสีที่ 0.8
-        print(f"[{device.device_id}] กำลังค้นหาทางเข้าร้าน (event.png / gacha.png)")
-        entry_deadline = time.time() + 8
-        entered = False
-        while time.time() < entry_deadline:
-            device.capture_screen()
-            if clear_fixgems():     # ป๊อปอัพเพชรอาจค้างมาจากรอบก่อน
-                continue
-            adb_img = device._screen_color
+        # เป็นฟังก์ชันเพราะถูกเรียกซ้ำตอน retry (หา shopgacha1 ไม่เจอครบ 30 ครั้ง)
+        def find_shop_entry():
+            """หาและกดทางเข้าร้าน (event.png / gacha.png) ภายใน 8 วิ คืน True ถ้ากดแล้ว"""
+            print(f"[{device.device_id}] กำลังค้นหาทางเข้าร้าน (event.png / gacha.png)")
+            entry_deadline = time.time() + 8
+            while time.time() < entry_deadline:
+                device.capture_screen()
+                if clear_fixgems():     # ป๊อปอัพเพชรอาจค้างมาจากรอบก่อน
+                    continue
+                adb_img = device._screen_color
 
-            event_pos = ImgSearchADB(adb_img, 'img/event.png')
-            if event_pos and len(event_pos) > 0:
-                print(f"[{device.device_id}] พบและกด event.png")
-                device.tap(event_pos[0][0], event_pos[0][1])
-                entered = True
-                break
+                event_pos = ImgSearchADB(adb_img, 'img/event.png')
+                if event_pos and len(event_pos) > 0:
+                    print(f"[{device.device_id}] พบและกด event.png")
+                    device.tap(event_pos[0][0], event_pos[0][1])
+                    return True
 
-            gacha_pt = device._find_in_screen("img/gacha.png", 0.8)
-            if gacha_pt is None:
-                gacha_pos = ImgSearchADB(adb_img, 'img/gacha.png', threshold=0.8)
-                if gacha_pos and len(gacha_pos) > 0:
-                    gacha_pt = gacha_pos[0]
-            if gacha_pt:
-                print(f"[{device.device_id}] ไม่พบ event.png - กด gacha.png เข้าร้านแทน ที่ {gacha_pt}")
-                device.tap(gacha_pt[0], gacha_pt[1])
-                entered = True
-                break
+                gacha_pt = device._find_in_screen("img/gacha.png", 0.8)
+                if gacha_pt is None:
+                    gacha_pos = ImgSearchADB(adb_img, 'img/gacha.png', threshold=0.8)
+                    if gacha_pos and len(gacha_pos) > 0:
+                        gacha_pt = gacha_pos[0]
+                if gacha_pt:
+                    print(f"[{device.device_id}] ไม่พบ event.png - กด gacha.png เข้าร้านแทน ที่ {gacha_pt}")
+                    device.tap(gacha_pt[0], gacha_pt[1])
+                    return True
 
-            time.sleep(0.5)
+                time.sleep(0.5)
+            return False
 
-        if entered:
+        if find_shop_entry():
             time.sleep(2)
         else:
             print(f"[{device.device_id}] ไม่พบทั้ง event.png และ gacha.png ใน 8 วิ - ลองหาปุ่มในร้านต่อ")
@@ -2399,6 +2400,10 @@ class RangerGearBot(threading.Thread):
         # ตัวแปรสำหรับ timeout
         not_found_count = 0
         max_not_found = 30
+        # หา shopgacha1 ไม่เจอครบ 30 ครั้ง: กด BACK ถอยออกแล้วลองเข้าร้านใหม่
+        # ก่อนยอมแพ้ไป swap_shop (บางทีเข้าผิดหน้า/จอค้าง ถอยออกแล้วเข้าใหม่ก็หาย)
+        entry_retries = 0
+        max_entry_retries = 2
         loop_start_time = time.time()
         max_loop_time = 300
         # เพดานแข็งของ "ช่วงรอในร้าน" - taps รีเซ็ตไม่ได้ ต่างจาก 500s inactivity
@@ -2511,9 +2516,26 @@ class RangerGearBot(threading.Thread):
                                 if not_found_count % 20 == 0:
                                     print(f"[{device.device_id}] ยังรอ {current_img} อยู่ ({not_found_count} รอบ) - รอต่อ")
                             else:
-                                # ยังเข้าร้านไม่ได้เลย - อันนี้ตัดจบ ไม่งั้นวนเงียบ ๆ ยาว
+                                # ยังเข้าร้านไม่ได้เลย - กด BACK ถอยออกแล้วลองเข้าร้านใหม่
+                                # ตามลำดับ (event/gacha -> shopgacha1 -> shopgacha2) ก่อน
+                                # จะยอมแพ้ไป swap_shop - เพดาน max_loop_time 300s ยังคุมอยู่
                                 if not_found_count >= max_not_found:
-                                    print(f"[{device.device_id}] ไม่พบ {current_img} ติดต่อกัน {max_not_found} ครั้ง - ข้ามไป swap_shop")
+                                    if entry_retries < max_entry_retries:
+                                        entry_retries += 1
+                                        print(f"[{device.device_id}] ไม่พบ {current_img} ติดต่อกัน {max_not_found} ครั้ง - กด BACK แล้วลองเข้าร้านใหม่ (รอบที่ {entry_retries}/{max_entry_retries})")
+                                        device.adb_shell("input keyevent KEYCODE_BACK")
+                                        time.sleep(1.5)
+                                        # BACK จากล็อบบี้จะเด้งกล่องยืนยันออกเกม - เจอก็กด cancel ปิดก่อน
+                                        device.capture_screen()
+                                        if device.exists_in_cache("img/cancel.png"):
+                                            print(f"[{device.device_id}] BACK แล้วเจอกล่องออกเกม - กด cancel ปิด")
+                                            device.click("img/cancel.png")
+                                            time.sleep(1)
+                                        if find_shop_entry():
+                                            time.sleep(2)
+                                        not_found_count = 0
+                                        continue
+                                    print(f"[{device.device_id}] ไม่พบ {current_img} ติดต่อกัน {max_not_found} ครั้ง (ลองเข้าร้านใหม่ {max_entry_retries} รอบแล้ว) - ข้ามไป swap_shop")
                                     return finish_shopgacha()
                                 if not_found_count % 5 == 0:
                                     print(f"[{device.device_id}] ยังไม่พบ {current_img} - ครั้งที่ {not_found_count}/{max_not_found}")
