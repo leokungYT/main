@@ -1759,7 +1759,7 @@ def search_gachaslot_image(bot):
     while swipe_count <= max_swipes:
         bot.capture_screen()
         adb_img = bot._screen_color
-        gachaslot_pos = ImgSearchADB(adb_img, 'img/gachaslot.png')
+        gachaslot_pos = ImgSearchADB(adb_img, 'img/gachaslot.png', threshold=0.8)
         if gachaslot_pos:
             return gachaslot_pos[0]
         # ภาพสีไม่ติด ลองภาพขาวดำที่ 0.8 (บางเครื่องสีจอเพี้ยนจนภาพสีไม่ผ่านเกณฑ์)
