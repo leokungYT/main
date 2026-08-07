@@ -54,17 +54,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # Statistics and GUI Tracking
 # =========================================================
 # ----- Simplified UI Stats Class -----
-class RestartTimeoutError(BaseException):
-    """ไม่มีการกดอะไรเลยเกิน 500 วิ -> ต้องเด้งออกไปเริ่มไฟล์ใหม่
-
-    สืบจาก BaseException ไม่ใช่ Exception โดยตั้งใจ: ในไฟล์นี้มี `except Exception`
-    กับ bare `except` ครอบ capture_screen() อยู่ 20 กว่าจุด ถ้าเป็น Exception ธรรมดา
-    มันจะโดนกลืนหมด แล้ววนอยู่ในลูปเดิมตลอดไป (log จะขึ้นคู่ "TIMEOUT: Inactive for
-    500s" + "Error: 500s Timeout" ทุก 500 วิ ไม่จบ) พอเป็น BaseException มันจะทะลุ
-    ขึ้นไปถึง handler ที่เขียนดักชื่อนี้ไว้จริง ๆ ใน run() แล้ว clear_and_restart
-    ไปทำไฟล์ถัดไปได้ตามที่ตั้งใจไว้แต่แรก
-    """
-    pass
+class RestartTimeoutError(Exception): pass
 
 class SimpleUIStats:
     def __init__(self):
@@ -2325,18 +2315,6 @@ class RangerGearBot(threading.Thread):
                             if ImgSearchADB(check_img, 'img/shopgachastop1.png'):
                                 print(f"[{device.device_id}] พบ shopgachastop1.png หลังกด {current_img} - จบ shop gacha")
                                 return finish_shopgacha()
-                            not_found_count = 0
-                        else:
-                            # ไม่เจอปุ่มแรก - เดิมตรงนี้ continue เปล่า ๆ ไม่นับ ไม่ log ไม่หน่วง
-                            # เลยวนรัวเงียบ ๆ ยาว 300 วิ (max_loop_time) กว่าจะยอมไปต่อ
-                            # ให้ใช้ตัวนับเดียวกับลูปหลัก จะได้เลิกเร็วและมี log ให้ดู
-                            not_found_count += 1
-                            if not_found_count >= max_not_found:
-                                print(f"[{device.device_id}] ไม่พบ {current_img} ติดต่อกัน {max_not_found} ครั้ง - ข้ามไป swap_shop")
-                                return finish_shopgacha()
-                            if not_found_count % 5 == 0:
-                                print(f"[{device.device_id}] ยังไม่พบ {current_img} - ครั้งที่ {not_found_count}/{max_not_found}")
-                            time.sleep(0.5)
                         continue
                     else:
                         in_loop = True
@@ -2965,8 +2943,7 @@ class RangerGearBot(threading.Thread):
                                                 found_gachaout = True
                                                 break
                                             time.sleep(0.5)
-                                        except RestartTimeoutError: raise
-                                        except Exception: time.sleep(0.5)
+                                        except: time.sleep(0.5)
                                     if found_gachaout:
                                         device.clear_and_restart()
                                         time.sleep(6)
@@ -3090,8 +3067,7 @@ class RangerGearBot(threading.Thread):
                                         checked_waitgacha = True
                                         break
                                 time.sleep(0.5)
-                            except RestartTimeoutError: raise
-                            except Exception: continue
+                            except: continue
                         channel_pos = get_channel_position()
                         if channel_pos and len(channel_pos) == 2:
                             device.tap(channel_pos[0], channel_pos[1])
@@ -3250,26 +3226,10 @@ class RangerGearBot(threading.Thread):
                     # Always ensure lock is removed after processing (handle_success/failure moves the file)
                     self._release_file_lock(xml_file)
                     
-                except RestartTimeoutError:
-                    # หมดเวลาที่จุดอื่นนอกเหนือจาก main_login (first_loop / inject / ฯลฯ)
-                    # เก็บกวาดแล้วไปไฟล์ถัดไป ไม่ให้ thread ตายไปเงียบ ๆ
-                    print(f"[{self.device_id}] 500s ไม่มีการกดอะไรเลย - เคลียร์แอพแล้วข้ามไฟล์นี้")
-                    try:
-                        self.clear_and_restart()
-                    except Exception:
-                        pass
-                    self._release_file_lock(xml_file)
-                    self.first_loop_done = False
-                    sleep(2)
                 except Exception as e:
                     print(f"[{self.device_id}] Critical Error with {xml_file}: {e}")
                     self._release_file_lock(xml_file)
                     sleep(5)
-        except RestartTimeoutError:
-            # ตาข่ายชั้นสุดท้าย - ไม่ควรมาถึงตรงนี้ แต่ถ้ามาก็อย่าให้บอทตายเงียบ
-            print(f"[{self.device_id}] Thread หลุดด้วย 500s Timeout - เริ่ม thread ใหม่", flush=True)
-            sleep(5)
-            return self.run()
         except Exception as e:
             print(f"[{self.device_id}] Thread Crash: {e}", flush=True)
 
@@ -3754,19 +3714,6 @@ class RangerGearBot(threading.Thread):
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "text", escaped])
         sleep(0.5) # Wait for UI to process text input
 
-    # รูปไก่บี้ทุกแบบ - เพิ่มตัวใหม่ที่นี่ที่เดียว ทุกจุดที่เช็คใช้ลิสต์นี้ร่วมกัน
-    KAIBY_IMAGES = ("img/kaiby.png", "img/kaiby1.png", "img/kaiby2.bmp")
-
-    def find_kaiby(self, similarity=0.95):
-        """คืนชื่อรูปไก่บี้ตัวแรกที่เจอบนจอที่จับไว้ (None = ไม่เจอ)
-
-        คืนชื่อไฟล์กลับไปด้วย จะได้ log ได้ว่าเจอตัวไหน โดยไม่ต้องไล่เช็คซ้ำอีกรอบ
-        """
-        for path in self.KAIBY_IMAGES:
-            if self.exists_in_cache(path, similarity=similarity):
-                return os.path.basename(path)
-        return None
-
     def _log_pos_cache(self, every_sec=120):
         """Occasionally report how often the remembered positions are paying off."""
         if self._pos_mem is None or not self._pos_mem.enabled:
@@ -4110,8 +4057,12 @@ class RangerGearBot(threading.Thread):
             return "unkhow"
             
         # ตรวจ kaiby เฉพาะเมื่อเปิด kaibyskip (ปิด = ไม่ต้องหลบ, login ปกติ)
-        if config.get("kaibyskip", 0) == 1 and self.find_kaiby():
-            return "kaiby"
+        if config.get("kaibyskip", 0) == 1:
+            if self.exists_in_cache("img/kaiby.png"):
+                return "kaiby"
+
+            if self.exists_in_cache("img/kaiby1.png"):
+                return "kaiby"
 
         error_images = ["img/failed1.png", "img/fixalerterror1.png"]
         for err in error_images:
@@ -4863,7 +4814,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Found stopcheck.png! Skipping to complete.")
                     return "complete"
                 if err == "kaiby":
-                    print(f"[{self.device_id}] ⚠️ พบไก่บี้! (เด้งต้อนรับ) ยกเลิกการ Login ทันที...")
+                    print(f"[{self.device_id}] ⚠️ พบ kaiby.png! (ไก่บี้เด้งต้อนรับ) ยกเลิกการ Login ทันที...")
                     self.clear_and_restart()
                     sleep(2)
                     return "kaiby"
@@ -5436,14 +5387,12 @@ class RangerGearBot(threading.Thread):
                 loop_count = 0
                 continue
                 
-            # ไก่บี้ทุกแบบ (เฉพาะเมื่อเปิด kaibyskip)
-            if config.get("kaibyskip", 0) == 1:
-                kaiby_hit = self.find_kaiby(similarity=0.8)
-                if kaiby_hit:
-                    print(f"[{self.device_id}] ⚠️ พบ {kaiby_hit}! (ไก่บี้เด้งระหว่าง Login) เคลียร์แอพและส่งเข้าโฟลเดอร์ kaiby...")
-                    self.clear_and_restart()
-                    sleep(2)
-                    return "kaiby"
+            # kaiby.png / kaiby1.png Check (เฉพาะเมื่อเปิด kaibyskip)
+            if config.get("kaibyskip", 0) == 1 and (self.exists_in_cache("img/kaiby.png", similarity=0.8) or self.exists_in_cache("img/kaiby1.png", similarity=0.8)):
+                print(f"[{self.device_id}] ⚠️ พบ kaiby.png! (ไก่บี้เด้งระหว่าง Login) เคลียร์แอพและส่งเข้าโฟลเดอร์ kaiby...")
+                self.clear_and_restart()
+                sleep(2)
+                return "kaiby"
                 
             # *** SUCCESS -> Just Login and Backup ***
             if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
@@ -5712,12 +5661,11 @@ class RangerGearBot(threading.Thread):
                 self.clear_and_restart()
                 return "success"
                 
-            # ไก่บี้ทุกแบบ (High Priority) — เฉพาะเมื่อเปิด kaibyskip
-            if config.get("kaibyskip", 0) == 1:
-                reason = self.find_kaiby()
-                if reason:
-                    print(f"[{self.device_id}] {reason} detected! Stopping login...")
-                    return "kaiby"
+            # Kaiby / Kaiby1 Check (High Priority) — เฉพาะเมื่อเปิด kaibyskip
+            if config.get("kaibyskip", 0) == 1 and (self.exists_in_cache("img/kaiby.png") or self.exists_in_cache("img/kaiby1.png")):
+                reason = "kaiby1.png" if self.exists_in_cache("img/kaiby1.png") else "kaiby.png"
+                print(f"[{self.device_id}] {reason} detected! Stopping login...")
+                return "kaiby"
 
             # Failed
             if self.exists_in_cache("img/login-failed.png"):
