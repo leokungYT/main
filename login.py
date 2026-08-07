@@ -2325,6 +2325,18 @@ class RangerGearBot(threading.Thread):
                             if ImgSearchADB(check_img, 'img/shopgachastop1.png'):
                                 print(f"[{device.device_id}] พบ shopgachastop1.png หลังกด {current_img} - จบ shop gacha")
                                 return finish_shopgacha()
+                            not_found_count = 0
+                        else:
+                            # ไม่เจอปุ่มแรก - เดิมตรงนี้ continue เปล่า ๆ ไม่นับ ไม่ log ไม่หน่วง
+                            # เลยวนรัวเงียบ ๆ ยาว 300 วิ (max_loop_time) กว่าจะยอมไปต่อ
+                            # ให้ใช้ตัวนับเดียวกับลูปหลัก จะได้เลิกเร็วและมี log ให้ดู
+                            not_found_count += 1
+                            if not_found_count >= max_not_found:
+                                print(f"[{device.device_id}] ไม่พบ {current_img} ติดต่อกัน {max_not_found} ครั้ง - ข้ามไป swap_shop")
+                                return finish_shopgacha()
+                            if not_found_count % 5 == 0:
+                                print(f"[{device.device_id}] ยังไม่พบ {current_img} - ครั้งที่ {not_found_count}/{max_not_found}")
+                            time.sleep(0.5)
                         continue
                     else:
                         in_loop = True
