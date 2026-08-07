@@ -54,7 +54,17 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # Statistics and GUI Tracking
 # =========================================================
 # ----- Simplified UI Stats Class -----
-class RestartTimeoutError(Exception): pass
+class RestartTimeoutError(BaseException):
+    """ไม่มีการกดอะไรเลยเกิน 500 วิ -> ต้องเด้งออกไปเริ่มไฟล์ใหม่
+
+    สืบจาก BaseException ไม่ใช่ Exception โดยตั้งใจ: ในไฟล์นี้มี `except Exception`
+    กับ bare `except` ครอบ capture_screen() อยู่ 20 กว่าจุด ถ้าเป็น Exception ธรรมดา
+    มันจะโดนกลืนหมด แล้ววนอยู่ในลูปเดิมตลอดไป (log จะขึ้นคู่ "TIMEOUT: Inactive for
+    500s" + "Error: 500s Timeout" ทุก 500 วิ ไม่จบ) พอเป็น BaseException มันจะทะลุ
+    ขึ้นไปถึง handler ที่เขียนดักชื่อนี้ไว้จริง ๆ ใน run() แล้ว clear_and_restart
+    ไปทำไฟล์ถัดไปได้ตามที่ตั้งใจไว้แต่แรก
+    """
+    pass
 
 class SimpleUIStats:
     def __init__(self):
@@ -2943,7 +2953,8 @@ class RangerGearBot(threading.Thread):
                                                 found_gachaout = True
                                                 break
                                             time.sleep(0.5)
-                                        except: time.sleep(0.5)
+                                        except RestartTimeoutError: raise
+                                        except Exception: time.sleep(0.5)
                                     if found_gachaout:
                                         device.clear_and_restart()
                                         time.sleep(6)
@@ -3067,7 +3078,8 @@ class RangerGearBot(threading.Thread):
                                         checked_waitgacha = True
                                         break
                                 time.sleep(0.5)
-                            except: continue
+                            except RestartTimeoutError: raise
+                            except Exception: continue
                         channel_pos = get_channel_position()
                         if channel_pos and len(channel_pos) == 2:
                             device.tap(channel_pos[0], channel_pos[1])
@@ -3226,10 +3238,26 @@ class RangerGearBot(threading.Thread):
                     # Always ensure lock is removed after processing (handle_success/failure moves the file)
                     self._release_file_lock(xml_file)
                     
+                except RestartTimeoutError:
+                    # หมดเวลาที่จุดอื่นนอกเหนือจาก main_login (first_loop / inject / ฯลฯ)
+                    # เก็บกวาดแล้วไปไฟล์ถัดไป ไม่ให้ thread ตายไปเงียบ ๆ
+                    print(f"[{self.device_id}] 500s ไม่มีการกดอะไรเลย - เคลียร์แอพแล้วข้ามไฟล์นี้")
+                    try:
+                        self.clear_and_restart()
+                    except Exception:
+                        pass
+                    self._release_file_lock(xml_file)
+                    self.first_loop_done = False
+                    sleep(2)
                 except Exception as e:
                     print(f"[{self.device_id}] Critical Error with {xml_file}: {e}")
                     self._release_file_lock(xml_file)
                     sleep(5)
+        except RestartTimeoutError:
+            # ตาข่ายชั้นสุดท้าย - ไม่ควรมาถึงตรงนี้ แต่ถ้ามาก็อย่าให้บอทตายเงียบ
+            print(f"[{self.device_id}] Thread หลุดด้วย 500s Timeout - เริ่ม thread ใหม่", flush=True)
+            sleep(5)
+            return self.run()
         except Exception as e:
             print(f"[{self.device_id}] Thread Crash: {e}", flush=True)
 
