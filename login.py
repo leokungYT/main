@@ -1762,8 +1762,13 @@ def search_gachaslot_image(bot):
         gachaslot_pos = ImgSearchADB(adb_img, 'img/gachaslot.png')
         if gachaslot_pos:
             return gachaslot_pos[0]
+        # ภาพสีไม่ติด ลองภาพขาวดำที่ 0.8 (บางเครื่องสีจอเพี้ยนจนภาพสีไม่ผ่านเกณฑ์)
+        pt = bot._find_in_screen('img/gachaslot.png', 0.8)
+        if pt:
+            return pt
         if swipe_count < max_swipes:
-            print(f"[{bot.device_id}] ไม่พบ gachaslot.png - เลื่อนหน้าจอครั้งที่ {swipe_count + 1}")
+            score = bot._get_similarity_score('img/gachaslot.png')
+            print(f"[{bot.device_id}] ไม่พบ gachaslot.png (match ขาวดำ {score:.2f}) - เลื่อนหน้าจอครั้งที่ {swipe_count + 1}")
             bot.adb_shell("input swipe 824 240 808 109 5000")
             time.sleep(1)
             swipe_count += 1
@@ -2416,7 +2421,7 @@ class RangerGearBot(threading.Thread):
         # ตัวแปรสำหรับวนกลับไปเช็ค shopgacha2.png หลังจากกด shopgacha5.png
         shopgacha5_clicked = False
         check_shopgacha2_count = 0
-        max_check_shopgacha2 = 3
+        max_check_shopgacha2 = 8
 
         # ตัวแปรสำหรับ timeout
         not_found_count = 0
@@ -2786,7 +2791,6 @@ class RangerGearBot(threading.Thread):
             swap_shopevent_enabled = 0
         
         found_initial_swap_shop = False
-        entry_miss_count = 0
         checked_waitgacha = False
         running = True
         first_sequence_position = 0
@@ -3278,21 +3282,10 @@ class RangerGearBot(threading.Thread):
                 if all_in_spent_ruby:
                     continue
                 if not found_initial_swap_shop:
-                    # หา 2 ทางเหมือนตอนเข้าร้านใน shopgacha: ภาพขาวดำก่อนแล้วค่อยภาพสี
-                    # บางเครื่องภาพสีเพี้ยนจน 0.95 ไม่ติด แต่ขาวดำ 0.8 หาเจอ
-                    gacha_pt = device._find_in_screen("img/gacha.png", 0.8)
-                    if gacha_pt is None:
-                        swap_shop_pos = ImgSearchADB(adb_img, 'img/gacha.png', threshold=0.8)
-                        if swap_shop_pos and len(swap_shop_pos) > 0:
-                            gacha_pt = swap_shop_pos[0]
-                    if gacha_pt is None:
-                        entry_miss_count += 1
-                        if entry_miss_count % 20 == 0:
-                            score = device._get_similarity_score('img/gacha.png')
-                            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ยังหา gacha.png เข้าห้องสุ่มไม่เจอ ({entry_miss_count} รอบ, match ขาวดำ {score:.2f})")
-                    if gacha_pt:
-                        device.tap(gacha_pt[0], gacha_pt[1])
-                        last_click_position = gacha_pt
+                    swap_shop_pos = ImgSearchADB(adb_img, 'img/gacha.png')
+                    if swap_shop_pos:
+                        device.tap(swap_shop_pos[0][0], swap_shop_pos[0][1])
+                        last_click_position = swap_shop_pos[0]
                         found_initial_swap_shop = True
                         time.sleep(2)
                         if check_gachaout_after_click(): return "random-Fail"
@@ -3302,15 +3295,9 @@ class RangerGearBot(threading.Thread):
                             try:
                                 device.capture_screen()
                                 if not found_waitgacha:
-                                    if (ImgSearchADB(device._screen_color, 'img/waitgacha.png')
-                                            or device.exists_in_cache('img/waitgacha.png', 0.8)):
+                                    if ImgSearchADB(device._screen_color, 'img/waitgacha.png'):
                                         found_waitgacha = True
                                         start_time = time.time()
-                                    elif time.time() - start_time > 60:
-                                        # กันค้าง: จอสุ่มไม่โผล่/หาไม่เจอ ก็ไปต่อขั้นเลือกช่อง
-                                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] รอ waitgacha เกิน 60 วิ - ข้ามไปเลือกช่องต่อ")
-                                        checked_waitgacha = True
-                                        break
                                 if found_waitgacha:
                                     fixnewgacha_pos = ImgSearchADB(device._screen_color, 'img/fixnewgacha.png')
                                     if fixnewgacha_pos:
@@ -3331,8 +3318,7 @@ class RangerGearBot(threading.Thread):
                             if swap_shopevent_enabled: return "swap_shopevent"
                         continue
                 if not checked_waitgacha:
-                    if (ImgSearchADB(adb_img, 'img/waitgacha.png')
-                            or device.exists_in_cache('img/waitgacha.png', 0.8)):
+                    if ImgSearchADB(adb_img, 'img/waitgacha.png'):
                         checked_waitgacha = True
                         time.sleep(1.5)
                         continue
