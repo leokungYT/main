@@ -2575,9 +2575,10 @@ class RangerGearBot(threading.Thread):
                         else:
                             check_shopgacha2_count += 1
                             if check_shopgacha2_count >= max_check_shopgacha2:
-                                print(f"[{device.device_id}] ไม่พบ shopgacha2.png หลังเช็ค {max_check_shopgacha2} รอบ - ดำเนินการต่อ")
-                                shopgacha5_clicked = False
-                                check_shopgacha2_count = 0
+                                # ครบ 3 รอบแล้วยังไม่เจอ shopgacha2 = ไปต่อไม่ได้แล้ว
+                                # รัว BACK จนเจอ cancel แล้วหยุด ค่อยไปทำ swap_shop ต่อ
+                                print(f"[{device.device_id}] ไม่พบ shopgacha2.png หลังเช็ค {max_check_shopgacha2} รอบ - รัว BACK จนเจอ cancel แล้วไป swap_shop")
+                                return finish_shopgacha()
                         if found_any:
                             time.sleep(0.5)
                             continue
