@@ -2226,6 +2226,66 @@ class RangerGearBot(threading.Thread):
         # ปกติเข้าทาง event.png (ป๊อปอัพอีเวนต์) แต่ถ้าตอน login โดนปิดไปแล้ว
         # ป๊อปอัพจะไม่อยู่ ต้องกดไอคอน gacha.png ที่ Lobby เข้าแทน
         # ถ้าไม่กดอะไรเลย ลูปข้างล่างจะหา shopgacha1.png ในร้านที่ยังไม่ได้เปิด = ไม่มีทางเจอ
+        def wait_gacha_then_gems():
+            """หลังกด shopgacha1: รอจอสุ่ม -> เช็คป๊อปอัพเพชร -> ค่อยไปหา shopgacha2
+
+            ลำดับตามที่ต้องการ:
+              1. หา waitgacha.png กับ waitgacha1.png พร้อมกัน เจอตัวไหนก่อนก็ได้
+                 (รอได้เรื่อย ๆ เหมือนขั้นรอ shopgacha2 - ถ้าค้างจริงมี 500s คุมอยู่)
+              2. เจอแล้วหา fixgems.png ภายใน 8 วิ
+                 - เจอ  -> กด fixgems1.png แล้วไปต่อ
+                 - ไม่เจอ -> ข้ามไป shopgacha2 เลย
+            คืน None = ไปต่อตามปกติ, คืน string = ผลลัพธ์ที่ต้องส่งกลับออกไปเลย
+            """
+            waits = ('img/waitgacha.png', 'img/waitgacha1.png')
+            print(f"[{device.device_id}] รอจอสุ่ม (waitgacha / waitgacha1)...")
+            rounds = 0
+            seen = None
+            while seen is None:
+                device.capture_screen()
+                img = device._screen_color
+                for w in waits:
+                    if ImgSearchADB(img, w, threshold=BTN_TH):
+                        seen = os.path.basename(w)
+                        break
+                if seen:
+                    break
+                # จอจบ/ขายหมด อาจโผล่ระหว่างรอ - ต้องออกให้ถูกทาง ไม่ใช่รอค้าง
+                if ImgSearchADB(img, 'img/shopgachastop.png'):
+                    if swap_shop_enabled:
+                        print(f"[{device.device_id}] พบ shopgachastop.png ระหว่างรอจอสุ่ม - ไป swap_shop")
+                        return finish_shopgacha()
+                    print(f"[{device.device_id}] พบ shopgachastop.png ระหว่างรอจอสุ่ม - backup ไป not-found")
+                    device.backup_failed_game_data()
+                    device.clear_and_restart()
+                    time.sleep(6)
+                    return "random-Fail"
+                if ImgSearchADB(img, 'img/shopgachastop1.png'):
+                    print(f"[{device.device_id}] พบ shopgachastop1.png ระหว่างรอจอสุ่ม - จบ shop gacha")
+                    return finish_shopgacha()
+                rounds += 1
+                if rounds % 20 == 0:
+                    print(f"[{device.device_id}] ยังรอจอสุ่มอยู่ ({rounds} รอบ) - รอต่อ")
+                time.sleep(0.5)
+
+            print(f"[{device.device_id}] เจอ {seen} - หา fixgems.png ภายใน 8 วิ")
+            gems_deadline = time.time() + 8
+            while time.time() < gems_deadline:
+                device.capture_screen()
+                if ImgSearchADB(device._screen_color, 'img/fixgems.png', threshold=BTN_TH):
+                    print(f"[{device.device_id}] พบ fixgems.png - กด fixgems1.png")
+                    p = ImgSearchADB(device._screen_color, 'img/fixgems1.png', threshold=BTN_TH)
+                    if p and len(p) > 0:
+                        device.tap(p[0][0], p[0][1])
+                        time.sleep(1.5)
+                    else:
+                        print(f"[{device.device_id}] [WARN] เจอ fixgems แต่ไม่เจอปุ่ม fixgems1 - ข้ามไป shopgacha2")
+                    return None
+                time.sleep(0.5)
+
+            print(f"[{device.device_id}] ไม่พบ fixgems ใน 8 วิ - ข้ามไป shopgacha2")
+            return None
+
         # วนหา 8 วิเท่ากับ check_task_available ที่เพิ่งยืนยันว่า gacha.png อยู่บนจอ
         # ก่อนเรียกฟังก์ชันนี้ - ยิงครั้งเดียวแล้วพลาดได้ถ้าจอกำลังขยับ/โหลดอยู่
         # และหาด้วยทั้งภาพขาวดำ (แบบเดียวกับตัวเช็คนั้น) และภาพสีที่ 0.8
@@ -2360,6 +2420,14 @@ class RangerGearBot(threading.Thread):
                             if ImgSearchADB(check_img, 'img/shopgachastop1.png'):
                                 print(f"[{device.device_id}] พบ shopgachastop1.png หลังกด {current_img} - จบ shop gacha")
                                 return finish_shopgacha()
+
+                            # หลังกด shopgacha1: รอจอสุ่ม (waitgacha / waitgacha1)
+                            # แล้วแวะเช็คป๊อปอัพเพชร (fixgems) ก่อนค่อยไปหา shopgacha2
+                            if current_img == 'shopgacha1.png':
+                                res_wait = wait_gacha_then_gems()
+                                if res_wait:
+                                    return res_wait
+
                             not_found_count = 0
                         else:
                             not_found_count += 1
