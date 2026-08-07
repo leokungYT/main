@@ -2226,22 +2226,45 @@ class RangerGearBot(threading.Thread):
         # ปกติเข้าทาง event.png (ป๊อปอัพอีเวนต์) แต่ถ้าตอน login โดนปิดไปแล้ว
         # ป๊อปอัพจะไม่อยู่ ต้องกดไอคอน gacha.png ที่ Lobby เข้าแทน
         # ถ้าไม่กดอะไรเลย ลูปข้างล่างจะหา shopgacha1.png ในร้านที่ยังไม่ได้เปิด = ไม่มีทางเจอ
+        # วนหา 8 วิเท่ากับ check_task_available ที่เพิ่งยืนยันว่า gacha.png อยู่บนจอ
+        # ก่อนเรียกฟังก์ชันนี้ - ยิงครั้งเดียวแล้วพลาดได้ถ้าจอกำลังขยับ/โหลดอยู่
+        # และหาด้วยทั้งภาพขาวดำ (แบบเดียวกับตัวเช็คนั้น) และภาพสีที่ 0.8
         print(f"[{device.device_id}] กำลังค้นหาทางเข้าร้าน (event.png / gacha.png)")
-        device.capture_screen()
-        adb_img = device._screen_color
-        event_pos = ImgSearchADB(adb_img, 'img/event.png')
-        if event_pos and len(event_pos) > 0:
-            print(f"[{device.device_id}] พบและกด event.png")
-            device.tap(event_pos[0][0], event_pos[0][1])
+        entry_deadline = time.time() + 8
+        entered = False
+        while time.time() < entry_deadline:
+            device.capture_screen()
+            adb_img = device._screen_color
+
+            event_pos = ImgSearchADB(adb_img, 'img/event.png')
+            if event_pos and len(event_pos) > 0:
+                print(f"[{device.device_id}] พบและกด event.png")
+                device.tap(event_pos[0][0], event_pos[0][1])
+                entered = True
+                break
+
+            gacha_pt = device._find_in_screen("img/gacha.png", 0.8)
+            if gacha_pt is None:
+                gacha_pos = ImgSearchADB(adb_img, 'img/gacha.png', threshold=0.8)
+                if gacha_pos and len(gacha_pos) > 0:
+                    gacha_pt = gacha_pos[0]
+            if gacha_pt:
+                print(f"[{device.device_id}] ไม่พบ event.png - กด gacha.png เข้าร้านแทน ที่ {gacha_pt}")
+                device.tap(gacha_pt[0], gacha_pt[1])
+                entered = True
+                break
+
+            time.sleep(0.5)
+
+        if entered:
             time.sleep(2)
         else:
-            gacha_pos = ImgSearchADB(adb_img, 'img/gacha.png')
-            if gacha_pos and len(gacha_pos) > 0:
-                print(f"[{device.device_id}] ไม่พบ event.png - กด gacha.png เข้าร้านแทน")
-                device.tap(gacha_pos[0][0], gacha_pos[0][1])
-                time.sleep(2)
-            else:
-                print(f"[{device.device_id}] ไม่พบทั้ง event.png และ gacha.png - ลองหาปุ่มในร้านต่อ")
+            print(f"[{device.device_id}] ไม่พบทั้ง event.png และ gacha.png ใน 8 วิ - ลองหาปุ่มในร้านต่อ")
+
+        # เกณฑ์ความเหมือนของ "ปุ่ม" ในร้าน - 0.95 เข้มไปจนกดไม่ติด
+        # ใช้เฉพาะปุ่มที่ต้องกด ไม่แตะ shopgachastop/shopgachastop1 ซึ่งเป็นเงื่อนไข
+        # จบงาน ถ้าลดด้วยแล้วเจอผิดจะพาไป SOLD OUT / random-Fail ทั้งที่ยังสุ่มได้
+        BTN_TH = 0.8
 
         # สถานะการทำงาน
         initial_sequence = ['shopgacha1.png', 'shopgacha2.png']
@@ -2305,7 +2328,7 @@ class RangerGearBot(threading.Thread):
                 if not in_loop:
                     if current_initial_step < len(initial_sequence):
                         current_img = initial_sequence[current_initial_step]
-                        pos = ImgSearchADB(adb_img, f'img/{current_img}')
+                        pos = ImgSearchADB(adb_img, f'img/{current_img}', threshold=BTN_TH)
                         if pos and len(pos) > 0:
                             print(f"[{device.device_id}] พบและกด {current_img}")
                             if current_img == 'shopgacha2.png':
@@ -2358,7 +2381,7 @@ class RangerGearBot(threading.Thread):
                     # ถ้ากด shopgacha5.png แล้ว ให้วนกลับไปเช็ค shopgacha2.png ก่อน
                     if shopgacha5_clicked and check_shopgacha2_count < max_check_shopgacha2:
                         print(f"[{device.device_id}] วนกลับไปเช็ค shopgacha2.png (รอบที่ {check_shopgacha2_count + 1}/{max_check_shopgacha2})")
-                        pos = ImgSearchADB(adb_img, 'img/shopgacha2.png')
+                        pos = ImgSearchADB(adb_img, 'img/shopgacha2.png', threshold=BTN_TH)
                         if pos and len(pos) > 0:
                             print(f"[{device.device_id}] พบและกด shopgacha2.png อีกครั้ง (รอ 5 วินาที)")
                             time.sleep(5)
@@ -2380,7 +2403,7 @@ class RangerGearBot(threading.Thread):
 
                     # วนลูปตามปกติ
                     for img in loop_sequence:
-                        pos = ImgSearchADB(adb_img, f'img/{img}')
+                        pos = ImgSearchADB(adb_img, f'img/{img}', threshold=BTN_TH)
                         if pos and len(pos) > 0:
                             # ตรวจสอบการกดซ้ำ
                             if img == last_clicked_img:
