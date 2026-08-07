@@ -2222,8 +2222,11 @@ class RangerGearBot(threading.Thread):
             time.sleep(6)
             return "complete"
 
-        # ขั้นตอนที่ 1: ค้นหาและกด event.png (รอ 2 วินาที)
-        print(f"[{device.device_id}] กำลังค้นหา event.png")
+        # ขั้นตอนที่ 1: เข้าหน้าร้านให้ได้ก่อน
+        # ปกติเข้าทาง event.png (ป๊อปอัพอีเวนต์) แต่ถ้าตอน login โดนปิดไปแล้ว
+        # ป๊อปอัพจะไม่อยู่ ต้องกดไอคอน gacha.png ที่ Lobby เข้าแทน
+        # ถ้าไม่กดอะไรเลย ลูปข้างล่างจะหา shopgacha1.png ในร้านที่ยังไม่ได้เปิด = ไม่มีทางเจอ
+        print(f"[{device.device_id}] กำลังค้นหาทางเข้าร้าน (event.png / gacha.png)")
         device.capture_screen()
         adb_img = device._screen_color
         event_pos = ImgSearchADB(adb_img, 'img/event.png')
@@ -2232,7 +2235,13 @@ class RangerGearBot(threading.Thread):
             device.tap(event_pos[0][0], event_pos[0][1])
             time.sleep(2)
         else:
-            print(f"[{device.device_id}] ไม่พบ event.png - ข้ามไปขั้นตอนถัดไป")
+            gacha_pos = ImgSearchADB(adb_img, 'img/gacha.png')
+            if gacha_pos and len(gacha_pos) > 0:
+                print(f"[{device.device_id}] ไม่พบ event.png - กด gacha.png เข้าร้านแทน")
+                device.tap(gacha_pos[0][0], gacha_pos[0][1])
+                time.sleep(2)
+            else:
+                print(f"[{device.device_id}] ไม่พบทั้ง event.png และ gacha.png - ลองหาปุ่มในร้านต่อ")
 
         # สถานะการทำงาน
         initial_sequence = ['shopgacha1.png', 'shopgacha2.png']
