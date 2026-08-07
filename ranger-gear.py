@@ -1143,6 +1143,16 @@ class RangerGearBot(threading.Thread):
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
+    # รูปไก่บี้ทุกแบบ - เพิ่มตัวใหม่ที่นี่ที่เดียว ทุกจุดที่เช็คใช้ลิสต์นี้ร่วมกัน
+    KAIBY_IMAGES = ("img/kaiby.png", "img/kaiby1.png", "img/kaiby2.bmp")
+
+    def find_kaiby(self, similarity=0.95):
+        """คืนชื่อรูปไก่บี้ตัวแรกที่เจอบนจอที่จับไว้ (None = ไม่เจอ)"""
+        for path in self.KAIBY_IMAGES:
+            if self.exists_in_cache(path, similarity=similarity):
+                return os.path.basename(path)
+        return None
+
     def _log_pos_cache(self, every_sec=120):
         """Occasionally report how often the remembered positions are paying off."""
         if self._pos_mem is None or not self._pos_mem.enabled:
@@ -2100,10 +2110,7 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/unkhow.png"):
             return "unkhow"
 
-        if self.exists_in_cache("img/kaiby.png"):
-            return "kaiby"
-
-        if self.exists_in_cache("img/kaiby1.png"):
+        if self.find_kaiby():
             return "kaiby"
 
         error_images = ["img/failed1.png", "img/fixalerterror1.png"]
@@ -3313,9 +3320,10 @@ class RangerGearBot(threading.Thread):
                 loop_count = 0
                 continue
                 
-            # kaiby.png / kaiby1.png Check
-            if self.exists_in_cache("img/kaiby.png", similarity=0.8) or self.exists_in_cache("img/kaiby1.png", similarity=0.8):
-                print(f"[{self.device_id}] ⚠️ พบ kaiby.png! (ไก่บี้เด้งระหว่าง Login) เคลียร์แอพและส่งเข้าโฟลเดอร์ kaiby...")
+            # ไก่บี้ทุกแบบ
+            kaiby_hit = self.find_kaiby(similarity=0.8)
+            if kaiby_hit:
+                print(f"[{self.device_id}] ⚠️ พบ {kaiby_hit}! (ไก่บี้เด้งระหว่าง Login) เคลียร์แอพและส่งเข้าโฟลเดอร์ kaiby...")
                 self.clear_and_restart()
                 sleep(0.5)
                 return "kaiby"
@@ -3491,9 +3499,9 @@ class RangerGearBot(threading.Thread):
                 self.clear_and_restart()
                 return "success"
                 
-            # Kaiby / Kaiby1 Check (High Priority)
-            if self.exists_in_cache("img/kaiby.png") or self.exists_in_cache("img/kaiby1.png"):
-                reason = "kaiby1.png" if self.exists_in_cache("img/kaiby1.png") else "kaiby.png"
+            # ไก่บี้ทุกแบบ (High Priority)
+            reason = self.find_kaiby()
+            if reason:
                 print(f"[{self.device_id}] {reason} detected! Stopping login...")
                 return "kaiby"
 
