@@ -2290,8 +2290,11 @@ class RangerGearBot(threading.Thread):
 
         while True:
             try:
-                # ตรวจสอบ timeout
-                if time.time() - loop_start_time > max_loop_time:
+                # ตรวจสอบ timeout - ยกเว้นตอนที่เข้าร้านได้แล้วและกำลังรอปุ่มถัดไป
+                # (in_loop=False + กดปุ่มแรกไปแล้ว) ตรงนั้นให้รอได้เรื่อย ๆ ตามที่ต้องการ
+                # ถ้าค้างจริงจะโดน 500s inactivity เด้งไปไฟล์ถัดไปเอง
+                waiting_in_shop = (not in_loop) and current_initial_step > 0
+                if not waiting_in_shop and time.time() - loop_start_time > max_loop_time:
                     print(f"[{device.device_id}] หมดเวลา {max_loop_time} วินาที - รัว BACK จนเจอ cancel แล้วไป swap_shop")
                     return finish_shopgacha()
 
@@ -2359,15 +2362,21 @@ class RangerGearBot(threading.Thread):
                                 return finish_shopgacha()
                             not_found_count = 0
                         else:
-                            # ไม่เจอปุ่มแรก - เดิมตรงนี้ continue เปล่า ๆ ไม่นับ ไม่ log ไม่หน่วง
-                            # เลยวนรัวเงียบ ๆ ยาว 300 วิ (max_loop_time) กว่าจะยอมไปต่อ
-                            # ให้ใช้ตัวนับเดียวกับลูปหลัก จะได้เลิกเร็วและมี log ให้ดู
                             not_found_count += 1
-                            if not_found_count >= max_not_found:
-                                print(f"[{device.device_id}] ไม่พบ {current_img} ติดต่อกัน {max_not_found} ครั้ง - ข้ามไป swap_shop")
-                                return finish_shopgacha()
-                            if not_found_count % 5 == 0:
-                                print(f"[{device.device_id}] ยังไม่พบ {current_img} - ครั้งที่ {not_found_count}/{max_not_found}")
+                            if current_initial_step > 0:
+                                # เข้าร้านได้แล้ว (กดปุ่มแรกไปแล้ว) - รอปุ่มถัดไปได้เรื่อย ๆ
+                                # ไม่ตัดที่ max_not_found เพราะเกมอาจโหลด/เล่นอนิเมชันนาน
+                                # ตาข่ายที่ยังคุมอยู่คือ 500s ไม่มีการกดเลย ซึ่งจะเด้งไป
+                                # ไฟล์ถัดไปให้เอง ไม่มีทางค้างถาวร
+                                if not_found_count % 20 == 0:
+                                    print(f"[{device.device_id}] ยังรอ {current_img} อยู่ ({not_found_count} รอบ) - รอต่อ")
+                            else:
+                                # ยังเข้าร้านไม่ได้เลย - อันนี้ตัดจบ ไม่งั้นวนเงียบ ๆ ยาว
+                                if not_found_count >= max_not_found:
+                                    print(f"[{device.device_id}] ไม่พบ {current_img} ติดต่อกัน {max_not_found} ครั้ง - ข้ามไป swap_shop")
+                                    return finish_shopgacha()
+                                if not_found_count % 5 == 0:
+                                    print(f"[{device.device_id}] ยังไม่พบ {current_img} - ครั้งที่ {not_found_count}/{max_not_found}")
                             time.sleep(0.5)
                         continue
                     else:
