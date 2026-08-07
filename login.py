@@ -2192,33 +2192,56 @@ class RangerGearBot(threading.Thread):
         # ถ้าเปิด swap_shop คู่กัน ห้าม clear app ตอน shopgacha จบ - ต้องไปทำ swap_shop ต่อ
         swap_shop_enabled = bool(config.get("swap_shop") or config.get("swap_shopevent") or config.get("auto_trade", {}).get("enabled"))
 
+        # เกณฑ์ความเหมือนของ "ปุ่ม" ในร้าน - 0.95 เข้มไปจนกดไม่ติด
+        # ใช้เฉพาะปุ่มที่ต้องกด ไม่แตะ shopgachastop/shopgachastop1 ซึ่งเป็นเงื่อนไข
+        # จบงาน ถ้าลดด้วยแล้วเจอผิดจะพาไป SOLD OUT / random-Fail ทั้งที่ยังสุ่มได้
+        # ประกาศไว้บนสุดเพราะ helper ข้างล่างใช้ และถูกเรียกตั้งแต่ขั้นหาทางเข้าร้าน
+        BTN_TH = 0.8
+
+        # เพดานรวมของการเคลียร์ป๊อปอัพเพชรตลอดทั้ง process_shopgacha ครั้งนี้
+        # ปกติเด้งไม่กี่ครั้ง ถ้าถึงเพดานแปลว่ากดแล้วมันไม่ยอมปิด - เลิกสนใจมัน
+        # แล้วปล่อยให้ตัวนับ/timeout ปกติทำงานแทน ไม่งั้นลูปจะเอาแต่กดป๊อปอัพ
+        # จนไม่ได้นับ miss เลยสักครั้ง
+        gems_state = {"clears": 0, "max": 15}
+
+        def clear_fixgems():
+            """ป๊อปอัพเพชรลอย ๆ - เจอที่ไหนก็เคลียร์ก่อน คืน True ถ้ากดไปจริง
+
+            ใช้จอที่จับไว้ล่าสุด (ไม่จับใหม่เอง) ผู้เรียกต้อง capture_screen() มาก่อน
+            ถ้ากดแล้วจะจับจอใหม่ให้ ผู้เรียกจึงอ่าน device._screen_color ต่อได้เลย
+            """
+            if gems_state["clears"] >= gems_state["max"]:
+                return False
+            img = device._screen_color
+            if img is None:
+                return False
+            if not ImgSearchADB(img, 'img/fixgems.png', threshold=BTN_TH):
+                return False
+            g = ImgSearchADB(img, 'img/fixgems1.png', threshold=BTN_TH)
+            if not g or len(g) == 0:
+                print(f"[{device.device_id}] [WARN] เจอ fixgems แต่ไม่เจอปุ่ม fixgems1 - ข้ามไปก่อน")
+                return False
+            gems_state["clears"] += 1
+            print(f"[{device.device_id}] เจอ fixgems - กด fixgems1 (ครั้งที่ {gems_state['clears']})")
+            device.tap(g[0][0], g[0][1])
+            time.sleep(1)
+            device.capture_screen()
+            if gems_state["clears"] >= gems_state["max"]:
+                print(f"[{device.device_id}] [WARN] เคลียร์ fixgems ครบ {gems_state['max']} ครั้งแล้วยังไม่หาย - เลิกสนใจ")
+            return True
+
         def finish_shopgacha():
             if swap_shop_enabled:
                 # เปิด swap_shop คู่กัน - รัว BACK (KEYCODE_BACK) จนเจอ cancel เหมือน event แล้วไป swap_shop
                 print(f"[{device.device_id}] เปิด swap_shop คู่กัน - รัว BACK จนเจอ cancel แล้วไป swap_shop")
                 back_press_count = 0
+                device.capture_screen()
                 while True:
-                    # กด Back ทีเดียว 3 รอบ
-                    device.adb_shell("input keyevent KEYCODE_BACK")
-                    device.adb_shell("input keyevent KEYCODE_BACK")
-                    device.adb_shell("input keyevent KEYCODE_BACK")
-                    back_press_count += 3
-                    print(f"[{device.device_id}] [SHOPGACHA] Triple Back spam! (Total: {back_press_count})")
-
-                    time.sleep(0.3)  # ให้เวลา UI อัปเดตเล็กน้อย
-                    device.capture_screen()
-
-                    # ป๊อปอัพเพชรอาจเด้งมาระหว่างรัว BACK - เคลียร์มันก่อน
-                    # ไม่งั้น BACK จะไปโดนป๊อปอัพแทนที่จะถอยออกจากร้าน
-                    if ImgSearchADB(device._screen_color, 'img/fixgems.png', threshold=BTN_TH):
-                        g = ImgSearchADB(device._screen_color, 'img/fixgems1.png', threshold=BTN_TH)
-                        if g and len(g) > 0:
-                            print(f"[{device.device_id}] เจอ fixgems ระหว่างกด BACK - กด fixgems1 ก่อน")
-                            device.tap(g[0][0], g[0][1])
-                            time.sleep(1)
-                            device.capture_screen()   # เอาจอใหม่มาเช็ค cancel ต่อ
-                        else:
-                            print(f"[{device.device_id}] [WARN] เจอ fixgems ระหว่างกด BACK แต่ไม่เจอปุ่ม fixgems1")
+                    # เช็ค fixgems ก่อนกด BACK ทุกรอบ - เจอเมื่อไหร่ "หยุดกด BACK"
+                    # ไปเคลียร์ป๊อปอัพก่อน ไม่งั้น BACK จะไปโดนป๊อปอัพแทนที่จะถอยออก
+                    # (clear_fixgems มีเพดานรวมของตัวเองอยู่แล้ว จึงวนไม่จบไม่ได้)
+                    if clear_fixgems():
+                        continue          # เคลียร์แล้ววนใหม่ รอบนี้ไม่กด BACK
 
                     if device.exists_in_cache("img/cancel.png"):
                         print(f"[{device.device_id}] เจอ cancel - กด cancel แล้วหยุด")
@@ -2229,6 +2252,16 @@ class RangerGearBot(threading.Thread):
                     if back_press_count >= 30:  # ป้องกันลูปค้าง (สูงสุด 30 ครั้ง)
                         print(f"[{device.device_id}] รัว BACK ครบ 30 ครั้ง ไม่เจอ cancel - ไปต่อ swap_shop")
                         break
+
+                    # กด Back ทีเดียว 3 รอบ
+                    device.adb_shell("input keyevent KEYCODE_BACK")
+                    device.adb_shell("input keyevent KEYCODE_BACK")
+                    device.adb_shell("input keyevent KEYCODE_BACK")
+                    back_press_count += 3
+                    print(f"[{device.device_id}] [SHOPGACHA] Triple Back spam! (Total: {back_press_count})")
+
+                    time.sleep(0.3)  # ให้เวลา UI อัปเดตเล็กน้อย
+                    device.capture_screen()
                 return "complete"
             device.clear_and_restart()
             time.sleep(6)
@@ -2261,6 +2294,8 @@ class RangerGearBot(threading.Thread):
                     return finish_shopgacha()
 
                 device.capture_screen()
+                if clear_fixgems():          # ป๊อปอัพเพชรลอย ๆ เจอก็เคลียร์
+                    continue
                 img = device._screen_color
 
                 # เน็ตหลุด / fixid / fixunkown / apple ต้องจัดการเหมือนลูปหลัก
@@ -2301,14 +2336,7 @@ class RangerGearBot(threading.Thread):
             gems_deadline = time.time() + 8
             while time.time() < gems_deadline:
                 device.capture_screen()
-                if ImgSearchADB(device._screen_color, 'img/fixgems.png', threshold=BTN_TH):
-                    print(f"[{device.device_id}] พบ fixgems.png - กด fixgems1.png")
-                    p = ImgSearchADB(device._screen_color, 'img/fixgems1.png', threshold=BTN_TH)
-                    if p and len(p) > 0:
-                        device.tap(p[0][0], p[0][1])
-                        time.sleep(1.5)
-                    else:
-                        print(f"[{device.device_id}] [WARN] เจอ fixgems แต่ไม่เจอปุ่ม fixgems1 - ข้ามไป shopgacha2")
+                if clear_fixgems():
                     return None
                 time.sleep(0.5)
 
@@ -2323,6 +2351,8 @@ class RangerGearBot(threading.Thread):
         entered = False
         while time.time() < entry_deadline:
             device.capture_screen()
+            if clear_fixgems():     # ป๊อปอัพเพชรอาจค้างมาจากรอบก่อน
+                continue
             adb_img = device._screen_color
 
             event_pos = ImgSearchADB(adb_img, 'img/event.png')
@@ -2349,11 +2379,6 @@ class RangerGearBot(threading.Thread):
             time.sleep(2)
         else:
             print(f"[{device.device_id}] ไม่พบทั้ง event.png และ gacha.png ใน 8 วิ - ลองหาปุ่มในร้านต่อ")
-
-        # เกณฑ์ความเหมือนของ "ปุ่ม" ในร้าน - 0.95 เข้มไปจนกดไม่ติด
-        # ใช้เฉพาะปุ่มที่ต้องกด ไม่แตะ shopgachastop/shopgachastop1 ซึ่งเป็นเงื่อนไข
-        # จบงาน ถ้าลดด้วยแล้วเจอผิดจะพาไป SOLD OUT / random-Fail ทั้งที่ยังสุ่มได้
-        BTN_TH = 0.8
 
         # สถานะการทำงาน
         initial_sequence = ['shopgacha1.png', 'shopgacha2.png']
@@ -2400,6 +2425,12 @@ class RangerGearBot(threading.Thread):
                         return finish_shopgacha()
 
                 device.capture_screen()
+
+                # fixgems ลอย ๆ - เช็คทุกรอบทั้งกระบวนการ เจอก็เคลียร์แล้ววนใหม่
+                # ไม่เจอก็ไม่เป็นไร ทำงานต่อตามปกติ
+                if clear_fixgems():
+                    continue
+
                 adb_img = device._screen_color
 
                 if network_monitor.check_network(device, adb_img):
