@@ -2240,6 +2240,16 @@ class RangerGearBot(threading.Thread):
                 print(f"[{device.device_id}] [WARN] เคลียร์ fixgems ครบ {gems_state['max']} ครั้งแล้วยังไม่หาย - เลิกสนใจ")
             return True
 
+        def find_btn(name, th=BTN_TH):
+            """หาปุ่ม 2 ทางแบบเดียวกับตอนหาทางเข้าร้าน (gacha.png):
+            ภาพสี (ImgSearchADB) ก่อน ไม่ติดค่อยลองภาพขาวดำ (_find_in_screen)
+            บางเครื่องสีจอเพี้ยนจนภาพสีไม่ผ่านเกณฑ์ แต่ขาวดำยังหาเจอ
+            ใช้จอที่ capture ไว้ล่าสุด คืน (x, y) หรือ None"""
+            pos = ImgSearchADB(device._screen_color, f'img/{name}', threshold=th)
+            if pos and len(pos) > 0:
+                return pos[0]
+            return device._find_in_screen(f'img/{name}', th)
+
         def finish_shopgacha():
             if swap_shop_enabled:
                 # เปิด swap_shop คู่กัน - รัว BACK (KEYCODE_BACK) จนเจอ cancel เหมือน event แล้วไป swap_shop
@@ -2292,7 +2302,7 @@ class RangerGearBot(threading.Thread):
                  - ไม่เจอ -> ข้ามไป shopgacha2 เลย
             คืน None = ไปต่อตามปกติ, คืน string = ผลลัพธ์ที่ต้องส่งกลับออกไปเลย
             """
-            waits = ('img/waitgacha.png', 'img/waitgacha1.png')
+            waits = ('waitgacha.png', 'waitgacha1.png')
             print(f"[{device.device_id}] รอจอสุ่ม (waitgacha / waitgacha1)...")
             rounds = 0
             seen = None
@@ -2319,8 +2329,8 @@ class RangerGearBot(threading.Thread):
                     return crit
 
                 for w in waits:
-                    if ImgSearchADB(img, w, threshold=BTN_TH):
-                        seen = os.path.basename(w)
+                    if find_btn(w):
+                        seen = w
                         break
                 if seen:
                     break
@@ -2339,7 +2349,9 @@ class RangerGearBot(threading.Thread):
                     return finish_shopgacha()
                 rounds += 1
                 if rounds % 20 == 0:
-                    print(f"[{device.device_id}] ยังรอจอสุ่มอยู่ ({rounds} รอบ) - รอต่อ")
+                    s0 = device._get_similarity_score('img/waitgacha.png')
+                    s1 = device._get_similarity_score('img/waitgacha1.png')
+                    print(f"[{device.device_id}] ยังรอจอสุ่มอยู่ ({rounds} รอบ, match ขาวดำ {s0:.2f}/{s1:.2f}) - รอต่อ")
                 time.sleep(0.5)
 
             print(f"[{device.device_id}] เจอ {seen} - หา fixgems.png ภายใน 8 วิ")
@@ -2473,13 +2485,13 @@ class RangerGearBot(threading.Thread):
                 if not in_loop:
                     if current_initial_step < len(initial_sequence):
                         current_img = initial_sequence[current_initial_step]
-                        pos = ImgSearchADB(adb_img, f'img/{current_img}', threshold=BTN_TH)
-                        if pos and len(pos) > 0:
+                        pt = find_btn(current_img)
+                        if pt:
                             print(f"[{device.device_id}] พบและกด {current_img}")
                             if current_img == 'shopgacha2.png':
                                 print(f"[{device.device_id}] รอ 5 วินาทีก่อนกด shopgacha2.png...")
                                 time.sleep(5)
-                            device.tap(pos[0][0], pos[0][1])
+                            device.tap(pt[0], pt[1])
                             current_initial_step += 1
                             last_clicked_img = current_img
                             if current_img == 'shopgacha2.png':
@@ -2519,7 +2531,8 @@ class RangerGearBot(threading.Thread):
                                 # ตาข่ายที่ยังคุมอยู่คือ 500s ไม่มีการกดเลย ซึ่งจะเด้งไป
                                 # ไฟล์ถัดไปให้เอง ไม่มีทางค้างถาวร
                                 if not_found_count % 20 == 0:
-                                    print(f"[{device.device_id}] ยังรอ {current_img} อยู่ ({not_found_count} รอบ) - รอต่อ")
+                                    score = device._get_similarity_score(f'img/{current_img}')
+                                    print(f"[{device.device_id}] ยังรอ {current_img} อยู่ ({not_found_count} รอบ, match ขาวดำ {score:.2f}) - รอต่อ")
                             else:
                                 # หา shopgacha1 ไม่เจอครบ 30 ครั้ง: ไม่ต้องรัว BACK ออกไป
                                 # swap_shop - ข้ามไปขั้น shopgacha2 ต่อเลย (บางจอไม่มี
@@ -2530,7 +2543,8 @@ class RangerGearBot(threading.Thread):
                                     not_found_count = 0
                                     continue
                                 if not_found_count % 5 == 0:
-                                    print(f"[{device.device_id}] ยังไม่พบ {current_img} - ครั้งที่ {not_found_count}/{max_not_found}")
+                                    score = device._get_similarity_score(f'img/{current_img}')
+                                    print(f"[{device.device_id}] ยังไม่พบ {current_img} - ครั้งที่ {not_found_count}/{max_not_found} (match ขาวดำ {score:.2f})")
                             time.sleep(0.5)
                         continue
                     else:
@@ -2548,11 +2562,11 @@ class RangerGearBot(threading.Thread):
                     # ถ้ากด shopgacha5.png แล้ว ให้วนกลับไปเช็ค shopgacha2.png ก่อน
                     if shopgacha5_clicked and check_shopgacha2_count < max_check_shopgacha2:
                         print(f"[{device.device_id}] วนกลับไปเช็ค shopgacha2.png (รอบที่ {check_shopgacha2_count + 1}/{max_check_shopgacha2})")
-                        pos = ImgSearchADB(adb_img, 'img/shopgacha2.png', threshold=BTN_TH)
-                        if pos and len(pos) > 0:
+                        pt = find_btn('shopgacha2.png')
+                        if pt:
                             print(f"[{device.device_id}] พบและกด shopgacha2.png อีกครั้ง (รอ 5 วินาที)")
                             time.sleep(5)
-                            device.tap(pos[0][0], pos[0][1])
+                            device.tap(pt[0], pt[1])
                             time.sleep(3)
                             shopgacha5_clicked = False
                             check_shopgacha2_count = 0
@@ -2570,8 +2584,8 @@ class RangerGearBot(threading.Thread):
 
                     # วนลูปตามปกติ
                     for img in loop_sequence:
-                        pos = ImgSearchADB(adb_img, f'img/{img}', threshold=BTN_TH)
-                        if pos and len(pos) > 0:
+                        pt = find_btn(img)
+                        if pt:
                             # ตรวจสอบการกดซ้ำ
                             if img == last_clicked_img:
                                 repeat_counter[img] = repeat_counter.get(img, 0) + 1
@@ -2602,7 +2616,7 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{device.device_id}] ไม่พบ gachaout.png - กด shopgacha4.png ต่อ")
 
                             print(f"[{device.device_id}] พบและกด {img}")
-                            device.tap(pos[0][0], pos[0][1])
+                            device.tap(pt[0], pt[1])
                             last_clicked_img = img
                             found_any = True
                             not_found_count = 0
