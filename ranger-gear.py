@@ -364,8 +364,10 @@ if GUI_AVAILABLE:
             self.setup_ui()
             
             # Setup console redirect to GUI log
+            # ครอบ sys.stdout "ตัวปัจจุบัน" (DeviceLogTee) ไม่ใช่ sys.__stdout__
+            # ไม่งั้นตัวเก็บ log ราย device จะโดนถอดออกทันทีที่ GUI เปิด
             self._log_queue = queue.Queue()
-            sys.stdout = ConsoleRedirector(sys.__stdout__, self._log_queue)
+            sys.stdout = ConsoleRedirector(sys.stdout, self._log_queue)
             
             # Handle window close
             self.protocol("WM_DELETE_WINDOW", self.on_closing)

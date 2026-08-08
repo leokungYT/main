@@ -91,3 +91,59 @@
 [2026-08-09 01:22:04] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
 [2026-08-09 01:22:34] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
 [2026-08-09 01:22:34] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-08-09 04:11:34] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-08-09 04:11:34] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-08-09 04:11:34] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-08-09 04:11:34] [CLEANUP] Removed old shared_stats.json
+[2026-08-09 04:11:34] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-08-09 04:11:34] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-08-09 04:11:34] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-08-09 04:11:37] --- [ADB] Auto-scanning 101 ports (5555-5755 odd) ---
+[2026-08-09 04:11:39] [ADB] Port scan found 1 device(s): 127.0.0.1:5563
+[2026-08-09 04:11:39] --- Scan Complete ---
+[2026-08-09 04:11:39] [INFO] Connected Devices (1): 127.0.0.1:5563
+[2026-08-09 04:11:39] [INFO] Pre-loading OCR model...
+[2026-08-09 04:11:49] [INFO] Loading EasyOCR model (first time only)...
+[2026-08-09 04:11:49] Using CPU. Note: This module is much faster with a GPU.
+[2026-08-09 04:11:53] [OK] EasyOCR model loaded!
+[2026-08-09 04:11:53] [OK] OCR model loaded.
+[2026-08-09 04:11:53] [FILE] Found 15 files in c:\Users\Administrator\Downloads\LGR\backup
+[2026-08-09 04:11:53] [32m[START] Launching GUI Mode...[0m
+[2026-08-09 04:14:27] Traceback (most recent call last):
+[2026-08-09 04:14:27]   File "c:\Users\Administrator\Downloads\LGR\ranger-gear.py", line 3768, in <module>
+[2026-08-09 04:14:27]     gui = ModernBotGUI(devices, args)
+[2026-08-09 04:14:27]     ^^^^^^^^^^^^^^
+[2026-08-09 04:14:27]   File "C:\Program Files\Python311\Lib\site-packages\customtkinter\windows\ctk_tk.py", line 165, in mainloop
+[2026-08-09 04:14:27]     super().mainloop(*args, **kwargs)
+[2026-08-09 04:14:27]   File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 1485, in mainloop
+[2026-08-09 04:14:27]     self.tk.mainloop(n)
+[2026-08-09 04:14:27]   File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 1943, in __call__
+[2026-08-09 04:14:27]     def __call__(self, *args):
+[2026-08-09 04:14:27] KeyboardInterrupt
+[2026-08-09 04:15:41] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-08-09 04:15:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-08-09 04:15:41] [CLEANUP] Removed old shared_stats.json
+[2026-08-09 04:15:41] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-08-09 04:15:42] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-08-09 04:15:42] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-08-09 04:15:44] --- [ADB] Auto-scanning 101 ports (5555-5755 odd) ---
+[2026-08-09 04:15:46] [ADB] Port scan found 1 device(s): 127.0.0.1:5563
+[2026-08-09 04:15:46] --- Scan Complete ---
+[2026-08-09 04:15:46] [INFO] Connected Devices (1): 127.0.0.1:5563
+[2026-08-09 04:15:46] [INFO] Pre-loading OCR model...
+[2026-08-09 04:15:51] [INFO] Loading EasyOCR model (first time only)...
+[2026-08-09 04:15:51] Using CPU. Note: This module is much faster with a GPU.
+[2026-08-09 04:15:54] [OK] EasyOCR model loaded!
+[2026-08-09 04:15:54] [OK] OCR model loaded.
+[2026-08-09 04:15:54] [FILE] Found 15 files in c:\Users\Administrator\Downloads\LGR\backup
+[2026-08-09 04:15:54] [32m[START] Launching GUI Mode...[0m
+[2026-08-09 04:15:54] [GUI] Launched Successfully. Waiting for manual start.
+[2026-08-09 04:15:57] [127.0.0.1:5563] Mode - Ranger: 1, Gear: 1
+[2026-08-09 04:15:57] [127.0.0.1:5563] pos-cache: no lookups yet
+[2026-08-09 04:15:57] [127.0.0.1:5563] RangerGear Bot Thread Started
+[2026-08-09 04:15:57] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-08-09 04:15:57] [127.0.0.1:5563] Processing file: kikoruU+-RB771_TK61_norandom508e17a2_LINE_COCOS_PREF_KEY.xml
+[2026-08-09 04:15:57] [127.0.0.1:5563] Injecting file (Robust Mode)...
+[2026-08-09 04:16:01] [127.0.0.1:5563] Injection successful on attempt 1
+[2026-08-09 04:16:01] [127.0.0.1:5563] Starting Main Login...
+[2026-08-09 04:16:03] [127.0.0.1:5563] ✗ App crashed/bounced! (attempt 1) Retrying...

@@ -1,0 +1,9 @@
+[2026-08-09 04:15:57] [127.0.0.1:5563] Mode - Ranger: 1, Gear: 1
+[2026-08-09 04:15:57] [127.0.0.1:5563] pos-cache: no lookups yet
+[2026-08-09 04:15:57] [127.0.0.1:5563] RangerGear Bot Thread Started
+[2026-08-09 04:15:57] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-08-09 04:15:57] [127.0.0.1:5563] Processing file: kikoruU+-RB771_TK61_norandom508e17a2_LINE_COCOS_PREF_KEY.xml
+[2026-08-09 04:15:57] [127.0.0.1:5563] Injecting file (Robust Mode)...
+[2026-08-09 04:16:01] [127.0.0.1:5563] Injection successful on attempt 1
+[2026-08-09 04:16:01] [127.0.0.1:5563] Starting Main Login...
+[2026-08-09 04:16:03] [127.0.0.1:5563] ✗ App crashed/bounced! (attempt 1) Retrying...
