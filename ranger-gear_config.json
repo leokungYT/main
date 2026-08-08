@@ -100,7 +100,7 @@
     "pos_cache_margin": 12,
     "scan_interval": 1.0,
     "loop_delay": null,
-    "auto_start": 0,
+    "auto_start": 1,
     "find_all_rangerplus": 0,
     "custom_plus": {
         "kappa": 0,
