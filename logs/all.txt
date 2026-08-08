@@ -1116,3 +1116,13 @@
 [2026-08-09 04:50:43] [127.0.0.1:5563] Found ranger: ranger/Kafka.png -> hero: Kafka, folder: Kafka
 [2026-08-09 04:50:44] [127.0.0.1:5563] Iteration results: {'Kafka': 'Kafka'}
 [2026-08-09 04:50:44] [127.0.0.1:5563] Clicking sec5.png
+[2026-08-09 04:50:44] [127.0.0.1:5563] Found sec5.png (sim=0.95)! Clicking...
+[2026-08-09 04:50:45] [127.0.0.1:5563] ========== FIND-RANGER RESULTS ==========
+[2026-08-09 04:50:45] [127.0.0.1:5563] File: Kafka+-RB399_TK48_noherofound608dde0b_LINE_COCOS_PREF_KEY.xml
+[2026-08-09 04:50:45] [127.0.0.1:5563]   Kafka -> Kafka
+[2026-08-09 04:50:45] [127.0.0.1:5563] ==========================================
+[2026-08-09 04:50:45] [127.0.0.1:5563] Find-Ranger complete - NOT clearing app, continuing to gear...
+[2026-08-09 04:50:45] [127.0.0.1:5563] [DEBUG] Ranger results: {'Kafka': 'Kafka'}
+[2026-08-09 04:50:45] [127.0.0.1:5563] Starting Gear scan (do_gear=1)...
+[2026-08-09 04:50:45] [127.0.0.1:5563] === Starting CHECK-GEAR Process ===
+[2026-08-09 04:50:45] [127.0.0.1:5563] Navigating to Gear screen...
