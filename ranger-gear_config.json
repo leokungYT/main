@@ -3,7 +3,7 @@
     "thread_delay": 5,
     "find_ranger": 0,
     "find_gear": 0,
-    "find_all": 0,
+    "find_all": 1,
     "custommode": 0,
     "custom": {
         "characters": [
@@ -23,7 +23,9 @@
             "pew",
             "outlaw",
             "soji",
-            "kukuru"
+            "kukuru",
+            "kikoru",
+            "Kafka"
         ]
     },
     "characters": [
@@ -46,7 +48,9 @@
         "radish",
         "new soldier",
         "soji",
-        "kukuru"
+        "kukuru",
+        "kikoru",
+        "Kafka"
     ],
     "ranger_images": {},
     "gearname": {
@@ -111,6 +115,11 @@
         "h": 321
     },
     "check_ruby_ticket": 1,
+    "minitouch": 1,
+    "pos_cache": 1,
+    "pos_cache_margin": 12,
+    "scan_interval": 1.0,
+    "loop_delay": null,
     "find_all_rangerplus": 0,
     "custom_plus": {
         "kappa": 0,
@@ -121,10 +130,5 @@
     },
     "kaibyskip": 1,
     "kaibycheck": 0,
-    "debug_ocr": 1,
-    "minitouch": 0,
-    "pos_cache": 1,
-    "pos_cache_margin": 12,
-    "scan_interval": 1.0,
-    "loop_delay": null
+    "debug_ocr": 1
 }

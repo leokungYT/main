@@ -1409,19 +1409,30 @@ def connect_known_ports():
         if instances:
             targets = [serial for _, serial in instances]
             print(f"\n--- [ADB] MuMuManager รายงาน {len(instances)} instance ที่เปิดอยู่ ---")
-            # เชื่อมแล้วเช็คซ้ำสูงสุด 3 ยก จนกว่าจะติดครบ - แก้ปัญหาเชื่อมไม่ครบ
-            for round_no in range(1, 4):
+            # เชื่อมแล้วเช็คซ้ำสูงสุด 6 ยก ห่างยกละ 3 วิ - instance ที่เพิ่งเปิด
+            # Android ยังบูตไม่เสร็จ adb ในเครื่องยังไม่รับการเชื่อมต่อ ต้องรอ
+            # และ print คำตอบจริงของ adb ให้เห็นว่าติดเพราะอะไร ไม่กลืนเงียบอีก
+            for round_no in range(1, 7):
                 online = set(get_connected_devices())
                 missing = [s for s in targets if s not in online]
                 if not missing:
                     break
                 for serial in missing:
                     try:
-                        subprocess.run([adb_path, "connect", serial], capture_output=True, timeout=5)
-                        print(f"[ADB] เชื่อม {serial} (ยกที่ {round_no})")
-                    except Exception:
-                        pass
-                time.sleep(1)
+                        r = subprocess.run([adb_path, "connect", serial],
+                                           capture_output=True, timeout=5, text=True)
+                        msg_lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
+                        msg = msg_lines[-1] if msg_lines else ""
+                        print(f"[ADB] เชื่อม {serial} (ยกที่ {round_no}): {msg}")
+                    except Exception as e:
+                        print(f"[ADB] เชื่อม {serial} (ยกที่ {round_no}): {type(e).__name__}")
+                time.sleep(3)
+                # ถาม MuMuManager ซ้ำ เผื่อมี instance ที่เพิ่งบูตเสร็จโผล่เพิ่ม
+                inst_now = get_mumu_instances()
+                if inst_now:
+                    for _, s in inst_now:
+                        if s not in targets:
+                            targets.append(s)
             online = set(get_connected_devices())
             ok = [s for s in targets if s in online]
             missing = [s for s in targets if s not in online]
@@ -1564,6 +1575,86 @@ def get_connected_devices():
     except Exception as e:
         print(f"[ERR] get_connected_devices: {e}")
         return []
+
+
+class DeviceLogTee:
+    """เก็บ log ลงไฟล์ .txt แยกราย device (logs/<device>.txt) + รวมทั้งหมดใน logs/all.txt
+
+    ครอบ stdout/stderr เดิม: คอนโซล/GUI เห็นเหมือนเดิมทุกประการ แค่จดลงไฟล์เพิ่ม
+    ระบุ device จาก thread ที่พิมพ์ (RangerGearBot มี device_id) เป็นหลัก
+    ถ้าพิมพ์จาก thread อื่นจะดู prefix [127.0.0.1:xxxx] / [emulator-xxxx] แทน
+    ไฟล์เกิน 20MB สลับไปเป็น .old.txt กันโตไม่จำกัด
+    """
+
+    MAX_BYTES = 20 * 1024 * 1024
+
+    def __init__(self, real):
+        self.real = real
+        self.lock = threading.Lock()
+        self.bufs = {}
+        self.dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        try:
+            os.makedirs(self.dir, exist_ok=True)
+        except Exception:
+            pass
+
+    def write(self, text):
+        try:
+            self.real.write(text)
+        except Exception:
+            pass
+        try:
+            tid = threading.get_ident()
+            buf = self.bufs.get(tid, "") + str(text)
+            while "\n" in buf:
+                line, buf = buf.split("\n", 1)
+                self._emit(line.rstrip("\r"))
+            self.bufs[tid] = buf
+        except Exception:
+            pass
+        return len(text) if isinstance(text, str) else 0
+
+    def _emit(self, line):
+        if not line.strip():
+            return
+        dev = getattr(threading.current_thread(), "device_id", None)
+        if not dev and (line.startswith("[127.0.0.1:") or line.startswith("[emulator-")):
+            end = line.find("]")
+            if end > 1:
+                dev = line[1:end]
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        with self.lock:
+            self._append("all", stamp, line)
+            if dev:
+                self._append(str(dev).replace(":", "_"), stamp, line)
+
+    def _append(self, name, stamp, line):
+        try:
+            path = os.path.join(self.dir, f"{name}.txt")
+            try:
+                if os.path.getsize(path) > self.MAX_BYTES:
+                    old = os.path.join(self.dir, f"{name}.old.txt")
+                    if os.path.exists(old):
+                        os.remove(old)
+                    os.rename(path, old)
+            except OSError:
+                pass
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"[{stamp}] {line}\n")
+        except Exception:
+            pass
+
+    def flush(self):
+        try:
+            self.real.flush()
+        except Exception:
+            pass
+
+    def isatty(self):
+        try:
+            return self.real.isatty()
+        except Exception:
+            return False
 
 
 _imgsearch_err_seen = set()
@@ -1762,20 +1853,30 @@ def find_hero_low_images(bot, adb_img, already_found):
     for img_name, display in load_hero_low():
         if display in already_found or display in found:
             continue
+        # รองรับทั้ง .bmp และ .png: ถ้าชื่อใน config ไม่ตรงนามสกุลไฟล์จริง
+        # ลองสลับนามสกุลให้เอง (เช่น config ใส่ low1.bmp แต่ไฟล์จริงเป็น low1.png)
+        base, ext = os.path.splitext(img_name)
+        alt_ext = ".png" if ext.lower() == ".bmp" else ".bmp"
+        candidates = [img_name, base + alt_ext]
+        path = None
         for folder in ("img/ranger-gacha", "img"):
-            path = f"{folder}/{img_name}"
-            if not os.path.exists(path):
-                continue
-            try:
-                if ImgSearchADB(adb_img, path):
-                    print(f"[{bot.device_id}] 🔸 พบตัวรอง {img_name} -> {display} (จดไว้ ทำงานต่อ)")
-                    found.append(display)
-            except Exception:
-                pass
-            break   # เจอไฟล์รูปแล้ว ไม่ต้องลองโฟลเดอร์ถัดไป
-        else:
+            for cand in candidates:
+                p = f"{folder}/{cand}"
+                if os.path.exists(p):
+                    path = p
+                    break
+            if path:
+                break
+        if path is None:
             print(f"[{bot.device_id}] [WARN] Hero_low: ไม่พบไฟล์รูป {img_name} "
-                  f"(วางที่ img/ranger-gacha/ หรือ img/)")
+                  f"(.bmp/.png ก็ได้ วางที่ img/ranger-gacha/ หรือ img/)")
+            continue
+        try:
+            if ImgSearchADB(adb_img, path):
+                print(f"[{bot.device_id}] 🔸 พบตัวรอง {os.path.basename(path)} -> {display} (จดไว้ ทำงานต่อ)")
+                found.append(display)
+        except Exception:
+            pass
     return found
 
 def search_gachaslot_image(bot):
@@ -1910,13 +2011,13 @@ class RangerGearBot(threading.Thread):
             self.characters = config.get("characters", [])
             print(f"[{self.device_id}] Ranger mode -> searching {len(self.characters)} characters")
             
-            # Auto-scan img/ranger/ folder for all png files
+            # Auto-scan img/ranger/ folder - รองรับทั้ง .png และ .bmp
             self.ranger_image_mapping = config.get("ranger_images", {})
             ranger_folder = os.path.join("img", "ranger")
             self.ranger_files = []
             if os.path.exists(ranger_folder):
                 for f in sorted(os.listdir(ranger_folder)):
-                    if f.lower().endswith(".png"):
+                    if f.lower().endswith((".png", ".bmp")):
                         self.ranger_files.append(f"ranger/{f}")
                 print(f"[{self.device_id}] Auto-loaded {len(self.ranger_files)} ranger images from img/ranger/")
         
@@ -4671,7 +4772,7 @@ class RangerGearBot(threading.Thread):
                 self.check_floating_popups()
                 for ranger_img in matching_files:
                     if self.exists_in_cache(f"img/{ranger_img}", similarity=0.95):
-                        file_base = ranger_img.split('/')[-1].replace(".png", "")
+                        file_base = os.path.splitext(ranger_img.split('/')[-1])[0]
                         found_hero_name = file_base
                         if isinstance(self.ranger_image_mapping, dict) and ranger_img in self.ranger_image_mapping:
                             data = self.ranger_image_mapping[ranger_img]
@@ -6124,7 +6225,12 @@ def run_bot_process(device_id, cli_args_dict):
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()  # จำเป็นสำหรับ Windows multiprocessing
-    
+
+    # เก็บ log ทุกบรรทัดลงไฟล์ .txt แยกราย device ในโฟลเดอร์ logs/
+    # (คอนโซล/GUI แสดงผลเหมือนเดิม แค่จดลงไฟล์เพิ่ม)
+    sys.stdout = DeviceLogTee(sys.stdout)
+    sys.stderr = DeviceLogTee(sys.stderr)
+
     parser = argparse.ArgumentParser(description="Auto Ranger+Gear Script v3.2.0")
     parser.add_argument("--device", type=str, help="Specific device ID/address to run (e.g. 127.0.0.1:5557)")
     parser.add_argument("--no-start", action="store_true", help="Don't auto-start bot threads in GUI")
