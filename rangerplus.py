@@ -2773,6 +2773,7 @@ class RangerPlusBot(multiprocessing.Process):
         loop_count = 0
         status = "unknown"
         event_passed = False  # หลังเจอ event.png แล้วหยุดเช็ค fixok
+        event_popup_count = 0  # กัน event popup เด้งวนไม่จบ (จำกัดจำนวนครั้งที่กด)
         
         while True:
             loop_count += 1
@@ -3167,21 +3168,27 @@ class RangerPlusBot(multiprocessing.Process):
             # Event / Popups
             if self.exists_in_cache("img/event.png"):
                 event_passed = True  # หลังจากนี้หยุดเช็ค fixok
-                print(f"[{self.device_id}] Event popup detected. Clicking then Back...")
-                self.click("img/event.png")
-                sleep(1)
-                self.adb_shell("input keyevent 4")  # Back button
-                sleep(2)
-                
-                # เช็ค cancel.png เฉพาะหลังเจอ event เท่านั้น
-                self.capture_screen()
-                if self.exists_in_cache("img/cancel.png"):
-                    print(f"[{self.device_id}] Cancel button after event. Clicking...")
-                    self.click("img/cancel.png")
+                event_popup_count += 1
+                if event_popup_count > 15:
+                    # ป๊อปอัพเด้งกลับมาไม่จบ - เลิกกดมัน ปล่อยลูปเดินต่อให้เพดาน
+                    # timeout จัดการแทน (เดิม loop_count -= 1 ตรงนี้ทำให้ตัวนับ
+                    # ไม่ขยับ = ลูปวนตลอดกาล ไม่มีวันถึง timeout)
+                    if event_popup_count == 16:
+                        print(f"[{self.device_id}] Event popup keeps returning (>15) - stop clicking, let timeout handle it")
+                else:
+                    print(f"[{self.device_id}] Event popup detected ({event_popup_count}/15). Clicking then Back...")
+                    self.click("img/event.png")
                     sleep(1)
-                
-                loop_count -= 1
-                continue
+                    self.adb_shell("input keyevent 4")  # Back button
+                    sleep(2)
+
+                    # เช็ค cancel.png เฉพาะหลังเจอ event เท่านั้น
+                    self.capture_screen()
+                    if self.exists_in_cache("img/cancel.png"):
+                        print(f"[{self.device_id}] Cancel button after event. Clicking...")
+                        self.click("img/cancel.png")
+                        sleep(1)
+                    continue
             
             sleep(2)
             if loop_count > 500:
@@ -3192,7 +3199,92 @@ class RangerPlusBot(multiprocessing.Process):
         return status
 
 
+class DeviceLogTee:
+    """เก็บ log ลงไฟล์ .txt แยกราย device (logs/<device>.txt) + รวมทั้งหมดใน logs/all.txt
+
+    ครอบ stdout/stderr เดิม: คอนโซล/GUI เห็นเหมือนเดิมทุกประการ แค่จดลงไฟล์เพิ่ม
+    ระบุ device จาก thread ที่พิมพ์ (RangerGearBot มี device_id) เป็นหลัก
+    ถ้าพิมพ์จาก thread อื่นจะดู prefix [127.0.0.1:xxxx] / [emulator-xxxx] แทน
+    ไฟล์เกิน 20MB สลับไปเป็น .old.txt กันโตไม่จำกัด
+    """
+
+    MAX_BYTES = 20 * 1024 * 1024
+
+    def __init__(self, real):
+        self.real = real
+        self.lock = threading.Lock()
+        self.bufs = {}
+        self.dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        try:
+            os.makedirs(self.dir, exist_ok=True)
+        except Exception:
+            pass
+
+    def write(self, text):
+        try:
+            self.real.write(text)
+        except Exception:
+            pass
+        try:
+            tid = threading.get_ident()
+            buf = self.bufs.get(tid, "") + str(text)
+            while "\n" in buf:
+                line, buf = buf.split("\n", 1)
+                self._emit(line.rstrip("\r"))
+            self.bufs[tid] = buf
+        except Exception:
+            pass
+        return len(text) if isinstance(text, str) else 0
+
+    def _emit(self, line):
+        if not line.strip():
+            return
+        dev = getattr(threading.current_thread(), "device_id", None)
+        if not dev and (line.startswith("[127.0.0.1:") or line.startswith("[emulator-")):
+            end = line.find("]")
+            if end > 1:
+                dev = line[1:end]
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        with self.lock:
+            self._append("all", stamp, line)
+            if dev:
+                self._append(str(dev).replace(":", "_"), stamp, line)
+
+    def _append(self, name, stamp, line):
+        try:
+            path = os.path.join(self.dir, f"{name}.txt")
+            try:
+                if os.path.getsize(path) > self.MAX_BYTES:
+                    old = os.path.join(self.dir, f"{name}.old.txt")
+                    if os.path.exists(old):
+                        os.remove(old)
+                    os.rename(path, old)
+            except OSError:
+                pass
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"[{stamp}] {line}\n")
+        except Exception:
+            pass
+
+    def flush(self):
+        try:
+            self.real.flush()
+        except Exception:
+            pass
+
+    def isatty(self):
+        try:
+            return self.real.isatty()
+        except Exception:
+            return False
+
+
 if __name__ == "__main__":
+    # เก็บ log ทุกบรรทัดลงไฟล์ .txt แยกราย device ในโฟลเดอร์ logs/
+    # (คอนโซล/GUI แสดงผลเหมือนเดิม แค่จดลงไฟล์เพิ่ม)
+    sys.stdout = DeviceLogTee(sys.stdout)
+    sys.stderr = DeviceLogTee(sys.stderr)
+
     parser = argparse.ArgumentParser(description="Auto Ranger+Gear Script v3.2.0")
     parser.add_argument("--device", type=str, help="Specific device ID/address to run (e.g. 127.0.0.1:5557)")
     parser.add_argument("--no-start", action="store_true", help="Don't auto-start bot threads in GUI")
