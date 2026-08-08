@@ -1,9 +1,9 @@
 {
     "first_loop": 0,
     "thread_delay": 5,
-    "find_ranger": 0,
-    "find_gear": 0,
-    "find_all": 1,
+    "find_ranger": 1,
+    "find_gear": 1,
+    "find_all": 0,
     "custommode": 0,
     "custom": {
         "characters": [
@@ -29,26 +29,6 @@
         ]
     },
     "characters": [
-        "Anya",
-        "Yor",
-        "kappa",
-        "power",
-        "Denji",
-        "outlaw",
-        "purple",
-        "chip",
-        "vocalist",
-        "fairy",
-        "enji",
-        "rudo",
-        "shion",
-        "taiyo",
-        "pew",
-        "maid",
-        "radish",
-        "new soldier",
-        "soji",
-        "kukuru",
         "kikoru",
         "Kafka"
     ],
@@ -120,6 +100,7 @@
     "pos_cache_margin": 12,
     "scan_interval": 1.0,
     "loop_delay": null,
+    "auto_start": 0,
     "find_all_rangerplus": 0,
     "custom_plus": {
         "kappa": 0,

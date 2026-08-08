@@ -386,6 +386,12 @@ if GUI_AVAILABLE:
                 self.lbl_auto_start.configure(text="[ DASHBOARD MODE ]", text_color="#ffae42")
             else:
                 self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
+                # auto_start ใน config = 1 -> กด START ให้เองหลัง GUI ขึ้น 2 วิ
+                # (ตั้งใน ranger-gear_config.json, ค่าเริ่มต้น 0 = รอกดเอง)
+                if config.get("auto_start", 0):
+                    print("[GUI] auto_start=1 - จะเริ่มบอทอัตโนมัติใน 2 วินาที")
+                    self.lbl_auto_start.configure(text="[ AUTO-START IN 2s ]", text_color="#ff9800")
+                    self.after(2000, self.start_bot)
 
             # Initialize cached stats and start background thread to offload disk I/O from Main Thread
             self.qsize = 0
@@ -2271,11 +2277,16 @@ class RangerGearBot(threading.Thread):
         
         # --- Mandatory Stable Wait ---
         # หา fixgems ตลอด (ลอยๆ) เจอ popup gems กดปิด 1 รอบ แล้ววนกลับไปหา waitgacha
-        # เจอ waitgacha.png ค่อยเริ่มสแกน (ไม่มี timeout)
+        # เจอ waitgacha.png ค่อยเริ่มสแกน (เพดาน 90 วิ - เดิมไม่มี timeout
+        # พอเน็ตหลุดตอนเข้าหน้ากาชา waitgacha ไม่มีวันโผล่ = ค้างถาวร)
         WAITGACHA_SIM = 0.95
         FIXGEMS_SIM = 0.85
         print(f"[{self.device_id}] [RESOURCE-WAIT] Waiting for waitgacha.png (stable screen)...")
+        wait_deadline = time.time() + 90
         while True:
+            if time.time() > wait_deadline:
+                print(f"[{self.device_id}] [RESOURCE-WAIT] waitgacha ไม่มาใน 90 วิ (เน็ตหลุด/จอไม่มา) - ข้ามการเช็ค Ruby/Ticket")
+                return None, None
             self.capture_screen()
 
             # หา fixgems ตลอด — เจอ fixgems แล้วกด fixgems1 (1 รอบ) แล้วกลับไปหา waitgacha
@@ -2953,14 +2964,43 @@ class RangerGearBot(threading.Thread):
         if not self.wait_and_click_image("findgear3.png", timeout=15):
             print(f"[{self.device_id}] Failed to find findgear3.png")
             return set()
-        
+
+        # รอจอ Gear โหลดจริงก่อนเริ่มเช็ค: หา weapons1/weapons2 ไปเรื่อย ๆ
+        # (ไม่มี timeout) เจอตัวใดตัวหนึ่ง = จอมาแล้ว ค่อยเริ่มหา checkgear2
+        # กันเคสเน็ตหลุด/จอโหลดช้าแล้วรีบสรุปว่าไม่มีของ ระหว่างรอเคลียร์ป๊อปอัพให้
+        print(f"[{self.device_id}] [GEAR-WAIT] รอ weapons1/weapons2 โผล่ก่อนเริ่มเช็คเกียร์ (ไม่มี timeout)...")
+        gear_wait_rounds = 0
+        while True:
+            self.capture_screen()
+            if (self.exists_in_cache("img/weapons1.png", similarity=0.9)
+                    or self.exists_in_cache("img/weapons2.png", similarity=0.9)):
+                print(f"[{self.device_id}] [GEAR-WAIT] จอ Gear พร้อมแล้ว - เริ่มเช็คเกียร์")
+                break
+            self.check_floating_popups()
+            gear_wait_rounds += 1
+            if gear_wait_rounds % 30 == 0:
+                print(f"[{self.device_id}] [GEAR-WAIT] ยังรอ weapons1/weapons2 อยู่ ({gear_wait_rounds} รอบ)")
+            sleep(0.5)
+
         # Step 2: Read gear names with OCR (Linear, one-way scan)
         print(f"\n[{self.device_id}] Starting streamlined gear OCR check...")
         all_found_gears = set()
         
         # 1. Try initial screen scan (checkgear2/3 point)
         print(f"[{self.device_id}] [GEAR] Phase 1: checkgear2 -> checkgear3...")
-        if self.wait_and_click_image("checkgear2.png", timeout=8, similarity=0.92):
+        checkgear2_ok = self.wait_and_click_image("checkgear2.png", timeout=8, similarity=0.92)
+        if not checkgear2_ok:
+            # เปิดหน้ารายการ gear ไม่ขึ้นเลย - ส่วนใหญ่คือเน็ตหลุด/ป๊อปอัพบังตอน
+            # เปลี่ยนจอ (fixnet เด้ง) - เคลียร์ป๊อปอัพ รอเกมโหลด แล้วเดินเข้าใหม่
+            # อีกยกเดียวก่อนยอมสรุปว่าไม่มี gear ไม่งั้นไฟล์โดนตัดสินผิดเพราะเน็ตสะดุด
+            print(f"[{self.device_id}] [GEAR] checkgear2 ไม่มา (เน็ตหลุด/ป๊อปอัพ?) - ลองเข้าหน้า gear ใหม่อีกยก")
+            self.capture_screen()
+            self.check_floating_popups()
+            sleep(3)
+            self.wait_and_click_image("findgear2.png", timeout=10)
+            self.wait_and_click_image("findgear3.png", timeout=10)
+            checkgear2_ok = self.wait_and_click_image("checkgear2.png", timeout=10, similarity=0.92)
+        if checkgear2_ok:
             if self.wait_and_click_image("checkgear3.png", timeout=10, similarity=0.92):
                 print(f"[{self.device_id}] [GEAR] Detailed view opened, scanning...")
                 all_found_gears.update(self.check_gear_by_text())

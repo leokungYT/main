@@ -770,6 +770,12 @@ if GUI_AVAILABLE:
                 self.lbl_auto_start.configure(text="[ DASHBOARD MODE ]", text_color="#ffae42")
             else:
                 self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
+                # auto_start ใน config = 1 -> กด START ให้เองหลัง GUI ขึ้น 2 วิ
+                # (ตั้งใน ranger-gear_config.json, ค่าเริ่มต้น 0 = รอกดเอง)
+                if config.get("auto_start", 0):
+                    print("[GUI] auto_start=1 - จะเริ่มบอทอัตโนมัติใน 2 วินาที")
+                    self.lbl_auto_start.configure(text="[ AUTO-START IN 2s ]", text_color="#ff9800")
+                    self.after(2000, self.start_bot)
 
             # Initialize cached stats and start background thread to offload disk I/O from Main Thread
             self.qsize = 0
