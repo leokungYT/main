@@ -1387,32 +1387,56 @@ def get_mumu_instances():
 
 
 def connect_known_ports():
-    """เชื่อมต่อ emulator: ถาม MuMuManager ก่อน (แม่นสุด ไม่มี ghost) ถ้าไม่ได้ค่อย fallback scan พอร์ต"""
+    """เชื่อมต่อ emulator: kill adb server ก่อนเสมอแล้วค่อยเชื่อมใหม่
+    ถาม MuMuManager ก่อน (แม่นสุด ไม่มี ghost) แล้วเช็คซ้ำจนเชื่อมครบทุกตัว
+    ถ้าหา MuMuManager ไม่เจอค่อย fallback scan พอร์ต"""
     try:
-        # Kill & start adb server
-        subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=3)
-        time.sleep(0.1)
-        subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
+        # Kill & start adb server - แยก try กันตัวใดตัวหนึ่ง timeout แล้ว
+        # เด้งออกทั้งฟังก์ชัน (start-server บนเครื่องช้าใช้เวลาหลายวิ)
+        try:
+            subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=10)
+        except Exception:
+            pass
         time.sleep(0.5)
+        try:
+            subprocess.run([adb_path, "start-server"], capture_output=True, timeout=20)
+        except Exception:
+            pass
+        time.sleep(2)  # รอ daemon พร้อมจริงก่อนยิง connect ไม่งั้นตัวแรก ๆ เชื่อมหลุด
 
-        # === วิธีใหม่ (จาก pes): ถาม MuMuManager ตรงๆ ว่ามี instance ไหนเปิดอยู่ ===
+        # === ถาม MuMuManager ตรงๆ ว่ามี instance ไหนเปิดอยู่ ===
         instances = get_mumu_instances()
         if instances:
+            targets = [serial for _, serial in instances]
             print(f"\n--- [ADB] MuMuManager รายงาน {len(instances)} instance ที่เปิดอยู่ ---")
-            for idx, serial in instances:
-                try:
-                    subprocess.run([adb_path, "connect", serial], capture_output=True, timeout=3)
-                    print(f"[ADB] เชื่อม instance {idx} -> {serial}")
-                except Exception:
-                    pass
+            # เชื่อมแล้วเช็คซ้ำสูงสุด 3 ยก จนกว่าจะติดครบ - แก้ปัญหาเชื่อมไม่ครบ
+            for round_no in range(1, 4):
+                online = set(get_connected_devices())
+                missing = [s for s in targets if s not in online]
+                if not missing:
+                    break
+                for serial in missing:
+                    try:
+                        subprocess.run([adb_path, "connect", serial], capture_output=True, timeout=5)
+                        print(f"[ADB] เชื่อม {serial} (ยกที่ {round_no})")
+                    except Exception:
+                        pass
+                time.sleep(1)
+            online = set(get_connected_devices())
+            ok = [s for s in targets if s in online]
+            missing = [s for s in targets if s not in online]
+            if missing:
+                print(f"[ADB] เชื่อมสำเร็จ {len(ok)}/{len(targets)} | ยังไม่ติด: {', '.join(missing)}")
+            else:
+                print(f"[ADB] เชื่อมครบ {len(ok)}/{len(targets)} ตัว")
             print("--- Scan Complete (MuMuManager) ---\n")
             return
-        # === Fallback: scan พอร์ตแบบเดิม (กรณีหา MuMuManager ไม่เจอ) ===
+        # === Fallback: scan พอร์ต (กรณีหา MuMuManager ไม่เจอ) ===
 
-        # สแกนพอร์ตคี่ตั้งแต่ 5555-5755 (รองรับ 100 จอ MuMu)
-        ports = list(range(5555, 5756, 2))  # [5555, 5557, 5559, ..., 5755]
+        # พอร์ตคี่ 5555-5755 (MuMu6/LDPlayer/Nox) + พอร์ต MuMu12: 16384+32n (50 จอ)
+        ports = list(range(5555, 5756, 2)) + list(range(16384, 16384 + 32 * 50, 32))
 
-        print(f"\n--- [ADB] Auto-scanning {len(ports)} ports (5555-5755 odd) ---")
+        print(f"\n--- [ADB] Auto-scanning {len(ports)} ports (5555-5755 odd + 16384+32n) ---")
         
         connected = []
         
