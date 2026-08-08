@@ -1542,36 +1542,38 @@ def get_connected_devices():
         return []
 
 
+_imgsearch_err_seen = set()
+
 def ImgSearchADB(adb_img, find_img_path, threshold=0.95, method=cv2.TM_CCOEFF_NORMED):
+    """หา template บนภาพจอ คืน list จุดกึ่งกลาง เรียงจากคะแนนมากไปน้อย
+
+    ส่วนคัดจุดเขียนใหม่ด้วย numpy ล้วน - เดิมใช้ cv2.groupRectangles ซึ่งพังเงียบ
+    บน OpenCV/numpy บางเวอร์ชัน (อาการ: คะแนน match ถึงเกณฑ์แต่คืนค่าว่างตลอด
+    เพราะ except กลืน error) และถ้ามี error จริงจะ print ให้เห็นครั้งแรกเสมอ
+    """
     try:
-        # Load template from the bot's static method to use cache if possible, 
-        # but here we'll just read it normally to match mainLG.py behavior exactly
         find_img = cv2.imread(find_img_path, cv2.IMREAD_COLOR)
-        if find_img is None:
-            # print(f"ไม่สามารถโหลดรูปภาพ {find_img_path}")
+        if find_img is None or adb_img is None:
             return []
-        
-        needle_w = find_img.shape[1]
-        needle_h = find_img.shape[0]
+        h, w = find_img.shape[:2]
         result = cv2.matchTemplate(adb_img, find_img, method)
-        locations = np.where(result >= threshold)
-        locations = list(zip(*locations[::-1]))
-        rectangles = []
-        for loc in locations:
-            rect = [int(loc[0]), int(loc[1]), needle_w, needle_h]
-            rectangles.append(rect)
-            rectangles.append(rect)
-        if len(rectangles):
-            rectangles, _ = cv2.groupRectangles(rectangles, groupThreshold=1, eps=1)
         points = []
-        if len(rectangles):
-            for (x, y, w, h) in rectangles:
-                center_x = x + int(w / 2)
-                center_y = y + int(h / 2)
-                points.append((center_x, center_y))
+        for _ in range(10):  # เก็บสูงสุด 10 จุดต่อรูป เกินพอสำหรับทุกจุดที่ใช้งาน
+            idx = int(np.argmax(result))
+            y, x = divmod(idx, result.shape[1])
+            if float(result[y, x]) < threshold:
+                break
+            points.append((int(x) + w // 2, int(y) + h // 2))
+            # ลบบริเวณรอบจุดที่เจอ (ขนาดเท่า template) กันนับจุดเดิมซ้ำ
+            y0 = max(0, y - h // 2)
+            x0 = max(0, x - w // 2)
+            result[y0:y + h // 2 + 1, x0:x + w // 2 + 1] = -2.0
         return points
     except Exception as e:
-        # print(f"เกิดข้อผิดพลาดในการค้นหารูปภาพ: {e}")
+        key = f"{find_img_path}:{type(e).__name__}"
+        if key not in _imgsearch_err_seen:
+            _imgsearch_err_seen.add(key)
+            print(f"[ImgSearchADB] ERROR {find_img_path}: {type(e).__name__}: {e}")
         return []
 
 class NetworkMonitor:
