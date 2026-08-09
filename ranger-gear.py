@@ -1988,6 +1988,13 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
                 break
 
+        # fixface.bmp: จอสแกนหน้า/ยืนยันตัวตน - กด BACK 1 ครั้งถอยออก (ห้ามกดบนจอ)
+        if self.exists_in_cache("img/fixface.bmp", similarity=0.8):
+            print(f"[{self.device_id}] [POPUP] fixface.bmp detected, pressing BACK once...")
+            self.adb_shell("input keyevent 4")
+            sleep(1.0)
+            self._raw_capture()
+
         if self.exists_in_cache("img/fixaccep.png"):
             print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
             self.click("img/fixaccep.png")
