@@ -2137,6 +2137,9 @@ class RangerGearBot(threading.Thread):
                 sleep(2)
             if not app_found:
                 print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS บนเครื่องนี้! (เช็คแล้ว 3 รอบ - ยังไม่ได้ติดตั้ง/ชื่อ package ไม่ตรง/เครื่อง ghost) - หยุด retry")
+                # ปักธงไว้: เครื่องนี้ไม่มีแอป → ห้ามย้ายไฟล์ไปโฟลเดอร์ไหนทั้งนั้น
+                # และให้ลูปหลักหยุดหยิบไฟล์ใหม่ (ไฟล์ค้างไว้ในคิวเหมือนเดิม)
+                self.app_missing = True
                 return False
         except Exception as e:
             print(f"[{self.device_id}] [WARN] เช็ค package ไม่ได้: {e} - ลองเปิดต่อ")
@@ -3554,13 +3557,44 @@ class RangerGearBot(threading.Thread):
         return "complete"
 
 
+    def _is_app_installed(self, tries=3):
+        """เช็คว่าเครื่องนี้มีแอปติดตั้งอยู่จริงไหม (retry เผื่อ VM เพิ่งบูต pm ตอบว่าง)"""
+        for attempt in range(tries):
+            try:
+                pm_res = self.adb_run([
+                    self.adb_cmd, "-s", self.device_id, "shell",
+                    "pm", "list", "packages", "com.linecorp.LGRGS"
+                ], timeout=8)
+                if "com.linecorp.LGRGS" in (pm_res.stdout or b"").decode("utf-8", "ignore"):
+                    return True
+            except Exception as e:
+                print(f"[{self.device_id}] [WARN] เช็ค package ไม่ได้: {e}")
+            if attempt < tries - 1:
+                sleep(2)
+        return False
+
     def run(self):
         try:
             print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
-            
+
+            # ── เช็คก่อนเริ่ม: ไม่มีแอปบนเครื่องนี้ = หยุดเลย "ก่อน" จะไปหยิบไฟล์ ──
+            #    (ไม่ล็อกไฟล์ ไม่ inject ไม่ย้ายไฟล์ไปไหน — ไฟล์ค้างอยู่ในคิวครบเหมือนเดิม)
+            if not self._is_app_installed():
+                self.app_missing = True
+                print(f"[{self.device_id}] ⛔ เครื่องนี้ไม่มีแอป com.linecorp.LGRGS — หยุดบอทเครื่องนี้ "
+                      f"ไม่หยิบ/ไม่ย้ายไฟล์ใดๆ (ไฟล์อยู่ครบในคิวเหมือนเดิม)", flush=True)
+                self.update_gui_status("No app - stopped", "error")
+                return
+
             while True:
                 # 0. Reload Config
                 load_config()
+
+                # แอปหายระหว่างทาง (crash loop / ถอนแอป) → หยุดหยิบไฟล์ใหม่ทันที
+                if getattr(self, "app_missing", False):
+                    print(f"[{self.device_id}] ⛔ แอปหายจากเครื่องนี้ — หยุดส่งไฟล์ ไฟล์ที่เหลืออยู่ในคิวครบเหมือนเดิม", flush=True)
+                    self.update_gui_status("No app - stopped", "error")
+                    break
                 # Strict Toggles from configmain.json
                 self.do_ranger = config.get("find_ranger", 0)
                 self.do_gear = (config.get("check-gear", 0) or 
@@ -3778,6 +3812,10 @@ class RangerGearBot(threading.Thread):
 
     def handle_dead_file(self, file_path):
         """Move file that failed injection or has other issues"""
+        # แอปไม่มีบนเครื่องนี้ → ห้ามย้ายไฟล์ไปไหน ปล่อยไว้ในคิวเหมือนเดิม
+        if getattr(self, "app_missing", False):
+            print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+            return
         dst_dir = "login-failed"
         if not os.path.exists(dst_dir): os.makedirs(dst_dir)
         base = os.path.basename(file_path)
@@ -3800,6 +3838,10 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Move error: {e}")
 
     def handle_failure(self, file_path):
+        # แอปไม่มีบนเครื่องนี้ → ห้ามย้ายไฟล์ไปไหน ปล่อยไว้ในคิวเหมือนเดิม
+        if getattr(self, "app_missing", False):
+            print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+            return
         dst_dir = "login-failed"
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
@@ -3838,6 +3880,10 @@ class RangerGearBot(threading.Thread):
 
 
     def handle_random_fail(self, file_path):
+        # แอปไม่มีบนเครื่องนี้ → ห้ามย้ายไฟล์ไปไหน ปล่อยไว้ในคิวเหมือนเดิม
+        if getattr(self, "app_missing", False):
+            print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+            return
         """สุ่มไม่ได้ -> เก็บไว้ที่ random-fail/ ใช้ชื่อไฟล์เดิม
 
         ชื่อไฟล์คงเดิมทั้งดุ้น (ไม่เติม prefix อะไร) จะได้เอากลับไปใช้ต่อได้เลย
@@ -3881,6 +3927,10 @@ class RangerGearBot(threading.Thread):
 
     def handle_kaiby(self, file_path):
         """Handle kaiby error by moving file to kaiby/ folder and clearing app"""
+        # แอปไม่มีบนเครื่องนี้ → ห้ามย้ายไฟล์ไปไหน ปล่อยไว้ในคิวเหมือนเดิม
+        if getattr(self, "app_missing", False):
+            print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+            return
         dst_dir = "kaiby"
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)

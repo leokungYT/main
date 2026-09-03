@@ -1135,3 +1135,133 @@
 [2026-08-09 04:50:50] [127.0.0.1:5563] Found checkgear3.png (sim=0.92)! Clicking...
 [2026-08-09 04:50:51] [127.0.0.1:5563] [GEAR] Detailed view opened, scanning...
 [2026-08-09 04:50:51] [127.0.0.1:5563] Reading screen text with OCR...
+[2026-09-03 20:32:06] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-03 20:32:06] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:32:06] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:32:06] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-03 20:32:06] [CLEANUP] Removed old shared_stats.json
+[2026-09-03 20:32:06] [ADB] Found file at C:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-03 20:32:06] [ADB] Verified: C:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-03 20:32:06] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-03 20:32:12] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-03 20:32:12] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-03 20:32:16] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-03 20:32:16] --- Scan Complete (MuMuManager) ---
+[2026-09-03 20:32:16] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-03 20:32:16] [INFO] Pre-loading OCR model...
+[2026-09-03 20:32:25] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-03 20:32:25] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-03 20:32:29] [OK] EasyOCR model loaded!
+[2026-09-03 20:32:29] [OK] OCR model loaded.
+[2026-09-03 20:32:29] [FILE] Found 18 files in C:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-03 20:32:29] [32m[START] Launching GUI Mode...[0m
+[2026-09-03 20:32:30] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-03 20:32:30] [GUI] auto_start=1 - จะเริ่มบอทอัตโนมัติใน 2 วินาที
+[2026-09-03 20:32:35] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:32:35] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:33:05] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:33:05] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:40:54] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-03 20:40:54] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:40:54] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:40:54] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-03 20:40:54] [CLEANUP] Removed old shared_stats.json
+[2026-09-03 20:40:54] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-03 20:40:54] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-03 20:40:54] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-03 20:40:59] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-03 20:40:59] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-03 20:41:02] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-03 20:41:02] --- Scan Complete (MuMuManager) ---
+[2026-09-03 20:41:03] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-03 20:41:03] [INFO] Pre-loading OCR model...
+[2026-09-03 20:41:14] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-03 20:41:14] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-03 20:41:27] [OK] EasyOCR model loaded!
+[2026-09-03 20:41:27] [OK] OCR model loaded.
+[2026-09-03 20:41:27] [FILE] Found 18 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-03 20:41:27] [32m[START] Launching GUI Mode...[0m
+[2026-09-03 20:41:42] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-03 20:41:42] [GUI] auto_start=1 - จะเริ่มบอทอัตโนมัติใน 2 วินาที
+[2026-09-03 20:41:47] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:41:47] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:42:17] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:42:17] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:42:47] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:42:47] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:42:52] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:42:52] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:43:02] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:43:02] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:43:17] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:43:17] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:43:47] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:43:47] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:44:17] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:44:17] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:44:42] [GUI] Shutting down... Killing background processes.
+[2026-09-03 20:45:31] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-03 20:45:31] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:45:31] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:45:31] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-03 20:45:31] [CLEANUP] Removed old shared_stats.json
+[2026-09-03 20:45:31] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-03 20:45:31] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-03 20:45:31] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-03 20:45:39] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-03 20:45:39] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-03 20:45:43] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-03 20:45:44] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-03 20:45:44] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-03 20:45:44] --- Scan Complete (MuMuManager) ---
+[2026-09-03 20:45:44] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-03 20:45:44] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-03 20:45:44] [INFO] Pre-loading OCR model...
+[2026-09-03 20:45:50] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-03 20:45:50] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-03 20:45:55] [OK] EasyOCR model loaded!
+[2026-09-03 20:45:55] [OK] OCR model loaded.
+[2026-09-03 20:45:55] [FILE] Found 16 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-03 20:45:55] [32m[START] Launching GUI Mode...[0m
+[2026-09-03 20:45:56] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-03 20:45:56] [GUI] auto_start=1 - จะเริ่มบอทอัตโนมัติใน 2 วินาที
+[2026-09-03 20:46:01] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:46:01] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:46:31] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:46:31] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:47:01] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:47:01] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:47:31] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:47:31] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:48:01] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:48:01] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:48:24] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-03 20:48:24] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:48:24] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:48:24] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-03 20:48:24] [CLEANUP] Removed old shared_stats.json
+[2026-09-03 20:48:24] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-03 20:48:24] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-03 20:48:24] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-03 20:48:29] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-03 20:48:29] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-03 20:48:33] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-03 20:48:33] --- Scan Complete (MuMuManager) ---
+[2026-09-03 20:48:33] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-03 20:48:33] [INFO] Pre-loading OCR model...
+[2026-09-03 20:48:41] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-03 20:48:41] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-03 20:48:49] [OK] EasyOCR model loaded!
+[2026-09-03 20:48:49] [OK] OCR model loaded.
+[2026-09-03 20:48:49] [FILE] Found 16 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-03 20:48:49] [32m[START] Launching GUI Mode...[0m
+[2026-09-03 20:48:55] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-03 20:48:55] [GUI] auto_start=1 - จะเริ่มบอทอัตโนมัติใน 2 วินาที
+[2026-09-03 20:49:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:49:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:49:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:49:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:50:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:50:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-03 20:50:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-03 20:50:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
