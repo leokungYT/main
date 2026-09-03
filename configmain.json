@@ -1,5 +1,5 @@
 {
-    "7day": 1,
+    "7day": 0,
     "shopgacha": 0,
     "swap_shop": 0,
     "swap_shopevent": 0,
@@ -61,15 +61,15 @@
     "check-gear": 0,
     "use_ocr": 0,
     "box_settings": {
-        "first_round": 0,
+        "first_round": 1,
         "second_round": 0
     },
     "black_screen_timeout": 8,
     "loop1": 0,
     "first_loop": 0,
-    "kaibyskip": 1,
+    "kaibyskip": 0,
     "kaibycheck": 0,
-    "misson": 0,
+    "misson": 1,
     "move_success": {
         "enabled": 0,
         "time": "09:00",

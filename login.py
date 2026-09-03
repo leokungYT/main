@@ -6062,6 +6062,41 @@ class RangerGearBot(threading.Thread):
                 
             # *** SUCCESS -> Just Login and Backup ***
             if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
+                # [BINGO] ป๊อปอัพบิงโกที่เด้งหลัง login - เคลียร์ก่อนขั้นอื่นทั้งหมด
+                # เจอ bingo.bmp -> กด bingo1.bmp -> รัว ESC จนเจอ cancel -> กด cancel
+                # แล้วหยุด (จากนั้นไปทำงานตาม config ตามปกติ)
+                # หา 3 วิ เผื่อป๊อปอัพยังเด้งไม่ทันตอนเจอ stoplogin พอดี
+                bingo_deadline = time.time() + 3
+                while time.time() < bingo_deadline:
+                    if self.exists_in_cache("img/bingo.bmp", similarity=0.8):
+                        print(f"[{self.device_id}] [BINGO] เจอ bingo.bmp - กด bingo1.bmp")
+                        if self.exists_in_cache("img/bingo1.bmp", similarity=0.8):
+                            self.click("img/bingo1.bmp", similarity=0.8)
+                        else:
+                            print(f"[{self.device_id}] [BINGO] [WARN] ไม่เจอปุ่ม bingo1.bmp - ข้ามไปรัว ESC เลย")
+                        sleep(1.5)
+
+                        # รัว ESC ไปเรื่อย ๆ ไม่มีเพดาน จนกว่าจะเจอ cancel
+                        # (ตาข่ายกันค้างถาวรคือ 500s inactivity ใน capture_screen
+                        #  ซึ่งจะโยน RestartTimeoutError ให้ลูปใหญ่จัดการเอง)
+                        esc_i = 0
+                        while True:
+                            esc_i += 1
+                            self.adb_shell("input keyevent 4")
+                            sleep(0.6)
+                            self.capture_screen()
+                            if self.exists_in_cache("img/cancel.png"):
+                                print(f"[{self.device_id}] [BINGO] ESC ครั้งที่ {esc_i} เจอ cancel - กด cancel แล้วหยุด")
+                                self.click("img/cancel.png")
+                                sleep(1)
+                                break
+                            if esc_i % 10 == 0:
+                                print(f"[{self.device_id}] [BINGO] รัว ESC ไปแล้ว {esc_i} ครั้ง - ยังไม่เจอ cancel รัวต่อ")
+                        self.capture_screen()
+                        break
+                    sleep(0.5)
+                    self.capture_screen()
+
                 # [DIST CHECK] แวะเช็คหา fixbylv / distcheck / distskip 5วิ (ตามลำดับนี้)
                 print(f"[{self.device_id}] stoplogin found, checking for fixbylv/distcheck/distskip (5s)...")
                 found_distcheck = False
