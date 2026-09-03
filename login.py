@@ -2329,6 +2329,152 @@ class RangerGearBot(threading.Thread):
 
 
 
+    def process_7day(self):
+        """7-Day login: เข้าหน้ารับของ แล้ววนกด 7day1.png จนกว่าจะไม่เจอ
+
+        ลำดับตามที่ต้องการ:
+          1. กด 7day.png เข้าหน้ารับของ 7 วัน
+          2. รอ checkpoint-7day (.png/.bmp) ให้แน่ใจว่าเข้าหน้ารับของแล้วจริง
+             ค่อยเริ่มหา 7day1 (ถ้ายังไม่มีไฟล์รูปนี้ จะข้ามขั้นนี้พร้อมเตือน)
+          3. วนหา 7day1.png ตลอดเวลา เจอก็กดทันที (ป๊อปอัพยืนยันที่เด้งตามมา
+             คือ fixok.png ก็กดปิดให้ในลูปเดียวกัน ไม่งั้นมันบัง 7day1
+             ปุ่มถัดไปแล้วลูปเดินต่อไม่ได้)
+          4. จบเมื่อ "ไม่เจอ 7day1 ครบ 10 วิ" หรือ "กดครบ 10 ครั้ง"
+             -> กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง (ไม่ใช้ BACK/ESC)
+          5. จบแล้วไปทำงานอื่นตาม config ต่อ
+        """
+        print(f"[{self.device_id}] [7DAY] เริ่มขั้นตอนรับของ 7 วัน")
+
+        # 1) เข้าหน้ารับของ
+        self.capture_screen()
+        if self.exists_in_cache("img/7day.png"):
+            print(f"[{self.device_id}] [7DAY] กด 7day.png เข้าหน้ารับของ")
+            self.click("img/7day.png")
+            sleep(2)
+
+        # 2) รอ checkpoint-7day ยืนยันว่าเข้าหน้ารับของแล้วจริง ค่อยไปหา 7day1
+        #    (รับได้ทั้ง .png และ .bmp ถ้ายังไม่มีไฟล์รูปเลย ให้ข้ามไปเลย
+        #    ไม่งั้นจะนั่งรอรูปที่ไม่มีทาง match จนครบ timeout ทุกไฟล์)
+        cp_path = None
+        for cp_name in ("img/checkpoint-7day.png", "img/checkpoint-7day.bmp"):
+            if os.path.exists(cp_name):
+                cp_path = cp_name
+                break
+        if cp_path is None:
+            print(f"[{self.device_id}] [7DAY] [WARN] ยังไม่มีรูป checkpoint-7day (.png/.bmp) ใน img/ - ข้ามขั้นรอ checkpoint")
+        else:
+            print(f"[{self.device_id}] [7DAY] รอ {os.path.basename(cp_path)} ก่อนเริ่มหา 7day1 (สูงสุด 20 วิ)")
+            cp_deadline = time.time() + 20
+            cp_found = False
+            while time.time() < cp_deadline:
+                self.capture_screen()
+                self.check_floating_popups()
+                if self.exists_in_cache(cp_path):
+                    print(f"[{self.device_id}] [7DAY] เจอ {os.path.basename(cp_path)} - เข้าหน้ารับของแล้ว เริ่มหา 7day1")
+                    cp_found = True
+                    break
+                # เผื่อกด 7day.png ไม่ติด (จอขยับ/ป๊อปอัพบัง) - เจอไอคอนก็กดใหม่
+                if self.exists_in_cache("img/7day.png"):
+                    print(f"[{self.device_id}] [7DAY] ยังไม่เข้าหน้ารับของ - กด 7day.png อีกครั้ง")
+                    self.click("img/7day.png")
+                    sleep(1.5)
+                    continue
+                sleep(0.5)
+            if not cp_found:
+                print(f"[{self.device_id}] [7DAY] [WARN] ไม่เจอ checkpoint-7day ใน 20 วิ - ลองหา 7day1 ต่อเลย")
+
+        # 3) วนกด 7day1 จนไม่มีอะไรให้กด (หรือครบเพดาน)
+        IDLE_SECS = 10     # ไม่เจอ 7day1 ครบ 10 วิ = ถือว่ารับครบแล้ว
+        MAX_TOTAL = 120    # เพดานเวลารวม กันลูปค้าง
+        MAX_CLICKS = 10    # กด 7day1 ครบ 10 ครั้ง = จบเลย ไปกด 7day2 ปิดหน้าต่าง
+        clicks = 0
+        started = time.time()
+        last_hit = time.time()
+
+        while True:
+            if time.time() - started > MAX_TOTAL:
+                print(f"[{self.device_id}] [7DAY] ครบเพดานเวลา {MAX_TOTAL} วิ - ออกจากขั้นตอน")
+                break
+            if clicks >= MAX_CLICKS:
+                print(f"[{self.device_id}] [7DAY] กด 7day1 ครบ {MAX_CLICKS} ครั้ง - จบเลย ไปกด 7day2 ปิดหน้าต่าง")
+                break
+
+            self.capture_screen()
+            self.check_floating_popups()
+
+            # ห้ามใส่ 7day2.png ในลูปนี้ - มันคือปุ่ม X ปิดหน้าต่าง ถ้าเผลอกดตอน
+            # 7day1 แวบหายไประหว่างอนิเมชัน หน้าต่างจะปิดก่อนรับของครบ
+            hit = None
+            for img in ("7day1.png", "fixok.png"):
+                if self.exists_in_cache(f"img/{img}"):
+                    hit = img
+                    break
+
+            if hit:
+                clicks += 1
+                print(f"[{self.device_id}] [7DAY] เจอ {hit} - กด (ครั้งที่ {clicks})")
+                self.click(f"img/{hit}")
+                last_hit = time.time()
+                sleep(1.2)
+
+                # หลังกด 7day1 -> แวะหา fixok (ป๊อปอัพยืนยันหลังรับของ) 3 วิ
+                # เจอก็กดปิดให้ ไม่งั้นมันบัง 7day1 ปุ่มถัดไป แล้วรอบหน้าจะกด
+                # 7day1 ซ้ำที่เดิมโดยไม่ได้ของเพิ่ม
+                if hit == "7day1.png":
+                    ok_deadline = time.time() + 3
+                    while time.time() < ok_deadline:
+                        self.capture_screen()
+                        ok_hit = None
+                        for ok_img in ("fixok.png",):
+                            if self.exists_in_cache(f"img/{ok_img}"):
+                                ok_hit = ok_img
+                                break
+                        if ok_hit:
+                            print(f"[{self.device_id}] [7DAY] หลังกด 7day1 เจอ {ok_hit} - กดปิด")
+                            self.click(f"img/{ok_hit}")
+                            last_hit = time.time()
+                            sleep(1.0)
+                            break
+                        sleep(0.4)
+                    else:
+                        print(f"[{self.device_id}] [7DAY] หลังกด 7day1 ไม่เจอ fixok ใน 3 วิ - วนหา 7day1 ต่อ")
+                continue
+
+            idle = time.time() - last_hit
+            if idle >= IDLE_SECS:
+                print(f"[{self.device_id}] [7DAY] ไม่เจอ 7day1 ครบ {IDLE_SECS} วิ - รับครบแล้ว ไปกด 7day2 ปิดหน้าต่าง")
+                break
+            sleep(0.5)
+
+        # 4) กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง - ไม่ใช้ BACK แล้ว
+        #    หาได้สูงสุด 10 วิ กดได้สูงสุด 3 ครั้งจนหน้าต่างปิดจริง
+        closed = False
+        close_clicks = 0
+        close_deadline = time.time() + 10
+        while time.time() < close_deadline and close_clicks < 3:
+            self.capture_screen()
+            self.check_floating_popups()
+            if self.exists_in_cache("img/7day2.png"):
+                close_clicks += 1
+                print(f"[{self.device_id}] [7DAY] เจอ 7day2 - กดปิดหน้าต่าง (ครั้งที่ {close_clicks})")
+                self.click("img/7day2.png")
+                sleep(1.2)
+                continue
+            # ไม่เจอปุ่ม X แล้ว = หน้าต่างปิดไปแล้ว (เช็คว่ากลับถึง Lobby ด้วย)
+            if close_clicks > 0 or (self.exists_in_cache("img/7day.png")
+                                    or self.exists_in_cache("img/box1.png")
+                                    or self.exists_in_cache("img/gacha.png")):
+                closed = True
+                break
+            sleep(0.5)
+        if closed:
+            print(f"[{self.device_id}] [7DAY] ปิดหน้าต่างเรียบร้อย")
+        else:
+            print(f"[{self.device_id}] [7DAY] [WARN] ไม่เจอ 7day2 ใน 10 วิ - ไปทำงานต่อเลย")
+
+        print(f"[{self.device_id}] [7DAY] จบขั้นตอน 7 วัน (กดไปทั้งหมด {clicks} ครั้ง) - ไปทำงานตาม config ต่อ")
+        return "complete"
+
     def process_shopgacha(self):
         device = self  # map 'device' to 'self' for snippet compatibility
         shop_gacha_enabled = config.get('shopgacha', 0)
@@ -4699,7 +4845,7 @@ class RangerGearBot(threading.Thread):
         if self.cfg.get("7day"):
             print(f"[{self.device_id}] Task Check: 7-Day Login...")
             if check_task_available("img/7day.png"):
-                self.process_sequence(self.seven_day_seq)
+                self.process_7day()
                 sleep(2)
             else:
                 print(f"[{self.device_id}] 7-Day icon not found, skipping.")
