@@ -61,7 +61,7 @@
     "check-gear": 0,
     "use_ocr": 0,
     "box_settings": {
-        "first_round": 1,
+        "first_round": 0,
         "second_round": 0
     },
     "black_screen_timeout": 8,
@@ -69,10 +69,10 @@
     "first_loop": 0,
     "kaibyskip": 0,
     "kaibycheck": 0,
-    "misson": 1,
+    "misson": 0,
     "move_success": {
-        "enabled": 0,
-        "time": "09:00",
+        "enabled": 1,
+        "time": "00:00",
         "source": "login-success",
         "dest": "input-id"
     },
