@@ -4940,9 +4940,16 @@ class RangerGearBot(threading.Thread):
         results = {}
         
         # Step 1 & 2: Navigation to search screen
-        print(f"[{self.device_id}] Starting persistent navigation (Searching for sec1/sec2)...")
+        # เพดาน nav_timeout วิ - เดิมลูปนี้ไม่มีเพดานเลย ถ้า sec1/sec2 ไม่โผล่
+        # (เน็ตหลุด/จอค้าง/แอปเด้ง) thread จะวนตรงนี้ตลอดกาลทั้งที่ยังถือ lock ไฟล์อยู่
+        nav_timeout = config.get("nav_timeout", 180)
+        print(f"[{self.device_id}] Starting persistent navigation (Searching for sec1/sec2, เพดาน {nav_timeout} วิ)...")
         sec1_clicked = False
+        nav_deadline = time.time() + nav_timeout
         while True:
+            if time.time() > nav_deadline:
+                print(f"[{self.device_id}] [NAVI] หา sec1/sec2 ไม่เจอใน {nav_timeout} วิ - ยกเลิก find-ranger รอบนี้")
+                return results
             self.capture_screen()
             self.check_floating_popups()
             

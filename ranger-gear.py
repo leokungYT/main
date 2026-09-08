@@ -12,6 +12,7 @@ import glob
 import tempfile
 import json
 import threading
+import traceback
 import queue
 import concurrent.futures
 import argparse
@@ -742,17 +743,29 @@ def get_ocr_reader():
     return _ocr_reader
 
 
-def load_config():
-    global config
+_config_sig = None
+
+
+def load_config(quiet=False):
+    """quiet=True -> พิมพ์เฉพาะตอนไฟล์ config เปลี่ยนจริง
+
+    run() เรียกฟังก์ชันนี้ทุกวินาที เดิมพิมพ์ทุกครั้งจน log กลายเป็น
+    [CONFIG] Base Loaded ไล่ยาว กลบบรรทัดที่บอกสาเหตุจริงจนไล่ปัญหาไม่ได้
+    """
+    global config, _config_sig
     
     # Load ONLY main config from ranger-gear_config.json
     main_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ranger-gear_config.json")
     if os.path.exists(main_config_file):
         try:
             with open(main_config_file, 'r', encoding='utf-8') as f:
-                loaded = json.load(f)
-                config.update(loaded)
-            print(f"[CONFIG] Base Loaded: {main_config_file}")
+                raw = f.read()
+            loaded = json.loads(raw)
+            config.update(loaded)
+            sig = hashlib.md5(raw.encode("utf-8")).hexdigest()
+            if not quiet or sig != _config_sig:
+                print(f"[CONFIG] Base Loaded: {main_config_file}")
+            _config_sig = sig
         except Exception as e:
             print(f"[WARN] Error loading config: {e}")
     else:
@@ -1246,9 +1259,36 @@ class RangerGearBot(threading.Thread):
         return False
 
     def run(self):
-        try:
-            print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
-            
+        print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
+        # เดิม try ครอบ while True ไว้ทั้งก้อน = พังครั้งเดียว thread ตายถาวร
+        # เครื่องนั้นเงียบไปเลยทั้งที่โปรแกรมยังเปิดอยู่ ตอนนี้แยกลูปออกมาแล้ว
+        # supervise ให้กลับมาเดินต่อเองได้
+        while getattr(self, "_running", True):
+            try:
+                self._main_loop()
+            except Exception as e:
+                print(f"[{self.device_id}] Thread Crash: {e} - restarting loop in 5s", flush=True)
+                traceback.print_exc()
+                sleep(5)
+
+    def _report_idle_queue(self, every_sec=30):
+        """บอกสาเหตุที่ไม่มีงานทำ
+
+        เดิมตอนคิวว่าง log มีแต่ [CONFIG] Base Loaded วินาทีละบรรทัด
+        แยกไม่ออกว่า backup/ หมดจริง หรือไฟล์ยังอยู่แต่ติด lock ค้าง
+        """
+        now = time.time()
+        if now - getattr(self, "_idle_logged_at", 0) < every_sec:
+            return
+        self._idle_logged_at = now
+        total, locked = getattr(self, "_queue_stats", (0, 0))
+        if total == 0:
+            print(f"[{self.device_id}] [QUEUE] ว่างงาน: ไม่มีไฟล์ .xml เหลือใน backup/")
+        else:
+            print(f"[{self.device_id}] [QUEUE] ว่างงาน: เจอ {total} ไฟล์ใน backup/ "
+                  f"แต่ติด lock อยู่ {locked} ไฟล์ (เครื่องอื่นถืออยู่ หรือ lock ค้าง)")
+
+    def _main_loop(self):
             while True:
                 # 0. Check if background monitor triggered a restart
                 if self._need_restart:
@@ -1258,8 +1298,8 @@ class RangerGearBot(threading.Thread):
                     # but if we have a file, we should probably keep it and just restart the logic.
                     # For simplicity, we just continue which will pick up next or same file.
 
-                # 0. Reload Config
-                load_config()
+                # 0. Reload Config (เงียบ - พิมพ์เฉพาะตอนค่าเปลี่ยนจริง)
+                load_config(quiet=True)
                 self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
                 self.do_gear = config.get("find_gear", 0) or config.get("find_all", 1)
                 self.do_ruby_ticket = config.get("check_ruby_ticket", 0) or config.get("find_all", 1) # Support 'All' mode too
@@ -1269,6 +1309,7 @@ class RangerGearBot(threading.Thread):
                 
                 if not xml_file:
                     self.update_gui_status("Waiting for files", "waiting")
+                    self._report_idle_queue()
                     sleep(1)
                     continue
 
@@ -1344,8 +1385,6 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Critical Error with {xml_file}: {e}")
                     self._release_file_lock(xml_file)
                     sleep(1)
-        except Exception as e:
-            print(f"[{self.device_id}] Thread Crash: {e}", flush=True)
 
     def _get_lock_path(self, xml_file):
         """Get lock file path in temp directory (ไม่รก backup folder)"""
@@ -1356,6 +1395,49 @@ class RangerGearBot(threading.Thread):
         full = os.path.abspath(xml_file)
         lock_name = hashlib.md5(full.encode("utf-8")).hexdigest() + "_" + os.path.basename(xml_file) + ".lock"
         return os.path.join(lock_dir, lock_name)
+
+    # lock ที่ค้างเกินเวลานี้ถือว่าเจ้าของตายไปแล้ว (กันไฟล์ค้างถาวร)
+    _STALE_LOCK_SEC = 1800
+
+    @staticmethod
+    def _pid_alive(pid):
+        """เจ้าของ lock ยังรันอยู่ไหม - ถ้าตายแล้วยึด lock คืนได้เลย ไม่ต้องรอครบ 30 นาที"""
+        if pid <= 0:
+            return True
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                STILL_ACTIVE = 259
+                h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+                if not h:
+                    return False
+                code = ctypes.c_ulong()
+                ok = ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+                ctypes.windll.kernel32.CloseHandle(h)
+                return (not ok) or code.value == STILL_ACTIVE
+            os.kill(pid, 0)   # POSIX เท่านั้น - บน Windows os.kill ฆ่าโปรเซสจริง
+            return True
+        except OSError:
+            return False
+        except Exception:
+            return True   # เช็คไม่ได้ = ถือว่ายังอยู่ ปล่อยให้กฎ 30 นาทีจัดการแทน
+
+    @staticmethod
+    def _lock_owner(lock_file):
+        """คืน (pid, device) ของเจ้าของ lock - lock รูปแบบเก่าเก็บแค่ device จะได้ pid = 0"""
+        try:
+            with open(lock_file, "r", encoding="utf-8", errors="ignore") as f:
+                raw = f.read().strip()
+        except OSError:
+            return 0, ""
+        pid, sep, dev = raw.partition("|")
+        if not sep:
+            return 0, raw
+        try:
+            return int(pid), dev
+        except ValueError:
+            return 0, raw
 
     @staticmethod
     def _prune_if_empty(folder, root_folder):
@@ -1400,22 +1482,35 @@ class RangerGearBot(threading.Thread):
         # Shuffle files so multiple processes don't hit the exact same order
         import random
         random.shuffle(files)
-        
+
+        locked_count = 0
         for xml_file in files:
             lock_file = self._get_lock_path(xml_file)
-            
-            # 1. Clean stale locks (> 30 mins)
+
+            # 1. Clean stale locks: เจ้าของตายไปแล้ว หรือค้างเกิน 30 นาที
+            #    getmtime อาจ error ถ้า thread อื่นเพิ่งปล่อย lock พอดี - เดิมไม่ได้ดัก
+            #    exception ตัวนี้เลยหลุดออกไปฆ่า thread ทั้งตัว
             if os.path.exists(lock_file):
-                if time.time() - os.path.getmtime(lock_file) > 1800:
+                try:
+                    age = time.time() - os.path.getmtime(lock_file)
+                except OSError:
+                    age = None   # หายไปแล้วระหว่างเช็ค - ลองยึดต่อได้เลย
+                owner_pid, owner_dev = self._lock_owner(lock_file)
+                dead_owner = owner_pid > 0 and not self._pid_alive(owner_pid)
+                if age is None or dead_owner or age > self._STALE_LOCK_SEC:
+                    if dead_owner:
+                        print(f"[{self.device_id}] [LOCK] เจ้าของ lock (pid {owner_pid} / {owner_dev}) ไม่อยู่แล้ว - ยึดคืน: {os.path.basename(xml_file)}")
                     try: os.remove(lock_file)
-                    except: pass
-                else: continue
-            
+                    except OSError: pass
+                else:
+                    locked_count += 1
+                    continue
+
             # 2. Try Atomic Lock (O_CREAT | O_EXCL)
             try:
                 fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 with os.fdopen(fd, 'w') as f:
-                    f.write(self.device_id)
+                    f.write(f"{os.getpid()}|{self.device_id}")
                 # ไฟล์อาจถูกอีกเครื่องหยิบไปย้ายเรียบร้อยแล้วตั้งแต่ตอนที่เราไล่ list
                 # ถ้าหายไปแล้วก็คืน lock แล้วไปตัวถัดไป ดีกว่าเอา path ที่ไม่มีอยู่จริง
                 # ไปให้ inject_file แล้วไปเด้ง error ทีหลัง
@@ -1425,11 +1520,14 @@ class RangerGearBot(threading.Thread):
                     continue
                 return xml_file
             except FileExistsError:
+                locked_count += 1
                 continue
             except Exception as e:
                 print(f"[LOCK] Error creating lock for {xml_file}: {e}")
                 continue
-                
+
+        # เก็บสถิติไว้ให้ _report_idle_queue() บอกได้ว่าว่างงานเพราะไฟล์หมด หรือติด lock ค้าง
+        self._queue_stats = (len(files), locked_count)
         return None
 
     def _release_file_lock(self, xml_file):
@@ -2700,9 +2798,16 @@ class RangerGearBot(threading.Thread):
         results = {}
         
         # Step 1 & 2: Navigation to search screen
-        print(f"[{self.device_id}] Starting persistent navigation (Searching for sec1/sec2)...")
+        # เพดาน nav_timeout วิ - เดิมลูปนี้ไม่มีเพดานเลย ถ้า sec1/sec2 ไม่โผล่
+        # (เน็ตหลุด/จอค้าง/แอปเด้ง) thread จะวนตรงนี้ตลอดกาลทั้งที่ยังถือ lock ไฟล์อยู่
+        nav_timeout = config.get("nav_timeout", 180)
+        print(f"[{self.device_id}] Starting persistent navigation (Searching for sec1/sec2, เพดาน {nav_timeout} วิ)...")
         sec1_clicked = False
+        nav_deadline = time.time() + nav_timeout
         while True:
+            if time.time() > nav_deadline:
+                print(f"[{self.device_id}] [NAVI] หา sec1/sec2 ไม่เจอใน {nav_timeout} วิ - ยกเลิก find-ranger รอบนี้")
+                return results
             self.capture_screen()
 
             # ---- Check floating popups ----
@@ -2973,11 +3078,19 @@ class RangerGearBot(threading.Thread):
             return set()
 
         # รอจอ Gear โหลดจริงก่อนเริ่มเช็ค: หา weapons1/weapons2 ไปเรื่อย ๆ
-        # (ไม่มี timeout) เจอตัวใดตัวหนึ่ง = จอมาแล้ว ค่อยเริ่มหา checkgear2
+        # เจอตัวใดตัวหนึ่ง = จอมาแล้ว ค่อยเริ่มหา checkgear2
         # กันเคสเน็ตหลุด/จอโหลดช้าแล้วรีบสรุปว่าไม่มีของ ระหว่างรอเคลียร์ป๊อปอัพให้
-        print(f"[{self.device_id}] [GEAR-WAIT] รอ weapons1/weapons2 โผล่ก่อนเริ่มเช็คเกียร์ (ไม่มี timeout)...")
+        # เพดาน gear_wait_timeout วิ - เดิมเป็น while True เปล่า ๆ (คอมเมนต์เขียนไว้เองว่า
+        # "ไม่มี timeout") พอ weapons1/weapons2 ไม่มาสักที thread ค้างตรงนี้ตลอดกาล
+        # ทั้งที่ยังถือ lock ของไฟล์อยู่ = บอทดูเหมือนหยุดทำงาน แต่ไฟล์ยังค้างใน backup/
+        gear_wait_timeout = config.get("gear_wait_timeout", 120)
+        print(f"[{self.device_id}] [GEAR-WAIT] รอ weapons1/weapons2 โผล่ก่อนเริ่มเช็คเกียร์ (เพดาน {gear_wait_timeout} วิ)...")
         gear_wait_rounds = 0
+        gear_wait_deadline = time.time() + gear_wait_timeout
         while True:
+            if time.time() > gear_wait_deadline:
+                print(f"[{self.device_id}] [GEAR-WAIT] weapons1/weapons2 ไม่มาใน {gear_wait_timeout} วิ - ไปต่อด้วย checkgear2 แทน (ไม่ค้างรอถาวร)")
+                break
             self.capture_screen()
             if (self.exists_in_cache("img/weapons1.png", similarity=0.9)
                     or self.exists_in_cache("img/weapons2.png", similarity=0.9)):
