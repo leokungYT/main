@@ -402,11 +402,11 @@ if GUI_AVAILABLE:
         def _bg_stats_counter_loop(self):
             while True:
                 try:
-                    # Count files in backup folder
-                    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+                    # นับทุกโฟลเดอร์คิว + โฟลเดอร์ย่อย ให้ตรงกับที่ _get_next_available_file() หยิบได้จริง
                     qsize = 0
-                    if os.path.exists(source_folder):
-                        # นับโฟลเดอร์ย่อยด้วย ให้ตรงกับที่ _get_next_available_file() หยิบได้จริง
+                    for source_folder in queue_folder_paths():
+                        if not os.path.exists(source_folder):
+                            continue
                         for _root, _dirs, _files in os.walk(source_folder):
                             qsize += len([f for f in _files if f.lower().endswith(".xml")])
                     self.qsize = qsize
@@ -781,6 +781,15 @@ def get_ocr_reader():
 
 
 _config_sig = None
+
+
+def queue_folder_paths():
+    """โฟลเดอร์คิวทั้งหมดตาม config - ให้ตัวนับบนจอกับที่บอทหยิบจริงตรงกันเสมอ"""
+    folders = config.get("queue_folders") or ["backup", "input-id", "input"]
+    if isinstance(folders, str):
+        folders = [folders]
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return [os.path.join(script_dir, str(f)) for f in folders]
 
 
 def load_config(quiet=False):
@@ -1328,22 +1337,58 @@ class RangerGearBot(threading.Thread):
                 traceback.print_exc()
                 sleep(5)
 
+    # โฟลเดอร์คิวที่ยอมหยิบไฟล์มาทำ - ตั้งทับได้ใน config ("queue_folders")
+    # เผื่ออยากให้ดึงจาก input-id/ ที่ loginสะสม (login.py) ใช้ร่วมด้วย
+    QUEUE_FOLDERS_DEFAULT = ["backup", "input-id", "input"]
+    # โฟลเดอร์ที่ไม่ใช่คิว แต่มักมีไฟล์ค้าง - ใช้บอกใน log ตอนว่างงานว่าไฟล์ไปกองอยู่ไหน
+    OTHER_FOLDERS = ["input-id", "input", "backup-xml", "login-success", "login-failed"]
+
+    def _queue_folders(self):
+        folders = config.get("queue_folders") or self.QUEUE_FOLDERS_DEFAULT
+        if isinstance(folders, str):
+            folders = [folders]
+        return [str(f) for f in folders]
+
+    @staticmethod
+    def _count_xml(folder):
+        n = 0
+        if os.path.isdir(folder):
+            for _r, _d, _fs in os.walk(folder):
+                n += sum(1 for f in _fs if f.lower().endswith(".xml"))
+        return n
+
     def _report_idle_queue(self, every_sec=30):
         """บอกสาเหตุที่ไม่มีงานทำ
 
-        เดิมตอนคิวว่าง log มีแต่ [CONFIG] Base Loaded วินาทีละบรรทัด
-        แยกไม่ออกว่า backup/ หมดจริง หรือไฟล์ยังอยู่แต่ติด lock ค้าง
+        เดิมตอนคิวว่าง log มีแต่ [CONFIG] Base Loaded วินาทีละบรรทัด แยกไม่ออกว่า
+        คิวหมดจริง ไฟล์ติด lock ค้าง หรือไฟล์ไปกองอยู่โฟลเดอร์ที่สคริปต์นี้ไม่ได้อ่าน
         """
         now = time.time()
         if now - getattr(self, "_idle_logged_at", 0) < every_sec:
             return
         self._idle_logged_at = now
         total, locked = getattr(self, "_queue_stats", (0, 0))
-        if total == 0:
-            print(f"[{self.device_id}] [QUEUE] ว่างงาน: ไม่มีไฟล์ .xml เหลือใน backup/")
-        else:
-            print(f"[{self.device_id}] [QUEUE] ว่างงาน: เจอ {total} ไฟล์ใน backup/ "
+        qnames = " + ".join(f + "/" for f in self._queue_folders())
+        if total:
+            print(f"[{self.device_id}] [QUEUE] ว่างงาน: เจอ {total} ไฟล์ใน {qnames} "
                   f"แต่ติด lock อยู่ {locked} ไฟล์ (เครื่องอื่นถืออยู่ หรือ lock ค้าง)")
+            return
+        # คิวหมดจริง - บอกด้วยว่าไฟล์ที่ยังเหลือในเครื่องไปกองอยู่โฟลเดอร์ไหน
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        queue_set = set(self._queue_folders())
+        elsewhere = []
+        for name in self.OTHER_FOLDERS:
+            if name in queue_set:
+                continue
+            n = self._count_xml(os.path.join(script_dir, name))
+            if n:
+                elsewhere.append(f"{name}/={n}")
+        msg = f"[{self.device_id}] [QUEUE] ว่างงาน: ไม่มีไฟล์ .xml เหลือใน {qnames}"
+        if elsewhere:
+            msg += (f" | ไฟล์ที่ยังเหลือไปกองอยู่ที่ {', '.join(elsewhere)}"
+                    f" - ถ้าอยากให้ดึงมาทำด้วย ใส่ชื่อโฟลเดอร์ใน config \"queue_folders\"")
+        print(msg)
+
 
     def _main_loop(self):
             while True:
@@ -1520,13 +1565,31 @@ class RangerGearBot(threading.Thread):
         return True
 
     def _get_next_available_file(self):
-        """Finds next .xml file in backup/ and attempts to lock it atomically.
+        """หาไฟล์ .xml ตัวถัดไปจากโฟลเดอร์คิวแล้วจองแบบ atomic
 
-        เดินเข้าทุกโฟลเดอร์ย่อยใน backup/ (ลากทั้งโฟลเดอร์มาวางได้เลย) และเก็บกวาด
+        ไล่ตามลำดับใน queue_folders โฟลเดอร์แรกที่จองได้ก็คืนเลย
+        """
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        total = locked = 0
+        for name in self._queue_folders():
+            picked, n_files, n_locked = self._pick_file_from(os.path.join(script_dir, name))
+            total += n_files
+            locked += n_locked
+            if picked:
+                return picked
+        # เก็บสถิติไว้ให้ _report_idle_queue() บอกได้ว่าว่างงานเพราะอะไร
+        self._queue_stats = (total, locked)
+        return None
+
+    def _pick_file_from(self, source_folder):
+        """หา+จองไฟล์ .xml จากโฟลเดอร์เดียว
+
+        คืน (path ที่จองได้ หรือ None, จำนวนไฟล์ที่เจอ, จำนวนที่ติด lock)
+        เดินเข้าทุกโฟลเดอร์ย่อย (ลากทั้งโฟลเดอร์มาวางได้เลย) และเก็บกวาด
         โฟลเดอร์ย่อยที่ใช้ไฟล์หมดแล้วทิ้งไปด้วย
         """
-        source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
-        if not os.path.exists(source_folder): return None
+        if not os.path.exists(source_folder):
+            return None, 0, 0
 
         files = []
         # topdown=False = เดินจากในสุดออกมา โฟลเดอร์ซ้อนหลายชั้นที่ว่างหมดแล้ว
@@ -1575,7 +1638,7 @@ class RangerGearBot(threading.Thread):
                     try: os.remove(lock_file)
                     except OSError: pass
                     continue
-                return xml_file
+                return xml_file, len(files), locked_count
             except FileExistsError:
                 locked_count += 1
                 continue
@@ -1583,9 +1646,7 @@ class RangerGearBot(threading.Thread):
                 print(f"[LOCK] Error creating lock for {xml_file}: {e}")
                 continue
 
-        # เก็บสถิติไว้ให้ _report_idle_queue() บอกได้ว่าว่างงานเพราะไฟล์หมด หรือติด lock ค้าง
-        self._queue_stats = (len(files), locked_count)
-        return None
+        return None, len(files), locked_count
 
     def _release_file_lock(self, xml_file):
         lock_file = self._get_lock_path(xml_file)
@@ -3898,10 +3959,11 @@ if __name__ == "__main__":
     
     # ลบไฟล์ .lock ทั้งหมดตอนเริ่มรัน (ทั้ง backup/ และ temp/)
     cleanup_count = 0
-    # 1. ลบ lock เก่าที่อาจค้างใน backup/
-    backup_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
-    if os.path.exists(backup_folder):
-        for lf in glob.glob(os.path.join(backup_folder, "*.lock")):
+    # 1. ลบ lock เก่าที่อาจค้างในโฟลเดอร์คิว
+    for queue_folder in queue_folder_paths():
+        if not os.path.exists(queue_folder):
+            continue
+        for lf in glob.glob(os.path.join(queue_folder, "*.lock")):
             try: os.remove(lf); cleanup_count += 1
             except: pass
     # 2. ลบ lock ใน temp/ranger-locks/
@@ -3970,11 +4032,18 @@ if __name__ == "__main__":
             print(f"[WARN] Failed to load OCR: {e}")
     
     # Setup Queue (Still needed for GUI but threads will use directory scanning)
-    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
-    if os.path.exists(source_folder):
-        files = [f for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
-        ui_stats.update(total=len(files))
-        print(f"[FILE] Found {len(files)} files in {source_folder}")
+    # เดิมนับเฉพาะชั้นบนสุดของ backup/ เลยไม่ตรงกับที่บอทหยิบได้จริง
+    total_files = 0
+    for source_folder in queue_folder_paths():
+        if not os.path.exists(source_folder):
+            continue
+        n = 0
+        for _root, _dirs, _fs in os.walk(source_folder):
+            n += len([f for f in _fs if f.lower().endswith(".xml")])
+        total_files += n
+        print(f"[FILE] Found {n} files in {source_folder} (รวมโฟลเดอร์ย่อย)")
+    ui_stats.update(total=total_files)
+    print(f"[FILE] คิวรวมทั้งหมด {total_files} ไฟล์")
     
     # Selection
     if not args.cli and GUI_AVAILABLE:

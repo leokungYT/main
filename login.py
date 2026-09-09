@@ -789,7 +789,7 @@ if GUI_AVAILABLE:
                     # 1. Count files in queue folders (backup/ + input-id/)
                     _base = os.path.dirname(os.path.abspath(__file__))
                     qsize = 0
-                    for _qf in ("backup", "input-id"):
+                    for _qf in queue_folder_names():
                         source_folder = os.path.join(_base, _qf)
                         if os.path.exists(source_folder):
                             for _root, _dirs, _files in os.walk(source_folder):
@@ -1239,6 +1239,16 @@ def get_ocr_reader():
                 _ocr_reader = easyocr.Reader(['en'], gpu=False)
                 print("[OK] EasyOCR model loaded!")
     return _ocr_reader
+
+
+def queue_folder_names():
+    """ชื่อโฟลเดอร์คิวตาม config ("queue_folders") - ใช้ร่วมกันทั้ง 3 สคริปต์
+    ตั้งที่ ranger-gear_config.json ที่เดียว คุมทั้ง loginสะสม / หาตัว+เกียร์ / หาพร
+    """
+    folders = config.get("queue_folders") or ["backup", "input-id", "input"]
+    if isinstance(folders, str):
+        folders = [folders]
+    return [str(f) for f in folders]
 
 
 def load_config():
@@ -3971,7 +3981,7 @@ class RangerGearBot(threading.Thread):
         โฟลเดอร์ย่อยที่ใช้ไฟล์หมดแล้วทิ้งไปด้วย
         """
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        for folder_name in ("backup", "input-id"):
+        for folder_name in queue_folder_names():
             picked = self._pick_file_from(os.path.join(script_dir, folder_name))
             if picked:
                 return picked
@@ -6582,7 +6592,7 @@ if __name__ == "__main__":
     # ลบไฟล์ .lock ทั้งหมดตอนเริ่มรัน (ทั้ง backup/ และ temp/)
     cleanup_count = 0
     # 1. ลบ lock เก่าที่อาจค้างในโฟลเดอร์คิว (backup/ + input-id/)
-    for _qf in ("backup", "input-id"):
+    for _qf in queue_folder_names():
         queue_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), _qf)
         if os.path.exists(queue_folder):
             for lf in glob.glob(os.path.join(queue_folder, "*.lock")):
@@ -6655,7 +6665,7 @@ if __name__ == "__main__":
     
     # Setup Queue (Still needed for GUI but threads will use directory scanning)
     files = []
-    for _qf in ("backup", "input-id"):
+    for _qf in queue_folder_names():
         source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), _qf)
         if not os.path.exists(source_folder):
             continue

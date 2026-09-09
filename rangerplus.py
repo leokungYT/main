@@ -396,11 +396,11 @@ if GUI_AVAILABLE:
         def _bg_stats_counter_loop(self):
             while True:
                 try:
-                    # Count files in backup folder
-                    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+                    # นับทุกโฟลเดอร์คิว + โฟลเดอร์ย่อย ให้ตรงกับที่ _get_next_available_file() หยิบได้จริง
                     qsize = 0
-                    if os.path.exists(source_folder):
-                        # นับโฟลเดอร์ย่อยด้วย ให้ตรงกับที่ _get_next_available_file() หยิบได้จริง
+                    for source_folder in queue_folder_paths():
+                        if not os.path.exists(source_folder):
+                            continue
                         for _root, _dirs, _files in os.walk(source_folder):
                             qsize += len([f for f in _files if f.lower().endswith(".xml")])
                     self.qsize = qsize
@@ -757,17 +757,38 @@ def get_ocr_reader():
     return _ocr_reader
 
 
-def load_config():
-    global config
-    
+def queue_folder_paths():
+    """โฟลเดอร์คิวทั้งหมดตาม config - ให้ตัวนับบนจอกับที่บอทหยิบจริงตรงกันเสมอ"""
+    folders = config.get("queue_folders") or ["backup", "input-id", "input"]
+    if isinstance(folders, str):
+        folders = [folders]
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return [os.path.join(script_dir, str(f)) for f in folders]
+
+
+_config_sig = None
+
+
+def load_config(quiet=False):
+    """quiet=True -> พิมพ์เฉพาะตอนไฟล์ config เปลี่ยนจริง
+
+    run() เรียกฟังก์ชันนี้ทุกรอบ เดิมพิมพ์ทุกครั้งจน log กลายเป็น
+    [CONFIG] Base Loaded ไล่ยาว กลบบรรทัดที่บอกสาเหตุจริงจนไล่ปัญหาไม่ได้
+    """
+    global config, _config_sig
+
     # Load ONLY main config from ranger-gear_config.json
     main_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ranger-gear_config.json")
     if os.path.exists(main_config_file):
         try:
             with open(main_config_file, 'r', encoding='utf-8') as f:
-                loaded = json.load(f)
-                config.update(loaded)
-            print(f"[CONFIG] Base Loaded: {main_config_file}")
+                raw = f.read()
+            loaded = json.loads(raw)
+            config.update(loaded)
+            sig = hashlib.md5(raw.encode("utf-8")).hexdigest()
+            if not quiet or sig != _config_sig:
+                print(f"[CONFIG] Base Loaded: {main_config_file}")
+            _config_sig = sig
         except Exception as e:
             print(f"[WARN] Error loading config: {e}")
     else:
@@ -1302,8 +1323,8 @@ class RangerPlusBot(multiprocessing.Process):
                     sleep(5)
                     continue
 
-                # 0. Reload Config
-                load_config()
+                # 0. Reload Config (เงียบ - พิมพ์เฉพาะตอนค่าเปลี่ยนจริง)
+                load_config(quiet=True)
                 self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
                 self.do_gear = config.get("find_gear", 0) or config.get("find_all", 1)
 
@@ -1312,6 +1333,7 @@ class RangerPlusBot(multiprocessing.Process):
                 
                 if not xml_file:
                     self.update_gui_status("Waiting for files", "waiting")
+                    self._report_idle_queue()
                     sleep(5)
                     continue
 
@@ -1400,6 +1422,94 @@ class RangerPlusBot(multiprocessing.Process):
         lock_name = hashlib.md5(full.encode("utf-8")).hexdigest() + "_" + os.path.basename(xml_file) + ".lock"
         return os.path.join(lock_dir, lock_name)
 
+    # lock ที่ค้างเกินเวลานี้ถือว่าเจ้าของตายไปแล้ว (กันไฟล์ค้างถาวร)
+    _STALE_LOCK_SEC = 1800
+    # โฟลเดอร์คิวที่ยอมหยิบไฟล์มาทำ - ตั้งทับได้ใน config ("queue_folders")
+    QUEUE_FOLDERS_DEFAULT = ["backup", "input-id", "input"]
+    # โฟลเดอร์ที่ไม่ใช่คิว แต่มักมีไฟล์ค้าง - ใช้บอกใน log ตอนว่างงานว่าไฟล์ไปกองอยู่ไหน
+    OTHER_FOLDERS = ["backup-xml", "login-success", "login-failed", "not-found"]
+
+    @staticmethod
+    def _pid_alive(pid):
+        """เจ้าของ lock ยังรันอยู่ไหม - ถ้าตายแล้วยึด lock คืนได้เลย ไม่ต้องรอครบ 30 นาที"""
+        if pid <= 0:
+            return True
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                STILL_ACTIVE = 259
+                h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+                if not h:
+                    return False
+                code = ctypes.c_ulong()
+                ok = ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+                ctypes.windll.kernel32.CloseHandle(h)
+                return (not ok) or code.value == STILL_ACTIVE
+            os.kill(pid, 0)   # POSIX เท่านั้น - บน Windows os.kill ฆ่าโปรเซสจริง
+            return True
+        except OSError:
+            return False
+        except Exception:
+            return True   # เช็คไม่ได้ = ถือว่ายังอยู่ ปล่อยให้กฎ 30 นาทีจัดการแทน
+
+    @staticmethod
+    def _lock_owner(lock_file):
+        """คืน (pid, device) ของเจ้าของ lock - lock รูปแบบเก่าเก็บแค่ device จะได้ pid = 0"""
+        try:
+            with open(lock_file, "r", encoding="utf-8", errors="ignore") as f:
+                raw = f.read().strip()
+        except OSError:
+            return 0, ""
+        pid, sep, dev = raw.partition("|")
+        if not sep:
+            return 0, raw
+        try:
+            return int(pid), dev
+        except ValueError:
+            return 0, raw
+
+    def _queue_folders(self):
+        folders = config.get("queue_folders") or self.QUEUE_FOLDERS_DEFAULT
+        if isinstance(folders, str):
+            folders = [folders]
+        return [str(f) for f in folders]
+
+    @staticmethod
+    def _count_xml(folder):
+        n = 0
+        if os.path.isdir(folder):
+            for _r, _d, _fs in os.walk(folder):
+                n += sum(1 for f in _fs if f.lower().endswith(".xml"))
+        return n
+
+    def _report_idle_queue(self, every_sec=30):
+        """บอกสาเหตุที่ไม่มีงานทำ - คิวหมดจริง ติด lock ค้าง หรือไฟล์อยู่โฟลเดอร์ที่ไม่ได้อ่าน"""
+        now = time.time()
+        if now - getattr(self, "_idle_logged_at", 0) < every_sec:
+            return
+        self._idle_logged_at = now
+        total, locked = getattr(self, "_queue_stats", (0, 0))
+        qnames = " + ".join(f + "/" for f in self._queue_folders())
+        if total:
+            print(f"[{self.device_id}] [QUEUE] ว่างงาน: เจอ {total} ไฟล์ใน {qnames} "
+                  f"แต่ติด lock อยู่ {locked} ไฟล์ (เครื่องอื่นถืออยู่ หรือ lock ค้าง)")
+            return
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        queue_set = set(self._queue_folders())
+        elsewhere = []
+        for name in self.OTHER_FOLDERS:
+            if name in queue_set:
+                continue
+            n = self._count_xml(os.path.join(script_dir, name))
+            if n:
+                elsewhere.append(f"{name}/={n}")
+        msg = f"[{self.device_id}] [QUEUE] ว่างงาน: ไม่มีไฟล์ .xml เหลือใน {qnames}"
+        if elsewhere:
+            msg += (f" | ไฟล์ที่ยังเหลือไปกองอยู่ที่ {', '.join(elsewhere)}"
+                    f" - ถ้าอยากให้ดึงมาทำด้วย ใส่ชื่อโฟลเดอร์ใน config \"queue_folders\"")
+        print(msg)
+
     @staticmethod
     def _prune_if_empty(folder, root_folder):
         """ลบโฟลเดอร์ย่อยใน backup/ ที่ไม่เหลืออะไรแล้ว
@@ -1429,8 +1539,25 @@ class RangerPlusBot(multiprocessing.Process):
         เดินเข้าทุกโฟลเดอร์ย่อยใน backup/ (ลากทั้งโฟลเดอร์มาวางได้เลย) และเก็บกวาด
         โฟลเดอร์ย่อยที่ใช้ไฟล์หมดแล้วทิ้งไปด้วย
         """
-        source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
-        if not os.path.exists(source_folder): return None
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        total = locked = 0
+        for name in self._queue_folders():
+            picked, n_files, n_locked = self._pick_file_from(os.path.join(script_dir, name))
+            total += n_files
+            locked += n_locked
+            if picked:
+                return picked
+        # เก็บสถิติไว้ให้ _report_idle_queue() บอกได้ว่าว่างงานเพราะอะไร
+        self._queue_stats = (total, locked)
+        return None
+
+    def _pick_file_from(self, source_folder):
+        """หา+จองไฟล์ .xml จากโฟลเดอร์เดียว
+
+        คืน (path ที่จองได้ หรือ None, จำนวนไฟล์ที่เจอ, จำนวนที่ติด lock)
+        """
+        if not os.path.exists(source_folder):
+            return None, 0, 0
 
         files = []
         # topdown=False = เดินจากในสุดออกมา โฟลเดอร์ซ้อนหลายชั้นที่ว่างหมดแล้ว
@@ -1443,22 +1570,34 @@ class RangerPlusBot(multiprocessing.Process):
         # Shuffle files so multiple processes don't hit the exact same order
         import random
         random.shuffle(files)
-        
+
+        locked_count = 0
         for xml_file in files:
             lock_file = self._get_lock_path(xml_file)
-            
-            # 1. Clean stale locks (> 30 mins)
+
+            # 1. Clean stale locks: เจ้าของตายไปแล้ว หรือค้างเกิน 30 นาที
+            #    getmtime อาจ error ถ้าอีก process เพิ่งปล่อย lock พอดี - เดิมไม่ได้ดัก
             if os.path.exists(lock_file):
-                if time.time() - os.path.getmtime(lock_file) > 1800:
+                try:
+                    age = time.time() - os.path.getmtime(lock_file)
+                except OSError:
+                    age = None   # หายไปแล้วระหว่างเช็ค - ลองยึดต่อได้เลย
+                owner_pid, owner_dev = self._lock_owner(lock_file)
+                dead_owner = owner_pid > 0 and not self._pid_alive(owner_pid)
+                if age is None or dead_owner or age > self._STALE_LOCK_SEC:
+                    if dead_owner:
+                        print(f"[{self.device_id}] [LOCK] เจ้าของ lock (pid {owner_pid} / {owner_dev}) ไม่อยู่แล้ว - ยึดคืน: {os.path.basename(xml_file)}")
                     try: os.remove(lock_file)
-                    except: pass
-                else: continue
-            
+                    except OSError: pass
+                else:
+                    locked_count += 1
+                    continue
+
             # 2. Try Atomic Lock (O_CREAT | O_EXCL)
             try:
                 fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 with os.fdopen(fd, 'w') as f:
-                    f.write(self.device_id)
+                    f.write(f"{os.getpid()}|{self.device_id}")
                 # ไฟล์อาจถูกอีกเครื่องหยิบไปย้ายเรียบร้อยแล้วตั้งแต่ตอนที่เราไล่ list
                 # ถ้าหายไปแล้วก็คืน lock แล้วไปตัวถัดไป ดีกว่าเอา path ที่ไม่มีอยู่จริง
                 # ไปให้ inject_file แล้วไปเด้ง error ทีหลัง
@@ -1466,14 +1605,15 @@ class RangerPlusBot(multiprocessing.Process):
                     try: os.remove(lock_file)
                     except OSError: pass
                     continue
-                return xml_file
+                return xml_file, len(files), locked_count
             except FileExistsError:
+                locked_count += 1
                 continue
             except Exception as e:
                 print(f"[LOCK] Error creating lock for {xml_file}: {e}")
                 continue
-                
-        return None
+
+        return None, len(files), locked_count
 
     def _release_file_lock(self, xml_file):
         lock_file = self._get_lock_path(xml_file)
@@ -3367,8 +3507,9 @@ if __name__ == "__main__":
     # ลบไฟล์ .lock ทั้งหมดตอนเริ่มรัน (ทั้ง backup/ และ temp/)
     cleanup_count = 0
     # 1. ลบ lock เก่าที่อาจค้างใน backup/
-    backup_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
-    if os.path.exists(backup_folder):
+    for backup_folder in queue_folder_paths():
+        if not os.path.exists(backup_folder):
+            continue
         for lf in glob.glob(os.path.join(backup_folder, "*.lock")):
             try: os.remove(lf); cleanup_count += 1
             except: pass
