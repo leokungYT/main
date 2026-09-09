@@ -4509,6 +4509,20 @@ class RangerGearBot(threading.Thread):
     NET_POPUPS = ("img/fixnet1.png", "img/fixnet.png")
     NET_POPUP_LIMIT = 10   # กดครบเท่านี้แล้วยังไม่หาย = เด้งแอปใหม่ ดีกว่าค้างรอเฉย ๆ
 
+    def _match_score(self, template_path):
+        """คะแนน match สูงสุดของรูปบนจอล่าสุด (0-1) - ไว้บอกใน log ว่า 'เกือบเจอ' หรือ 'ไม่เจอเลย'"""
+        try:
+            tmpl = self._get_template(template_path)
+            if self._screen is None or tmpl is None:
+                return 0.0
+            th, tw = tmpl.shape[:2]
+            if self._screen.shape[0] < th or self._screen.shape[1] < tw:
+                return 0.0
+            res = cv2.matchTemplate(self._screen, tmpl, cv2.TM_CCOEFF_NORMED)
+            return float(cv2.minMaxLoc(res)[1])
+        except Exception:
+            return 0.0
+
     def _dismiss_net_popup(self, screen, similarity=0.8):
         """หา fixnet1/fixnet บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
 
@@ -4651,20 +4665,25 @@ class RangerGearBot(threading.Thread):
         taps_at_entry = self._tap_count
 
         # checkline.png: Handle Checkbox Popup Sequence
-        if self.exists_in_cache("img/checkline.png"):
+        if self.exists_in_cache("img/checkline.png", similarity=0.8):
             print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
-            self.click("img/checkline.png")
+            self.click("img/checkline.png", similarity=0.8)
             sleep(2)
             
             # 1. Wait for @check-l1.png
             start_l1 = time.time()
             while time.time() - start_l1 < 60:
                 self._raw_capture()
-                if self.exists_in_cache("img/check-l1.png"):
+                if self.exists_in_cache("img/check-l1.png", similarity=0.85):
                     print(f"[{self.device_id}] [POPUP] Found check-l1.png")
                     break
                 sleep(1)
             
+            else:
+                _sc = self._match_score("img/check-l1.png")
+                _shot = self._save_debug_screen("checkline-miss")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.85)"
+                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             # 2. Coordinates
             print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
             self.tap(932, 133)
@@ -4678,23 +4697,33 @@ class RangerGearBot(threading.Thread):
             start_l4 = time.time()
             while time.time() - start_l4 < 60:
                 self._raw_capture()
-                if self.exists_in_cache("img/check-l4.png"):
+                if self.exists_in_cache("img/check-l4.png", similarity=0.8):
                     print(f"[{self.device_id}] [POPUP] Found and clicking check-l4.png")
-                    self.click("img/check-l4.png")
+                    self.click("img/check-l4.png", similarity=0.8)
                     break
                 sleep(1)
                 
+            else:
+                _sc = self._match_score("img/check-l4.png")
+                _shot = self._save_debug_screen("checkline-miss")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-l4.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             # 4. Click check-ok1.png
             print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
             for _ in range(60):
                 self._raw_capture()
-                if self.exists_in_cache("img/check-ok1.png"):
-                    self.click("img/check-ok1.png")
+                if self.exists_in_cache("img/check-ok1.png", similarity=0.8):
+                    self.click("img/check-ok1.png", similarity=0.8)
                     print(f"[{self.device_id}] [POPUP] Checkline sequence complete!")
                     sleep(1)
                     self._raw_capture() # Update cache for caller
                     break
                 sleep(1)
+            else:
+                _sc = self._match_score("img/check-ok1.png")
+                _shot = self._save_debug_screen("checkline-miss")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-ok1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             return
 
         # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
@@ -5563,13 +5592,19 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] Step 2: clicking refresh.png...")
                         for _ in range(10): # Timeout 10s
                             self.capture_screen()
-                            if self.exists_in_cache("img/refresh.png"):
-                                self.click("img/refresh.png")
+                            if self.exists_in_cache("img/refresh.png", similarity=0.8):
+                                self.click("img/refresh.png", similarity=0.8)
                                 print(f"[{self.device_id}] Clicked refresh.png")
                                 sleep(3)
                                 break
                             sleep(1)
                         
+                        else:
+                            # ครบเวลาแล้วไม่เจอ refresh.png - เดิมเงียบไปเฉย ๆ ไล่ไม่ได้ว่ารูปไม่แมตช์หรือจอไม่มา
+                            _sc = self._match_score("img/refresh.png")
+                            _shot = self._save_debug_screen("refresh-miss")
+                            print(f"[{self.device_id}] [REFRESH] ไม่เจอ refresh.png (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                                  + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
                         # 3) รอ check.png แล้วกด (timeout 60 วิ)
                         print(f"[{self.device_id}] Step 3: waiting for check.png...")
                         check_wait_start = time.time()
@@ -6134,13 +6169,19 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] Step 2: clicking refresh.png (10s timeout)...")
                 for _ in range(10): # Timeout 10s
                     self.capture_screen()
-                    if self.exists_in_cache("img/refresh.png"):
-                        self.click("img/refresh.png")
+                    if self.exists_in_cache("img/refresh.png", similarity=0.8):
+                        self.click("img/refresh.png", similarity=0.8)
                         print(f"[{self.device_id}] Clicked refresh.png")
                         sleep(3)
                         break
                     sleep(1)
                 
+                else:
+                    # ครบเวลาแล้วไม่เจอ refresh.png - เดิมเงียบไปเฉย ๆ ไล่ไม่ได้ว่ารูปไม่แมตช์หรือจอไม่มา
+                    _sc = self._match_score("img/refresh.png")
+                    _shot = self._save_debug_screen("refresh-miss")
+                    print(f"[{self.device_id}] [REFRESH] ไม่เจอ refresh.png (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                          + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
                 # 3) รอ check.png แล้วกด
                 print(f"[{self.device_id}] Step 3: waiting for check.png (60s timeout)...")
                 check_wait_start = time.time()
@@ -6173,9 +6214,9 @@ class RangerGearBot(threading.Thread):
                 continue
 
             # === เจอ refresh.png (ไม่มี fixid) -> กด refresh -> check ===
-            if self.exists_in_cache("img/refresh.png"):
+            if self.exists_in_cache("img/refresh.png", similarity=0.8):
                 print(f"[{self.device_id}] Found refresh.png (no fixid), clicking refresh -> check...")
-                self.click("img/refresh.png")
+                self.click("img/refresh.png", similarity=0.8)
                 sleep(3)
                 
                 check_wait_start = time.time()
