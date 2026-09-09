@@ -4554,38 +4554,55 @@ class RangerGearBot(threading.Thread):
         sx, sy = getattr(self, "_tap_scale", (1.0, 1.0))
         return int(round(x * sx)), int(round(y * sy))
 
-    def _dismiss_net_popup(self, screen, similarity=0.8):
-        """หา fixnet1/fixnet บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
+    # สเกลที่ monitor เบื้องหลังลองไล่ (เผื่อเกมวาด UI ใหญ่/เล็กกว่ารูปที่ตัดไว้ แม้จอจะ 960x540)
+    NET_SCALES = (1.0, 1.33, 1.5, 0.75, 1.67, 0.67, 2.0, 0.5)
 
-        ลูปรอเกือบทั้งไฟล์จับจอเองแต่ไม่ได้เรียก check_floating_popups() ป๊อปอัพ
-        เน็ตหลุดที่เด้งตอนนั้นเลยไม่มีใครกดปิด ตัวนี้เลยถูกเรียกจาก thread monitor
-        เบื้องหลังแทน จะได้ครอบคลุมทุกลูปพร้อมกัน
+    def _dismiss_net_popup(self, screen, similarity=0.8, scales=None):
+        """หา fixnet-tiket/fixnet1/fixnet บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
+
+        scales=None      -> ใช้สเกลที่เคยเจอ (เริ่ม 1.0) ราคาถูก เรียกได้ทุกครั้งที่จับจอ
+        scales=NET_SCALES -> ไล่ทุกสเกล (monitor เบื้องหลังใช้) เจอสเกลไหนจำไว้ให้รอบต่อไป
         """
         if screen is None:
             return None
+        if scales is None:
+            scales = (getattr(self, "_net_scale", 1.0),)
+        best = None   # (score, path, cx, cy, scale)
         for path in self.NET_POPUPS:
-            tmpl = self._get_template(path)
-            if tmpl is None:
+            tmpl0 = self._get_template(path)
+            if tmpl0 is None:
                 continue
-            th, tw = tmpl.shape[:2]
-            if screen.shape[0] < th or screen.shape[1] < tw:
-                continue
-            res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, max_loc = cv2.minMaxLoc(res)
-            if max_val >= similarity:
-                now = time.time()
-                if now - getattr(self, "_netpopup_last_click", 0) < 1.0:
-                    return None          # เพิ่งกดไป รอป๊อปอัพหายก่อน ไม่กดรัว (cooldown 1 วิ)
-                self._netpopup_last_click = now
-                # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
-                # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
-                keep_activity = getattr(self, "last_activity_time", None)
-                self.tap(max_loc[0] + tw // 2, max_loc[1] + th // 2)
-                if keep_activity is not None:
-                    self.last_activity_time = keep_activity
-                print(f"[{self.device_id}] [NET] พบ {os.path.basename(path)} -> กดทันที ({max_loc[0] + tw // 2}, {max_loc[1] + th // 2})")
-                return os.path.basename(path)
-        return None
+            for sc in scales:
+                if sc == 1.0:
+                    tmpl = tmpl0
+                else:
+                    tmpl = cv2.resize(tmpl0, None, fx=sc, fy=sc,
+                                      interpolation=cv2.INTER_AREA if sc < 1 else cv2.INTER_CUBIC)
+                th, tw = tmpl.shape[:2]
+                if screen.shape[0] < th or screen.shape[1] < tw:
+                    continue
+                res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                if max_val >= similarity and (best is None or max_val > best[0]):
+                    best = (max_val, path, max_loc[0] + tw // 2, max_loc[1] + th // 2, sc)
+        if best is None:
+            return None
+        score, path, cx, cy, sc = best
+        now = time.time()
+        if now - getattr(self, "_netpopup_last_click", 0) < 1.0:
+            return None          # เพิ่งกดไป รอป๊อปอัพหายก่อน ไม่กดรัว (cooldown 1 วิ)
+        self._netpopup_last_click = now
+        if sc != getattr(self, "_net_scale", 1.0):
+            self._net_scale = sc
+            print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
+        # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
+        # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
+        keep_activity = getattr(self, "last_activity_time", None)
+        self.tap(cx, cy)
+        if keep_activity is not None:
+            self.last_activity_time = keep_activity
+        print(f"[{self.device_id}] [NET] พบ {os.path.basename(path)} (score {score:.2f}, x{sc:.2f}) -> กดทันที ({cx}, {cy})")
+        return os.path.basename(path)
 
     def _popup_monitor_loop(self):
         """Background thread to monitor fixnetv3.png - reuses main thread's screen to save CPU"""
@@ -4596,7 +4613,7 @@ class RangerGearBot(threading.Thread):
                 if mon_screen is not None:
                     # fixnet1/fixnet: กดปิดจากตรงนี้ด้วย เพราะลูปรอส่วนใหญ่ไม่ได้
                     # เรียก check_floating_popups() เอง
-                    hit = self._dismiss_net_popup(mon_screen)
+                    hit = self._dismiss_net_popup(mon_screen, scales=self.NET_SCALES)   # monitor ไล่ทุกสเกล
                     if hit:
                         self._netpopup_count = getattr(self, "_netpopup_count", 0) + 1
                         print(f"[{self.device_id}] [MONITOR] {hit} เด้ง (#{self._netpopup_count}) - กดปิดให้แล้ว")
