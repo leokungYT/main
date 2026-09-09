@@ -1252,6 +1252,7 @@ class RangerPlusBot(multiprocessing.Process):
 
     def _normalize_frame(self):
         """ย่อ/ขยายเฟรมให้เป็น 960x540 เสมอ แล้วจำอัตราส่วนไว้สเกลจุดกดกลับเป็นพิกัดจริง"""
+        self._screen_ts = time.time()   # เวลาที่ได้เฟรมล่าสุด (monitor ใช้ดูว่าเฟรมค้างไหม)
         scr = self._screen
         if scr is None:
             self._tap_scale = (1.0, 1.0)
@@ -1316,6 +1317,30 @@ class RangerPlusBot(multiprocessing.Process):
                 best = (max_val, max_loc[0] + tw // 2, max_loc[1] + th // 2, sc)
         return best
 
+    NET_RETRY_ROUNDS = 25   # กดซ้ำสูงสุดต่อรอบ (ห่างกัน ~1.2 วิ = ราว 30 วิ) ก่อนปล่อยให้รอบถัดไปลองต่อ
+
+    def _clear_net_popup_loop(self, first_hit):
+        """กดป๊อปอัพเน็ตซ้ำ ๆ จนกว่าจะหายไปจากจอ (เน็ตสะดุด RETRY ครั้งเดียวมักไม่พอ)
+
+        เรียกหลังจากกดครั้งแรกไปแล้ว: รอ -> จับจอใหม่ -> ยังเห็นอยู่ก็กดอีก วนจนหาย
+        หรือครบ NET_RETRY_ROUNDS แล้วปล่อย (monitor เบื้องหลังจะเก็บต่อ / เกิน limit จะเด้งแอป)
+        """
+        rounds = 1
+        while rounds < self.NET_RETRY_ROUNDS:
+            sleep(1.2)
+            try:
+                self._raw_capture()
+            except Exception:
+                pass
+            self._netpopup_last_click = 0          # ให้กดซ้ำได้ทันที ไม่ติด cooldown
+            hit = self._dismiss_net_popup(self._screen, scales=(getattr(self, "_net_scale", 1.0),))
+            if not hit:
+                print(f"[{self.device_id}] [NET] {first_hit} หายแล้วหลังกด {rounds} ครั้ง")
+                return True
+            rounds += 1
+        print(f"[{self.device_id}] [NET] กด {first_hit} ไป {rounds} ครั้งแล้วยังไม่หาย (เน็ตยังไม่กลับมา) - ปล่อยให้รอบถัดไปลองต่อ")
+        return False
+
     def _dismiss_net_popup(self, screen, similarity=0.8, scales=None):
         """หาป๊อปอัพเน็ต (RETRY / network-OK) บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
 
@@ -1364,12 +1389,22 @@ class RangerPlusBot(multiprocessing.Process):
         while self._running:
             self._log_pos_cache()
             try:
+                # thread หลักตาย/ค้างในคำสั่งยาว -> เฟรมไม่ขยับ monitor จับจอเองจะได้ยังเห็นป๊อปอัพ
+                if time.time() - getattr(self, "_screen_ts", 0) > 5 and not getattr(self, "_in_net_check", False):
+                    self._in_net_check = True
+                    try:
+                        self._raw_capture()
+                    except Exception:
+                        pass
+                    finally:
+                        self._in_net_check = False
                 mon_screen = self._screen
                 if mon_screen is not None:
                     # fixnet1/fixnet: กดปิดจากตรงนี้ด้วย เพราะลูปรอส่วนใหญ่ไม่ได้
                     # เรียก check_floating_popups() เอง
                     hit = self._dismiss_net_popup(mon_screen, scales=self.NET_SCALES)   # monitor ไล่ทุกสเกล
                     if hit:
+                        self._clear_net_popup_loop(hit)   # กดซ้ำจนหาย
                         self._netpopup_count = getattr(self, "_netpopup_count", 0) + 1
                         print(f"[{self.device_id}] [MONITOR] {hit} เด้ง (#{self._netpopup_count}) - กดปิดให้แล้ว")
                         if self._netpopup_count >= self.NET_POPUP_LIMIT:
@@ -2044,9 +2079,9 @@ class RangerPlusBot(multiprocessing.Process):
             if not getattr(self, "_in_net_check", False):
                 self._in_net_check = True
                 try:
-                    if self._dismiss_net_popup(self._screen):
-                        sleep(0.5)
-                        self._raw_capture()
+                    _hit = self._dismiss_net_popup(self._screen)
+                    if _hit:
+                        self._clear_net_popup_loop(_hit)   # กดซ้ำจนกว่าป๊อปอัพจะหาย แล้วค่อยคืนภาพให้ผู้เรียก
                 finally:
                     self._in_net_check = False
 
@@ -2435,9 +2470,9 @@ class RangerPlusBot(multiprocessing.Process):
             if not getattr(self, "_in_net_check", False):
                 self._in_net_check = True
                 try:
-                    if self._dismiss_net_popup(self._screen):
-                        sleep(0.5)
-                        self._raw_capture()
+                    _hit = self._dismiss_net_popup(self._screen)
+                    if _hit:
+                        self._clear_net_popup_loop(_hit)   # กดซ้ำจนกว่าป๊อปอัพจะหาย แล้วค่อยคืนภาพให้ผู้เรียก
                 finally:
                     self._in_net_check = False
         except Exception as e:
