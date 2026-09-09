@@ -4566,40 +4566,77 @@ class RangerGearBot(threading.Thread):
         sx, sy = getattr(self, "_tap_scale", (1.0, 1.0))
         return int(round(x * sx)), int(round(y * sy))
 
+    def _adb_tap(self, x, y):
+        """กดด้วย adb shell input tap ตรง ๆ (ไม่ผ่าน minitouch) - เหมือน bot-tiket
+
+        minitouch คืน True แค่ 'ส่งคำสั่งลง socket ได้' ไม่รู้ว่าสัมผัสถึงจอจริงไหม
+        พอ minitouch ค้าง บอทจะคิดว่ากดแล้วทั้งที่ป๊อปอัพยังอยู่ (log: กดปิดให้แล้ว #3 แต่ไม่หาย)
+        ป๊อปอัพเน็ตสำคัญเกินกว่าจะเสี่ยง จึงยิง input tap ตรง ๆ เสมอ
+        """
+        dx, dy = self._dev_xy(x, y)
+        try:
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap", str(dx), str(dy)], timeout=8)
+            return True
+        except Exception as e:
+            print(f"[{self.device_id}] [NET] adb input tap ไม่สำเร็จ: {e}")
+            return False
+
     # สเกลที่ monitor เบื้องหลังลองไล่ (เผื่อเกมวาด UI ใหญ่/เล็กกว่ารูปที่ตัดไว้ แม้จอจะ 960x540)
     NET_SCALES = (1.0, 1.33, 1.5, 0.75, 1.67, 0.67, 2.0, 0.5)
+    # ป๊อปอัพที่ 'รูปตรวจจับ' กับ 'ปุ่มที่ต้องกด' เป็นคนละรูป: เจอตัวซ้าย -> หาแล้วกดตัวขวา
+    NET_DETECT_THEN_TAP = (("img/fixnetv2.png", "img/fixnetv2ok.png"),)
+
+    def _best_match(self, screen, path, similarity, scales):
+        """คืน (score, cx, cy, scale) ที่ดีที่สุดของรูปบนจอ หรือ None ถ้าต่ำกว่า similarity"""
+        tmpl0 = self._get_template(path)
+        if tmpl0 is None:
+            return None
+        best = None
+        for sc in scales:
+            if sc == 1.0:
+                tmpl = tmpl0
+            else:
+                tmpl = cv2.resize(tmpl0, None, fx=sc, fy=sc,
+                                  interpolation=cv2.INTER_AREA if sc < 1 else cv2.INTER_CUBIC)
+            th, tw = tmpl.shape[:2]
+            if screen.shape[0] < th or screen.shape[1] < tw:
+                continue
+            res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+            if max_val >= similarity and (best is None or max_val > best[0]):
+                best = (max_val, max_loc[0] + tw // 2, max_loc[1] + th // 2, sc)
+        return best
 
     def _dismiss_net_popup(self, screen, similarity=0.8, scales=None):
-        """หา fixnet-tiket/fixnet1/fixnet บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
+        """หาป๊อปอัพเน็ต (RETRY / network-OK) บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
 
-        scales=None      -> ใช้สเกลที่เคยเจอ (เริ่ม 1.0) ราคาถูก เรียกได้ทุกครั้งที่จับจอ
+        กดด้วย adb input tap ตรง ๆ เสมอ (ไม่ผ่าน minitouch) เหมือน bot-tiket
+        scales=None       -> ใช้สเกลที่เคยเจอ (เริ่ม 1.0) ราคาถูก เรียกได้ทุกครั้งที่จับจอ
         scales=NET_SCALES -> ไล่ทุกสเกล (monitor เบื้องหลังใช้) เจอสเกลไหนจำไว้ให้รอบต่อไป
         """
         if screen is None:
             return None
         if scales is None:
             scales = (getattr(self, "_net_scale", 1.0),)
-        best = None   # (score, path, cx, cy, scale)
+        hit = None   # (score, path_to_report, cx, cy, scale)
         for path in self.NET_POPUPS:
-            tmpl0 = self._get_template(path)
-            if tmpl0 is None:
-                continue
-            for sc in scales:
-                if sc == 1.0:
-                    tmpl = tmpl0
-                else:
-                    tmpl = cv2.resize(tmpl0, None, fx=sc, fy=sc,
-                                      interpolation=cv2.INTER_AREA if sc < 1 else cv2.INTER_CUBIC)
-                th, tw = tmpl.shape[:2]
-                if screen.shape[0] < th or screen.shape[1] < tw:
+            b = self._best_match(screen, path, similarity, scales)
+            if b and (hit is None or b[0] > hit[0]):
+                hit = (b[0], path, b[1], b[2], b[3])
+        if hit is None:
+            for detect, target in self.NET_DETECT_THEN_TAP:
+                d = self._best_match(screen, detect, similarity, scales)
+                if not d:
                     continue
-                res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
-                _, max_val, _, max_loc = cv2.minMaxLoc(res)
-                if max_val >= similarity and (best is None or max_val > best[0]):
-                    best = (max_val, path, max_loc[0] + tw // 2, max_loc[1] + th // 2, sc)
-        if best is None:
+                t = self._best_match(screen, target, similarity, (d[3],))
+                if t:
+                    hit = (t[0], target, t[1], t[2], t[3])
+                else:
+                    print(f"[{self.device_id}] [NET] เจอ {os.path.basename(detect)} แต่ยังไม่เห็นปุ่ม {os.path.basename(target)} - รอเฟรมถัดไป")
+                break
+        if hit is None:
             return None
-        score, path, cx, cy, sc = best
+        score, path, cx, cy, sc = hit
         now = time.time()
         if now - getattr(self, "_netpopup_last_click", 0) < 1.0:
             return None          # เพิ่งกดไป รอป๊อปอัพหายก่อน ไม่กดรัว (cooldown 1 วิ)
@@ -4609,11 +4646,8 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
         # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
         # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
-        keep_activity = getattr(self, "last_activity_time", None)
-        self.tap(cx, cy)
-        if keep_activity is not None:
-            self.last_activity_time = keep_activity
-        print(f"[{self.device_id}] [NET] พบ {os.path.basename(path)} (score {score:.2f}, x{sc:.2f}) -> กดทันที ({cx}, {cy})")
+        self._adb_tap(cx, cy)
+        print(f"[{self.device_id}] [NET] พบ {os.path.basename(path)} (score {score:.2f}, x{sc:.2f}) -> adb tap ทันที ({cx}, {cy})")
         return os.path.basename(path)
 
     def _popup_monitor_loop(self):
@@ -4646,7 +4680,7 @@ class RangerGearBot(threading.Thread):
                         if max_val >= 0.8:
                             self._fixnetv3_count += 1
                             print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
-                            self.tap(472, 361)
+                            self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
                             
                             if self._fixnetv3_count >= 8:
                                 print(f"[{self.device_id}] [MONITOR] fixnetv3.png persists after 8 clicks! Force-stopping app...")
@@ -4788,13 +4822,13 @@ class RangerGearBot(threading.Thread):
             return
 
         # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
-        if self.exists_in_cache("img/fixnetv2.png"):
+        if self.exists_in_cache("img/fixnetv2.png", similarity=0.8):
             print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
-            self.click("img/fixnetv2.png")
+            self.click("img/fixnetv2.png", similarity=0.8)
             sleep(2)
             self._raw_capture()
-            if self.exists_in_cache("img/fixnetv2ok.png"):
-                self.click("img/fixnetv2ok.png")
+            if self.exists_in_cache("img/fixnetv2ok.png", similarity=0.8):
+                self.click("img/fixnetv2ok.png", similarity=0.8)
                 sleep(1)
                 self._raw_capture() # Update cache for caller
             return
@@ -4843,7 +4877,7 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
             self._fixnetv3_count += 1
             print(f"[{self.device_id}] [POPUP] fixnetv3.png detected (#{self._fixnetv3_count}), tapping (472, 361)...")
-            self.tap(472, 361)
+            self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
             sleep(1.5)
             self._raw_capture()
             
@@ -6166,7 +6200,7 @@ class RangerGearBot(threading.Thread):
             # fixnetv3.png Check in login loop
             if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
                 print(f"[{self.device_id}] [POPUP] fixnetv3.png detected in login loop! Tapping (472, 361)...")
-                self.tap(472, 361)
+                self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
                 sleep(0.5)
                 continue
 
