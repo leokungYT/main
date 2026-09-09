@@ -123,6 +123,8 @@
     "auto_start": 1,
     "gear_wait_timeout": 120,
     "nav_timeout": 180,
+    "start_batch": 4,
+    "start_timeout": 20,
     "find_all_rangerplus": 0,
     "custom_plus": {
         "kappa": 0,

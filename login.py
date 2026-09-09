@@ -944,7 +944,7 @@ if GUI_AVAILABLE:
                         args_dict = vars(self.args) if hasattr(self.args, '__dict__') else {}
                         p = multiprocessing.Process(
                             target=run_bot_process,
-                            args=(dev, args_dict),
+                            args=(dev, args_dict, getattr(self, "_ready_q", None)),
                             name=f"Bot-{dev}"
                         )
                         p.daemon = True
@@ -969,13 +969,45 @@ if GUI_AVAILABLE:
             args_dict = vars(self.args) if hasattr(self.args, '__dict__') else {}
             p = multiprocessing.Process(
                 target=run_bot_process,
-                args=(device_id, args_dict),
+                args=(device_id, args_dict, getattr(self, "_ready_q", None)),
                 name=f"Bot-{device_id}"
             )
             p.daemon = True
             p.start()
             self.bot_threads.append(p)
             self.log("INFO", f"🚀 Started bot process on {device_id} (PID: {p.pid})")
+
+        def _ramp_tick(self):
+            """ปล่อยบอทตัวถัดไปทันทีที่ตัวก่อนหน้าพร้อม - ไม่นอนรอเวลาเปล่า ๆ
+
+            เดิมจองเวลาไว้ล่วงหน้าตายตัว (i // batch * delay) เครื่องที่พร้อมเร็ว
+            ก็ต้องรอจนครบเวลาอยู่ดี ตอนนี้ delay เหลือเป็นแค่เพดานกันค้าง
+            """
+            # 1) เก็บสัญญาณ "พร้อมแล้ว" ที่บอทส่งกลับมา
+            while True:
+                try:
+                    dev = self._ready_q.get_nowait()
+                except Exception:
+                    break
+                if self._starting.pop(dev, None) is not None:
+                    self.log("SUCCESS", f"✓ {dev} พร้อม (เหลือรอคิว {len(self._pending)})")
+            # 2) ตัวที่เงียบเกินเพดาน ไม่รอแล้ว (emulator ค้าง/ยังบูตไม่เสร็จ)
+            now = time.time()
+            for dev, t0 in list(self._starting.items()):
+                if now - t0 > self._start_timeout:
+                    self._starting.pop(dev, None)
+                    self.log("WARN", f"{dev} ไม่ตอบใน {self._start_timeout:.0f}s - ปล่อยตัวถัดไปเลย")
+            # 3) มีสล็อตว่างเท่าไหร่ ปล่อยเท่านั้น
+            while self._pending and len(self._starting) < self._slots:
+                dev = self._pending.pop(0)
+                self._starting[dev] = time.time()
+                self._start_single_bot(dev)
+            if self._pending or self._starting:
+                self.after(200, self._ramp_tick)
+            else:
+                self.log("SUCCESS", f"ปล่อยบอทครบ {len(self.devices)} เครื่องแล้ว "
+                                    f"(ใช้เวลา {time.time() - self._ramp_started:.0f}s)")
+
 
         def start_bot(self):
             if getattr(self, 'is_started', False):
@@ -986,13 +1018,18 @@ if GUI_AVAILABLE:
                 self.btn_start.configure(state="disabled", fg_color="#555555", text="⏳ RUNNING")
             self.lbl_auto_start.configure(text="[ BOT IS RUNNING ]", text_color="#4caf50")
             
-            delay_sec = config.get("thread_delay", 5)
-            self.log("INFO", f"Starting Bot Processes (Delay: {delay_sec}s per device)...")
-            
-            for i, device_id in enumerate(self.devices):
-                delay_ms = i * int(delay_sec) * 1000
-                # Pass device_id explicitly by freezing the variable in the lambda
-                self.after(delay_ms, lambda d=device_id: self._start_single_bot(d))
+            # ปล่อยพร้อมกัน start_batch ตัว แล้วเติมตัวถัดไป "ทันทีที่ตัวก่อนหน้าพร้อม"
+            # ไม่หน่วงตามนาฬิกาอีก - thread_delay เหลือเป็นฐานของเพดานกันค้างเท่านั้น
+            import multiprocessing
+            self._ready_q = multiprocessing.Queue()
+            self._pending = list(self.devices)
+            self._starting = {}
+            self._slots = max(1, int(config.get("start_batch", 4)))
+            self._start_timeout = float(config.get("start_timeout", float(config.get("thread_delay", 5)) * 4))
+            self._ramp_started = time.time()
+            self.log("INFO", f"Starting {len(self._pending)} Bot Processes: ปล่อยพร้อมกัน {self._slots} ตัว "
+                             f"แล้วต่อคิวทันทีที่แต่ละตัวพร้อม (เพดาน {self._start_timeout:.0f}s/ตัว)")
+            self._ramp_tick()
 
         def on_closing(self):
             if messagebox.askokcancel("Quit", "คุณต้องการหยุดบอทและปิดโปรแกรมใช่หรือไม่?\n(จะทำการ Kill ADB และ Python ทั้งหมด)"):
@@ -1425,16 +1462,21 @@ def connect_known_ports():
                 missing = [s for s in targets if s not in online]
                 if not missing:
                     break
-                for serial in missing:
+                # ยิงพร้อมกัน - เดิมไล่ทีละตัว 19 เครื่องก็รอกันเป็นสิบวินาทีตั้งแต่ยกแรก
+                def _connect_one(serial):
                     try:
                         r = subprocess.run([adb_path, "connect", serial],
                                            capture_output=True, timeout=5, text=True)
                         msg_lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
-                        msg = msg_lines[-1] if msg_lines else ""
-                        print(f"[ADB] เชื่อม {serial} (ยกที่ {round_no}): {msg}")
+                        return serial, (msg_lines[-1] if msg_lines else "")
                     except Exception as e:
-                        print(f"[ADB] เชื่อม {serial} (ยกที่ {round_no}): {type(e).__name__}")
-                time.sleep(3)
+                        return serial, type(e).__name__
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, len(missing))) as _ex:
+                    for serial, msg in _ex.map(_connect_one, missing):
+                        print(f"[ADB] เชื่อม {serial} (ยกที่ {round_no}): {msg}")
+                # เชื่อมครบแล้วไม่ต้องนอนรอ 3 วิ เปล่า ๆ
+                if [s2 for s2 in targets if s2 not in set(get_connected_devices())]:
+                    time.sleep(3)
                 # ถาม MuMuManager ซ้ำ เผื่อมี instance ที่เพิ่งบูตเสร็จโผล่เพิ่ม
                 inst_now = get_mumu_instances()
                 if inst_now:
@@ -3721,9 +3763,29 @@ class RangerGearBot(threading.Thread):
                 sleep(2)
         return False
 
+    def _signal_ready(self):
+        """บอกตัวปล่อยบอทว่าเครื่องนี้พร้อมแล้ว เพื่อให้ปล่อยเครื่องถัดไปได้ทันที
+
+        ใช้การจับจอรอบแรกเป็นตัววัด: ผ่านแล้วแปลว่า adb ต่อติดและงานหนักตอน
+        สตาร์ต (import / ต่อ adb / จับจอ) จบจริง ไม่ใช่เดาเอาจากนาฬิกา
+        """
+        q = getattr(self, "_ready_q", None)
+        if q is None:
+            return
+        self._ready_q = None          # ส่งครั้งเดียวพอ
+        try:
+            self.capture_screen()
+        except Exception:
+            pass
+        try:
+            q.put(self.device_id)
+        except Exception:
+            pass
+
     def run(self):
         try:
             print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
+            self._signal_ready()   # พร้อมแล้ว -> ปล่อยเครื่องถัดไปได้เลย
 
             # ── เช็คก่อนเริ่ม: ไม่มีแอปบนเครื่องนี้ = หยุดเลย "ก่อน" จะไปหยิบไฟล์ ──
             #    (ไม่ล็อกไฟล์ ไม่ inject ไม่ย้ายไฟล์ไปไหน — ไฟล์ค้างอยู่ในคิวครบเหมือนเดิม)
@@ -6461,7 +6523,7 @@ class RangerGearBot(threading.Thread):
         
         return status
 
-def run_bot_process(device_id, cli_args_dict):
+def run_bot_process(device_id, cli_args_dict, ready_q=None):
     """แต่ละ process จะรัน bot สำหรับ 1 device (แยก CPU core กัน)
     ต้องอยู่นอก if __name__ == '__main__' เพื่อให้ Windows multiprocessing (spawn) หาเจอ
     """
@@ -6478,6 +6540,7 @@ def run_bot_process(device_id, cli_args_dict):
             setattr(_args, k, v)
         
         bot = RangerGearBot(device_id, _args)
+        bot._ready_q = ready_q   # แจ้ง GUI ว่าพร้อมแล้ว -> ปล่อยเครื่องถัดไปทันที
         bot.run()  # Call run() directly (not start() since we're already in a separate process)
     except KeyboardInterrupt:
         pass
@@ -6629,22 +6692,31 @@ if __name__ == "__main__":
     # Convert args to dict for pickling across processes
     args_dict = vars(args)
     
-    print(f"[INFO] Starting {len(targets)} processes (1 per device)...")
-    delay = config.get("thread_delay", 5)
-    
-    processes = []
-    for i, dev in enumerate(targets):
+    # ปล่อยพร้อมกัน start_batch ตัว แล้วเติมตัวถัดไปทันทีที่ตัวก่อนหน้าส่งสัญญาณพร้อม
+    delay = float(config.get("thread_delay", 5))
+    batch = max(1, int(config.get("start_batch", 4)))
+    start_timeout = float(config.get("start_timeout", delay * 4))
+    print(f"[INFO] Starting {len(targets)} processes (1 per device): ปล่อยพร้อมกัน {batch} ตัว "
+          f"แล้วต่อคิวทันทีที่แต่ละตัวพร้อม (เพดาน {start_timeout:.0f}s/ตัว)")
+    ready_q = multiprocessing.Queue()
+    inflight = 0
+    for dev in targets:
+        while inflight >= batch:
+            try:
+                print(f"[INFO] {ready_q.get(timeout=start_timeout)} พร้อมแล้ว")
+            except queue.Empty:
+                print(f"[WARN] ไม่มีสัญญาณพร้อมใน {start_timeout:.0f}s - ปล่อยตัวถัดไปเลย")
+            inflight -= 1
         p = multiprocessing.Process(
             target=run_bot_process, 
-            args=(dev, args_dict),
+            args=(dev, args_dict, ready_q),
             name=f"Bot-{dev}"
         )
         p.daemon = True
         p.start()
         processes.append(p)
         print(f"[INFO] Started process for {dev} (PID: {p.pid})")
-        if i < len(targets) - 1:
-            sleep(delay)
+        inflight += 1
         
     try:
         for p in processes:

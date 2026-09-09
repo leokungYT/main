@@ -545,9 +545,42 @@ if GUI_AVAILABLE:
 
         def _start_single_bot(self, device_id):
             bot = RangerPlusBot(device_id, self.args)
+            bot._ready_q = getattr(self, "_ready_q", None)
             bot.start()
             self.bot_processes.append(bot)
             self.log("INFO", f"🚀 Started bot process on {device_id}")
+
+        def _ramp_tick(self):
+            """ปล่อยบอทตัวถัดไปทันทีที่ตัวก่อนหน้าพร้อม - ไม่นอนรอเวลาเปล่า ๆ
+
+            เดิมจองเวลาไว้ล่วงหน้าตายตัว (i // batch * delay) เครื่องที่พร้อมเร็ว
+            ก็ยังต้องรอจนครบเวลาอยู่ดี ตอนนี้ delay เหลือเป็นแค่เพดานกันค้าง
+            """
+            # 1) เก็บสัญญาณ "พร้อมแล้ว" ที่บอทส่งกลับมา
+            while True:
+                try:
+                    dev = self._ready_q.get_nowait()
+                except Exception:
+                    break
+                if self._starting.pop(dev, None) is not None:
+                    self.log("SUCCESS", f"✓ {dev} พร้อม (เหลือรอคิว {len(self._pending)})")
+            # 2) ตัวที่เงียบเกินเพดาน ไม่รอแล้ว (emulator ค้าง/ยังบูตไม่เสร็จ)
+            now = time.time()
+            for dev, t0 in list(self._starting.items()):
+                if now - t0 > self._start_timeout:
+                    self._starting.pop(dev, None)
+                    self.log("WARN", f"{dev} ไม่ตอบใน {self._start_timeout:.0f}s - ปล่อยตัวถัดไปเลย")
+            # 3) มีสล็อตว่างเท่าไหร่ ปล่อยเท่านั้น
+            while self._pending and len(self._starting) < self._slots:
+                dev = self._pending.pop(0)
+                self._starting[dev] = time.time()
+                self._start_single_bot(dev)
+            if self._pending or self._starting:
+                self.after(200, self._ramp_tick)
+            else:
+                self.log("SUCCESS", f"ปล่อยบอทครบ {len(self.devices)} เครื่องแล้ว "
+                                    f"(ใช้เวลา {time.time() - self._ramp_started:.0f}s)")
+
 
         def start_bot(self):
             if getattr(self, 'is_started', False):
@@ -558,13 +591,17 @@ if GUI_AVAILABLE:
                 self.btn_start.configure(state="disabled", fg_color="#555555", text="⏳ RUNNING")
             self.lbl_auto_start.configure(text="[ BOT IS RUNNING ]", text_color="#4caf50")
             
-            delay_sec = config.get("thread_delay", 5)
-            self.log("INFO", f"Starting Bot Processes (Delay: {delay_sec}s per device)...")
-            
-            for i, device_id in enumerate(self.devices):
-                delay_ms = i * int(delay_sec) * 1000
-                # Pass device_id explicitly by freezing the variable in the lambda
-                self.after(delay_ms, lambda d=device_id: self._start_single_bot(d))
+            # ปล่อยพร้อมกัน start_batch ตัว แล้วเติมตัวถัดไป "ทันทีที่ตัวก่อนหน้าพร้อม"
+            # ไม่หน่วงตามนาฬิกาอีก - thread_delay เหลือเป็นฐานของเพดานกันค้างเท่านั้น
+            self._ready_q = multiprocessing.Queue()
+            self._pending = list(self.devices)
+            self._starting = {}
+            self._slots = max(1, int(config.get("start_batch", 4)))
+            self._start_timeout = float(config.get("start_timeout", float(config.get("thread_delay", 5)) * 4))
+            self._ramp_started = time.time()
+            self.log("INFO", f"Starting {len(self._pending)} Bot Processes: ปล่อยพร้อมกัน {self._slots} ตัว "
+                             f"แล้วต่อคิวทันทีที่แต่ละตัวพร้อม (เพดาน {self._start_timeout:.0f}s/ตัว)")
+            self._ramp_tick()
 
         def on_closing(self):
             if messagebox.askokcancel("Quit", "คุณต้องการหยุดบอทและปิดโปรแกรมใช่หรือไม่?\n(จะทำการ Kill ADB และ Python ทั้งหมด)"):
@@ -1230,9 +1267,29 @@ class RangerPlusBot(multiprocessing.Process):
         print(f"[{self.device_id}] Failed to open app after 5 attempts!")
         return False
 
+    def _signal_ready(self):
+        """บอกตัวปล่อยบอทว่าเครื่องนี้พร้อมแล้ว เพื่อให้ปล่อยเครื่องถัดไปได้ทันที
+
+        ใช้การจับจอรอบแรกเป็นตัววัด: ผ่านแล้วแปลว่า adb ต่อติดและงานหนักตอน
+        สตาร์ต (import / ต่อ adb / จับจอ) จบจริง ไม่ใช่เดาเอาจากนาฬิกา
+        """
+        q = getattr(self, "_ready_q", None)
+        if q is None:
+            return
+        self._ready_q = None          # ส่งครั้งเดียวพอ
+        try:
+            self.capture_screen()
+        except Exception:
+            pass
+        try:
+            q.put(self.device_id)
+        except Exception:
+            pass
+
     def run(self):
         try:
             print(f"[{self.device_id}] RangerGear Bot Process Started", flush=True)
+            self._signal_ready()   # พร้อมแล้ว -> ปล่อยเครื่องถัดไปได้เลย
             
             while True:
                 # 0. Check if background monitor triggered a restart
@@ -3408,14 +3465,26 @@ if __name__ == "__main__":
     # If device is specified, only run that one (useful for multi-window mode)
     targets = [args.device] if args.device else devices
     
-    print(f"[INFO] Starting {len(targets)} processes...")
-    delay = config.get("thread_delay", 5)
-    for i, dev in enumerate(targets):
+    # ปล่อยพร้อมกัน start_batch ตัว แล้วเติมตัวถัดไปทันทีที่ตัวก่อนหน้าส่งสัญญาณพร้อม
+    delay = float(config.get("thread_delay", 5))
+    batch = max(1, int(config.get("start_batch", 4)))
+    start_timeout = float(config.get("start_timeout", delay * 4))
+    print(f"[INFO] Starting {len(targets)} processes: ปล่อยพร้อมกัน {batch} ตัว "
+          f"แล้วต่อคิวทันทีที่แต่ละตัวพร้อม (เพดาน {start_timeout:.0f}s/ตัว)")
+    ready_q = multiprocessing.Queue()
+    inflight = 0
+    for dev in targets:
+        while inflight >= batch:
+            try:
+                print(f"[INFO] {ready_q.get(timeout=start_timeout)} พร้อมแล้ว")
+            except queue.Empty:
+                print(f"[WARN] ไม่มีสัญญาณพร้อมใน {start_timeout:.0f}s - ปล่อยตัวถัดไปเลย")
+            inflight -= 1
         p = RangerPlusBot(dev, args)
+        p._ready_q = ready_q
         p.start()
         threads.append(p)
-        if i < len(targets) - 1:
-            sleep(delay)
+        inflight += 1
         
     try:
         for t in threads:
