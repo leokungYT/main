@@ -496,7 +496,7 @@ if GUI_AVAILABLE:
             bottom_bar.pack(fill="x")
             
             base_path = os.path.dirname(os.path.abspath(__file__))
-            backup_folder = os.path.join(base_path, "backup")
+            backup_folder = queue_folder_paths()[0]   # ปุ่ม Backup เปิดโฟลเดอร์คิว
             heroes_folder = os.path.join(base_path, "backup-id")
             
             ctk.CTkButton(bottom_bar, text="🔌 Connect Missing", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#4caf50", command=self.connect_missing_devices).pack(side="left", padx=3, pady=4)
@@ -759,7 +759,7 @@ def get_ocr_reader():
 
 def queue_folder_paths():
     """โฟลเดอร์คิวทั้งหมดตาม config - ให้ตัวนับบนจอกับที่บอทหยิบจริงตรงกันเสมอ"""
-    folders = config.get("queue_folders") or ["backup", "input-id", "input"]
+    folders = config.get("queue_folders") or ["backup"]
     if isinstance(folders, str):
         folders = [folders]
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1237,7 +1237,17 @@ class RangerPlusBot(multiprocessing.Process):
             res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
             _, max_val, _, max_loc = cv2.minMaxLoc(res)
             if max_val >= similarity:
+                now = time.time()
+                if now - getattr(self, "_netpopup_last_click", 0) < 1.0:
+                    return None          # เพิ่งกดไป รอป๊อปอัพหายก่อน ไม่กดรัว (cooldown 1 วิ)
+                self._netpopup_last_click = now
+                # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
+                # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
+                keep_activity = getattr(self, "last_activity_time", None)
                 self.tap(max_loc[0] + tw // 2, max_loc[1] + th // 2)
+                if keep_activity is not None:
+                    self.last_activity_time = keep_activity
+                print(f"[{self.device_id}] [NET] พบ {os.path.basename(path)} -> กดทันที ({max_loc[0] + tw // 2}, {max_loc[1] + th // 2})")
                 return os.path.basename(path)
         return None
 
@@ -1466,10 +1476,11 @@ class RangerPlusBot(multiprocessing.Process):
 
     # lock ที่ค้างเกินเวลานี้ถือว่าเจ้าของตายไปแล้ว (กันไฟล์ค้างถาวร)
     _STALE_LOCK_SEC = 1800
-    # โฟลเดอร์คิวที่ยอมหยิบไฟล์มาทำ - ตั้งทับได้ใน config ("queue_folders")
-    QUEUE_FOLDERS_DEFAULT = ["backup", "input-id", "input"]
+    # โฟลเดอร์คิวที่ยอมหยิบไฟล์มาทำ = backup/ เท่านั้น (ตั้งทับได้ใน config "queue_folders"
+    # แต่ค่าเริ่มต้นจงใจไม่แตะ input-id/ ที่ loginสะสมใช้ กันสองโปรแกรมแย่งไฟล์กัน)
+    QUEUE_FOLDERS_DEFAULT = ["backup"]
     # โฟลเดอร์ที่ไม่ใช่คิว แต่มักมีไฟล์ค้าง - ใช้บอกใน log ตอนว่างงานว่าไฟล์ไปกองอยู่ไหน
-    OTHER_FOLDERS = ["backup-xml", "login-success", "login-failed", "not-found"]
+    OTHER_FOLDERS = ["backup", "backup-xml", "login-success", "login-failed", "not-found"]
 
     @staticmethod
     def _pid_alive(pid):
@@ -1743,17 +1754,18 @@ class RangerPlusBot(multiprocessing.Process):
         try:
             if not self.current_original_filename:
                 return False
-            print(f"[{self.device_id}] ย้ายไฟล์ {self.current_original_filename} กลับไป backup/ เพื่อวนเข้าใหม่...")
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            backup_xml_dir = os.path.join(current_dir, "backup")
+            queue_dir = queue_folder_paths()[0]   # โฟลเดอร์คิวตัวแรกตาม config (input-id)
+            print(f"[{self.device_id}] ย้ายไฟล์ {self.current_original_filename} กลับเข้าคิว ({os.path.basename(queue_dir)}/) เพื่อวนเข้าใหม่...")
+            os.makedirs(queue_dir, exist_ok=True)
             source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
-            dest_path = os.path.join(backup_xml_dir, self.current_original_filename)
+            dest_path = os.path.join(queue_dir, self.current_original_filename)
             self.adb_shell("su -c 'chmod 777 /data/data/com.linecorp.LGRGS/shared_prefs'")
             self.adb_shell(f"su -c 'chmod 777 {source_path}'")
             subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", source_path, dest_path], 
                            capture_output=True, timeout=15)
             if os.path.exists(dest_path):
-                print(f"[{self.device_id}] ย้ายไฟล์กลับ backup/ สำเร็จ: {dest_path}")
+                print(f"[{self.device_id}] ย้ายไฟล์กลับเข้าคิวสำเร็จ: {dest_path}")
                 return True
             return False
         except Exception as e:
@@ -1916,6 +1928,17 @@ class RangerPlusBot(multiprocessing.Process):
 
             # New frame -> any popup-free verdict from the previous frame is stale.
             self._screen_gen += 1
+            # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
+            # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
+            # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
+            if not getattr(self, "_in_net_check", False):
+                self._in_net_check = True
+                try:
+                    if self._dismiss_net_popup(self._screen):
+                        sleep(0.5)
+                        self._raw_capture()
+                finally:
+                    self._in_net_check = False
 
             # Popup check every 3rd capture to reduce CPU (background thread also monitors)
             self._capture_count += 1
@@ -2267,6 +2290,17 @@ class RangerPlusBot(multiprocessing.Process):
                 self._screen_rgba = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
             self._screen_gen += 1
+            # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
+            # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
+            # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
+            if not getattr(self, "_in_net_check", False):
+                self._in_net_check = True
+                try:
+                    if self._dismiss_net_popup(self._screen):
+                        sleep(0.5)
+                        self._raw_capture()
+                finally:
+                    self._in_net_check = False
         except Exception as e:
             print(f"[{self.device_id}] Raw capture error: {e}")
 
@@ -3621,11 +3655,17 @@ if __name__ == "__main__":
             print(f"[WARN] Failed to load OCR: {e}")
     
     # Setup Queue (Still needed for GUI but threads will use directory scanning)
-    source_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
-    if os.path.exists(source_folder):
-        files = [f for f in os.listdir(source_folder) if f.lower().endswith(".xml")]
-        ui_stats.update(total=len(files))
-        print(f"[FILE] Found {len(files)} files in {source_folder}")
+    total_files = 0
+    for source_folder in queue_folder_paths():
+        if not os.path.exists(source_folder):
+            continue
+        n = 0
+        for _root, _dirs, _fs in os.walk(source_folder):
+            n += len([f for f in _fs if f.lower().endswith(".xml")])
+        total_files += n
+        print(f"[FILE] Found {n} files in {source_folder} (รวมโฟลเดอร์ย่อย)")
+    ui_stats.update(total=total_files)
+    print(f"[FILE] คิวรวมทั้งหมด {total_files} ไฟล์")
     
     # Selection
     if not args.cli and GUI_AVAILABLE:
