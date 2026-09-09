@@ -1214,6 +1214,33 @@ class RangerPlusBot(multiprocessing.Process):
         self._pos_cache_logged_at = now
         print(f"[{self.device_id}] {self._pos_mem.summary()}")
 
+    # ป๊อปอัพเน็ตหลุดที่ต้องกดปิดให้ได้ ไม่ว่าบอทจะอยู่ลูปไหน
+    NET_POPUPS = ("img/fixnet1.png", "img/fixnet.png")
+    NET_POPUP_LIMIT = 10   # กดครบเท่านี้แล้วยังไม่หาย = เด้งแอปใหม่ ดีกว่าค้างรอเฉย ๆ
+
+    def _dismiss_net_popup(self, screen, similarity=0.8):
+        """หา fixnet1/fixnet บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
+
+        ลูปรอเกือบทั้งไฟล์จับจอเองแต่ไม่ได้เรียก check_floating_popups() ป๊อปอัพ
+        เน็ตหลุดที่เด้งตอนนั้นเลยไม่มีใครกดปิด ตัวนี้เลยถูกเรียกจาก thread monitor
+        เบื้องหลังแทน จะได้ครอบคลุมทุกลูปพร้อมกัน
+        """
+        if screen is None:
+            return None
+        for path in self.NET_POPUPS:
+            tmpl = self._get_template(path)
+            if tmpl is None:
+                continue
+            th, tw = tmpl.shape[:2]
+            if screen.shape[0] < th or screen.shape[1] < tw:
+                continue
+            res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+            if max_val >= similarity:
+                self.tap(max_loc[0] + tw // 2, max_loc[1] + th // 2)
+                return os.path.basename(path)
+        return None
+
     def _popup_monitor_loop(self):
         """Background thread to monitor fixnetv3.png - reuses main thread's screen to save CPU"""
         while self._running:
@@ -1221,6 +1248,21 @@ class RangerPlusBot(multiprocessing.Process):
             try:
                 mon_screen = self._screen
                 if mon_screen is not None:
+                    # fixnet1/fixnet: กดปิดจากตรงนี้ด้วย เพราะลูปรอส่วนใหญ่ไม่ได้
+                    # เรียก check_floating_popups() เอง
+                    hit = self._dismiss_net_popup(mon_screen)
+                    if hit:
+                        self._netpopup_count = getattr(self, "_netpopup_count", 0) + 1
+                        print(f"[{self.device_id}] [MONITOR] {hit} เด้ง (#{self._netpopup_count}) - กดปิดให้แล้ว")
+                        if self._netpopup_count >= self.NET_POPUP_LIMIT:
+                            print(f"[{self.device_id}] [MONITOR] {hit} กดไป {self.NET_POPUP_LIMIT} ครั้งแล้วยังไม่หาย - เด้งแอปใหม่")
+                            self._need_restart = True
+                            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell",
+                                          "am", "force-stop", "com.linecorp.LGRGS"])
+                            self._netpopup_count = 0
+                    elif getattr(self, "_netpopup_count", 0):
+                        self._netpopup_count = 0
+
                     tmpl = self._get_template("img/fixnetv3.png")
                     if tmpl is not None:
                         res = cv2.matchTemplate(mon_screen, tmpl, cv2.TM_CCOEFF_NORMED)
