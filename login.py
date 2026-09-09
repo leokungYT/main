@@ -4329,6 +4329,7 @@ class RangerGearBot(threading.Thread):
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
 
             # New frame -> any popup-free verdict from the previous frame is stale.
+            self._normalize_frame()   # ให้เฟรมเป็น 960x540 เสมอ (template ทุกรูปตัดจากขนาดนี้)
             self._screen_gen += 1
             # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
             # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
@@ -4466,8 +4467,9 @@ class RangerGearBot(threading.Thread):
         ctrl = self._touch()
         if ctrl is not None and ctrl.tap(int(x), int(y)):
             return
+        dx, dy = self._dev_xy(x, y)
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap",
-                     str(x), str(y)])
+                     str(dx), str(dy)])
 
     def type_text(self, text):
         self.last_activity_time = time.time()
@@ -4506,7 +4508,7 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] {self._pos_mem.summary()}")
 
     # ป๊อปอัพเน็ตหลุดที่ต้องกดปิดให้ได้ ไม่ว่าบอทจะอยู่ลูปไหน
-    NET_POPUPS = ("img/fixnet1.png", "img/fixnet.png")
+    NET_POPUPS = ("img/fixnet-tiket.png", "img/fixnet1.png", "img/fixnet.png")   # ตัวแรก = รูปจาก bot-tiket
     NET_POPUP_LIMIT = 10   # กดครบเท่านี้แล้วยังไม่หาย = เด้งแอปใหม่ ดีกว่าค้างรอเฉย ๆ
 
     def _match_score(self, template_path):
@@ -4522,6 +4524,35 @@ class RangerGearBot(threading.Thread):
             return float(cv2.minMaxLoc(res)[1])
         except Exception:
             return 0.0
+
+    # template ทุกรูปใน img/ ถูกตัดมาจากจอ 960x540 (เหมือน bot-tiket ที่บังคับ "ต้องเป็น 960x540")
+    # เครื่องไหนตั้งความละเอียดอื่น ปุ่มบนจอจะใหญ่/เล็กกว่ารูป -> matchTemplate หาไม่เจอทั้งไฟล์
+    BASE_W, BASE_H = 960, 540
+
+    def _normalize_frame(self):
+        """ย่อ/ขยายเฟรมให้เป็น 960x540 เสมอ แล้วจำอัตราส่วนไว้สเกลจุดกดกลับเป็นพิกัดจริง"""
+        scr = self._screen
+        if scr is None:
+            self._tap_scale = (1.0, 1.0)
+            return
+        h, w = scr.shape[:2]
+        if (w, h) == (self.BASE_W, self.BASE_H):
+            self._tap_scale = (1.0, 1.0)
+            return
+        sx, sy = w / self.BASE_W, h / self.BASE_H
+        if getattr(self, "_res_notice", None) != (w, h):
+            self._res_notice = (w, h)
+            print(f"[{self.device_id}] [SCREEN] จอ {w}x{h} ไม่ใช่ 960x540 -> ย่อภาพให้ตรง template "
+                  f"และสเกลจุดกด x{sx:.2f}/x{sy:.2f} ให้อัตโนมัติ")
+        self._screen = cv2.resize(scr, (self.BASE_W, self.BASE_H), interpolation=cv2.INTER_AREA)
+        if getattr(self, "_screen_color", None) is not None:
+            self._screen_color = cv2.resize(self._screen_color, (self.BASE_W, self.BASE_H), interpolation=cv2.INTER_AREA)
+        self._tap_scale = (sx, sy)
+
+    def _dev_xy(self, x, y):
+        """พิกัดบนภาพ 960x540 -> พิกัดจริงบนเครื่อง (สำหรับ adb input tap/swipe)"""
+        sx, sy = getattr(self, "_tap_scale", (1.0, 1.0))
+        return int(round(x * sx)), int(round(y * sy))
 
     def _dismiss_net_popup(self, screen, similarity=0.8):
         """หา fixnet1/fixnet บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
@@ -4606,6 +4637,7 @@ class RangerGearBot(threading.Thread):
         ctrl = self._touch()
         if ctrl is not None and ctrl.swipe(int(x1), int(y1), int(x2), int(y2), duration):
             return
+        (x1, y1), (x2, y2) = self._dev_xy(x1, y1), self._dev_xy(x2, y2)
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "swipe",
                      str(x1), str(y1), str(x2), str(y2), str(duration)])
 
@@ -4849,6 +4881,7 @@ class RangerGearBot(threading.Thread):
                 self._screen_raw_png = None
                 self._screen_raw_rgba = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
+            self._normalize_frame()   # ให้เฟรมเป็น 960x540 เสมอ (template ทุกรูปตัดจากขนาดนี้)
             self._screen_gen += 1
             # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
             # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
