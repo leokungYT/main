@@ -34,6 +34,7 @@ log.txt
 
 # ภาพหน้าจอที่ dump ไว้ตอน debug
 debug_ocr/
+debug-timeout/
 screen-*.png
 _diag*.png
 _verify*.png

@@ -4269,10 +4269,34 @@ class RangerGearBot(threading.Thread):
         except Exception:
             return False
 
+    def _save_debug_screen(self, reason):
+        """เก็บภาพจอล่าสุดไว้ดูว่าไปค้างอยู่หน้าไหน
+
+        ไม่มีภาพก็ไล่สาเหตุไม่ได้เลยว่าเป็นป๊อปอัพตัวใหม่ เน็ตหลุด หรือแอปเด้ง
+        เก็บลง debug-timeout/ (อยู่ใน .gitignore ไม่ขึ้น GitHub)
+        """
+        screen = getattr(self, "_screen_color", None)
+        if screen is None:
+            return None
+        try:
+            folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug-timeout")
+            os.makedirs(folder, exist_ok=True)
+            name = (f"{self.device_id.replace(':', '_')}_"
+                    f"{time.strftime('%Y%m%d-%H%M%S')}_{reason}.png")
+            path = os.path.join(folder, name)
+            cv2.imwrite(path, screen)
+            return os.path.join("debug-timeout", name)
+        except Exception:
+            return None
+
     def capture_screen(self):
         """Capture screen and load into RAM (optimized: raw screencap = 50-100x เร็วกว่า PNG)"""
         if getattr(self, "last_activity_time", 0) and (time.time() - self.last_activity_time) > 500:
-            print(f"[{self.device_id}] TIMEOUT: Inactive for 500s. Restarting bot sequence.")
+            # ค้างที่จอไหนไม่มีใครรู้ถ้าไม่เก็บภาพไว้ - บันทึกก่อนเด้งออก
+            shot = self._save_debug_screen("timeout")
+            being = getattr(self, "current_original_filename", None) or "?"
+            print(f"[{self.device_id}] TIMEOUT: ไม่ได้กดอะไรเลย 500 วิ (ไฟล์: {being})"
+                  + (f" - เก็บภาพจอที่ค้างไว้ที่ {shot}" if shot else " - ไม่มีภาพจอให้เก็บ"))
             self.last_activity_time = time.time()
             raise RestartTimeoutError("500s Timeout")
         try:
