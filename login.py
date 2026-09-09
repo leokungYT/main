@@ -3759,20 +3759,29 @@ class RangerGearBot(threading.Thread):
 
 
     def _is_app_installed(self, tries=3):
-        """เช็คว่าเครื่องนี้มีแอปติดตั้งอยู่จริงไหม (retry เผื่อ VM เพิ่งบูต pm ตอบว่าง)"""
+        """เช็คว่าเครื่องนี้มีแอปติดตั้งอยู่จริงไหม (retry เผื่อ VM เพิ่งบูต pm ตอบว่าง)
+
+        คืน True = มีแอป / False = pm ตอบมาแล้วว่า "ไม่มี" / None = เช็คไม่ได้เลย (adb ค้าง/timeout)
+        เดิม timeout ถูกนับเป็น "ไม่มีแอป" -> ตอนเปิด 17 เครื่องพร้อมกัน adb ตอบไม่ทัน
+        บอทเลยตัดสินว่าไม่มีแอปแล้วหยุดตัวเองถาวรทั้งแถวภายใน 40 วิ (ERROR แดงยกจอ)
+        """
+        answered = False
         for attempt in range(tries):
             try:
                 pm_res = self.adb_run([
                     self.adb_cmd, "-s", self.device_id, "shell",
                     "pm", "list", "packages", "com.linecorp.LGRGS"
-                ], timeout=8)
-                if "com.linecorp.LGRGS" in (pm_res.stdout or b"").decode("utf-8", "ignore"):
+                ], timeout=15)
+                out = (pm_res.stdout or b"").decode("utf-8", "ignore")
+                if "com.linecorp.LGRGS" in out:
                     return True
+                if pm_res.returncode == 0:
+                    answered = True      # pm ตอบจริง แต่ไม่มีแพ็กเกจนี้
             except Exception as e:
-                print(f"[{self.device_id}] [WARN] เช็ค package ไม่ได้: {e}")
+                print(f"[{self.device_id}] [WARN] เช็ค package ไม่ได้ (ครั้งที่ {attempt + 1}/{tries}): {e}")
             if attempt < tries - 1:
-                sleep(2)
-        return False
+                sleep(3)
+        return False if answered else None
 
     def _signal_ready(self):
         """บอกตัวปล่อยบอทว่าเครื่องนี้พร้อมแล้ว เพื่อให้ปล่อยเครื่องถัดไปได้ทันที
@@ -3800,12 +3809,18 @@ class RangerGearBot(threading.Thread):
 
             # ── เช็คก่อนเริ่ม: ไม่มีแอปบนเครื่องนี้ = หยุดเลย "ก่อน" จะไปหยิบไฟล์ ──
             #    (ไม่ล็อกไฟล์ ไม่ inject ไม่ย้ายไฟล์ไปไหน — ไฟล์ค้างอยู่ในคิวครบเหมือนเดิม)
-            if not self._is_app_installed():
+            installed = self._is_app_installed()
+            if installed is False:
                 self.app_missing = True
                 print(f"[{self.device_id}] ⛔ เครื่องนี้ไม่มีแอป com.linecorp.LGRGS — หยุดบอทเครื่องนี้ "
                       f"ไม่หยิบ/ไม่ย้ายไฟล์ใดๆ (ไฟล์อยู่ครบในคิวเหมือนเดิม)", flush=True)
                 self.update_gui_status("No app - stopped", "error")
                 return
+            if installed is None:
+                # adb ตอบไม่ทัน (เปิดหลายเครื่องพร้อมกัน) - ไม่ใช่หลักฐานว่าไม่มีแอป เดินต่อ
+                # ถ้าแอปหายจริงจะไปเจอตอน open_app ระหว่างรันแล้วหยุดตรงนั้นแทน
+                print(f"[{self.device_id}] [WARN] เช็คแอปไม่ได้ (adb ช้า/ค้าง) - ไม่ถือว่าไม่มีแอป เดินต่อ", flush=True)
+                self.update_gui_status("adb ช้า - เดินต่อ", "waiting")
 
             while True:
                 # 0. Reload Config
