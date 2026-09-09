@@ -2033,6 +2033,7 @@ class RangerGearBot(threading.Thread):
             # New frame -> any popup-free verdict from the previous frame is stale.
             self._normalize_frame()   # ให้เฟรมเป็น 960x540 เสมอ (template ทุกรูปตัดจากขนาดนี้)
             self._screen_gen += 1
+            self._cap_fail = 0
             # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
             # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
             # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
@@ -2058,6 +2059,17 @@ class RangerGearBot(threading.Thread):
                 
         except Exception as e:
             print(f"[{self.device_id}] Capture error: {e}")
+            # นับ screencap ที่ล้มติดกัน - ล้มแล้ว _screen ยังเป็นภาพเก่า บอทจะ 'มองไม่เห็น' ป๊อปอัพ/ปุ่มใด ๆ
+            # (เคสจริง: 20 เครื่องแย่ง adb กัน screencap ค้างเกิน 10 วิ) บอกให้ชัดและลอง reconnect เครื่องนั้น
+            self._cap_fail = getattr(self, "_cap_fail", 0) + 1
+            if self._cap_fail in (3, 10) or self._cap_fail % 30 == 0:
+                print(f"[{self.device_id}] [CAPTURE] screencap ล้มเหลวติดกัน {self._cap_fail} ครั้ง - บอทเห็นแต่ภาพเก่า จะหาอะไรไม่เจอทั้งนั้น (adb หรือเครื่องค้าง)")
+            if self._cap_fail % 5 == 0:
+                try:
+                    self.adb_run([self.adb_cmd, "-s", self.device_id, "reconnect"], timeout=10)
+                    print(f"[{self.device_id}] [CAPTURE] สั่ง adb reconnect {self.device_id} แล้ว")
+                except Exception:
+                    pass
             if hasattr(self, "_in_popup_check"):
                 self._in_popup_check = False
 
@@ -4129,6 +4141,7 @@ if __name__ == "__main__":
         except: pass
 
     print("=== Auto Ranger+Gear Script v3.2.0 ===")
+    print(f"[VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
     
     load_config()
     
