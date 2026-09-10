@@ -126,6 +126,7 @@
     "start_batch": 4,
     "start_timeout": 20,
     "queue_folders": [
+        "backup",
         "input-id"
     ],
     "find_all_rangerplus": 0,

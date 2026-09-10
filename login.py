@@ -1393,6 +1393,26 @@ def find_mumu_manager():
     for b in bases:
         for s in subs:
             candidates.append(os.path.join(b, s))
+    # จาก process MuMu ที่รันอยู่ (แม่นสุด - ไม่ต้องเดา path ติดตั้ง): ถาม wmic/PowerShell
+    # ว่า MuMuPlayer.exe / MuMuManager.exe / MuMuVMMHeadless.exe อยู่ที่ไหน แล้วไล่หาจาก root นั้น
+    try:
+        kwargs = {'creationflags': 0x08000000} if os.name == 'nt' else {}
+        q = subprocess.run(["wmic", "process", "where", "name like 'MuMu%'", "get", "ExecutablePath"],
+                           capture_output=True, text=True, timeout=10, **kwargs)
+        roots = set()
+        for line in (q.stdout or "").splitlines():
+            line = line.strip()
+            if line.lower().endswith(".exe") and os.path.exists(line):
+                d = os.path.dirname(line)
+                roots.add(d)
+                roots.add(os.path.dirname(d))
+        for r0 in sorted(roots, key=len):
+            for sub_ in ("MuMuManager.exe", os.path.join("nx_main", "MuMuManager.exe"), os.path.join("shell", "MuMuManager.exe")):
+                cand = os.path.join(r0, sub_)
+                if os.path.exists(cand):
+                    candidates.insert(0, cand)
+    except Exception:
+        pass
     for p in candidates:
         if os.path.exists(p):
             _MUMU_MANAGER_CACHE = p
@@ -1515,9 +1535,11 @@ def connect_known_ports():
             """ยิงเชื่อมต่อทีละพอร์ต"""
             try:
                 addr = f"127.0.0.1:{port}"
+                # เดิม timeout 1 วิ - ตอน adb เพิ่ง restart + เปิดหลายเครื่อง ตอบไม่ทัน
+                # เลย "หาเจอแค่ 3 เครื่อง" ทั้งที่เปิดอยู่ 17
                 result = subprocess.run(
                     [adb_path, "connect", addr],
-                    capture_output=True, timeout=1, text=True
+                    capture_output=True, timeout=4, text=True
                 )
                 out = result.stdout.lower()
                 if ("connected" in out or "already connected" in out) and "cannot" not in out:
@@ -1538,6 +1560,20 @@ def connect_known_ports():
             print(f"[ADB] Port scan found {len(connected)} device(s): {', '.join(sorted(connected))}")
         else:
             print("[ADB] Port scan found no devices.")
+        # emulator-XXXX (MuMu แบบ local) adb จะเห็นเองหลัง start-server แต่ใช้เวลาหลายวิ
+        # รอจนจำนวนเครื่องนิ่ง (ไม่เพิ่มขึ้น 2 รอบติด) สูงสุด 20 วิ ก่อนไปต่อ
+        seen_n, stable = -1, 0
+        for _ in range(10):
+            now_n = len(get_connected_devices())
+            if now_n == seen_n:
+                stable += 1
+                if stable >= 2:
+                    break
+            else:
+                stable = 0
+                seen_n = now_n
+            time.sleep(2)
+        print(f"[ADB] adb devices เห็นทั้งหมด {max(seen_n, 0)} เครื่องหลังรอให้นิ่ง")
                 
         print("--- Scan Complete ---\n")
     except Exception as e:
@@ -2384,6 +2420,33 @@ class RangerGearBot(threading.Thread):
 
 
 
+    def _find_all_in_screen(self, template_path, similarity=0.85, min_dist=None):
+        """หา 'ทุกตำแหน่ง' ของรูปบนจอล่าสุด (ไม่ใช่แค่จุดที่คะแนนสูงสุด) คืน list ของ (cx, cy, score)
+
+        ใช้กับปุ่ม/การ์ดที่มีหลายใบเหมือนกันบนจอเดียว (เช่น การ์ดรับของ 7 วัน)
+        เดิม _find_in_screen คืนแค่จุดเดียว = กดใบเดิมซ้ำแล้วซ้ำอีก ใบอื่นไม่เคยโดนกด
+        """
+        if self._screen is None:
+            return []
+        tmpl = self._get_template(template_path)
+        if tmpl is None:
+            return []
+        th, tw = tmpl.shape[:2]
+        if self._screen.shape[0] < th or self._screen.shape[1] < tw:
+            return []
+        res = cv2.matchTemplate(self._screen, tmpl, cv2.TM_CCOEFF_NORMED)
+        ys, xs = np.where(res >= similarity)
+        cands = sorted(((float(res[y, x]), int(x), int(y)) for y, x in zip(ys, xs)), reverse=True)
+        if min_dist is None:
+            min_dist = max(8, min(tw, th) // 2)
+        picked = []
+        for sc, x, y in cands:
+            cx, cy = x + tw // 2, y + th // 2
+            if all(abs(cx - px) >= min_dist or abs(cy - py) >= min_dist for px, py, _ in picked):
+                picked.append((cx, cy, sc))
+        picked.sort(key=lambda t: (t[1] // max(1, th), t[0]))     # เรียงบนลงล่าง ซ้ายไปขวา
+        return picked
+
     def process_7day(self):
         """7-Day login: เข้าหน้ารับของ แล้ววนกด 7day1.png จนกว่าจะไม่เจอ
 
@@ -2441,7 +2504,7 @@ class RangerGearBot(threading.Thread):
         # 3) วนกด 7day1 จนไม่มีอะไรให้กด (หรือครบเพดาน)
         IDLE_SECS = 10     # ไม่เจอ 7day1 ครบ 10 วิ = ถือว่ารับครบแล้ว
         MAX_TOTAL = 120    # เพดานเวลารวม กันลูปค้าง
-        MAX_CLICKS = 10    # กด 7day1 ครบ 10 ครั้ง = จบเลย ไปกด 7day2 ปิดหน้าต่าง
+        MAX_CLICKS = 30    # เพดานรวม (การ์ดหลายใบ x หลายรอบ) กันลูปค้าง
         clicks = 0
         started = time.time()
         last_hit = time.time()
@@ -2460,15 +2523,38 @@ class RangerGearBot(threading.Thread):
             # ห้ามใส่ 7day2.png ในลูปนี้ - มันคือปุ่ม X ปิดหน้าต่าง ถ้าเผลอกดตอน
             # 7day1 แวบหายไประหว่างอนิเมชัน หน้าต่างจะปิดก่อนรับของครบ
             hit = None
-            for img in ("7day1.png", "fixok.png"):
-                if self.exists_in_cache(f"img/{img}"):
-                    hit = img
-                    break
+            # fixok (ป๊อปอัพยืนยัน) มาก่อนเสมอ - มันบังการ์ด
+            if self.exists_in_cache("img/fixok.png", similarity=0.85):
+                hit = "fixok.png"
+            else:
+                # การ์ด 7day1 มีหลายใบเหมือนกันบนจอ - กด "ทุกใบ" ซ้ายไปขวา ไม่ใช่กดใบที่
+                # คะแนนสูงสุดซ้ำ ๆ (เดิมกดใบเดิม 10 ครั้ง ใบอื่นไม่เคยได้)
+                cards = self._find_all_in_screen("img/7day1.png", similarity=0.85)
+                if cards:
+                    hit = "7day1.png"
+                    round_no = clicks + 1
+                    print(f"[{self.device_id}] [7DAY] เจอการ์ด 7day1 {len(cards)} ใบ - กดให้ครบทุกใบ")
+                    for idx, (cx, cy, sc) in enumerate(cards, 1):
+                        clicks += 1
+                        print(f"[{self.device_id}] [7DAY] กดการ์ดใบที่ {idx}/{len(cards)} ที่ ({cx}, {cy}) score {sc:.2f} (รวมครั้งที่ {clicks})")
+                        self.tap(cx, cy)
+                        last_hit = time.time()
+                        sleep(1.0)
+                        # การ์ดที่รับได้จะเด้ง fixok - ปิดให้ก่อนไปใบถัดไป ไม่งั้นบังการ์ดที่เหลือ
+                        self.capture_screen()
+                        if self.exists_in_cache("img/fixok.png", similarity=0.85):
+                            print(f"[{self.device_id}] [7DAY]   -> เด้ง fixok หลังใบที่ {idx} - กดปิด")
+                            self.click("img/fixok.png", similarity=0.85)
+                            sleep(1.0)
+                        if clicks >= MAX_CLICKS:
+                            break
+                    sleep(0.5)
+                    continue
 
             if hit:
                 clicks += 1
                 print(f"[{self.device_id}] [7DAY] เจอ {hit} - กด (ครั้งที่ {clicks})")
-                self.click(f"img/{hit}")
+                self.click(f"img/{hit}", similarity=0.85)
                 last_hit = time.time()
                 sleep(1.2)
 
