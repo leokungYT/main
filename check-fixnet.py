@@ -21,9 +21,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _cands = [os.path.join(HERE, "adb", "adb.exe"), os.path.join(HERE, "adb", "adb")]
 ADB = next((p for p in _cands if os.path.exists(p)), "adb")
 
-TEMPLATES = ["fixnet-tiket.png", "fixnet.png", "fixnet1.png", "fixnetv3.png",
+TEMPLATES = ["fixnet-tiket.png", "fixnet.png", "fixnet1.png", "fixnetv3.png", "fixplay.png",
              "refresh.png", "checkline.png", "fixid.png", "check.png"]
-SCALES = [0.5, 0.67, 0.75, 1.0, 1.33, 1.5, 1.67, 2.0]
+SCALES = [0.5, 0.6, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.2, 1.25, 1.33, 1.4, 1.5, 1.67, 2.0]
 
 
 def devices():
