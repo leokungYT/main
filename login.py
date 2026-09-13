@@ -2530,7 +2530,8 @@ class RangerGearBot(threading.Thread):
         """7-Day login: เข้าหน้ารับของ แล้ววนกด 7day1.png จนกว่าจะไม่เจอ
 
         ลำดับตามที่ต้องการ:
-          1. กด 7day.png เข้าหน้ารับของ 7 วัน
+          1. กด 7day.png "ซ้ำ ๆ" จนไอคอนหายไปจากจอ (= เข้าหน้ารับของแล้ว)
+             กันกดรอบเดียวไม่ติดเพราะจอขยับ/ป๊อปอัพบัง/แตะไม่โดน
           2. รอ checkpoint-7day (.png/.bmp) ให้แน่ใจว่าเข้าหน้ารับของแล้วจริง
              ค่อยเริ่มหา 7day1 (ถ้ายังไม่มีไฟล์รูปนี้ จะข้ามขั้นนี้พร้อมเตือน)
           3. วนหา 7day1.png ตลอดเวลา เจอก็กดทันที (ป๊อปอัพยืนยันที่เด้งตามมา
@@ -2542,12 +2543,25 @@ class RangerGearBot(threading.Thread):
         """
         print(f"[{self.device_id}] [7DAY] เริ่มขั้นตอนรับของ 7 วัน")
 
-        # 1) เข้าหน้ารับของ
-        self.capture_screen()
-        if self.exists_in_cache("img/7day.png"):
-            print(f"[{self.device_id}] [7DAY] กด 7day.png เข้าหน้ารับของ")
+        # 1) เข้าหน้ารับของ - กด 7day.png ซ้ำจนไอคอนหายจากจอ ไม่ใช่กดรอบเดียวแล้วไปต่อ
+        #    (กดไม่ติดบ่อยมาก: จอยังขยับ/ป๊อปอัพบัง/แตะพลาด) จบเมื่อไอคอนหาย
+        #    หรือครบเพดานกันค้าง แล้วปล่อยให้ขั้น 2 (รอ checkpoint) ตามเก็บต่อ
+        ENTER_MAX_CLICKS = 8
+        ENTER_DEADLINE = time.time() + 25
+        enter_clicks = 0
+        while time.time() < ENTER_DEADLINE and enter_clicks < ENTER_MAX_CLICKS:
+            self.capture_screen()
+            self.check_floating_popups()
+            if not self.exists_in_cache("img/7day.png"):
+                if enter_clicks:
+                    print(f"[{self.device_id}] [7DAY] ไอคอน 7day หายจากจอแล้ว (กดไป {enter_clicks} ครั้ง) - เข้าหน้ารับของแล้ว")
+                break
+            enter_clicks += 1
+            print(f"[{self.device_id}] [7DAY] กด 7day.png เข้าหน้ารับของ (ครั้งที่ {enter_clicks})")
             self.click("img/7day.png")
             sleep(2)
+        else:
+            print(f"[{self.device_id}] [7DAY] [WARN] กด 7day.png ไป {enter_clicks} ครั้งแล้วไอคอนยังอยู่ - ไปขั้นรอ checkpoint ต่อ")
 
         # 2) รอ checkpoint-7day ยืนยันว่าเข้าหน้ารับของแล้วจริง ค่อยไปหา 7day1
         #    (รับได้ทั้ง .png และ .bmp ถ้ายังไม่มีไฟล์รูปเลย ให้ข้ามไปเลย

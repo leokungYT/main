@@ -15,9 +15,17 @@ echo.
 
 :: Kill ADB and Python processes to prevent file locks
 echo [PRE] Stopping ADB and Bot processes...
+if exist "main\adb\adb.exe" ("main\adb\adb.exe" kill-server >nul 2>&1)
+adb kill-server >nul 2>&1
 taskkill /f /im adb.exe >nul 2>&1
+:: adb ของโปรแกรมจำลองใช้ชื่ออื่น - ไม่ฆ่าด้วยจะล็อกไฟล์ในโฟลเดอร์ adb\ ไว้
+taskkill /f /im HD-Adb.exe >nul 2>&1
+taskkill /f /im nox_adb.exe >nul 2>&1
+taskkill /f /im ld_adb.exe >nul 2>&1
+taskkill /f /im adb_server.exe >nul 2>&1
 taskkill /f /im python.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
+taskkill /f /im pythonw.exe >nul 2>&1
+timeout /t 3 /nobreak >nul
 
 set "TARGET_FOLDER=main"
 set "REPO_URL=https://github.com/leokungYT/main/archive/refs/heads/main.zip"
@@ -98,7 +106,18 @@ echo ============================================
 if exist "%SOURCE_FOLDER%\backup" rd /s /q "%SOURCE_FOLDER%\backup"
 if exist "%SOURCE_FOLDER%\backup-id" rd /s /q "%SOURCE_FOLDER%\backup-id"
 
-xcopy /s /e /y "%SOURCE_FOLDER%\*" "%TARGET_FOLDER%\"
+:: adb\adb.exe มักโดนโปรแกรมจำลองล็อกไว้ (Sharing violation) - ถ้าเครื่องมี adb อยู่แล้ว
+:: ข้ามไปเลย ไม่งั้นการก๊อปจะพังกลางทางแล้วไฟล์ที่เหลือ (เช่น img\) ไม่ถูกอัปเดต
+if exist "%TARGET_FOLDER%\adb\adb.exe" (
+    if exist "%SOURCE_FOLDER%\adb" (
+        echo [SKIP] adb\ - มีอยู่แล้วในเครื่อง ข้ามการเขียนทับ
+        rd /s /q "%SOURCE_FOLDER%\adb"
+    )
+)
+
+:: robocopy แทน xcopy - เจอไฟล์ถูกล็อกจะ "ข้ามแล้วไปต่อ" ไม่หยุดทั้งก้อนแบบ xcopy
+robocopy "%SOURCE_FOLDER%" "%TARGET_FOLDER%" /E /IS /NJH /NJS /NP /R:2 /W:1
+set "RC=%ERRORLEVEL%"
 echo ============================================
 
 :: 6. Cleanup
@@ -107,8 +126,16 @@ del /q "%ZIP_NAME%"
 rd /s /q "%EXTRACT_DIR%"
 
 echo.
-echo ============================================
-echo      Update Successful! (Saved in %TARGET_FOLDER%)
-echo ============================================
+if %RC% GEQ 8 (
+    echo ============================================
+    echo      [ERROR] Update INCOMPLETE ^(robocopy code %RC%^)
+    echo ============================================
+    echo  มีไฟล์ที่ก๊อปไม่ได้ ส่วนใหญ่เพราะโปรแกรมจำลอง/บอทยังเปิดอยู่
+    echo  วิธีแก้: ปิดโปรแกรมจำลองทุกตัว + ปิดหน้าต่างบอท แล้วรันไฟล์นี้ใหม่
+) else (
+    echo ============================================
+    echo      Update Successful ^(Saved in %TARGET_FOLDER%^)
+    echo ============================================
+)
 echo.
 pause
