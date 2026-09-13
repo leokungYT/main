@@ -298,13 +298,6 @@ if GUI_AVAILABLE:
                 self.loop_delay_entry.insert(0, str(self.cfg.get("loop_delay")))
             self.loop_delay_entry.pack(side="left", padx=5)
 
-            stagger_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
-            stagger_frame.pack(fill="x", padx=20, pady=5)
-            ctk.CTkLabel(stagger_frame, text="เริ่มทีละจอ หน่วงกี่วิ (กันเน็ตดึง):", anchor="w", width=210).pack(side="left")
-            self.start_stagger_entry = ctk.CTkEntry(stagger_frame, width=60)
-            self.start_stagger_entry.insert(0, str(self.cfg.get("start_stagger", 5.0)))
-            self.start_stagger_entry.pack(side="left", padx=5)
-
             ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
             ctk.CTkLabel(scroll_frame, text="📦 ตั้งค่ากล่อง", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(5, 5), anchor="w")
             
@@ -474,12 +467,6 @@ if GUI_AVAILABLE:
                         self.cfg["loop_delay"] = float(loop_txt)
                     except:
                         self.cfg["loop_delay"] = None
-
-                # หน่วงเริ่มทีละจอ (กันเน็ตดึงตอนหลายจอล็อกอินพร้อมกัน)
-                try:
-                    self.cfg["start_stagger"] = max(0.0, float(self.start_stagger_entry.get()))
-                except:
-                    self.cfg["start_stagger"] = 5.0
                 
                 # Save auto_trade settings
                 if "auto_trade" not in self.cfg:
@@ -772,9 +759,6 @@ if GUI_AVAILABLE:
             self.after(100, self.update_realtime_stats)
             # Scheduled file-move checker (login-success → input-id)
             self.after(5000, self.check_scheduled_move)
-            # เก็บเครื่องที่บูตเสร็จทีหลังให้เอง (ไม่ต้องกด Connect Missing) ดู _auto_connect_tick
-            self._auto_connect_busy = False
-            self.after(30000, self._auto_connect_tick)
             
             # Ensure window is visible
             self.deiconify()
@@ -936,92 +920,42 @@ if GUI_AVAILABLE:
             ctk.CTkLabel(bottom_bar, text="v3.2.0", font=ctk.CTkFont(size=10), text_color="#888888").pack(side="right", padx=8)
 
         def connect_missing_devices(self):
-            """ปุ่ม Connect Missing: เชื่อมเครื่องที่ยังไม่อยู่ในลิสต์ - ทำใน thread เบื้องหลัง ไม่ค้าง GUI
-            บอทรันอยู่แล้วจะไม่ restart adb (ไม่งั้นทุกเครื่องหลุดชั่วคราว) ยังไม่เริ่มค่อย reset ให้"""
-            if getattr(self, "_auto_connect_busy", False):
-                self.log("INFO", "กำลังเชื่อมอยู่แล้ว รอสักครู่...")
-                return
-            self._auto_connect_busy = True
+            """Scan for missing adb connections and start them dynamically"""
             self.log("INFO", "Scanning for missing emulators...")
-            reset = not getattr(self, "is_started", False)
-            threading.Thread(target=self._auto_connect_worker, args=(reset,), daemon=True).start()
-
-        def _auto_connect_tick(self):
-            """ทุก auto_connect_interval วิ (config, ค่าเริ่มต้น 60, 0 = ปิด): ถ้า MuMuManager เห็น instance
-            ที่ Android ขึ้นแล้วแต่ยังไม่อยู่ในลิสต์ -> เชื่อม (ไม่ restart adb) เพิ่มเข้า GUI แล้วปล่อยบอทให้เอง
-            เดิมเปิดบอทพร้อมเปิดเครื่อง ตัวที่บูตเสร็จทีหลังจะไม่ถูกเก็บเลยจนกว่าจะกด Connect Missing เอง"""
-            try:
-                interval = float(config.get("auto_connect_interval", 60))
-            except Exception:
-                interval = 60.0
-            if interval <= 0:
-                return
-            try:
-                if not self._auto_connect_busy:
-                    inst = get_mumu_instances(force=True)
-                    known = set(self.devices)
-                    for d in self.devices:   # emulator-XXXX ในลิสต์ = 127.0.0.1:(XXXX+1)
-                        if d.startswith("emulator-"):
-                            try:
-                                known.add(f"127.0.0.1:{int(d.split('-')[1]) + 1}")
-                            except (ValueError, IndexError):
-                                pass
-                    new_serials = [s for _i, s in (inst or []) if s not in known]
-                    if new_serials:
-                        self._auto_connect_busy = True
-                        self.log("INFO", f"MuMuManager เห็นเครื่องพร้อมเพิ่ม {len(new_serials)} ตัว - กำลังเชื่อม (ไม่ restart adb)...")
-                        threading.Thread(target=self._auto_connect_worker, args=(False,), daemon=True).start()
-            except Exception as e:
-                print(f"[GUI] auto-connect tick error: {e}")
-            self.after(int(interval * 1000), self._auto_connect_tick)
-
-        def _auto_connect_worker(self, reset_adb):
-            """(thread เบื้องหลัง) เชื่อม -> หาเครื่องที่ยังไม่อยู่ในลิสต์และไม่ใช่ VM เดียวกับที่มีอยู่ (เทียบ boot_id)
-            แล้วส่งกลับ main thread ไปเพิ่มใน GUI"""
-            new_devs, skipped = [], []
-            try:
-                connect_known_ports(reset_adb=reset_adb)
-                devs = [d for d in get_connected_devices() if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
-                existing_ids = {_device_boot_id(d) for d in list(self.devices)}
-                existing_ids.discard(None)
-                for d in devs:
-                    if d in self.devices:
-                        continue
-                    bid = _boot_id_of.get(d) or _device_boot_id(d)
-                    if bid is None or bid in existing_ids:
-                        skipped.append(d)   # อ่าน boot_id ไม่ได้ / เป็น VM เดิมที่โผล่อีก serial -> ไม่เปิดบอทซ้ำ
-                        continue
-                    existing_ids.add(bid)
-                    new_devs.append(d)
-            except Exception as e:
-                print(f"[GUI] auto-connect error: {e}")
-            self.after(0, lambda: self._auto_connect_done(new_devs, skipped))
-
-        def _auto_connect_done(self, new_devs, skipped):
-            self._auto_connect_busy = False
-            added = self._add_devices(new_devs)
-            if skipped:
-                self.log("INFO", f"ข้าม {len(skipped)} serial (VM เดิม/อ่าน boot_id ไม่ได้): {', '.join(skipped)}")
-            if not added:
-                self.log("INFO", "No new devices found.")
-
-        def _add_devices(self, emulator_devices):
-            """เพิ่มเครื่องเข้า GUI (+ ปล่อยบอทให้ถ้าเริ่มไปแล้ว) คืนจำนวนที่เพิ่ม"""
+            # Automatically perform port scan before checking devices
+            connect_known_ports()
+            
+            current_devices = get_connected_devices()
+            emulator_devices = [d for d in current_devices if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
+            
             new_count = 0
             for dev in emulator_devices:
-                if dev in self.devices:
-                    continue
-                new_count += 1
-                self.devices.append(dev)
-                m = DeviceMonitorWidget(self.dev_scroll, dev, len(self.devices))
-                m.pack(fill="x", pady=1)
-                self.device_monitors[dev] = m
-                if getattr(self, 'is_started', False) and not getattr(self.args, 'no_start', False):
-                    self._start_single_bot(dev)
-                self.log("SUCCESS", f"Connected new device: {dev}")
+                if dev not in self.devices:
+                    new_count += 1
+                    self.devices.append(dev)
+                    # Add to UI
+                    m = DeviceMonitorWidget(self.dev_scroll, dev, len(self.devices))
+                    m.pack(fill="x", pady=1)
+                    self.device_monitors[dev] = m
+                    
+                    # Start bot process (แยก process เหมือน CLI mode)
+                    if getattr(self, 'is_started', False) and not getattr(self.args, 'no_start', False):
+                        import multiprocessing
+                        args_dict = vars(self.args) if hasattr(self.args, '__dict__') else {}
+                        p = multiprocessing.Process(
+                            target=run_bot_process,
+                            args=(dev, args_dict, getattr(self, "_ready_q", None)),
+                            name=f"Bot-{dev}"
+                        )
+                        p.daemon = True
+                        p.start()
+                        self.bot_threads.append(p)
+                    self.log("SUCCESS", f"Connected new device: {dev}")
+            
             if new_count > 0:
                 self.lbl_status.configure(text=f"   ● ONLINE ({len(self.devices)})")
-            return new_count
+            else:
+                self.log("INFO", "No new devices found.")
 
         def log(self, level, message): 
             ts = datetime.now().strftime("%H:%M:%S")
@@ -1063,16 +997,11 @@ if GUI_AVAILABLE:
                 if now - t0 > self._start_timeout:
                     self._starting.pop(dev, None)
                     self.log("WARN", f"{dev} ไม่ตอบใน {self._start_timeout:.0f}s - ปล่อยตัวถัดไปเลย")
-            # 3) ปล่อยตัวถัดไป: ต้องมีสล็อตว่าง + ผ่านเวลาหน่วงขั้นต่ำ (กันหลายจอยิงเน็ตพร้อมกัน)
+            # 3) มีสล็อตว่างเท่าไหร่ ปล่อยเท่านั้น
             while self._pending and len(self._starting) < self._slots:
-                now = time.time()
-                if getattr(self, "_stagger", 0) > 0 and (now - self._last_start_ts) < self._stagger:
-                    break   # ยังไม่ถึงเวลา รอ tick ถัดไป (poll ทุก 200ms)
                 dev = self._pending.pop(0)
-                self._starting[dev] = now
-                self._last_start_ts = now
+                self._starting[dev] = time.time()
                 self._start_single_bot(dev)
-                self.log("INFO", f"▶ เริ่มจอ {dev} (เหลือคิว {len(self._pending)})")
             if self._pending or self._starting:
                 self.after(200, self._ramp_tick)
             else:
@@ -1095,13 +1024,11 @@ if GUI_AVAILABLE:
             self._ready_q = multiprocessing.Queue()
             self._pending = list(self.devices)
             self._starting = {}
-            self._slots = max(1, int(config.get("start_batch", 1)))
-            self._stagger = max(0.0, float(config.get("start_stagger", 5.0)))
-            self._last_start_ts = 0.0   # 0 = จอแรกเริ่มได้ทันที
+            self._slots = max(1, int(config.get("start_batch", 4)))
             self._start_timeout = float(config.get("start_timeout", float(config.get("thread_delay", 5)) * 4))
             self._ramp_started = time.time()
-            self.log("INFO", f"Starting {len(self._pending)} Bot Processes: เริ่มทีละ {self._slots} จอ "
-                             f"หน่วง {self._stagger:.0f}s/จอ กันเน็ตดึง (เพดาน {self._start_timeout:.0f}s/จอ)")
+            self.log("INFO", f"Starting {len(self._pending)} Bot Processes: ปล่อยพร้อมกัน {self._slots} ตัว "
+                             f"แล้วต่อคิวทันทีที่แต่ละตัวพร้อม (เพดาน {self._start_timeout:.0f}s/ตัว)")
             self._ramp_tick()
 
         def on_closing(self):
@@ -1289,9 +1216,7 @@ config = {
     "pos_cache": 1,          # 1 = remember where each button was found, re-check only that spot
     "pos_cache_margin": 12,  # px of slack around the remembered spot
     "scan_interval": 1.0,    # sec between full popup/error sweeps (0 = every frame, old behaviour)
-    "loop_delay": None,      # override the wait-loop poll delay; None = each loop's own default
-    "start_batch": 1,        # กี่จอที่ปล่อยเริ่มพร้อมกัน (1 = ทีละจอ กันเน็ตดึง)
-    "start_stagger": 5.0     # หน่วงขั้นต่ำ (วินาที) ระหว่างการเริ่มแต่ละจอ
+    "loop_delay": None       # override the wait-loop poll delay; None = each loop's own default
 }
 
 adb_path = "adb"
@@ -1505,169 +1430,85 @@ def find_mumu_manager():
     return None
 
 
-# device ที่เคยแจ้งว่าเป็น ghost / ซ้ำ boot_id ไปแล้ว - กัน log ซ้ำ (ดู get_connected_devices)
-_ghost_logged = set()
-_dup_logged = set()
-# serial -> boot_id ล่าสุดที่อ่านได้ (VM เดียวกันอาจโผล่หลาย serial: emulator-5554 / 127.0.0.1:5555 / 127.0.0.1:16384)
-_boot_id_of = {}
-
-
-def _device_boot_id(serial, timeout=3):
-    """boot_id ของเครื่อง (uuid คงที่ตลอดการบูตนั้น) ไว้บอกว่า serial สองอันเป็น VM เดียวกันไหม / None ถ้าอ่านไม่ได้"""
-    try:
-        r = subprocess.run(
-            [adb_path, "-s", serial, "shell", "cat", "/proc/sys/kernel/random/boot_id"],
-            capture_output=True, text=True, timeout=timeout
-        )
-        bid = (r.stdout or "").strip()
-        # boot_id ต้องหน้าตาเป็น uuid ถ้า error/ว่าง ให้ถือว่าเช็คไม่ได้
-        if len(bid) < 30 or " " in bid:
-            return None
-        _boot_id_of[serial] = bid
-        return bid
-    except Exception:
-        return None
-
-# cache ผลจาก MuMuManager สั้น ๆ - get_connected_devices เรียกใช้ทุกครั้ง และตอน
-# ไล่เชื่อม 6 ยกมันถูกเรียกหลายสิบรอบ ถ้ายิง MuMuManager ใหม่ทุกครั้ง
-# (subprocess + parse) จะช้ามากและเป็นเหตุให้ adb connect timeout ตามไปด้วย
-_mumu_cache = {"at": -999.0, "data": None, "booting": []}
-_MUMU_CACHE_TTL = 5.0
-
-
-def get_mumu_instances(force=False):
+def get_mumu_instances():
     """ถาม MuMuManager (info -v all) ว่า instance ไหนเปิด Android อยู่จริง + adb port อะไร
     คืน list ของ (index, "ip:port") เฉพาะที่รันอยู่ / คืน None ถ้าใช้ MuMuManager ไม่ได้ (ให้ fallback วิธีเดิม)
-    นี่คือแหล่งความจริง - พอร์ต ghost ที่ไม่ใช่ instance จริงจะไม่อยู่ในลิสต์นี้
-
-    ผลถูก cache ไว้ 5 วิ (force=True เพื่อถามใหม่ทันที) เพราะ get_connected_devices
-    เรียกฟังก์ชันนี้ทุกครั้ง และตอนไล่เชื่อม 6 ยกมันถูกเรียกหลายสิบรอบ
-    ถ้ายิง subprocess ใหม่ทุกครั้งจะช้ามากจน adb connect timeout ตามไปด้วย
-    """
-    if not force and (time.time() - _mumu_cache["at"]) < _MUMU_CACHE_TTL:
-        return _mumu_cache["data"]
-
-    def _remember(value, booting=None):
-        _mumu_cache["at"] = time.time()
-        _mumu_cache["data"] = value
-        _mumu_cache["booting"] = list(booting or [])
-        return value
-
+    นี่คือแหล่งความจริง - พอร์ต ghost ที่ไม่ใช่ instance จริงจะไม่อยู่ในลิสต์นี้"""
     exe = find_mumu_manager()
     if not exe:
-        return _remember(None)
+        return None
     try:
         kwargs = {'creationflags': 0x08000000} if os.name == 'nt' else {}
         r = subprocess.run([exe, "info", "-v", "all"], capture_output=True,
                            text=True, timeout=30, **kwargs)
         raw = (r.stdout or "").strip()
         if not raw:
-            return _remember(None)
+            return None
         data = json.loads(raw)
         # กรณีมี instance เดียว MuMuManager คืน object เดี่ยว ไม่ใช่ dict ของหลายตัว
         if "index" in data and "adb_port" in data:
             data = {str(data.get("index", "0")): data}
         out = []
-        booting = []   # process เปิดแล้วแต่ Android ยังไม่ขึ้น (หน้าโลโก้ MuMu) - adb ยังรับ connect ไม่ได้
         for key, inf in data.items():
             if not isinstance(inf, dict):
                 continue
             if inf.get("is_android_started") and inf.get("adb_port"):
                 ip = inf.get("adb_host_ip", "127.0.0.1")
                 out.append((str(inf.get("index", key)), f"{ip}:{inf['adb_port']}"))
-            elif inf.get("is_process_started"):
-                booting.append(str(inf.get("index", key)))
-        return _remember(out, booting)
+        return out
     except Exception as e:
         print(f"[MuMu] อ่านข้อมูล instance ไม่ได้: {e}")
-        return _remember(None)
+        return None
 
 
-def get_mumu_booting():
-    """index ของ instance ที่ MuMuManager บอกว่า process เปิดแล้วแต่ Android ยังไม่ขึ้น (ตามผลล่าสุดของ get_mumu_instances)"""
-    return list(_mumu_cache.get("booting") or [])
-
-
-def connect_known_ports(reset_adb=True):
-    """เชื่อมต่อ emulator: kill adb server ก่อน (reset_adb=True) แล้วค่อยเชื่อมใหม่
-    ถาม MuMuManager ก่อน (แม่นสุด ไม่มี ghost) รอตัวที่กำลังบูตให้ Android ขึ้นก่อน แล้วเช็คซ้ำจนเชื่อมครบทุกตัว
-    ถ้าหา MuMuManager ไม่เจอค่อย fallback scan พอร์ต
-    reset_adb=False ใช้ตอนบอทรันอยู่แล้ว (เก็บเครื่องที่บูตเสร็จทีหลัง) - kill adb ตอนนั้นจะทำให้ทุกเครื่องหลุดชั่วคราว"""
+def connect_known_ports():
+    """เชื่อมต่อ emulator: kill adb server ก่อนเสมอแล้วค่อยเชื่อมใหม่
+    ถาม MuMuManager ก่อน (แม่นสุด ไม่มี ghost) แล้วเช็คซ้ำจนเชื่อมครบทุกตัว
+    ถ้าหา MuMuManager ไม่เจอค่อย fallback scan พอร์ต"""
     try:
-        if reset_adb:
-            # Kill & start adb server - แยก try กันตัวใดตัวหนึ่ง timeout แล้ว
-            # เด้งออกทั้งฟังก์ชัน (start-server บนเครื่องช้าใช้เวลาหลายวิ)
-            try:
-                subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=10)
-            except Exception:
-                pass
-            time.sleep(0.5)
-            try:
-                subprocess.run([adb_path, "start-server"], capture_output=True, timeout=20)
-            except Exception:
-                pass
-            time.sleep(2)  # รอ daemon พร้อมจริงก่อนยิง connect ไม่งั้นตัวแรก ๆ เชื่อมหลุด
-        # เรียก adb devices 1 ครั้งให้ daemon ตื่นเต็มที่ก่อน ไม่งั้น connect ชุดแรก
-        # ที่ยิงพร้อมกันจะไปรอ daemon จน timeout กันหมด (เห็นเป็น TimeoutExpired ยกที่ 1)
+        # Kill & start adb server - แยก try กันตัวใดตัวหนึ่ง timeout แล้ว
+        # เด้งออกทั้งฟังก์ชัน (start-server บนเครื่องช้าใช้เวลาหลายวิ)
         try:
-            subprocess.run([adb_path, "devices"], capture_output=True, timeout=20)
+            subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=10)
         except Exception:
             pass
+        time.sleep(0.5)
+        try:
+            subprocess.run([adb_path, "start-server"], capture_output=True, timeout=20)
+        except Exception:
+            pass
+        time.sleep(2)  # รอ daemon พร้อมจริงก่อนยิง connect ไม่งั้นตัวแรก ๆ เชื่อมหลุด
 
         # === ถาม MuMuManager ตรงๆ ว่ามี instance ไหนเปิดอยู่ ===
-        # และ "รอ" ตัวที่กำลังบูต: เดิมถ้าเปิดบอทพร้อม ๆ กับเปิดเครื่อง MuMuManager ยังไม่เห็นตัวไหน
-        # Android ขึ้นเลย โค้ดก็ตกไปสแกนพอร์ต เจอแค่ตัวที่บังเอิญตอบทัน แล้วเริ่มบอทด้วย 1-2 เครื่อง
-        # (เห็นเป็น "เชื่อมแค่ 1") ตั้งเพดานได้ที่ config "mumu_boot_wait" (วิ, ค่าเริ่มต้น 180)
-        instances = get_mumu_instances(force=True)
-        if instances is not None:
-            boot_wait = float(config.get("mumu_boot_wait", 180))
-            waited = 0.0
-            while get_mumu_booting() and waited < boot_wait:
-                if int(waited) % 15 == 0:
-                    print(f"[ADB] MuMu กำลังบูต {len(get_mumu_booting())} instance (Android ยังไม่ขึ้น) - รอ... "
-                          f"{int(waited)}/{int(boot_wait)} วิ (พร้อมแล้ว {len(instances)} ตัว)")
-                time.sleep(5)
-                waited += 5
-                instances = get_mumu_instances(force=True)
-                if instances is None:
-                    break
-            if get_mumu_booting() and waited >= boot_wait:
-                print(f"[ADB] รอครบ {int(boot_wait)} วิแล้ว ยังมี {len(get_mumu_booting())} instance บูตไม่เสร็จ "
-                      f"- ไปต่อด้วยที่พร้อมแล้ว (GUI จะเก็บตัวที่เสร็จทีหลังให้เอง)")
+        instances = get_mumu_instances()
         if instances:
             targets = [serial for _, serial in instances]
             print(f"\n--- [ADB] MuMuManager รายงาน {len(instances)} instance ที่เปิดอยู่ ---")
             # เชื่อมแล้วเช็คซ้ำสูงสุด 6 ยก ห่างยกละ 3 วิ - instance ที่เพิ่งเปิด
             # Android ยังบูตไม่เสร็จ adb ในเครื่องยังไม่รับการเชื่อมต่อ ต้องรอ
             # และ print คำตอบจริงของ adb ให้เห็นว่าติดเพราะอะไร ไม่กลืนเงียบอีก
-            # ยิงพร้อมกัน - เดิมไล่ทีละตัว 19 เครื่องก็รอกันเป็นสิบวินาทีตั้งแต่ยกแรก
-            # timeout 12 วิ: ตอน adb เพิ่ง restart แล้วยิง connect พร้อมกัน 16 ตัว
-            # daemon ตอบช้ากว่า 5 วิเป็นเรื่องปกติ (เดิมเลยขึ้น TimeoutExpired ทั้งยก
-            # ทั้งที่จริงเชื่อมติดแล้ว - ยกถัดไปถึงเห็นเป็น already connected)
-            def _connect_one(serial):
-                try:
-                    r = subprocess.run([adb_path, "connect", serial],
-                                       capture_output=True, timeout=12, text=True)
-                    msg_lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
-                    return serial, (msg_lines[-1] if msg_lines else "")
-                except Exception as e:
-                    return serial, type(e).__name__
-
             for round_no in range(1, 7):
-                # เรียก get_connected_devices "ครั้งเดียวต่อยก" - มันหนัก (adb devices +
-                # MuMuManager + cat boot_id ทุกเครื่อง) เดิมเรียก 3 ครั้งต่อยก
                 online = set(get_connected_devices())
                 missing = [s for s in targets if s not in online]
                 if not missing:
                     break
+                # ยิงพร้อมกัน - เดิมไล่ทีละตัว 19 เครื่องก็รอกันเป็นสิบวินาทีตั้งแต่ยกแรก
+                def _connect_one(serial):
+                    try:
+                        r = subprocess.run([adb_path, "connect", serial],
+                                           capture_output=True, timeout=5, text=True)
+                        msg_lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
+                        return serial, (msg_lines[-1] if msg_lines else "")
+                    except Exception as e:
+                        return serial, type(e).__name__
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, len(missing))) as _ex:
                     for serial, msg in _ex.map(_connect_one, missing):
                         print(f"[ADB] เชื่อม {serial} (ยกที่ {round_no}): {msg}")
-                # ยกสุดท้ายแล้วไม่ต้องนอนรอต่อ
-                if round_no < 6:
+                # เชื่อมครบแล้วไม่ต้องนอนรอ 3 วิ เปล่า ๆ
+                if [s2 for s2 in targets if s2 not in set(get_connected_devices())]:
                     time.sleep(3)
-                # ถาม MuMuManager ซ้ำ (force) เผื่อมี instance ที่เพิ่งบูตเสร็จโผล่เพิ่ม
-                inst_now = get_mumu_instances(force=True)
+                # ถาม MuMuManager ซ้ำ เผื่อมี instance ที่เพิ่งบูตเสร็จโผล่เพิ่ม
+                inst_now = get_mumu_instances()
                 if inst_now:
                     for _, s in inst_now:
                         if s not in targets:
@@ -1798,11 +1639,7 @@ def get_connected_devices():
                 if d in allowed or serial in allowed:
                     filtered.append(d)
                 else:
-                    # log แค่ครั้งแรกของแต่ละตัว - ฟังก์ชันนี้ถูกเรียกหลายสิบครั้ง
-                    # ตอนไล่เชื่อม ถ้าพิมพ์ทุกครั้งจะท่วม log จนอ่านอะไรไม่ออก
-                    if d not in _ghost_logged:
-                        _ghost_logged.add(d)
-                        print(f"[ADB] ข้าม {d} (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)")
+                    print(f"[ADB] ข้าม {d} (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)")
             final_devices = filtered
 
         # กรองซ้ำขั้นสอง: เช็ค boot_id ของแต่ละเครื่อง
@@ -1811,13 +1648,21 @@ def get_connected_devices():
         unique_devices = []
         seen_boot_ids = {}
         for d in final_devices:
-            boot_id = _device_boot_id(d)
+            boot_id = None
+            try:
+                r = subprocess.run(
+                    [adb_path, "-s", d, "shell", "cat", "/proc/sys/kernel/random/boot_id"],
+                    capture_output=True, text=True, timeout=3
+                )
+                boot_id = (r.stdout or "").strip()
+                # boot_id ต้องหน้าตาเป็น uuid ถ้า error/ว่าง ให้ถือว่าเช็คไม่ได้
+                if len(boot_id) < 30 or " " in boot_id:
+                    boot_id = None
+            except Exception:
+                pass
             if boot_id:
                 if boot_id in seen_boot_ids:
-                    # log ครั้งแรกของแต่ละตัวพอ - ฟังก์ชันนี้ถูกเรียกซ้ำเรื่อย ๆ (เคยท่วม log 40 บรรทัดตอนเริ่ม)
-                    if d not in _dup_logged:
-                        _dup_logged.add(d)
-                        print(f"[ADB] ข้าม {d} (เครื่องเดียวกับ {seen_boot_ids[boot_id]} - boot_id ซ้ำ)")
+                    print(f"[ADB] ข้าม {d} (เครื่องเดียวกับ {seen_boot_ids[boot_id]} - boot_id ซ้ำ)")
                     continue
                 seen_boot_ids[boot_id] = d
             unique_devices.append(d)
@@ -2303,9 +2148,6 @@ class RangerGearBot(threading.Thread):
         self.swap_shop_seq = ['swap_shop.png', 'swap_shop1.png', 'swap_shop2.png', 'swap_shop3.png', 'swap_shop4.png', 'fixok.png']
         
         self._fixnetv3_count = 0
-        # จำนวนเครื่องหมายถูก (check7day) ที่นับได้ตอนจบขั้นตอน 7 วันของ "ไฟล์ที่กำลังทำอยู่"
-        # None = ยังไม่ได้ทำ 7 วันรอบนี้ -> ส่งไฟล์ออกทางเดิม (login-success)
-        self._check7day_count = None
         self._need_restart = False
         self._running = True
         self._capture_count = 0  # throttle popup checks
@@ -2605,74 +2447,6 @@ class RangerGearBot(threading.Thread):
         picked.sort(key=lambda t: (t[1] // max(1, th), t[0]))     # เรียงบนลงล่าง ซ้ายไปขวา
         return picked
 
-    # รูปเครื่องหมายถูกบนการ์ดรับของ 7 วัน - นับจำนวนตอนรับของเสร็จ (ดู count_check7day)
-    CHECK7DAY_IMG = "img/check7day.bmp"
-    CHECK7DAY_DIR = "7day-check"
-
-    def count_check7day(self, samples=3, gap=0.6):
-        """นับว่าบนหน้ารับของ 7 วันมีเครื่องหมายถูก (check7day) ทั้งหมดกี่อัน - คืนจำนวน (int)
-
-        เรียกตอน "รับของครบแล้วแต่ยังไม่ปิดหน้าต่าง" เท่านั้น ไอคอนนี้อยู่บนการ์ดในหน้านั้น
-        จำนวนที่ได้จะถูกเอาไปต่อท้ายชื่อไฟล์ตอนส่งออกไป 7day-check/ (ดู _export_7day_check)
-
-        จับจอหลายเฟรมแล้วเอาค่ามากที่สุด เพราะบางเฟรมโดนอนิเมชัน/ป๊อปอัพบังไอคอนบางอัน
-        min_dist กว้างกว่าค่าปกติ (80% ของขนาดรูป) กันนับไอคอน "อันเดียวกัน" ซ้ำจาก
-        match ที่เหลื่อมกันไม่กี่พิกเซล - การ์ดแต่ละใบห่างกันราว 50px อยู่แล้ว
-        """
-        tmpl = self._get_template(self.CHECK7DAY_IMG)
-        if tmpl is None:
-            print(f"[{self.device_id}] [7DAY] [WARN] ไม่มีรูป {os.path.basename(self.CHECK7DAY_IMG)} ใน img/ "
-                  f"- นับ check7day ไม่ได้ (นับเป็น 0)")
-            return 0
-        th, tw = tmpl.shape[:2]
-        try:
-            sim = float(config.get("check7day_similarity", 0.85))
-        except Exception:
-            sim = 0.85
-        min_dist = max(8, int(min(tw, th) * 0.8))
-        best = 0
-        for i in range(1, max(1, samples) + 1):
-            try:
-                self.capture_screen()
-                hits = self._find_all_in_screen(self.CHECK7DAY_IMG, similarity=sim, min_dist=min_dist)
-            except Exception as e:
-                print(f"[{self.device_id}] [7DAY] นับ check7day รอบที่ {i} ไม่สำเร็จ: {e}")
-                continue
-            print(f"[{self.device_id}] [7DAY] นับ check7day รอบที่ {i}/{samples}: เจอ {len(hits)} อัน")
-            best = max(best, len(hits))
-            if i < samples:
-                sleep(gap)
-        print(f"[{self.device_id}] [7DAY] สรุป: เจอ check7day ทั้งหมด {best} อัน "
-              f"(จะส่งไฟล์ออกไป {self.CHECK7DAY_DIR}/ ตอนจบงานทั้งหมด)")
-        return best
-
-    def _export_7day_check(self, file_path, count):
-        """ย้ายไฟล์บัญชีไป 7day-check/ ตั้งชื่อ "[7=จำนวนที่เจอ check7day]+ชื่อเดิม" - คืน True ถ้าย้ายสำเร็จ
-
-        ถูกเรียกจาก handle_success ตอนจบไฟล์ = งาน box (ถ้าเปิดไว้) ทำจบไปแล้วแน่นอน
-        """
-        if getattr(self, "app_missing", False):
-            print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
-            return True
-        try:
-            dst_dir = self.CHECK7DAY_DIR
-            os.makedirs(dst_dir, exist_ok=True)
-            base = os.path.basename(file_path)
-            stem, ext = os.path.splitext(base)
-            # [7=จำนวน] ไว้ "ข้างหน้า" ชื่อเดิม - เรียงในโฟลเดอร์แล้วบัญชีที่ได้เท่ากันอยู่ติดกัน
-            dst = os.path.join(dst_dir, f"[7={count}]+{base}")
-            # ชื่อชนกับไฟล์เดิมในโฟลเดอร์ (บัญชีชื่อซ้ำ/เอากลับมารันอีกรอบ) - เติมลำดับต่อท้าย
-            seq = 2
-            while os.path.exists(dst):
-                dst = os.path.join(dst_dir, f"[7={count}]+{stem}_{seq}{ext}")
-                seq += 1
-            shutil.move(file_path, dst)
-            print(f"[{self.device_id}] [7DAY-CHECK] เจอ check7day {count} อัน -> ส่งไฟล์ออกที่ {dst}")
-            return True
-        except Exception as e:
-            print(f"[{self.device_id}] [7DAY-CHECK] ส่งไฟล์ออกไม่สำเร็จ: {e} - ใช้ทางเดิม (login-success)")
-            return False
-
     def process_7day(self):
         """7-Day login: เข้าหน้ารับของ แล้ววนกด 7day1.png จนกว่าจะไม่เจอ
 
@@ -2683,12 +2457,9 @@ class RangerGearBot(threading.Thread):
           3. วนหา 7day1.png ตลอดเวลา เจอก็กดทันที (ป๊อปอัพยืนยันที่เด้งตามมา
              คือ fixok.png ก็กดปิดให้ในลูปเดียวกัน ไม่งั้นมันบัง 7day1
              ปุ่มถัดไปแล้วลูปเดินต่อไม่ได้)
-          4. จบเมื่อ "ไม่เจอ 7day1 ครบ 10 วิ" หรือ "กดครบ 15 ครั้ง"
-          5. นับเครื่องหมายถูก (check7day) บนหน้านั้น "ก่อนปิดหน้าต่าง" เก็บจำนวนไว้
-             ไฟล์บัญชีจะถูกส่งออกไป 7day-check/ ชื่อ "[7=จำนวน]+เดิม" ตอนจบงานทั้งหมด
-             (งาน box ถ้าเปิดไว้จะทำเสร็จก่อนเสมอ เพราะส่งออกตอนจบไฟล์)
-          6. กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง (ไม่ใช้ BACK/ESC)
-          7. จบแล้วไปทำงานอื่นตาม config ต่อ
+          4. จบเมื่อ "ไม่เจอ 7day1 ครบ 10 วิ" หรือ "กดครบ 10 ครั้ง"
+             -> กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง (ไม่ใช้ BACK/ESC)
+          5. จบแล้วไปทำงานอื่นตาม config ต่อ
         """
         print(f"[{self.device_id}] [7DAY] เริ่มขั้นตอนรับของ 7 วัน")
 
@@ -2733,8 +2504,7 @@ class RangerGearBot(threading.Thread):
         # 3) วนกด 7day1 จนไม่มีอะไรให้กด (หรือครบเพดาน)
         IDLE_SECS = 10     # ไม่เจอ 7day1 ครบ 10 วิ = ถือว่ารับครบแล้ว
         MAX_TOTAL = 120    # เพดานเวลารวม กันลูปค้าง
-        MAX_CLICKS = 15    # เพดานรวม (การ์ดหลายใบ x หลายรอบ) กันลูปค้าง - การ์ดที่รับแล้วยังตรงกับ
-                           # รูป 7day1 อยู่ ลูปเลยวนกดใบเดิมซ้ำได้เรื่อย ๆ 15 ครั้งพอสำหรับรับให้ครบ
+        MAX_CLICKS = 30    # เพดานรวม (การ์ดหลายใบ x หลายรอบ) กันลูปค้าง
         clicks = 0
         started = time.time()
         last_hit = time.time()
@@ -2817,10 +2587,7 @@ class RangerGearBot(threading.Thread):
                 break
             sleep(0.5)
 
-        # 4) นับ check7day "ตอนนี้" - ต้องนับก่อนกดปิดหน้าต่าง ไอคอนอยู่บนการ์ดในหน้านี้
-        self._check7day_count = self.count_check7day()
-
-        # 5) กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง - ไม่ใช้ BACK แล้ว
+        # 4) กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง - ไม่ใช้ BACK แล้ว
         #    หาได้สูงสุด 10 วิ กดได้สูงสุด 3 ครั้งจนหน้าต่างปิดจริง
         closed = False
         close_clicks = 0
@@ -4391,14 +4158,6 @@ class RangerGearBot(threading.Thread):
     # File Handling
     # =========================================================
     def handle_success(self, file_path):
-        # ทำ 7 วันมาในรอบนี้ -> ส่งออกไป 7day-check/ ชื่อ "[7=จำนวน check7day]+เดิม" แทน login-success
-        # ตรงนี้คือตอนจบไฟล์ งาน box ที่เปิดไว้ทำเสร็จไปก่อนหน้านี้แล้ว
-        count7 = getattr(self, "_check7day_count", None)
-        if count7 is not None:
-            self._check7day_count = None      # ใช้ครั้งเดียวต่อไฟล์
-            if self._export_7day_check(file_path, count7):
-                return
-
         dst_dir = "login-success"
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
@@ -4674,7 +4433,7 @@ class RangerGearBot(threading.Thread):
             self._normalize_frame()   # ให้เฟรมเป็น 960x540 เสมอ (template ทุกรูปตัดจากขนาดนี้)
             self._screen_gen += 1
             self._cap_fail = 0
-            # === fixnet1/fixnet/fixplay (NET_POPUPS): เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
+            # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
             # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
             # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
             if not getattr(self, "_in_net_check", False):
@@ -4862,11 +4621,8 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] {self._pos_mem.summary()}")
 
     # ป๊อปอัพเน็ตหลุดที่ต้องกดปิดให้ได้ ไม่ว่าบอทจะอยู่ลูปไหน
-    NET_POPUPS = ("img/fixnet-tiket.png", "img/fixnet1.png", "img/fixnet.png",   # ตัวแรก = รูปจาก bot-tiket
-                  "img/fixplay.png")   # PLAY: เช็คตลอดเหมือน fixnet (ทุกครั้งที่จับจอ + monitor เบื้องหลัง กดซ้ำจนหาย)
+    NET_POPUPS = ("img/fixnet-tiket.png", "img/fixnet1.png", "img/fixnet.png")   # ตัวแรก = รูปจาก bot-tiket
     NET_POPUP_LIMIT = 10   # กดครบเท่านี้แล้วยังไม่หาย = เด้งแอปใหม่ ดีกว่าค้างรอเฉย ๆ
-    # ป๊อปอัพเน็ตที่กดปิดแล้วมีหน้าต่างต่อท้ายให้กดอีกที: ชื่อรูปที่กด -> (รูปปุ่มต่อท้าย, รอสูงสุดกี่วิ)
-    NET_FOLLOWUP = {"fixplay.png": ("img/check-ok1.png", 120)}   # กด PLAY แล้วต้องรอกด OK ต่อ
 
     def _match_score(self, template_path):
         """คะแนน match สูงสุดของรูปบนจอล่าสุด (0-1) - ไว้บอกใน log ว่า 'เกือบเจอ' หรือ 'ไม่เจอเลย'"""
@@ -4928,11 +4684,7 @@ class RangerGearBot(threading.Thread):
             return False
 
     # สเกลที่ monitor เบื้องหลังลองไล่ (เผื่อเกมวาด UI ใหญ่/เล็กกว่ารูปที่ตัดไว้ แม้จอจะ 960x540)
-    # ไล่ถี่ขึ้น: เอารูป RETRY 3 เวอร์ชันมา match กันเอง สเกลเพี้ยนแค่ 5% คะแนนก็ตกเหลือ ~0.80 พอดีเกณฑ์แล้ว
-    # ชุดเดิมกระโดดจาก 1.0 ไป 1.33 เลย เครื่องที่วาด UI ใหญ่กว่ารูป 10-25% จึงพลาดทุกสเกลแบบเงียบ ๆ (fixnet ไม่กด)
-    NET_SCALES = (1.0, 1.1, 0.9, 1.2, 1.25, 0.8, 1.33, 1.4, 0.75, 1.5, 0.67, 0.6, 1.67, 2.0, 0.5)
-    NET_SIM_GREEN = 0.65   # ปุ่มใน NET_POPUPS เป็นปุ่มเขียวสดทั้งหมด: จุดที่เจอเป็นสีเขียวจริง (เช็คจากภาพสี) ยอมรับคะแนนต่ำลงได้
-    NET_NEAR_MISS = 0.55   # คะแนนตั้งแต่นี้แต่ไม่ถึงเกณฑ์ = "เกือบเจอ" -> log + เก็บภาพไว้ให้ดู (ไม่กด)
+    NET_SCALES = (1.0, 1.33, 1.5, 0.75, 1.67, 0.67, 2.0, 0.5)
     # ป๊อปอัพที่ 'รูปตรวจจับ' กับ 'ปุ่มที่ต้องกด' เป็นคนละรูป: เจอตัวซ้าย -> หาแล้วกดตัวขวา
     NET_DETECT_THEN_TAP = (("img/fixnetv2.png", "img/fixnetv2ok.png"),)
 
@@ -4976,153 +4728,27 @@ class RangerGearBot(threading.Thread):
             hit = self._dismiss_net_popup(self._screen, scales=(getattr(self, "_net_scale", 1.0),))
             if not hit:
                 print(f"[{self.device_id}] [NET] {first_hit} หายแล้วหลังกด {rounds} ครั้ง")
-                self._net_followup(first_hit)   # เช่น PLAY หายแล้วต้องรอกด OK ต่อ (NET_FOLLOWUP)
                 return True
             rounds += 1
         print(f"[{self.device_id}] [NET] กด {first_hit} ไป {rounds} ครั้งแล้วยังไม่หาย (เน็ตยังไม่กลับมา) - ปล่อยให้รอบถัดไปลองต่อ")
         return False
 
-    def _net_followup(self, first_hit):
-        """ป๊อปอัพเน็ตบางตัวกดปิดแล้วมีหน้าต่างต่อท้ายให้กดอีกที (PLAY -> OK) ดู NET_FOLLOWUP
-
-        เรียกหลังจาก _clear_net_popup_loop เห็นว่าป๊อปอัพหายแล้ว: จับจอวนรอจนเจอปุ่มต่อท้าย
-        แล้วกดผ่าน adb ตรง ๆ (เหมือนป๊อปอัพเน็ตตัวอื่น) ระหว่างรอถ้าป๊อปอัพเน็ตเด้งกลับมา
-        (PLAY อีกรอบ / RETRY) ก็กดให้เลย รอจนหมดเวลาแล้วยังไม่เจอก็ปล่อยผ่านให้บอททำงานต่อ
-        ผู้เรียกทุกทางถือ _in_net_check อยู่แล้ว _raw_capture ข้างในจึงไม่วนกลับมาเช็คเน็ตซ้อน
-        """
-        spec = self.NET_FOLLOWUP.get(first_hit)
-        if not spec:
-            return False
-        target, wait_sec = spec
-        name = os.path.basename(target)
-        print(f"[{self.device_id}] [NET] {first_hit} หายแล้ว -> รอกด {name} ต่อ (สูงสุด {wait_sec} วิ)")
-        deadline = time.time() + wait_sec
-        while time.time() < deadline and getattr(self, "_running", True):
-            try:
-                self._raw_capture()
-            except Exception:
-                pass
-            scr = self._screen
-            if scr is not None:
-                b = self._best_match(scr, target, 0.8, (getattr(self, "_net_scale", 1.0),))
-                if b:
-                    score, cx, cy, _ = b
-                    self._adb_tap(cx, cy)
-                    print(f"[{self.device_id}] [NET] พบ {name} หลัง {first_hit} (score {score:.2f}) -> adb tap ({cx}, {cy})")
-                    sleep(1)
-                    try:
-                        self._raw_capture()   # คืนภาพล่าสุดให้ผู้เรียก
-                    except Exception:
-                        pass
-                    return True
-                # ป๊อปอัพเน็ตเด้งกลับมาระหว่างรอ (PLAY อีกรอบ / RETRY) -> กดให้เลย ไม่ต้องรอรอบถัดไป
-                self._netpopup_last_click = 0
-                self._dismiss_net_popup(scr)
-            sleep(1)
-        print(f"[{self.device_id}] [NET] รอ {name} หลัง {first_hit} จนหมดเวลา {wait_sec} วิ แล้วไม่เจอ - ทำงานต่อ")
-        return False
-
-    def _best_match_any(self, screen, path, scales):
-        """เหมือน _best_match แต่คืนตัวที่ดีที่สุดเสมอไม่มีเกณฑ์: (score, cx, cy, scale, tw, th) หรือ None"""
-        tmpl0 = self._get_template(path)
-        if tmpl0 is None:
-            return None
-        best = None
-        for sc in scales:
-            if sc == 1.0:
-                tmpl = tmpl0
-            else:
-                tmpl = cv2.resize(tmpl0, None, fx=sc, fy=sc,
-                                  interpolation=cv2.INTER_AREA if sc < 1 else cv2.INTER_CUBIC)
-            th, tw = tmpl.shape[:2]
-            if screen.shape[0] < th or screen.shape[1] < tw:
-                continue
-            res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, max_loc = cv2.minMaxLoc(res)
-            if best is None or max_val > best[0]:
-                best = (float(max_val), max_loc[0] + tw // 2, max_loc[1] + th // 2, sc, tw, th)
-        return best
-
-    def _is_green_button(self, cx, cy, tw, th):
-        """กรอบที่ match เป็นปุ่มสีเขียวจริงไหม - ดูจากภาพสีล่าสุดตรงขอบซ้าย/ขวา/บน/ล่าง (เลี่ยงตัวหนังสือขาวตรงกลาง)
-
-        ปุ่ม RETRY / PLAY / OK ของเกมพื้นเขียวสด (B,G,R ราว 49,194,8) ต้องเขียวอย่างน้อย 3 ใน 4 จุด
-        ไม่มีภาพสี (เฟรมเก่า/decode ไม่ได้) -> False = ใช้เกณฑ์ปกติ
-        """
-        color = getattr(self, "_screen_color", None)
-        if color is None or getattr(color, "ndim", 0) != 3:
-            return False
-        H, W = color.shape[:2]
-        x0, y0 = cx - tw // 2, cy - th // 2
-        mx, my = max(1, int(tw * 0.05)), max(1, int(th * 0.12))
-        pts = ((x0 + mx, cy), (x0 + tw - 1 - mx, cy), (cx, y0 + my), (cx, y0 + th - 1 - my))
-        ok = 0
-        for x, y in pts:
-            if 0 <= x < W and 0 <= y < H:
-                b, g, r = (int(v) for v in color[y, x])
-                if g >= 120 and g > r + 60 and g > b + 60:
-                    ok += 1
-        return ok >= 3
-
-    def _net_popup_paths(self):
-        """NET_POPUPS ที่ตัดรูปซ้ำออก (เนื้อหาเหมือนกันเป๊ะ เช่น fixnet.png กับ fixnet-tiket.png) - ประหยัด matchTemplate"""
-        cached = getattr(self, "_net_paths_cache", None)
-        if cached is not None:
-            return cached
-        out, seen = [], []
-        for p in self.NET_POPUPS:
-            t = self._get_template(p)
-            if t is None:
-                continue
-            if any(t.shape == s.shape and np.array_equal(t, s) for s in seen):
-                continue
-            seen.append(t)
-            out.append(p)
-        self._net_paths_cache = tuple(out)
-        return self._net_paths_cache
-
-    def _log_net_near_miss(self, score, path, sc):
-        """เห็นป๊อปอัพเน็ตแบบ "เกือบเจอ" (คะแนนไม่ถึงเกณฑ์) - บอกใน log ทุก 30 วิ + เก็บภาพทุก 5 นาที
-
-        ไว้ไล่จาก log ได้เลยว่ารูปตัดไม่ตรง/สเกลไม่ตรงกับเครื่องนั้น โดยไม่ต้องไปนั่งเฝ้าหน้าจอ
-        """
-        now = time.time()
-        if now - getattr(self, "_net_near_logged", 0) < 30:
-            return
-        self._net_near_logged = now
-        shot = None
-        if now - getattr(self, "_net_near_shot", 0) > 300:
-            self._net_near_shot = now
-            shot = self._save_debug_screen("net-nearmiss")
-        print(f"[{self.device_id}] [NET] เกือบเจอ {os.path.basename(path)} (score {score:.2f} ที่สเกล x{sc:.2f} / "
-              f"ต้องการ 0.80 หรือ {self.NET_SIM_GREEN:.2f}+ปุ่มเขียว) ไม่กด - รูปอาจตัดไม่ตรงกับเครื่องนี้"
-              + (f" เก็บภาพไว้ที่ {shot}" if shot else ""))
-
     def _dismiss_net_popup(self, screen, similarity=0.8, scales=None):
-        """หาป๊อปอัพเน็ต (RETRY / PLAY / network-OK) บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
+        """หาป๊อปอัพเน็ต (RETRY / network-OK) บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
 
         กดด้วย adb input tap ตรง ๆ เสมอ (ไม่ผ่าน minitouch) เหมือน bot-tiket
         scales=None       -> ใช้สเกลที่เคยเจอ (เริ่ม 1.0) ราคาถูก เรียกได้ทุกครั้งที่จับจอ
         scales=NET_SCALES -> ไล่ทุกสเกล (monitor เบื้องหลังใช้) เจอสเกลไหนจำไว้ให้รอบต่อไป
-        คะแนนไม่ถึง similarity แต่ >= NET_SIM_GREEN และกรอบนั้นเป็นปุ่มเขียวจริง -> นับว่าเจอ (ทนรูปเพี้ยนเล็กน้อย)
-        ไม่ถึงทั้งคู่แต่ >= NET_NEAR_MISS ตอนไล่หลายสเกล -> log "เกือบเจอ" + เก็บภาพ ให้ไล่สาเหตุจาก log ได้
         """
         if screen is None:
             return None
         if scales is None:
             scales = (getattr(self, "_net_scale", 1.0),)
-        hit = None    # (score, path_to_report, cx, cy, scale)
-        near = None   # (score, path, scale) ดีสุดที่ยังไม่ถึงเกณฑ์
-        for path in self._net_popup_paths():
-            b = self._best_match_any(screen, path, scales)
-            if not b:
-                continue
-            score, cx, cy, sc, tw, th = b
-            if score >= similarity or (score >= self.NET_SIM_GREEN and self._is_green_button(cx, cy, tw, th)):
-                if hit is None or score > hit[0]:
-                    hit = (score, path, cx, cy, sc)
-            elif score >= self.NET_NEAR_MISS and (near is None or score > near[0]):
-                near = (score, path, sc)
+        hit = None   # (score, path_to_report, cx, cy, scale)
+        for path in self.NET_POPUPS:
+            b = self._best_match(screen, path, similarity, scales)
+            if b and (hit is None or b[0] > hit[0]):
+                hit = (b[0], path, b[1], b[2], b[3])
         if hit is None:
             for detect, target in self.NET_DETECT_THEN_TAP:
                 d = self._best_match(screen, detect, similarity, scales)
@@ -5135,23 +4761,21 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [NET] เจอ {os.path.basename(detect)} แต่ยังไม่เห็นปุ่ม {os.path.basename(target)} - รอเฟรมถัดไป")
                 break
         if hit is None:
-            if near is not None and len(scales) > 1:   # log เฉพาะตอนกวาดหลายสเกล (monitor) ไม่ให้ท่วมทุกเฟรม
-                self._log_net_near_miss(*near)
             return None
         score, path, cx, cy, sc = hit
         now = time.time()
         if now - getattr(self, "_netpopup_last_click", 0) < 1.0:
             return None          # เพิ่งกดไป รอป๊อปอัพหายก่อน ไม่กดรัว (cooldown 1 วิ)
         self._netpopup_last_click = now
-        if sc != getattr(self, "_net_scale", None):
-            if getattr(self, "_net_scale", None) is not None or sc != 1.0:
-                print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
-            self._net_scale = sc   # จำเสมอ (รวม 1.0) monitor จะได้เลิกกวาดทุกสเกลทุกรอบ
+        if sc != getattr(self, "_net_scale", 1.0):
+            self._net_scale = sc
+            print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
         # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
         # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
         self._adb_tap(cx, cy)
         print(f"[{self.device_id}] [NET] พบ {os.path.basename(path)} (score {score:.2f}, x{sc:.2f}) -> adb tap ทันที ({cx}, {cy})")
         return os.path.basename(path)
+
     def _popup_monitor_loop(self):
         """Background thread to monitor fixnetv3.png - reuses main thread's screen to save CPU"""
         while self._running:
@@ -5168,26 +4792,11 @@ class RangerGearBot(threading.Thread):
                         self._in_net_check = False
                 mon_screen = self._screen
                 if mon_screen is not None:
-                    # fixnet1/fixnet/fixplay (NET_POPUPS): กดปิดจากตรงนี้ด้วย เพราะลูปรอส่วนใหญ่ไม่ได้
+                    # fixnet1/fixnet: กดปิดจากตรงนี้ด้วย เพราะลูปรอส่วนใหญ่ไม่ได้
                     # เรียก check_floating_popups() เอง
-                    # ถือ _in_net_check ไว้ระหว่างทำ - thread หลักกำลังเคลียร์อยู่ก็ข้ามรอบนี้
-                    # (ไม่งั้นสองฝั่งกดซ้ำ/รอปุ่มต่อท้ายซ้อนกัน)
-                    hit = None
-                    skipped = getattr(self, "_in_net_check", False)
-                    if not skipped:
-                        self._in_net_check = True
-                        try:
-                            # ยังไม่เคยเจอ = กวาดทุกสเกลทุกรอบ / รู้สเกลของเครื่องแล้ว = เช็คสเกลนั้น
-                            # และกวาดทุกสเกลซ้ำทุกรอบที่ 5 (~15 วิ) เผื่อเกมเปลี่ยนขนาด UI
-                            self._mon_round = getattr(self, "_mon_round", 0) + 1
-                            learned = getattr(self, "_net_scale", None)
-                            sweep = self.NET_SCALES if (learned is None or self._mon_round % 5 == 0) else (learned,)
-                            hit = self._dismiss_net_popup(mon_screen, scales=sweep)
-                            if hit:
-                                self._clear_net_popup_loop(hit)   # กดซ้ำจนหาย (แล้วรอกดปุ่มต่อท้ายถ้ามี)
-                        finally:
-                            self._in_net_check = False
+                    hit = self._dismiss_net_popup(mon_screen, scales=self.NET_SCALES)   # monitor ไล่ทุกสเกล
                     if hit:
+                        self._clear_net_popup_loop(hit)   # กดซ้ำจนหาย
                         self._netpopup_count = getattr(self, "_netpopup_count", 0) + 1
                         print(f"[{self.device_id}] [MONITOR] {hit} เด้ง (#{self._netpopup_count}) - กดปิดให้แล้ว")
                         if self._netpopup_count >= self.NET_POPUP_LIMIT:
@@ -5196,7 +4805,7 @@ class RangerGearBot(threading.Thread):
                             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell",
                                           "am", "force-stop", "com.linecorp.LGRGS"])
                             self._netpopup_count = 0
-                    elif not skipped and getattr(self, "_netpopup_count", 0):
+                    elif getattr(self, "_netpopup_count", 0):
                         self._netpopup_count = 0
 
                     tmpl = self._get_template("img/fixnetv3.png")
@@ -5360,19 +4969,21 @@ class RangerGearBot(threading.Thread):
                 self._raw_capture() # Update cache for caller
             return
 
-        # fixplay.png (PLAY): เช็คตลอดเหมือน fixnet - อยู่ใน NET_POPUPS แล้ว (ทุกครั้งที่จับจอ + monitor
-        # เบื้องหลัง กดผ่าน adb ซ้ำจนหาย แล้วรอกด check-ok1.png ต่อ ตาม NET_FOLLOWUP)
-        # ตรงนี้เผื่อหลุดมาถึง (ติด cooldown / เช็คซ้อน): ส่งเข้าทางเดียวกัน ไม่กด/รอ OK ซ้ำสองชั้น
-        if self.exists_in_cache("img/fixplay.png", similarity=0.8) and not getattr(self, "_in_net_check", False):
-            print(f"[{self.device_id}] [POPUP] fixplay.png detected, clearing via net-popup path...")
-            self._in_net_check = True
-            try:
-                self._netpopup_last_click = 0
-                _hit = self._dismiss_net_popup(self._screen)
-                if _hit:
-                    self._clear_net_popup_loop(_hit)
-            finally:
-                self._in_net_check = False
+        if self.exists_in_cache("img/fixplay.png"):
+            print(f"[{self.device_id}] [POPUP] fixplay.png detected, clicking...")
+            self.click("img/fixplay.png")
+            sleep(2)
+            # After fixplay, FORCE wait and click check-ok1.png
+            print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png after fixplay...")
+            for _ in range(120):  # Wait up to 120 seconds
+                self._raw_capture()
+                if self.exists_in_cache("img/check-ok1.png"):
+                    print(f"[{self.device_id}] [POPUP] check-ok1.png found after fixplay, clicking...")
+                    self.click("img/check-ok1.png")
+                    sleep(1)
+                    self._raw_capture() # Update cache for caller
+                    break
+                sleep(1)
 
         # fixnet.png: เช็คตลอดเจอก็กดรัวๆ ไม่มีหยุดจนกว่าจะหายไป
         fixnet_clicks = 0
@@ -5471,7 +5082,7 @@ class RangerGearBot(threading.Thread):
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
             self._normalize_frame()   # ให้เฟรมเป็น 960x540 เสมอ (template ทุกรูปตัดจากขนาดนี้)
             self._screen_gen += 1
-            # === fixnet1/fixnet/fixplay (NET_POPUPS): เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
+            # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
             # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
             # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
             if not getattr(self, "_in_net_check", False):
@@ -5642,9 +5253,6 @@ class RangerGearBot(threading.Thread):
     def handle_post_login_tasks(self):
         """Perform additional tasks after reaching the lobby (Boxes, 7-Day, etc.)"""
         print(f"[{self.device_id}] Starting Post-Login Tasks...")
-        # เริ่มไฟล์/รอบใหม่ -> ล้างจำนวน check7day ของรอบก่อน ไม่งั้นไฟล์นี้จะถูกส่งออก
-        # ด้วยจำนวนของบัญชีก่อนหน้า (process_7day จะตั้งค่าใหม่ให้เองถ้าได้ทำงาน)
-        self._check7day_count = None
         try:
             load_config() # Reload global config (consolidated)
             self.cfg = config 
@@ -5747,10 +5355,6 @@ class RangerGearBot(threading.Thread):
         # 7. Channel Switching (Placeholder)
         if self.cfg.get("channels_img"):
             print(f"[{self.device_id}] Task Check: Channel Switch to {self.cfg.get('channel', 'ch2')}...")
-
-        if self._check7day_count is not None:
-            print(f"[{self.device_id}] [7DAY-CHECK] งานทั้งหมด (รวม box ถ้าเปิดไว้) เสร็จแล้ว - "
-                  f"รอส่งไฟล์ออกไป {self.CHECK7DAY_DIR}/ พร้อมจำนวน {self._check7day_count}")
 
         print(f"[{self.device_id}] Post-Login Tasks Completed.")
 
@@ -6411,51 +6015,9 @@ class RangerGearBot(threading.Thread):
         # Disabled moving to login-success folder
         pass
 
-    def _apps_to_close(self):
-        """แพ็กเกจที่ต้องปิดตอนเคลียร์แอป (นอกจากตัวเกม)
-
-        หา Cloudflare (WARP / 1.1.1.1 / One Agent) อัตโนมัติจาก pm list packages
-        ครั้งเดียวต่อ device แล้วจำไว้ - ชื่อ package ต่างกันตามเวอร์ชัน
-        เพิ่มเองได้ผ่าน config "close_apps": ["com.xxx.yyy", ...]
-        """
-        if getattr(self, "_extra_close_pkgs", None) is None:
-            pkgs = []
-            try:
-                r = self.adb_run([self.adb_cmd, "-s", self.device_id, "shell",
-                                  "pm", "list", "packages"], timeout=15)
-                raw = r.stdout
-                if isinstance(raw, bytes):
-                    raw = raw.decode("utf-8", "ignore")
-                for line in (raw or "").splitlines():
-                    name = line.strip().replace("package:", "").strip()
-                    low = name.lower()
-                    if name and ("cloudflare" in low or "onedotone" in low):
-                        pkgs.append(name)
-            except Exception as e:
-                print(f"[{self.device_id}] [CLOSE-APP] อ่านรายชื่อแอปไม่ได้: {e}")
-            for extra in (config.get("close_apps") or []):
-                if extra and extra not in pkgs:
-                    pkgs.append(extra)
-            self._extra_close_pkgs = pkgs
-            if pkgs:
-                print(f"[{self.device_id}] [CLOSE-APP] จะปิดแอปเพิ่มทุกครั้งที่เคลียร์: {', '.join(pkgs)}")
-            else:
-                print(f"[{self.device_id}] [CLOSE-APP] ไม่พบ Cloudflare บนเครื่องนี้ (ปิดเฉพาะตัวเกม)")
-        return self._extra_close_pkgs
-
-    def _close_extra_apps(self):
-        """ปิดแอปเสริม (Cloudflare ฯลฯ) - ล้มก็ไม่เป็นไร ไม่ให้กระทบงานหลัก"""
-        for pkg in self._apps_to_close():
-            try:
-                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell",
-                              "am", "force-stop", pkg], timeout=10)
-            except Exception:
-                pass
-
     def clear_and_restart(self):
-        """Clear app and prepare for next file (ปิด Cloudflare/แอปเสริมด้วย)"""
+        """Clear app and prepare for next file"""
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-        self._close_extra_apps()
         sleep(2)
 
     # =========================================================
@@ -6791,13 +6353,13 @@ class RangerGearBot(threading.Thread):
             else:
                 self._fixokk_start_time = None
 
-            # === alert2.png Persistence Check (รอค้างครบ 15 วิ ให้ clear app แล้วเปิดใหม่) ===
+            # === alert2.png Persistence Check (รอค้างครบ 8 วิ ให้ clear app แล้วเปิดใหม่) ===
             if self.exists_in_cache("img/alert2.png", similarity=0.8):
                 if not hasattr(self, '_alert2_start_time') or self._alert2_start_time is None:
                     self._alert2_start_time = time.time()
-                    print(f"[{self.device_id}] Detected alert2.png... waiting 15s to clear app")
-                elif time.time() - self._alert2_start_time >= 15:
-                    print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ 15 วินาที! เคลียร์แอพและเข้าใหม่...")
+                    print(f"[{self.device_id}] Detected alert2.png... waiting 8s to clear app")
+                elif time.time() - self._alert2_start_time >= 8:
+                    print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ 8 วินาที! เคลียร์แอพและเข้าใหม่...")
                     self.clear_and_restart()
                     self.open_app()
                     self._alert2_start_time = None
@@ -7396,7 +6958,7 @@ if __name__ == "__main__":
         except: pass
 
     print("=== Auto Ranger+Gear Script v3.2.0 ===")
-    print(f"[VERSION] build 2026-09-11 net-v3 (fixplay+scale, boot-wait, auto-connect) | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
+    print(f"[VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
     
     load_config()
     
