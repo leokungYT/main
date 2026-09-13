@@ -2625,7 +2625,7 @@ class RangerGearBot(threading.Thread):
         return best
 
     def _export_7day_check(self, file_path, count):
-        """ย้ายไฟล์บัญชีไป 7day-check/ ตั้งชื่อ "ชื่อเดิม[จำนวนที่เจอ check7day]" - คืน True ถ้าย้ายสำเร็จ
+        """ย้ายไฟล์บัญชีไป 7day-check/ ตั้งชื่อ "ชื่อเดิม[7=จำนวนที่เจอ check7day]" - คืน True ถ้าย้ายสำเร็จ
 
         ถูกเรียกจาก handle_success ตอนจบไฟล์ = งาน box (ถ้าเปิดไว้) ทำจบไปแล้วแน่นอน
         """
@@ -2637,11 +2637,11 @@ class RangerGearBot(threading.Thread):
             os.makedirs(dst_dir, exist_ok=True)
             base = os.path.basename(file_path)
             stem, ext = os.path.splitext(base)
-            dst = os.path.join(dst_dir, f"{stem}[{count}]{ext}")
+            dst = os.path.join(dst_dir, f"{stem}[7={count}]{ext}")
             # ชื่อชนกับไฟล์เดิมในโฟลเดอร์ (บัญชีชื่อซ้ำ/เอากลับมารันอีกรอบ) - เติมลำดับต่อท้าย
             seq = 2
             while os.path.exists(dst):
-                dst = os.path.join(dst_dir, f"{stem}[{count}]_{seq}{ext}")
+                dst = os.path.join(dst_dir, f"{stem}[7={count}]_{seq}{ext}")
                 seq += 1
             shutil.move(file_path, dst)
             print(f"[{self.device_id}] [7DAY-CHECK] เจอ check7day {count} อัน -> ส่งไฟล์ออกที่ {dst}")
@@ -2662,7 +2662,7 @@ class RangerGearBot(threading.Thread):
              ปุ่มถัดไปแล้วลูปเดินต่อไม่ได้)
           4. จบเมื่อ "ไม่เจอ 7day1 ครบ 10 วิ" หรือ "กดครบ 10 ครั้ง"
           5. นับเครื่องหมายถูก (check7day) บนหน้านั้น "ก่อนปิดหน้าต่าง" เก็บจำนวนไว้
-             ไฟล์บัญชีจะถูกส่งออกไป 7day-check/ ชื่อ "เดิม[จำนวน]" ตอนจบงานทั้งหมด
+             ไฟล์บัญชีจะถูกส่งออกไป 7day-check/ ชื่อ "เดิม[7=จำนวน]" ตอนจบงานทั้งหมด
              (งาน box ถ้าเปิดไว้จะทำเสร็จก่อนเสมอ เพราะส่งออกตอนจบไฟล์)
           6. กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง (ไม่ใช้ BACK/ESC)
           7. จบแล้วไปทำงานอื่นตาม config ต่อ
@@ -4367,7 +4367,7 @@ class RangerGearBot(threading.Thread):
     # File Handling
     # =========================================================
     def handle_success(self, file_path):
-        # ทำ 7 วันมาในรอบนี้ -> ส่งออกไป 7day-check/ ชื่อ "เดิม[จำนวน check7day]" แทน login-success
+        # ทำ 7 วันมาในรอบนี้ -> ส่งออกไป 7day-check/ ชื่อ "เดิม[7=จำนวน check7day]" แทน login-success
         # ตรงนี้คือตอนจบไฟล์ งาน box ที่เปิดไว้ทำเสร็จไปก่อนหน้านี้แล้ว
         count7 = getattr(self, "_check7day_count", None)
         if count7 is not None:
