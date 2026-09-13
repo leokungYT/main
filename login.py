@@ -2281,6 +2281,9 @@ class RangerGearBot(threading.Thread):
         self.swap_shop_seq = ['swap_shop.png', 'swap_shop1.png', 'swap_shop2.png', 'swap_shop3.png', 'swap_shop4.png', 'fixok.png']
         
         self._fixnetv3_count = 0
+        # จำนวนเครื่องหมายถูก (check7day) ที่นับได้ตอนจบขั้นตอน 7 วันของ "ไฟล์ที่กำลังทำอยู่"
+        # None = ยังไม่ได้ทำ 7 วันรอบนี้ -> ส่งไฟล์ออกทางเดิม (login-success)
+        self._check7day_count = None
         self._need_restart = False
         self._running = True
         self._capture_count = 0  # throttle popup checks
@@ -2580,6 +2583,73 @@ class RangerGearBot(threading.Thread):
         picked.sort(key=lambda t: (t[1] // max(1, th), t[0]))     # เรียงบนลงล่าง ซ้ายไปขวา
         return picked
 
+    # รูปเครื่องหมายถูกบนการ์ดรับของ 7 วัน - นับจำนวนตอนรับของเสร็จ (ดู count_check7day)
+    CHECK7DAY_IMG = "img/check7day.bmp"
+    CHECK7DAY_DIR = "7day-check"
+
+    def count_check7day(self, samples=3, gap=0.6):
+        """นับว่าบนหน้ารับของ 7 วันมีเครื่องหมายถูก (check7day) ทั้งหมดกี่อัน - คืนจำนวน (int)
+
+        เรียกตอน "รับของครบแล้วแต่ยังไม่ปิดหน้าต่าง" เท่านั้น ไอคอนนี้อยู่บนการ์ดในหน้านั้น
+        จำนวนที่ได้จะถูกเอาไปต่อท้ายชื่อไฟล์ตอนส่งออกไป 7day-check/ (ดู _export_7day_check)
+
+        จับจอหลายเฟรมแล้วเอาค่ามากที่สุด เพราะบางเฟรมโดนอนิเมชัน/ป๊อปอัพบังไอคอนบางอัน
+        min_dist กว้างกว่าค่าปกติ (80% ของขนาดรูป) กันนับไอคอน "อันเดียวกัน" ซ้ำจาก
+        match ที่เหลื่อมกันไม่กี่พิกเซล - การ์ดแต่ละใบห่างกันราว 50px อยู่แล้ว
+        """
+        tmpl = self._get_template(self.CHECK7DAY_IMG)
+        if tmpl is None:
+            print(f"[{self.device_id}] [7DAY] [WARN] ไม่มีรูป {os.path.basename(self.CHECK7DAY_IMG)} ใน img/ "
+                  f"- นับ check7day ไม่ได้ (นับเป็น 0)")
+            return 0
+        th, tw = tmpl.shape[:2]
+        try:
+            sim = float(config.get("check7day_similarity", 0.85))
+        except Exception:
+            sim = 0.85
+        min_dist = max(8, int(min(tw, th) * 0.8))
+        best = 0
+        for i in range(1, max(1, samples) + 1):
+            try:
+                self.capture_screen()
+                hits = self._find_all_in_screen(self.CHECK7DAY_IMG, similarity=sim, min_dist=min_dist)
+            except Exception as e:
+                print(f"[{self.device_id}] [7DAY] นับ check7day รอบที่ {i} ไม่สำเร็จ: {e}")
+                continue
+            print(f"[{self.device_id}] [7DAY] นับ check7day รอบที่ {i}/{samples}: เจอ {len(hits)} อัน")
+            best = max(best, len(hits))
+            if i < samples:
+                sleep(gap)
+        print(f"[{self.device_id}] [7DAY] สรุป: เจอ check7day ทั้งหมด {best} อัน "
+              f"(จะส่งไฟล์ออกไป {self.CHECK7DAY_DIR}/ ตอนจบงานทั้งหมด)")
+        return best
+
+    def _export_7day_check(self, file_path, count):
+        """ย้ายไฟล์บัญชีไป 7day-check/ ตั้งชื่อ "ชื่อเดิม[จำนวนที่เจอ check7day]" - คืน True ถ้าย้ายสำเร็จ
+
+        ถูกเรียกจาก handle_success ตอนจบไฟล์ = งาน box (ถ้าเปิดไว้) ทำจบไปแล้วแน่นอน
+        """
+        if getattr(self, "app_missing", False):
+            print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+            return True
+        try:
+            dst_dir = self.CHECK7DAY_DIR
+            os.makedirs(dst_dir, exist_ok=True)
+            base = os.path.basename(file_path)
+            stem, ext = os.path.splitext(base)
+            dst = os.path.join(dst_dir, f"{stem}[{count}]{ext}")
+            # ชื่อชนกับไฟล์เดิมในโฟลเดอร์ (บัญชีชื่อซ้ำ/เอากลับมารันอีกรอบ) - เติมลำดับต่อท้าย
+            seq = 2
+            while os.path.exists(dst):
+                dst = os.path.join(dst_dir, f"{stem}[{count}]_{seq}{ext}")
+                seq += 1
+            shutil.move(file_path, dst)
+            print(f"[{self.device_id}] [7DAY-CHECK] เจอ check7day {count} อัน -> ส่งไฟล์ออกที่ {dst}")
+            return True
+        except Exception as e:
+            print(f"[{self.device_id}] [7DAY-CHECK] ส่งไฟล์ออกไม่สำเร็จ: {e} - ใช้ทางเดิม (login-success)")
+            return False
+
     def process_7day(self):
         """7-Day login: เข้าหน้ารับของ แล้ววนกด 7day1.png จนกว่าจะไม่เจอ
 
@@ -2591,8 +2661,11 @@ class RangerGearBot(threading.Thread):
              คือ fixok.png ก็กดปิดให้ในลูปเดียวกัน ไม่งั้นมันบัง 7day1
              ปุ่มถัดไปแล้วลูปเดินต่อไม่ได้)
           4. จบเมื่อ "ไม่เจอ 7day1 ครบ 10 วิ" หรือ "กดครบ 10 ครั้ง"
-             -> กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง (ไม่ใช้ BACK/ESC)
-          5. จบแล้วไปทำงานอื่นตาม config ต่อ
+          5. นับเครื่องหมายถูก (check7day) บนหน้านั้น "ก่อนปิดหน้าต่าง" เก็บจำนวนไว้
+             ไฟล์บัญชีจะถูกส่งออกไป 7day-check/ ชื่อ "เดิม[จำนวน]" ตอนจบงานทั้งหมด
+             (งาน box ถ้าเปิดไว้จะทำเสร็จก่อนเสมอ เพราะส่งออกตอนจบไฟล์)
+          6. กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง (ไม่ใช้ BACK/ESC)
+          7. จบแล้วไปทำงานอื่นตาม config ต่อ
         """
         print(f"[{self.device_id}] [7DAY] เริ่มขั้นตอนรับของ 7 วัน")
 
@@ -2720,7 +2793,10 @@ class RangerGearBot(threading.Thread):
                 break
             sleep(0.5)
 
-        # 4) กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง - ไม่ใช้ BACK แล้ว
+        # 4) นับ check7day "ตอนนี้" - ต้องนับก่อนกดปิดหน้าต่าง ไอคอนอยู่บนการ์ดในหน้านี้
+        self._check7day_count = self.count_check7day()
+
+        # 5) กด 7day2.png (ปุ่ม X) ปิดหน้าต่าง - ไม่ใช้ BACK แล้ว
         #    หาได้สูงสุด 10 วิ กดได้สูงสุด 3 ครั้งจนหน้าต่างปิดจริง
         closed = False
         close_clicks = 0
@@ -4291,6 +4367,14 @@ class RangerGearBot(threading.Thread):
     # File Handling
     # =========================================================
     def handle_success(self, file_path):
+        # ทำ 7 วันมาในรอบนี้ -> ส่งออกไป 7day-check/ ชื่อ "เดิม[จำนวน check7day]" แทน login-success
+        # ตรงนี้คือตอนจบไฟล์ งาน box ที่เปิดไว้ทำเสร็จไปก่อนหน้านี้แล้ว
+        count7 = getattr(self, "_check7day_count", None)
+        if count7 is not None:
+            self._check7day_count = None      # ใช้ครั้งเดียวต่อไฟล์
+            if self._export_7day_check(file_path, count7):
+                return
+
         dst_dir = "login-success"
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
@@ -5534,6 +5618,9 @@ class RangerGearBot(threading.Thread):
     def handle_post_login_tasks(self):
         """Perform additional tasks after reaching the lobby (Boxes, 7-Day, etc.)"""
         print(f"[{self.device_id}] Starting Post-Login Tasks...")
+        # เริ่มไฟล์/รอบใหม่ -> ล้างจำนวน check7day ของรอบก่อน ไม่งั้นไฟล์นี้จะถูกส่งออก
+        # ด้วยจำนวนของบัญชีก่อนหน้า (process_7day จะตั้งค่าใหม่ให้เองถ้าได้ทำงาน)
+        self._check7day_count = None
         try:
             load_config() # Reload global config (consolidated)
             self.cfg = config 
@@ -5636,6 +5723,10 @@ class RangerGearBot(threading.Thread):
         # 7. Channel Switching (Placeholder)
         if self.cfg.get("channels_img"):
             print(f"[{self.device_id}] Task Check: Channel Switch to {self.cfg.get('channel', 'ch2')}...")
+
+        if self._check7day_count is not None:
+            print(f"[{self.device_id}] [7DAY-CHECK] งานทั้งหมด (รวม box ถ้าเปิดไว้) เสร็จแล้ว - "
+                  f"รอส่งไฟล์ออกไป {self.CHECK7DAY_DIR}/ พร้อมจำนวน {self._check7day_count}")
 
         print(f"[{self.device_id}] Post-Login Tasks Completed.")
 
