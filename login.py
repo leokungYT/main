@@ -997,10 +997,15 @@ if GUI_AVAILABLE:
                 if now - t0 > self._start_timeout:
                     self._starting.pop(dev, None)
                     self.log("WARN", f"{dev} ไม่ตอบใน {self._start_timeout:.0f}s - ปล่อยตัวถัดไปเลย")
-            # 3) มีสล็อตว่างเท่าไหร่ ปล่อยเท่านั้น
+            # 3) มีสล็อตว่างเท่าไหร่ ปล่อยเท่านั้น - แต่ห้ามปล่อยติดกันเร็วกว่า _gap วิ
+            #    (เน็ตดึงกันตอนหลายจอโหลดเกมพร้อมกัน = ค้าง/หลุดตั้งแต่หน้าโหลด)
             while self._pending and len(self._starting) < self._slots:
+                wait = self._gap - (time.time() - self._last_launch)
+                if wait > 0:
+                    break                      # ยังไม่ถึงเวลา - รอ tick ถัดไป (เช็คทุก 200ms)
                 dev = self._pending.pop(0)
                 self._starting[dev] = time.time()
+                self._last_launch = time.time()
                 self._start_single_bot(dev)
             if self._pending or self._starting:
                 self.after(200, self._ramp_tick)
@@ -1018,17 +1023,20 @@ if GUI_AVAILABLE:
                 self.btn_start.configure(state="disabled", fg_color="#555555", text="⏳ RUNNING")
             self.lbl_auto_start.configure(text="[ BOT IS RUNNING ]", text_color="#4caf50")
             
-            # ปล่อยพร้อมกัน start_batch ตัว แล้วเติมตัวถัดไป "ทันทีที่ตัวก่อนหน้าพร้อม"
-            # ไม่หน่วงตามนาฬิกาอีก - thread_delay เหลือเป็นฐานของเพดานกันค้างเท่านั้น
+            # กด START = ปล่อย "ทีละจอ" ไม่ปล่อยพร้อมกัน - เน็ตจะได้ไม่ดึงกันตอนโหลดเกม
+            # ตัวถัดไปออกเมื่อ "ตัวก่อนหน้าพร้อม (หรือเกินเพดาน)" และ "ห่างจากตัวก่อน
+            # อย่างน้อย thread_delay วิ" แล้วแต่อย่างไหนช้ากว่า
             import multiprocessing
             self._ready_q = multiprocessing.Queue()
             self._pending = list(self.devices)
             self._starting = {}
-            self._slots = max(1, int(config.get("start_batch", 4)))
+            self._slots = max(1, int(config.get("start_slots", 1)))      # 1 = ทีละจอ
+            self._gap = float(config.get("thread_delay", 5))             # เว้นระยะระหว่างจอ
+            self._last_launch = 0.0
             self._start_timeout = float(config.get("start_timeout", float(config.get("thread_delay", 5)) * 4))
             self._ramp_started = time.time()
-            self.log("INFO", f"Starting {len(self._pending)} Bot Processes: ปล่อยพร้อมกัน {self._slots} ตัว "
-                             f"แล้วต่อคิวทันทีที่แต่ละตัวพร้อม (เพดาน {self._start_timeout:.0f}s/ตัว)")
+            self.log("INFO", f"Starting {len(self._pending)} Bot Processes: ปล่อยทีละ {self._slots} จอ "
+                             f"เว้น {self._gap:.0f}s ต่อจอ (เพดานรอต่อจอ {self._start_timeout:.0f}s)")
             self._ramp_tick()
 
         def on_closing(self):
