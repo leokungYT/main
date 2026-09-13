@@ -255,7 +255,14 @@ if GUI_AVAILABLE:
             if config.get("loop_delay") is not None:
                 self.ent_loop.insert(0, str(config.get("loop_delay")))
             self.ent_loop.pack(side="right")
-            
+
+            stagger_frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
+            stagger_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(stagger_frame, text="เริ่มทีละจอ หน่วงกี่วิ (กันเน็ตดึง):").pack(side="left")
+            self.ent_stagger = ctk.CTkEntry(stagger_frame, width=60)
+            self.ent_stagger.insert(0, str(config.get("start_stagger", 5.0)))
+            self.ent_stagger.pack(side="right")
+
             ctk.CTkButton(self.scroll, text="💾 Save Changes", command=self.save_config, fg_color="#2cc985", hover_color="#229f69", height=32).pack(pady=20)
             
         def add_switch(self, label, key):
@@ -294,6 +301,11 @@ if GUI_AVAILABLE:
                     config["loop_delay"] = float(loop_txt)
                 except:
                     pass
+
+            try:
+                config["start_stagger"] = max(0.0, float(self.ent_stagger.get()))
+            except:
+                pass
 
             main_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ranger-gear_config.json")
             try:
@@ -570,11 +582,16 @@ if GUI_AVAILABLE:
                 if now - t0 > self._start_timeout:
                     self._starting.pop(dev, None)
                     self.log("WARN", f"{dev} ไม่ตอบใน {self._start_timeout:.0f}s - ปล่อยตัวถัดไปเลย")
-            # 3) มีสล็อตว่างเท่าไหร่ ปล่อยเท่านั้น
+            # 3) ปล่อยตัวถัดไป: ต้องมีสล็อตว่าง + ผ่านเวลาหน่วงขั้นต่ำ (กันหลายจอยิงเน็ตพร้อมกัน)
             while self._pending and len(self._starting) < self._slots:
+                now = time.time()
+                if getattr(self, "_stagger", 0) > 0 and (now - self._last_start_ts) < self._stagger:
+                    break   # ยังไม่ถึงเวลา รอ tick ถัดไป (poll ทุก 200ms)
                 dev = self._pending.pop(0)
-                self._starting[dev] = time.time()
+                self._starting[dev] = now
+                self._last_start_ts = now
                 self._start_single_bot(dev)
+                self.log("INFO", f"▶ เริ่มจอ {dev} (เหลือคิว {len(self._pending)})")
             if self._pending or self._starting:
                 self.after(200, self._ramp_tick)
             else:
@@ -596,11 +613,13 @@ if GUI_AVAILABLE:
             self._ready_q = multiprocessing.Queue()
             self._pending = list(self.devices)
             self._starting = {}
-            self._slots = max(1, int(config.get("start_batch", 4)))
+            self._slots = max(1, int(config.get("start_batch", 1)))
+            self._stagger = max(0.0, float(config.get("start_stagger", 5.0)))
+            self._last_start_ts = 0.0   # 0 = จอแรกเริ่มได้ทันที
             self._start_timeout = float(config.get("start_timeout", float(config.get("thread_delay", 5)) * 4))
             self._ramp_started = time.time()
-            self.log("INFO", f"Starting {len(self._pending)} Bot Processes: ปล่อยพร้อมกัน {self._slots} ตัว "
-                             f"แล้วต่อคิวทันทีที่แต่ละตัวพร้อม (เพดาน {self._start_timeout:.0f}s/ตัว)")
+            self.log("INFO", f"Starting {len(self._pending)} Bot Processes: เริ่มทีละ {self._slots} จอ "
+                             f"หน่วง {self._stagger:.0f}s/จอ กันเน็ตดึง (เพดาน {self._start_timeout:.0f}s/จอ)")
             self._ramp_tick()
 
         def on_closing(self):
