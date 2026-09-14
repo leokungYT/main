@@ -18,7 +18,8 @@ import time
 import signal
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ADB = os.path.join(HERE, "adb", "adb.exe")
+ROOT = os.path.dirname(HERE)   # โฟลเดอร์โปรเจคหลัก (มี adb/)
+ADB = os.path.join(ROOT, "adb", "adb.exe")
 PORT = 8443
 UP = "https://rangers-api.line-apps.com"
 

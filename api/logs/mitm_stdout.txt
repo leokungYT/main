@@ -1,0 +1,1 @@
+[flow] GET  /v12.3/exapi/nation.nhn -> 200

@@ -31,6 +31,7 @@ import re
 from mitmproxy import http
 
 CREDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
+_UDID2RSN = {}   # จำ udid -> rsn ภายในรอบจับ (กัน entry ซ้ำ)
 
 
 def _load():
@@ -72,13 +73,31 @@ def response(flow: http.HTTPFlow):
     rsn = None
     try:
         body = resp.get_text(strict=False) or ""
-        m = re.search(r'"rsn"\s*:\s*"([^"]+)"', body)
+        m = re.search(r'"rsn"\s*:\s*"?([a-zA-Z0-9_-]+)"?', body)
         if m:
             rsn = m.group(1)
     except Exception:
         pass
     d = _load()
-    key = rsn or udid
-    d[key] = {"udid": udid, "LF_AC": lf, "rsn": rsn, "guestCookie": ck.get("guestCookie")}
+    # จำ udid->rsn: พอรู้ rsn จาก /login แล้ว request หลัง ๆ (ที่ไม่มี rsn) ก็คีย์ด้วย rsn เดิม
+    if rsn:
+        _UDID2RSN[udid] = rsn
+    key = rsn or _UDID2RSN.get(udid) or udid
+    # ยุบ entry เก่าที่เคยคีย์ด้วย udid ให้มารวมกับคีย์ rsn (ครั้งแรกที่รู้ rsn)
+    old_udid_entry = d.get(udid, {}) if key != udid else {}
+    entry = d.get(key, {}) or old_udid_entry
+    entry["udid"] = udid
+    entry["LF_AC"] = lf                       # อัปเดตเป็นค่าล่าสุดเสมอ (เซิร์ฟหมุน)
+    if key != udid:
+        entry["rsn"] = key
+    gc = ck.get("guestCookie")
+    if gc:                                    # อย่าเขียนทับด้วย None (มีแค่ตอน /login)
+        entry["guestCookie"] = gc
+    elif not entry.get("guestCookie") and old_udid_entry.get("guestCookie"):
+        entry["guestCookie"] = old_udid_entry["guestCookie"]
+    entry.setdefault("guestCookie", None)
+    d[key] = entry
+    if key != udid and udid in d:             # ลบ entry ซ้ำที่คีย์ด้วย udid
+        d.pop(udid, None)
     _save(d)
-    print(f"[creds] saved acct={key} udid={udid[:8]}.. LF_AC={lf[:16]}..")
+    print(f"[creds] saved acct={key} udid={udid[:8]}.. LF_AC={lf[:16]}.. gc={'Y' if entry.get('guestCookie') else '-'}", flush=True)

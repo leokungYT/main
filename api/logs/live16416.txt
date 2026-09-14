@@ -1,0 +1,7 @@
+[flow] GET  /v12.3/exapi/nation.nhn -> 200
+[creds] saved acct=383907ac071508e6e7de57b423b97e7c udid=383907ac.. LF_AC=uHoBpyBqS0XW1HHq.. gc=-
+[flow] GET  /v12.3/exapi/nation.nhn -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=xD4Nz7/WFcHCnnjs.. gc=-
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=xD4Nz7/WFcHCnnjs.. gc=-
+[flow] POST /v12.3/push/register -> 200

@@ -89,6 +89,52 @@ class LGRClient:
         gifts = (d.get("result", {}).get("giftBox", {}) or {}).get("gift", {}).get("playerGifts", [])
         return st, [g for g in gifts if not g.get("receive")]
 
+    # ---------- กาชา (แกะจากทราฟฟิกจริง 2026-09-14) ----------
+    def gacha_info(self):
+        """รายการกาชาทั้งหมด: result.gachaGroupResponseList[].gachaGroup.gachaGroupInfos[]"""
+        return self.call("GET", "/gacha/info")
+
+    def gacha_reserve(self, group_id, gacha_id, gacha_index=1):
+        """จอง 1 การสุ่ม -> result มี reserveSeq (ต้องเอาไปใส่ confirm)"""
+        return self.call("POST", "/gacha/group/reserve",
+                         json={"groupId": group_id, "gachaId": gacha_id, "gachaIndex": gacha_index})
+
+    def gacha_confirm(self, reserve_result):
+        """ยืนยันการสุ่ม -> ต้องส่ง 'ทั้งก้อน result ของ reserve' กลับไป. คืน gachaResults"""
+        return self.call("POST", "/gacha/group/confirm", json=reserve_result)
+
+    def gacha_pull(self, group_id, gacha_id, gacha_index=1):
+        """สุ่มครบ flow: reserve -> confirm. คืน (status, list ของรหัสตัว/ไอเทมที่ได้, raw)"""
+        st, d = self.gacha_reserve(group_id, gacha_id, gacha_index)
+        if st != 200 or not isinstance(d, dict):
+            return st, [], d
+        st2, d2 = self.gacha_confirm(d.get("result", {}))
+        return st2, parse_gacha_rewards(d2), d2
+
+    def stage_last(self):
+        return self.call("GET", "/stage/last")
+
+    def stage_main(self):
+        return self.call("GET", "/stage/main")
+
+
+def parse_gacha_rewards(confirm_resp):
+    """ดึงรหัสของที่ได้จาก response ของ /gacha/group/confirm
+       คืน list เช่น ['unit:u421e-daniel', 'equip:eq_wpn_0011']"""
+    out = []
+    if not isinstance(confirm_resp, dict):
+        return out
+    for gr in confirm_resp.get("result", {}).get("gachaResults", []) or []:
+        for rw in gr.get("rewards", []) or []:
+            unit = rw.get("rewardUnit") or rw.get("unit")
+            if unit:
+                code = unit.get("unitCode") or unit.get("dataCode") or unit.get("code")
+                out.append(f"unit:{code}")
+            item = rw.get("rewardGameItem")
+            if item:
+                out.append(f"equip:{item.get('itemCode') or item.get('equipItemCode')}")
+    return out
+
 
 def collect_account(udid, lf_ac):
     """ตัวอย่างงานจริง: เช็กว่าเข้าเกมได้ + รับของทั้งหมด (1 บัญชี)"""
