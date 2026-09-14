@@ -44,3 +44,6 @@ _verify*.png
 # minitouch binaries - ผู้ใช้แต่ละคนหามาใส่เอง (ดู bin/minitouch/README.md)
 # ===========================================================
 bin/minitouch/*/
+
+# API credentials - ห้าม push (มี cookie บัญชีจริง)
+creds.json
