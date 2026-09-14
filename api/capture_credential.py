@@ -41,8 +41,38 @@ def _load():
         return {}
 
 
+import time as _time
+import contextlib
+
+_LOCK = CREDS + ".lock"
+
+
+@contextlib.contextmanager
+def _flock():
+    """cross-process lock (หลาย mitmdump เขียน creds.json พร้อมกันตอนรันหลายจอ)"""
+    fd = None
+    for _ in range(200):                       # รอสูงสุด ~10s
+        try:
+            fd = os.open(_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            _time.sleep(0.05)
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)
+            try:
+                os.remove(_LOCK)
+            except OSError:
+                pass
+
+
 def _save(d):
-    json.dump(d, open(CREDS, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    tmp = CREDS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, CREDS)                      # atomic (กันไฟล์พังตอนเขียนพร้อมกัน)
 
 
 def _cookie_parts(raw):
@@ -98,34 +128,34 @@ def response(flow: http.HTTPFlow):
                 rsn = m.group(1)
     except Exception:
         pass
-    d = _load()
-    # จำ udid->rsn: พอรู้ rsn จาก /login แล้ว request หลัง ๆ (ที่ไม่มี rsn) ก็คีย์ด้วย rsn เดิม
     if rsn:
         _UDID2RSN[udid] = rsn
     key = rsn or _UDID2RSN.get(udid) or udid
-    # ยุบ entry เก่าที่เคยคีย์ด้วย udid ให้มารวมกับคีย์ rsn (ครั้งแรกที่รู้ rsn)
-    old_udid_entry = d.get(udid, {}) if key != udid else {}
-    entry = d.get(key, {}) or old_udid_entry
-    entry["udid"] = udid
-    entry["LF_AC"] = lf                       # อัปเดตเป็นค่าล่าสุดเสมอ (เซิร์ฟหมุน)
-    if key != udid:
-        entry["rsn"] = key
-    if ruby is not None:
-        entry["ruby"] = ruby
-    if coin is not None:
-        entry["coin"] = coin
-    if level is not None:
-        entry["level"] = level
-    gc = ck.get("guestCookie")
-    if gc:                                    # อย่าเขียนทับด้วย None (มีแค่ตอน /login)
-        entry["guestCookie"] = gc
-    elif not entry.get("guestCookie") and old_udid_entry.get("guestCookie"):
-        entry["guestCookie"] = old_udid_entry["guestCookie"]
-    entry.setdefault("guestCookie", None)
-    d[key] = entry
-    if key != udid and udid in d:             # ลบ entry ซ้ำที่คีย์ด้วย udid
-        d.pop(udid, None)
-    _save(d)
+    with _flock():                            # ล็อก: reload สด -> แก้ -> เขียน (กันจออื่นเขียนทับ)
+        d = _load()
+        # ยุบ entry เก่าที่เคยคีย์ด้วย udid ให้มารวมกับคีย์ rsn (ครั้งแรกที่รู้ rsn)
+        old_udid_entry = d.get(udid, {}) if key != udid else {}
+        entry = d.get(key, {}) or old_udid_entry
+        entry["udid"] = udid
+        entry["LF_AC"] = lf                       # อัปเดตเป็นค่าล่าสุดเสมอ (เซิร์ฟหมุน)
+        if key != udid:
+            entry["rsn"] = key
+        if ruby is not None:
+            entry["ruby"] = ruby
+        if coin is not None:
+            entry["coin"] = coin
+        if level is not None:
+            entry["level"] = level
+        gc = ck.get("guestCookie")
+        if gc:                                    # อย่าเขียนทับด้วย None (มีแค่ตอน /login)
+            entry["guestCookie"] = gc
+        elif not entry.get("guestCookie") and old_udid_entry.get("guestCookie"):
+            entry["guestCookie"] = old_udid_entry["guestCookie"]
+        entry.setdefault("guestCookie", None)
+        d[key] = entry
+        if key != udid and udid in d:             # ลบ entry ซ้ำที่คีย์ด้วย udid
+            d.pop(udid, None)
+        _save(d)
     ruby_str = f" ruby={entry['ruby']}" if "ruby" in entry else ""
     coin_str = f" coin={entry['coin']}" if "coin" in entry else ""
     print(f"[creds] saved acct={key} udid={udid[:8]}.. LF_AC={lf[:16]}.. gc={'Y' if entry.get('guestCookie') else '-'}{ruby_str}{coin_str}", flush=True)

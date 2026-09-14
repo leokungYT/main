@@ -228,14 +228,17 @@ def extract_udid_from_xml(xml_path):
 
 
 # ---------- routing setup / teardown ----------
-def setup_routing(dev):
-    print(f"[*] [{dev}] ตั้ง adb reverse + routing (hosts + iptables)...", flush=True)
-    adb(["reverse", f"tcp:{PORT}", f"tcp:{PORT}"], device=dev)
+DEV_PORT = 8443   # port ฝั่งอีมูฯ (คงที่ทุกจอ) -> reverse ไป host port แยกต่อจอ
+
+
+def setup_routing(dev, host_port=PORT):
+    print(f"[*] [{dev}] ตั้ง adb reverse (:{DEV_PORT}->host:{host_port}) + routing...", flush=True)
+    adb(["reverse", f"tcp:{DEV_PORT}", f"tcp:{host_port}"], device=dev)
     cmd = (
         "cp /system/etc/hosts /data/local/tmp/hosts 2>/dev/null; "
         f"grep -q {API_HOST} /data/local/tmp/hosts || echo '127.0.0.1 {API_HOST}' >> /data/local/tmp/hosts; "
         "mount --bind /data/local/tmp/hosts /system/etc/hosts; "
-        f"iptables -t nat -A OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports {PORT}"
+        f"iptables -t nat -A OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports {DEV_PORT}"
     )
     r = sh(cmd, device=dev)
     if r.returncode != 0:
@@ -488,11 +491,11 @@ def handle_screen_flow(dev):
 
 
 # ---------- mitm + capture helpers ----------
-def start_mitm(mitmdump):
-    print(f"[*] เริ่ม mitmdump reverse-proxy :{PORT} + addon ...", flush=True)
+def start_mitm(mitmdump, host_port=PORT):
+    print(f"[*] เริ่ม mitmdump reverse-proxy host:{host_port} + addon ...", flush=True)
     p = subprocess.Popen(
         [mitmdump, "--mode", f"reverse:https://{API_HOST}",
-         "--listen-port", str(PORT), "-s", ADDON, "-q"],
+         "--listen-port", str(host_port), "-s", ADDON, "-q"],
         cwd=HERE,
     )
     time.sleep(3)  # ให้ proxy ตั้งตัว
@@ -621,13 +624,11 @@ def capture_account(dev, xml_path, timeout, use_login):
 
 
 # ---------- queue batch processor ----------
-def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_success):
+def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_success, host_port=PORT):
     global _ROOT_ADBD
-    _ROOT_ADBD = enable_root(dev)
-    print(f"[*] root adbd = {'YES' if _ROOT_ADBD else 'no (จะลอง su แทน)'}", flush=True)
-
-    setup_routing(dev)
-    mitm = start_mitm(mitmdump)
+    _ROOT_ADBD = enable_root(dev) or _ROOT_ADBD
+    setup_routing(dev, host_port)
+    mitm = start_mitm(mitmdump, host_port)
 
     success_list = []
     failed_list = []
@@ -760,8 +761,31 @@ def main():
     delete_on_success = not args.no_delete
 
     if xml_files:
-        print(f"[*] พบ {len(xml_files)} ไฟล์ใน '{args.input_dir}/' จะเริ่มประมวลผลเข้าเกม...", flush=True)
-        success, failed = process_xml_queue(dev, xml_files, mitmdump, args.use_login, args.timeout, delete_on_success)
+        # กระจายไฟล์ให้ทุกจอทำขนานกัน (แต่ละจอ = mitmdump host-port แยก, creds.json ล็อกกันเขียนชน)
+        n = len(devices)
+        print(f"[*] พบ {len(xml_files)} ไฟล์ | ใช้ {n} จอขนานกัน: {devices}", flush=True)
+        chunks = [xml_files[i::n] for i in range(n)]   # แบ่งแบบ round-robin
+        results = [None] * n
+        import threading
+
+        def _worker(idx, d, files):
+            if not files:
+                results[idx] = ([], []); return
+            try:
+                results[idx] = process_xml_queue(d, files, mitmdump, args.use_login,
+                                                 args.timeout, delete_on_success, PORT + idx)
+            except Exception as e:
+                print(f"[X] [{d}] worker error: {e}", flush=True)
+                results[idx] = ([], [os.path.basename(f) for f in files])
+
+        threads = [threading.Thread(target=_worker, args=(i, devices[i], chunks[i]), daemon=True)
+                   for i in range(n)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        success = [x for r in results if r for x in r[0]]
+        failed = [x for r in results if r for x in r[1]]
 
         print("\n" + "=" * 55, flush=True)
         print(f"สรุปการทำงาน:", flush=True)
