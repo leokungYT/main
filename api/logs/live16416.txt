@@ -5,3 +5,57 @@
 [flow] GET  /v12.3/login -> 200
 [creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=xD4Nz7/WFcHCnnjs.. gc=-
 [flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=hZDYQjE0iSCGUZmA.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=hZDYQjE0iSCGUZmA.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=j5gTRPSUQT7aw5+t.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=j5gTRPSUQT7aw5+t.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=V+JnJnn2HgeQO9se.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=V+JnJnn2HgeQO9se.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=p+Gm3i7qmIkTGMft.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=p+Gm3i7qmIkTGMft.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=DPvdPRjne4ASUkZq.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=DPvdPRjne4ASUkZq.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=o6LrIg9rBTIhRExC.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=o6LrIg9rBTIhRExC.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=U8NdqoNhif8GeXtN.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=U8NdqoNhif8GeXtN.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=U8NdqoNhif8GeXtN.. gc=Y
+[flow] GET  /v12.3/exapi/nation.nhn -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=BZPSOL68Za0J+Zdc.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=BZPSOL68Za0J+Zdc.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=yyNaYnJBghG4viWC.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=yyNaYnJBghG4viWC.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=BFuvjXp+4MZAD0Dv.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=BFuvjXp+4MZAD0Dv.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=wJ8USPZ/DyrsRVH9.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=wJ8USPZ/DyrsRVH9.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=HT+tGYyvPwlSRxie.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=HT+tGYyvPwlSRxie.. gc=Y
+[flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=2Ft/UNDRQ5UgnsKW.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=2Ft/UNDRQ5UgnsKW.. gc=Y
+[flow] POST /v12.3/push/register -> 200
