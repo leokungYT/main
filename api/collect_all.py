@@ -42,14 +42,20 @@ def _one(key, cred):
     try:
         c = LGRClient(udid, lf)
         st, home = c.home()
-        if st == 401:
-            # LF_AC หมดอายุ -> ลอง /login ด้วย guestCookie
-            gc = cred.get("guestCookie")
-            if gc:
-                c.login(gc)
+        # ถ้า home ไม่ผ่าน (400, 401 หรืออื่นๆ) -> ถ้ามี guestCookie ให้ลอง /login เพื่อขอ session ใหม่ทันที
+        if st != 200 and cred.get("guestCookie"):
+            st_l, login_res = c.login(cred["guestCookie"])
+            if st_l == 200:
                 st, home = c.home()
+
         if st != 200:
-            return key, {"ok": False, "file": fname, "step": "home", "status": st}
+            err_msg = ""
+            if isinstance(home, dict):
+                err_msg = home.get("message") or home.get("errorCode") or home
+            else:
+                err_msg = str(home)[:120]
+            gc_status = "has_gc" if cred.get("guestCookie") else "no_gc"
+            return key, {"ok": False, "file": fname, "step": "home", "status": st, "detail": err_msg, "gc": gc_status}
         badge = home.get("result", {}).get("badge", {})
         st_b, un = c.unclaimed_gifts()
         n = len(un or [])

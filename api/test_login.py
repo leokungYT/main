@@ -57,13 +57,17 @@ def login_one(key, cred):
     # 1) ลองด้วย session ปัจจุบัน
     st, home = c.home()
 
-    # 2) ถ้า session หมดอายุ -> ขอใหม่ด้วย guestCookie แล้วลองอีกครั้ง
-    if st == 401:
+    # 2) ถ้า session ไม่ผ่าน (400, 401 หรืออื่นๆ) -> ขอใหม่ด้วย guestCookie แล้วลองอีกครั้ง
+    if st != 200:
         gc = cred.get("guestCookie")
-        if not gc:
-            return {"ok": False, "err": "LF_AC หมดอายุ และไม่มี guestCookie ให้ /login ใหม่"}
-        c.login(gc)
-        st, home = c.home()
+        if gc:
+            st_l, login_res = c.login(gc)
+            if st_l == 200:
+                st, home = c.home()
+            else:
+                return {"ok": False, "err": f"/login ด้วย guestCookie ล้มเหลว (status {st_l})", "detail": login_res}
+        else:
+            return {"ok": False, "err": f"session ไม่ผ่าน (status {st}) และไม่มี guestCookie ใน creds.json", "detail": home}
 
     if st != 200 or not isinstance(home, dict):
         return {"ok": False, "step": "home", "status": st, "detail": home}

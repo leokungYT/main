@@ -805,16 +805,22 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
         if target_udid:
             for k, v in creds.items():
                 if v.get("udid") == target_udid and v.get("LF_AC"):
-                    if (not prev_entry) or (v.get("LF_AC") != prev_entry.get("LF_AC")) or (v.get("guestCookie") != prev_entry.get("guestCookie")):
+                    # สำคัญมาก: ต้องรอจนกว่าจะได้ guestCookie หรือ rsn (ผ่านหน้า /login จริง)
+                    # ถ้าเพิ่งได้แค่ nation.nhn (ยังไม่มี guestCookie) อย่าเพิ่ง force-stop เพราะ session ยังไม่สมบูรณ์
+                    has_login = bool(v.get("guestCookie") or (v.get("rsn") and len(k) < 32))
+                    if has_login and ((not prev_entry) or (v.get("LF_AC") != prev_entry.get("LF_AC")) or (v.get("guestCookie") != prev_entry.get("guestCookie")) or (not prev_entry.get("guestCookie"))):
                         captured_key = k
                         captured_data = v
                         break
         else:
             diff = set(creds.keys()) - set(before_creds.keys())
-            if diff:
-                captured_key = list(diff)[0]
-                captured_data = creds[captured_key]
-                break
+            for k in diff:
+                v = creds[k]
+                has_login = bool(v.get("guestCookie") or (v.get("rsn") and len(k) < 32))
+                if has_login:
+                    captured_key = k
+                    captured_data = v
+                    break
 
         if captured_key:
             # จับได้แล้ว: รอ 2 วิ เก็บ Set-Cookie รอบสุดท้าย แล้วปิดเกมทันที
