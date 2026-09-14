@@ -81,11 +81,16 @@ def _one(key, cred):
 
 def main():
     creds = load_creds()
+    # process เฉพาะบัญชีที่ระบุ แต่ "คงบัญชีอื่นไว้ใน creds" (กันเขียนทับหาย)
+    targets = [(k, creds[k]) for k in creds]
     if len(sys.argv) > 1:
-        creds = {k: v for k, v in creds.items() if k == sys.argv[1]}
+        if sys.argv[1] not in creds:
+            print(f"[X] ไม่พบ id '{sys.argv[1]}' (มี: {', '.join(creds) or '-'})")
+            return
+        targets = [(sys.argv[1], creds[sys.argv[1]])]
     results = {}
-    with cf.ThreadPoolExecutor(max_workers=min(16, max(1, len(creds)))) as ex:
-        for key, res in ex.map(lambda kv: _one(*kv), creds.items()):
+    with cf.ThreadPoolExecutor(max_workers=min(16, max(1, len(targets)))) as ex:
+        for key, res in ex.map(lambda kv: _one(*kv), targets):
             results[key] = res
             # เก็บ LF_AC และค่า ruby/ticket ที่หมุนใหม่กลับ (บัญชี API เป็นเจ้าของ ต้องตามค่าล่าสุด)
             if res.get("ok"):
@@ -110,6 +115,9 @@ def main():
                 print(f"[{ok}] {key} | file={fname} | ruby={ruby} | ticket={ticket} | coin={coin} | claimed={claimed}")
             else:
                 print(f"[{ok}] {key} | file={fname}: {res}")
+    if os.path.exists(CREDS):
+        import shutil
+        shutil.copy2(CREDS, CREDS + ".bak")   # สำรองก่อนเขียนทับ (กันหายเหมือนที่เคยเจอ)
     json.dump(creds, open(CREDS, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     good = sum(1 for r in results.values() if r.get("ok"))
     tot_claim = sum(r.get("claimed", 0) for r in results.values())

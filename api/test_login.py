@@ -87,15 +87,18 @@ def main():
     if not creds:
         return
 
+    # สำคัญ: process เฉพาะบัญชีที่ระบุ แต่ "อย่าทิ้ง" บัญชีอื่นออกจาก creds (เดี๋ยวเขียนทับหาย)
+    targets = list(creds.keys())
     if len(sys.argv) > 1:
         target = sys.argv[1]
         if target not in creds:
             print(f"[X] ไม่พบ id '{target}' ใน creds.json (มี: {', '.join(creds) or '-'})")
             sys.exit(1)
-        creds = {target: creds[target]}
+        targets = [target]
 
     changed = False
-    for key, cred in creds.items():
+    for key in targets:
+        cred = creds[key]
         res = login_one(key, cred)
         if res.get("ok"):
             # เก็บ LF_AC ที่หมุนใหม่กลับ
@@ -113,6 +116,9 @@ def main():
             print(f"[ERR] {key}: {res}")
 
     if changed:
+        if os.path.exists(CREDS):
+            import shutil
+            shutil.copy2(CREDS, CREDS + ".bak")   # สำรองก่อนเขียนทับ (กันหาย)
         json.dump(creds, open(CREDS, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 
 
