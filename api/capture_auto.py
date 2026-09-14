@@ -668,6 +668,7 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
     captured_data = None
 
     last_screen_handle = 0
+    last_guest_drive = time.time()   # เพิ่ง drive guest flow ไปตอนเริ่ม
     while time.time() < deadline:
         creds = load_creds(creds_file)
 
@@ -700,6 +701,12 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
         if not use_login and (now - last_screen_handle >= 2.5):
             handle_screen_flow(dev)
             last_screen_handle = now
+
+        # โหมดสร้าง guest (ไม่มี xml): ถ้ายังไม่จับได้ ให้กดชุด GUEST Login ซ้ำทุก ~22s
+        # (กันค้างวน refresh/check โดยไม่กดปุ่ม GUEST Login + ยืนยัน)
+        if (not use_login) and (xml_path is None) and (now - last_guest_drive >= 22):
+            guest_login_flow(dev)
+            last_guest_drive = time.time()
 
         time.sleep(1.2)
 
@@ -935,9 +942,18 @@ def main():
                 except Exception:
                     pass
 
-        with _cf.ThreadPoolExecutor(max_workers=jobs) as ex:
-            list(ex.map(_cap_one, range(len(devices))))
-        print(f"\n[*] จับ guest ครบทุกจอ (creds.json รวม {len(load_creds())} บัญชี) -> python collect_all.py", flush=True)
+        # วนไม่หยุด: จบรอบแล้วเริ่มรอบใหม่ทันที (สร้าง guest เรื่อย ๆ) จนกด Ctrl+C
+        rnd = 0
+        try:
+            while True:
+                rnd += 1
+                print(f"\n========== รอบที่ {rnd} (สร้าง guest ทุกจอ) ==========", flush=True)
+                with _cf.ThreadPoolExecutor(max_workers=jobs) as ex:
+                    list(ex.map(_cap_one, range(len(devices))))
+                print(f"[*] รอบ {rnd} จบ | creds.json รวม {len(load_creds())} บัญชี (Ctrl+C เพื่อหยุด)", flush=True)
+                time.sleep(2)
+        except KeyboardInterrupt:
+            print(f"\n[*] หยุดแล้ว (ทำไป {rnd} รอบ) | creds.json รวม {len(load_creds())} บัญชี -> python collect_all.py", flush=True)
 
 
 if __name__ == "__main__":
