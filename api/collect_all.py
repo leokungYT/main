@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 collect_all.py — รับของทุกบัญชีใน creds.json รวดเดียว (ยิง API ตรง ไม่เปิดเกม)

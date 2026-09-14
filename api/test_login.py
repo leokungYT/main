@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 test_login.py — เทสเฉพาะ "ล็อกอิน" ผ่าน API ตรง (ไม่เปิดเกม)
