@@ -18,10 +18,131 @@ lgr_api.py — LINE Rangers (com.linecorp.LGRGS) REST client
   จากนั้นบัญชีนั้นใช้ API ตัวนี้อย่างเดียว (อย่าเปิดเกมบัญชีเดิมพร้อมกัน เดี๋ยว credential หมุนชนกัน)
 """
 
+import json
+import os
+import sys
+import glob
+import shutil
 import time
 import requests
 
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+
+def _safe_print(*args, **kwargs):
+    try:
+        print(*args, **kwargs)
+    except Exception:
+        try:
+            msg = " ".join(str(a) for a in args)
+            enc = getattr(sys.stdout, "encoding", None) or "ascii"
+            print(msg.encode(enc, errors="replace").decode(enc), **kwargs)
+        except Exception:
+            pass
+
+
 BASE = "https://rangers-api.line-apps.com/v12.3"
+CREDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
+
+
+def merge_part_creds(base_dir=None):
+    """
+    รวมข้อมูลจากไฟล์ creds.part*.json ทุกไฟล์เข้า creds.json อัตโนมัติ (และลบ part files)
+    ป้องกันปัญหาข้อมูลค้างใน creds.part*.json ทำให้ creds.json ว่างจนรันไม่ติด
+    คืน (dict บัญชีทั้งหมด, จำนวนไฟล์ part ที่รวม)
+    """
+    if not base_dir:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    creds_path = os.path.join(base_dir, "creds.json")
+
+    merged = {}
+    if os.path.exists(creds_path):
+        try:
+            with open(creds_path, "r", encoding="utf-8") as f:
+                c = f.read().strip()
+                if c:
+                    merged = json.loads(c)
+        except Exception:
+            merged = {}
+
+    part_pattern = os.path.join(base_dir, "creds.part*.json")
+    part_files = sorted(glob.glob(part_pattern))
+    merged_count = 0
+
+    for pf in part_files:
+        try:
+            with open(pf, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+            if content:
+                data = json.loads(content)
+                if isinstance(data, dict):
+                    for k, v in data.items():
+                        if k in merged and isinstance(merged[k], dict) and isinstance(v, dict):
+                            for field, val in v.items():
+                                if val is not None or field not in merged[k]:
+                                    merged[k][field] = val
+                        else:
+                            merged[k] = v
+                    merged_count += 1
+            try:
+                os.remove(pf)
+            except OSError:
+                pass
+        except Exception:
+            pass
+
+    if merged_count > 0 or not os.path.exists(creds_path):
+        save_creds(merged, creds_path)
+        if merged_count > 0:
+            _safe_print(f"[*] ตรวจพบและรวมข้อมูลจาก {merged_count} ไฟล์ (creds.part*.json) เข้า creds.json สำเร็จ! (รวม {len(merged)} บัญชี)", flush=True)
+
+    return merged, merged_count
+
+
+def load_creds(path=None, auto_merge=True):
+    """โหลด creds.json (พร้อม auto-merge creds.part*.json ถ้ามี)"""
+    path = path or CREDS_FILE
+    base_dir = os.path.dirname(os.path.abspath(path))
+    if auto_merge:
+        try:
+            merge_part_creds(base_dir)
+        except Exception:
+            pass
+
+    try:
+        if not os.path.exists(path):
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            c = f.read().strip()
+            return json.loads(c) if c else {}
+    except Exception:
+        return {}
+
+
+def save_creds(data, path=None):
+    """บันทึก creds.json แบบ atomic พร้อมสำรองไฟล์ .bak"""
+    path = path or CREDS_FILE
+    try:
+        if os.path.exists(path):
+            try:
+                shutil.copy2(path, path + ".bak")
+            except Exception:
+                pass
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+        return True
+    except Exception as e:
+        _safe_print(f"[!] บันทึก {path} ไม่สำเร็จ: {e}", flush=True)
+        return False
+
 
 
 class LGRClient:

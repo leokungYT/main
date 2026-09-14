@@ -17,30 +17,33 @@ import json
 import os
 import sys
 
-from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
+from lgr_api import (
+    LGRClient,
+    parse_ruby,
+    parse_coin,
+    parse_tickets,
+    load_creds,
+    save_creds,
+    merge_part_creds,
+    CREDS_FILE,
+)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")   # กัน UnicodeEncodeError บน console Windows
 except Exception:
     pass
 
-CREDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
+CREDS = CREDS_FILE
 
 
 def _load_creds():
-    if not os.path.exists(CREDS):
-        print(f"[X] ไม่พบ {CREDS}")
-        print("    ต้องจับ credential ก่อน 1 รอบด้วย capture_credential.py (MITM)")
-        sys.exit(1)
-    try:
-        content = open(CREDS, encoding="utf-8").read().strip()
-        if not content:
-            print(f"[!] {CREDS} ว่างอยู่ (ยังไม่มีบัญชีที่บันทึกไว้)")
-            return {}
-        return json.loads(content)
-    except Exception as e:
-        print(f"[!] ไม่สามารถอ่าน {CREDS}: {e}")
+    creds = load_creds(CREDS, auto_merge=True)
+    if not creds:
+        print(f"[!] ไม่พบบัญชีใน {CREDS} (และไม่พบไฟล์ creds.part*.json)")
+        print("    ยังไม่มี credential บันทึกอยู่ในระบบ")
+        print("    -> แนะนำให้รัน: python capture_auto.py ก่อน เพื่อจับ credential เข้าสู่ระบบ")
         return {}
+    return creds
 
 
 def login_one(key, cred):
@@ -96,11 +99,15 @@ def main():
             sys.exit(1)
         targets = [target]
 
+    print(f"[*] พบทั้งหมด {len(targets)} บัญชี ใน creds.json กำลังเริ่มทดสอบล็อกอินผ่าน API...\n", flush=True)
+    suc_cnt = 0
+    fail_cnt = 0
     changed = False
     for key in targets:
         cred = creds[key]
         res = login_one(key, cred)
         if res.get("ok"):
+            suc_cnt += 1
             # เก็บ LF_AC ที่หมุนใหม่กลับ
             cred["LF_AC"] = res.pop("lf_ac_next")
             cred["ruby"] = res.get("ruby")
@@ -110,16 +117,20 @@ def main():
             changed = True
             fname = res.get("file") or cred.get("file")
             file_str = f" | file={fname}" if fname and fname != "-" else ""
-            print(f"[OK ] {key}{file_str}: Lv {res.get('level')} | ruby={res.get('ruby')} "
-                  f"coin={res.get('coin')} ticket={res.get('ticket')} gift={res.get('gift_badge')}")
+            print(f"[OK ] {key:<10}{file_str}: Lv {res.get('level')} | ruby={res.get('ruby')} "
+                  f"coin={res.get('coin')} ticket={res.get('ticket')} gift={res.get('gift_badge')}", flush=True)
         else:
-            print(f"[ERR] {key}: {res}")
+            fail_cnt += 1
+            print(f"[ERR] {key:<10}: {res}", flush=True)
 
     if changed:
-        if os.path.exists(CREDS):
-            import shutil
-            shutil.copy2(CREDS, CREDS + ".bak")   # สำรองก่อนเขียนทับ (กันหาย)
-        json.dump(creds, open(CREDS, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        save_creds(creds, CREDS)
+
+    print("\n" + "=" * 55, flush=True)
+    print(f"สรุปผลการทดสอบล็อกอิน:", flush=True)
+    print(f"  - สำเร็จ: {suc_cnt} บัญชี", flush=True)
+    print(f"  - ล้มเหลว: {fail_cnt} บัญชี", flush=True)
+    print("=" * 55, flush=True)
 
 
 if __name__ == "__main__":

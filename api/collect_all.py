@@ -11,23 +11,27 @@ import json
 import os
 import sys
 import concurrent.futures as cf
-from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
+from lgr_api import (
+    LGRClient,
+    parse_ruby,
+    parse_coin,
+    parse_tickets,
+    load_creds as _api_load_creds,
+    save_creds as _api_save_creds,
+    merge_part_creds,
+    CREDS_FILE,
+)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")   # กัน UnicodeEncodeError บน console Windows
 except Exception:
     pass
 
-CREDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
+CREDS = CREDS_FILE
 
 
 def load_creds():
-    try:
-        with open(CREDS, "r", encoding="utf-8") as f:
-            c = f.read().strip()
-            return json.loads(c) if c else {}
-    except Exception:
-        return {}
+    return _api_load_creds(CREDS, auto_merge=True)
 
 
 def _one(key, cred):
@@ -81,6 +85,12 @@ def _one(key, cred):
 
 def main():
     creds = load_creds()
+    if not creds:
+        print(f"[!] ไม่พบบัญชีใน {CREDS} (และไม่พบไฟล์ creds.part*.json)")
+        print("    ยังไม่มี credential บันทึกอยู่ในระบบสำหรับรับของ")
+        print("    -> แนะนำให้รัน: python capture_auto.py ก่อน เพื่อจับ credential เข้าสู่ระบบ")
+        return
+
     # process เฉพาะบัญชีที่ระบุ แต่ "คงบัญชีอื่นไว้ใน creds" (กันเขียนทับหาย)
     targets = [(k, creds[k]) for k in creds]
     if len(sys.argv) > 1:
@@ -88,6 +98,8 @@ def main():
             print(f"[X] ไม่พบ id '{sys.argv[1]}' (มี: {', '.join(creds) or '-'})")
             return
         targets = [(sys.argv[1], creds[sys.argv[1]])]
+
+    print(f"[*] พบทั้งหมด {len(targets)} บัญชี ใน creds.json กำลังเริ่มล็อกอินและรับของอัตโนมัติผ่าน API...\n", flush=True)
     results = {}
     with cf.ThreadPoolExecutor(max_workers=min(16, max(1, len(targets)))) as ex:
         for key, res in ex.map(lambda kv: _one(*kv), targets):
@@ -112,16 +124,19 @@ def main():
                 ticket = res.get("ticket", 0)
                 coin = res.get("coin", 0)
                 claimed = res.get("claimed", 0)
-                print(f"[{ok}] {key} | file={fname} | ruby={ruby} | ticket={ticket} | coin={coin} | claimed={claimed}")
+                print(f"[{ok}] {key:<10} | file={fname} | ruby={ruby} | ticket={ticket} | coin={coin} | claimed={claimed}", flush=True)
             else:
-                print(f"[{ok}] {key} | file={fname}: {res}")
-    if os.path.exists(CREDS):
-        import shutil
-        shutil.copy2(CREDS, CREDS + ".bak")   # สำรองก่อนเขียนทับ (กันหายเหมือนที่เคยเจอ)
-    json.dump(creds, open(CREDS, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+                print(f"[{ok}] {key:<10} | file={fname}: {res}", flush=True)
+
+    _api_save_creds(creds, CREDS)
     good = sum(1 for r in results.values() if r.get("ok"))
     tot_claim = sum(r.get("claimed", 0) for r in results.values())
-    print(f"\nสรุป: {good}/{len(results)} บัญชีสำเร็จ, รับของรวม {tot_claim} ชิ้น")
+    print("\n" + "=" * 55, flush=True)
+    print(f"สรุปผลการรับของอัตโนมัติ:", flush=True)
+    print(f"  - สำเร็จ: {good}/{len(results)} บัญชี", flush=True)
+    print(f"  - รับของขวัญรวม: {tot_claim} ชิ้น", flush=True)
+    print(f"  - อัปเดตข้อมูลล่าสุดลง creds.json เรียบร้อย", flush=True)
+    print("=" * 55, flush=True)
 
 
 if __name__ == "__main__":

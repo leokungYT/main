@@ -149,6 +149,12 @@ def load_creds(path=None):
 def save_creds(data, path=None):
     path = path or CREDS
     try:
+        if os.path.exists(path):
+            import shutil
+            try:
+                shutil.copy2(path, path + ".bak")
+            except Exception:
+                pass
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -166,18 +172,35 @@ import threading as _threading
 _MERGE_LOCK = _threading.Lock()
 
 
-def merge_parts_into_creds(part_files):
-    """รวม creds.partN.json เข้า creds.json (ล็อกกัน thread เขียนชนกัน)"""
+def merge_parts_into_creds(part_files=None):
+    """รวม creds.partN.json เข้า creds.json (ล็อกกัน thread เขียนชนกัน และค้นหาทุก part อัตโนมัติ)"""
     with _MERGE_LOCK:
+        if part_files is None:
+            part_files = sorted(glob.glob(os.path.join(HERE, "creds.part*.json")))
+        if not part_files:
+            return len(load_creds())
         merged = load_creds()
+        merged_count = 0
         for pf in part_files:
-            for k, v in load_creds(pf).items():
-                merged[k] = v
+            if not os.path.exists(pf):
+                continue
+            part_data = load_creds(pf)
+            if part_data:
+                for k, v in part_data.items():
+                    if k in merged and isinstance(merged[k], dict) and isinstance(v, dict):
+                        for field, val in v.items():
+                            if val is not None or field not in merged[k]:
+                                merged[k][field] = val
+                    else:
+                        merged[k] = v
+                merged_count += 1
             try:
                 os.remove(pf)
             except OSError:
                 pass
         save_creds(merged)
+        if merged_count > 0:
+            print(f"[*] อัปเดตรวมข้อมูลจาก {merged_count} ไฟล์เข้า creds.json เรียบร้อย (รวมทั้งหมด {len(merged)} บัญชี)", flush=True)
         return len(merged)
 
 
@@ -865,6 +888,10 @@ def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_fi
                 success_list.append((fname, key, cred, info))
                 print(f"[OK] [{dev}] id={key} | {fname} | ruby={info['ruby']} "
                       f"| ticket={info['ticket']} | Lv {info['level']}", flush=True)
+                try:
+                    merge_parts_into_creds([creds_file])
+                except Exception:
+                    pass
                 if action_on_finish == "move":
                     handle_success_file(xml_path, dev)
                 elif action_on_finish == "delete":
@@ -965,6 +992,14 @@ def main():
     dev = devices[0]
     print(f"[*] เครื่องที่จะใช้งาน: {dev} (ทั้งหมดที่พบ: {devices})", flush=True)
 
+    # รวม creds.part*.json ที่อาจค้างอยู่จากรอบก่อนเข้า creds.json ทันที
+    try:
+        import atexit
+        atexit.register(lambda: merge_parts_into_creds())
+        merge_parts_into_creds()
+    except Exception:
+        pass
+
     # ---- โหมดรีสร้าง guest ใหม่เอง (reroll) ----
     if args.reroll and args.reroll > 0:
         print(f"[*] โหมด REROLL: จะสร้าง guest ใหม่เอง {args.reroll} รอบ", flush=True)
@@ -1062,6 +1097,10 @@ def main():
 
         with _cf.ThreadPoolExecutor(max_workers=jobs) as ex:
             list(ex.map(_worker, range(n)))
+        try:
+            merge_parts_into_creds()
+        except Exception:
+            pass
         success = [x for r in results for x in r[0]]
         failed = [x for r in results for x in r[1]]
         print(f"\n[*] creds.json รวม {len(load_creds())} บัญชี", flush=True)
@@ -1107,6 +1146,10 @@ def main():
                 if ok:
                     info = fetch_account_info(cred, None, cf)
                     print(f"[OK] [{d}] id={key} | ruby={info['ruby']} | ticket={info['ticket']} | Lv {info['level']}", flush=True)
+                    try:
+                        merge_parts_into_creds([cf])
+                    except Exception:
+                        pass
                 else:
                     print(f"[X] [{d}] จับไม่สำเร็จ", flush=True)
             except Exception as e:
@@ -1127,10 +1170,24 @@ def main():
                 print(f"\n========== รอบที่ {rnd} (สร้าง guest ทุกจอ) ==========", flush=True)
                 with _cf.ThreadPoolExecutor(max_workers=jobs) as ex:
                     list(ex.map(_cap_one, range(len(devices))))
+                # รวมข้อมูลทุก part เข้า creds.json ตอนจบรอบ
+                try:
+                    merge_parts_into_creds()
+                except Exception:
+                    pass
                 print(f"[*] รอบ {rnd} จบ | creds.json รวม {len(load_creds())} บัญชี (Ctrl+C เพื่อหยุด)", flush=True)
                 time.sleep(2)
         except KeyboardInterrupt:
+            try:
+                merge_parts_into_creds()
+            except Exception:
+                pass
             print(f"\n[*] หยุดแล้ว (ทำไป {rnd} รอบ) | creds.json รวม {len(load_creds())} บัญชี -> python collect_all.py", flush=True)
+        finally:
+            try:
+                merge_parts_into_creds()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

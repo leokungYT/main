@@ -24,7 +24,16 @@ import os
 import subprocess
 import time
 
-from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
+from lgr_api import (
+    LGRClient,
+    parse_ruby,
+    parse_coin,
+    parse_tickets,
+    load_creds as _api_load_creds,
+    save_creds as _api_save_creds,
+    merge_part_creds,
+    CREDS_FILE,
+)
 
 try:
     import sys
@@ -34,7 +43,7 @@ except Exception:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CREDS = os.path.join(HERE, "creds.json")
+CREDS = CREDS_FILE
 OUT_DIR = os.path.join(ROOT, "test_api")          # โฟลเดอร์เก็บบัญชีที่ได้ตัวเป้า
 CFG = os.path.join(ROOT, "configmain.json")
 PKG = "com.linecorp.LGRGS"
@@ -81,12 +90,7 @@ def device_current_udid(device):
 
 
 def load_creds():
-    try:
-        with open(CREDS, "r", encoding="utf-8") as f:
-            c = f.read().strip()
-            return json.loads(c) if c else {}
-    except Exception:
-        return {}
+    return _api_load_creds(CREDS, auto_merge=True)
 
 
 def default_targets():
@@ -193,6 +197,10 @@ def save_hit(key, cred, hits, codes, info, device=None):
 
 def run_once(target_id, targets, device=None):
     creds = load_creds()
+    if not creds:
+        print(f"[!] ไม่พบบัญชีใน {CREDS} (และไม่พบไฟล์ creds.part*.json)")
+        print("    ยังไม่มี credential บันทึกอยู่ในระบบ")
+        return 0
     if target_id:
         creds = {k: v for k, v in creds.items() if k == target_id}
     hits_total = 0
@@ -215,7 +223,7 @@ def run_once(target_id, targets, device=None):
     for k, v in creds.items():
         if k in allc:
             allc[k].update(v)
-    json.dump(allc, open(CREDS, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    _api_save_creds(allc, CREDS)
     return hits_total
 
 
