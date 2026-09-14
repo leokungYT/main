@@ -76,7 +76,7 @@ def login_one(key, cred):
         "level": player.get("level") or result.get("level"),
         "ruby": parse_ruby(result, player),          # เพชร/รูบี้ (พรีเมียม)
         "coin": parse_coin(result, player),          # เหรียญทอง
-        "ticket": parse_tickets(result, player),     # ตั๋วกาชา (best-effort scan)
+        "ticket": c.ticket_count().get("total", 0),  # ตั๋วกาชาจริงจาก /player/item
         "gift_badge": badge.get("GIFT", 0),
         "lf_ac_next": c.lf_ac,   # เก็บไว้ใช้รอบหน้า (เซิร์ฟหมุนค่าแล้ว)
     }
