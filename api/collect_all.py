@@ -11,6 +11,11 @@ import json
 import os
 import sys
 import concurrent.futures as cf
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
 from lgr_api import (
     LGRClient,
     parse_ruby,

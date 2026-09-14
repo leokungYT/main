@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 test_create_id.py — เช็คบัญชีที่จับได้ (creds.json) ว่า "สุ่มได้ตัวเป้า" ไหม แล้วเซฟออก
@@ -22,7 +22,18 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import time
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+ROOT = os.path.dirname(HERE)
 
 from lgr_api import (
     LGRClient,
@@ -34,15 +45,6 @@ from lgr_api import (
     merge_part_creds,
     CREDS_FILE,
 )
-
-try:
-    import sys
-    sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
 CREDS = CREDS_FILE
 OUT_DIR = os.path.join(ROOT, "test_api")          # โฟลเดอร์เก็บบัญชีที่ได้ตัวเป้า
 CFG = os.path.join(ROOT, "configmain.json")
@@ -130,7 +132,7 @@ def check_account(key, cred, targets):
         return False, [], set(), {}
     cli = LGRClient(udid, lf)
     st, codes, home = account_unit_codes(cli)
-    if st == 401 and cred.get("guestCookie"):
+    if st != 200 and cred.get("guestCookie"):
         cli.login(cred["guestCookie"])
         st, codes, home = account_unit_codes(cli)
     cred["LF_AC"] = cli.lf_ac   # เก็บ LF_AC ที่หมุนใหม่
