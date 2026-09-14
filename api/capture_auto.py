@@ -26,6 +26,7 @@ import argparse
 import glob
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -52,7 +53,8 @@ API_HOST = "rangers-api.line-apps.com"
 PORT = 8443
 PREF_DIR = f"/data/data/{PKG}/shared_prefs"
 PREF_FILE = f"{PREF_DIR}/_LINE_COCOS_PREF_KEY.xml"
-OUTPUT_DIR = os.path.join(ROOT, "login-success")   # ที่เก็บ .xml ของบัญชี guest ที่สร้างใหม่
+OUTPUT_DIR = os.path.join(ROOT, "login-success")   # ที่เก็บ .xml ของบัญชีที่สำเร็จ (เหมือน login.py)
+FAILED_DIR = os.path.join(ROOT, "login-failed")     # ที่เก็บ .xml ของบัญชีที่เข้าไม่ได้ (เหมือน login.py)
 
 
 # ---------- helpers ----------
@@ -351,27 +353,111 @@ def launch_login_py(dev):
     )
 
 
+def handle_success_file(xml_path, dev=""):
+    """ย้ายไฟล์สำเร็จไป login-success/ เหมือน login.py"""
+    try:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        base = os.path.basename(xml_path)
+        dst = os.path.join(OUTPUT_DIR, base)
+        if os.path.abspath(xml_path) != os.path.abspath(dst):
+            if os.path.exists(dst):
+                try:
+                    os.remove(dst)
+                except Exception:
+                    pass
+            shutil.move(xml_path, dst)
+            print(f"[*] [{dev}] ส่งไฟล์สำเร็จไปที่ {OUTPUT_DIR}: {base}", flush=True)
+        lock = xml_path + ".lock"
+        if os.path.exists(lock):
+            try:
+                os.remove(lock)
+            except Exception:
+                pass
+        return dst
+    except Exception as e:
+        print(f"[!] [{dev}] ย้ายไฟล์สำเร็จไม่สำเร็จ: {e}", flush=True)
+        return xml_path
+
+
+def handle_failure_file(xml_path, dev=""):
+    """ย้ายไฟล์ล้มเหลวไป login-failed/ เหมือน login.py"""
+    try:
+        os.makedirs(FAILED_DIR, exist_ok=True)
+        base = os.path.basename(xml_path)
+        dst = os.path.join(FAILED_DIR, base)
+        if os.path.abspath(xml_path) != os.path.abspath(dst):
+            if os.path.exists(dst):
+                try:
+                    os.remove(dst)
+                except Exception:
+                    pass
+            shutil.move(xml_path, dst)
+            print(f"[*] [{dev}] ส่งไฟล์ล้มเหลวไปที่ {FAILED_DIR}: {base}", flush=True)
+        lock = xml_path + ".lock"
+        if os.path.exists(lock):
+            try:
+                os.remove(lock)
+            except Exception:
+                pass
+        return dst
+    except Exception as e:
+        print(f"[!] [{dev}] ย้ายไฟล์ล้มเหลวไม่สำเร็จ: {e}", flush=True)
+        return xml_path
+
+
 def inject_xml(dev, xml_path):
-    """ส่งไฟล์ _LINE_COCOS_PREF_KEY.xml ของบัญชีเข้าเกม (สลับบัญชี) — คืน True ถ้าสำเร็จ"""
+    """ส่งไฟล์ _LINE_COCOS_PREF_KEY.xml ของบัญชีเข้าเกม (เหมือน login.py Robust Mode)"""
     src = os.path.abspath(xml_path)
     safe_name = os.path.basename(xml_path)
-    tmp = f"/data/local/tmp/_cap_pref_{dev.replace(':', '_')}.xml"
-    print(f"[*] inject เข้าเกม: {safe_name}", flush=True)
-    force_stop_game(dev)
-    clear_session_files(dev)
+    tmp = f"/data/local/tmp/temp_pref_{dev.replace(':', '_')}.xml"
+    print(f"[*] [{dev}] ส่งไฟล์เข้าเกม (Robust Mode): {safe_name}", flush=True)
 
-    r = adb(["push", src, tmp], device=dev, timeout=60)
-    if r.returncode != 0:
-        print(f"[X] push ล้มเหลว: {r.stderr.strip() or r.stdout.strip()}", flush=True)
-        return False
+    # 1. ปลดล็อก Read-only (best-effort เหมือน login.py)
+    try:
+        sh("mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null", device=dev, timeout=15)
+    except Exception as e:
+        print(f"[{dev}] [WARN] remount ข้ามไป (ไม่ critical): {e}", flush=True)
 
-    cmd = (
-        f"cp {tmp} {PREF_FILE} && chmod 666 {PREF_FILE} && "
-        f"chown $(stat -c %u:%g {PREF_DIR} 2>/dev/null || echo 1000:1000) {PREF_FILE}; "
-        f"rm -f {tmp}"
-    )
-    sh(cmd, device=dev, timeout=25)
-    return True
+    # 2. ปิดแอปให้สนิท (force-stop 2s + killall 1s เหมือน login.py)
+    try:
+        adb(["shell", "am", "force-stop", PKG], device=dev, timeout=15)
+    except Exception as e:
+        print(f"[{dev}] [WARN] force-stop ข้ามไป (ไม่ critical): {e}", flush=True)
+    time.sleep(2)
+
+    try:
+        sh(f"killall -9 {PKG} 2>/dev/null || true", device=dev, timeout=15)
+    except Exception as e:
+        print(f"[{dev}] [WARN] killall ข้ามไป (ไม่ critical): {e}", flush=True)
+    time.sleep(1)
+
+    # 3. Push เข้า tmp แล้ว copy เข้า shared_prefs พร้อม retry สูงสุด 3 ครั้ง เหมือน login.py
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            r = adb(["push", src, tmp], device=dev, timeout=60)
+            if r.returncode != 0:
+                err = r.stderr.strip() or r.stdout.strip()
+                print(f"[{dev}] Push รอบ {attempt} ล้มเหลว: {err}", flush=True)
+                time.sleep(2)
+                continue
+
+            shell_cmd = (
+                f"mkdir -p {PREF_DIR} && "
+                f"cp {tmp} {PREF_FILE} && "
+                f"chmod 666 {PREF_FILE} && "
+                f"chown $(stat -c %u:%g {PREF_DIR} 2>/dev/null || stat -c %u:%g {PREF_DIR}/.. 2>/dev/null || echo 1000:1000) {PREF_FILE} || true && "
+                f"rm -f {tmp}"
+            )
+            sh(shell_cmd, device=dev, timeout=20)
+            print(f"[{dev}] ส่งไฟล์เข้าเกมสำเร็จ (รอบที่ {attempt})", flush=True)
+            return True
+        except Exception as e:
+            print(f"[{dev}] รอบที่ {attempt} error: {e}", flush=True)
+            time.sleep(2)
+
+    print(f"[X] [{dev}] ส่งไฟล์ล้มเหลวหลังลองครบ {max_retries} รอบ!", flush=True)
+    return False
 
 
 # ---------- screen navigation helpers ----------
@@ -723,7 +809,7 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
 
 
 # ---------- queue batch processor ----------
-def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_success, host_port=PORT):
+def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_finish="move", host_port=PORT):
     global _ROOT_ADBD
     _ROOT_ADBD = enable_root(dev) or _ROOT_ADBD
     creds_file = part_creds(host_port)          # ไฟล์ creds แยกต่อจอ
@@ -734,8 +820,22 @@ def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_su
     failed_list = []
 
     try:
-        total = len(xml_files)
-        for i, xml_path in enumerate(xml_files, 1):
+        while True:
+            if isinstance(xml_input, queue.Queue):
+                try:
+                    item = xml_input.get_nowait()
+                except queue.Empty:
+                    break
+                i, total, xml_path = item
+            elif isinstance(xml_input, list):
+                if not xml_input:
+                    break
+                xml_path = xml_input.pop(0)
+                i = len(success_list) + len(failed_list) + 1
+                total = i + len(xml_input)
+            else:
+                break
+
             fname = os.path.basename(xml_path)
             print(f"\n===== [{dev}][{i}/{total}] {fname} =====", flush=True)
             ok, key, cred = capture_account(dev, xml_path, timeout, use_login, creds_file)
@@ -745,19 +845,26 @@ def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_su
                 success_list.append((fname, key, cred, info))
                 print(f"[OK] [{dev}] id={key} | {fname} | ruby={info['ruby']} "
                       f"| ticket={info['ticket']} | Lv {info['level']}", flush=True)
-                if delete_on_success:
+                if action_on_finish == "move":
+                    handle_success_file(xml_path, dev)
+                elif action_on_finish == "delete":
                     try:
                         os.remove(xml_path)
                     except Exception:
                         pass
             else:
                 failed_list.append(fname)
-                # login ไม่ได้ = บัญชีเข้าไม่ได้ -> ลบ XML ทิ้งเลยตามที่ขอ
-                try:
-                    os.remove(xml_path)
-                    print(f"[X] [{dev}] {fname} เข้าไม่ได้ -> ลบทิ้ง", flush=True)
-                except Exception:
-                    print(f"[X] [{dev}] {fname} เข้าไม่ได้ (ลบไม่สำเร็จ)", flush=True)
+                if action_on_finish == "move":
+                    handle_failure_file(xml_path, dev)
+                elif action_on_finish == "delete":
+                    try:
+                        os.remove(xml_path)
+                        print(f"[X] [{dev}] {fname} เข้าไม่ได้ -> ลบทิ้ง", flush=True)
+                    except Exception:
+                        print(f"[X] [{dev}] {fname} เข้าไม่ได้ (ลบไม่สำเร็จ)", flush=True)
+
+            if isinstance(xml_input, queue.Queue):
+                xml_input.task_done()
 
             time.sleep(1)
 
@@ -812,7 +919,10 @@ def main():
     ap.add_argument("--use-login", action="store_true", help="ใช้ login.py ช่วยกดผ่านหน้า PLAY อัตโนมัติ")
     ap.add_argument("--timeout", type=int, default=50, help="รอจับ credential กี่วินาทีต่อไฟล์ (default 50)")
     ap.add_argument("--jobs", type=int, default=4, help="จำนวนจอที่รันพร้อมกัน (default 4 กันเน็ต/CPU ดึงจนล็อกอินไม่ทัน)")
-    ap.add_argument("--no-delete", action="store_true", help="ไม่ลบไฟล์ XML หลังจับสำเร็จ (default: ลบออกตามคำขอ)")
+    ap.add_argument("--no-move", "--no-delete", dest="no_move", action="store_true",
+                    help="คงไฟล์ไว้ที่เดิม ไม่ย้ายไฟล์ไป login-success/ หรือ login-failed/")
+    ap.add_argument("--delete", action="store_true",
+                    help="ลบไฟล์ XML ทิ้งแทนการย้ายไป login-success/login-failed")
     ap.add_argument("--single", action="store_true", help="ทำแค่ไฟล์แรกไฟล์เดียวแล้วหยุด (ใช้ทดสอบ)")
     ap.add_argument("--limit", type=int, default=0, help="จำกัดจำนวนไฟล์ที่จะทำ (0 = ทำทั้งหมด)")
     ap.add_argument("--reroll", type=int, default=0, metavar="N",
@@ -860,29 +970,34 @@ def main():
         xml_files = xml_files[:args.limit]
         print(f"[*] โหมด --limit {args.limit}: จะประมวลผล {len(xml_files)} ไฟล์", flush=True)
 
-    delete_on_success = not args.no_delete
+    if getattr(args, "delete", False):
+        action_on_finish = "delete"
+    elif getattr(args, "no_move", False):
+        action_on_finish = "keep"
+    else:
+        action_on_finish = "move"   # ดีฟอลต์: ย้ายไฟล์ไป login-success / login-failed เหมือน login.py
 
     if xml_files:
-        # แบ่งไฟล์ให้ทุกจอ แต่รันพร้อมกันแค่ --jobs จอ (กันเน็ต/CPU ดึงจนล็อกอินไม่ทัน)
-        # ไล่จนครบทุกไฟล์ ไม่หยุดกลางคัน
         import concurrent.futures as _cf
         n = len(devices)
         jobs = max(1, min(args.jobs, n))
-        chunks = [xml_files[i::n] for i in range(n)]   # แบ่ง round-robin ต่อจอ
-        print(f"[*] พบ {len(xml_files)} ไฟล์ | {n} จอ | รันพร้อมกัน {jobs} จอ/รอบ (ไล่จนครบ)", flush=True)
+
+        # ใส่คิวแชร์ร่วมกันทุกจอ ใครว่างก็หยิบไฟล์ถัดไปทำงานทันทีเหมือน login.py
+        q = queue.Queue()
+        total_files = len(xml_files)
+        for i, f in enumerate(xml_files, 1):
+            q.put((i, total_files, f))
+
+        print(f"[*] พบ {total_files} ไฟล์ | {n} จอ | รันพร้อมกัน {jobs} จอ/รอบ (คิวแชร์อัตโนมัติเหมือน login.py)", flush=True)
         results = [([], []) for _ in range(n)]
 
         def _worker(idx):
-            files = chunks[idx]
-            if not files:
-                return
             d = devices[idx]
             try:
-                results[idx] = process_xml_queue(d, files, mitmdump, args.use_login,
-                                                 args.timeout, delete_on_success, PORT + idx)
+                results[idx] = process_xml_queue(d, q, mitmdump, args.use_login,
+                                                 args.timeout, action_on_finish, PORT + idx)
             except Exception as e:
                 print(f"[X] [{d}] worker error: {e}", flush=True)
-                results[idx] = ([], [os.path.basename(f) for f in files])
             # merge ทันทีที่จอนี้เสร็จ (กันข้อมูลหายถ้าปิดกลางคัน)
             try:
                 merge_parts_into_creds([part_creds(PORT + idx)])
@@ -897,8 +1012,10 @@ def main():
 
         print("\n" + "=" * 55, flush=True)
         print(f"สรุปการทำงาน:", flush=True)
-        print(f"  - สำเร็จ: {len(success)} ไฟล์ (บันทึกลง creds.json {'และลบจาก ' + args.input_dir if delete_on_success else ''})", flush=True)
-        print(f"  - ล้มเหลว/ข้าม: {len(failed)} ไฟล์", flush=True)
+        suc_act = "ย้ายไป " + OUTPUT_DIR if action_on_finish == "move" else ("ลบออกจาก " + args.input_dir if action_on_finish == "delete" else "คงไว้ใน " + args.input_dir)
+        fail_act = "ย้ายไป " + FAILED_DIR if action_on_finish == "move" else ("ลบออกจาก " + args.input_dir if action_on_finish == "delete" else "คงไว้ใน " + args.input_dir)
+        print(f"  - สำเร็จ: {len(success)} ไฟล์ ({suc_act})", flush=True)
+        print(f"  - ล้มเหลว/ข้าม: {len(failed)} ไฟล์ ({fail_act})", flush=True)
         if success:
             print(f"\nบัญชีที่จับได้ในรอบนี้:", flush=True)
             for fname, key, cred, info in success:
