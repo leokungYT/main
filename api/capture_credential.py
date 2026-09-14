@@ -30,7 +30,8 @@ import os
 import re
 from mitmproxy import http
 
-CREDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
+# แต่ละจอตั้ง env LGR_CREDS_FILE ให้เขียนไฟล์แยกกัน (ไม่แย่ง .lock เดียวกัน) แล้ว capture_auto merge ตอนจบ
+CREDS = os.environ.get("LGR_CREDS_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
 _UDID2RSN = {}   # จำ udid -> rsn ภายในรอบจับ (กัน entry ซ้ำ)
 
 

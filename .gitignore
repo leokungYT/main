@@ -47,3 +47,6 @@ bin/minitouch/*/
 
 # API credentials - ห้าม push (มี cookie บัญชีจริง)
 creds.json
+creds.part*.json
+creds*.lock
+creds*.tmp

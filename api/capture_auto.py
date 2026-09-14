@@ -126,23 +126,45 @@ def list_devices():
     return devs
 
 
-def load_creds():
+def load_creds(path=None):
     try:
-        content = open(CREDS, encoding="utf-8").read().strip()
+        content = open(path or CREDS, encoding="utf-8").read().strip()
         return json.loads(content) if content else {}
     except Exception:
         return {}
 
 
-def save_creds(data):
+def save_creds(data, path=None):
+    path = path or CREDS
     try:
-        with open(CREDS, "w", encoding="utf-8") as f:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
     except Exception as e:
-        print(f"[!] บันทึก {CREDS} ไม่สำเร็จ: {e}", flush=True)
+        print(f"[!] บันทึก {path} ไม่สำเร็จ: {e}", flush=True)
 
 
-def fetch_account_info(cred, fname=None):
+def part_creds(host_port):
+    """ไฟล์ creds แยกต่อจอ (กันแย่ง .lock/เขียนชนกัน) -> merge เข้า creds.json ตอนจบ"""
+    return os.path.join(HERE, f"creds.part{host_port}.json")
+
+
+def merge_parts_into_creds(part_files):
+    """รวม creds.partN.json ทุกไฟล์เข้า creds.json (ทำครั้งเดียวตอนจบ = ไม่มี race)"""
+    merged = load_creds()
+    for pf in part_files:
+        for k, v in load_creds(pf).items():
+            merged[k] = v
+        try:
+            os.remove(pf)
+        except OSError:
+            pass
+    save_creds(merged)
+    return len(merged)
+
+
+def fetch_account_info(cred, fname=None, creds_file=None):
     """เรียก GET API เพื่อดึง ruby, ticket, coin, level ทันทีหลังจับ credential ได้"""
     udid, lf = cred.get("udid"), cred.get("LF_AC")
     info = {
@@ -194,20 +216,20 @@ def fetch_account_info(cred, fname=None):
     cred["ticket"] = info["ticket"]
     cred["level"] = info["level"]
 
-    # บันทึกข้อมูลที่อัปเดต (รวม LF_AC ล่าสุด) ลง creds.json
+    # บันทึกข้อมูลที่อัปเดต (รวม LF_AC ล่าสุด) ลงไฟล์ creds ของจอนี้ (แยกต่อจอ = ไม่ race)
     try:
-        all_c = load_creds()
+        all_c = load_creds(creds_file)
         rsn = cred.get("rsn") or cred.get("udid")
         target_keys = [k for k in (rsn, cred.get("udid")) if k]
         for k in target_keys:
             if k in all_c:
                 all_c[k].update(cred)
-                save_creds(all_c)
+                save_creds(all_c, creds_file)
                 break
         else:
             if rsn:
                 all_c[rsn] = cred
-                save_creds(all_c)
+                save_creds(all_c, creds_file)
     except Exception:
         pass
 
@@ -491,12 +513,15 @@ def handle_screen_flow(dev):
 
 
 # ---------- mitm + capture helpers ----------
-def start_mitm(mitmdump, host_port=PORT):
+def start_mitm(mitmdump, host_port=PORT, creds_file=None):
     print(f"[*] เริ่ม mitmdump reverse-proxy host:{host_port} + addon ...", flush=True)
+    env = dict(os.environ)
+    if creds_file:
+        env["LGR_CREDS_FILE"] = creds_file       # addon เขียน creds ไฟล์แยกต่อจอ (ไม่แย่ง .lock)
     p = subprocess.Popen(
         [mitmdump, "--mode", f"reverse:https://{API_HOST}",
          "--listen-port", str(host_port), "-s", ADDON, "-q"],
-        cwd=HERE,
+        cwd=HERE, env=env,
     )
     time.sleep(3)  # ให้ proxy ตั้งตัว
     return p
@@ -533,7 +558,7 @@ def guest_login_flow(dev):
     tap(437, 408, 1)     # Agree (3-box)
 
 
-def capture_account(dev, xml_path, timeout, use_login):
+def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
     """
     จับ credential ของ 1 บัญชี:
       1) inject XML (ถ้ามี) หรือ สร้าง guest ใหม่ (guest_login_flow)
@@ -548,7 +573,7 @@ def capture_account(dev, xml_path, timeout, use_login):
         if not inject_xml(dev, xml_path):
             return False, None, None
 
-    before_creds = load_creds()
+    before_creds = load_creds(creds_file)
     prev_entry = None
     if target_udid:
         for k, v in before_creds.items():
@@ -577,7 +602,7 @@ def capture_account(dev, xml_path, timeout, use_login):
 
     last_screen_handle = 0
     while time.time() < deadline:
-        creds = load_creds()
+        creds = load_creds(creds_file)
 
         # ตรวจสอบว่า target_udid ได้รับ LF_AC ใหม่แล้วหรือยัง
         if target_udid:
@@ -599,7 +624,7 @@ def capture_account(dev, xml_path, timeout, use_login):
             time.sleep(2)
             print("[*] จับได้แล้ว! สั่ง force-stop เกมทันที เพื่อตรึง LF_AC ไม่ให้หมุนทิ้ง", flush=True)
             force_stop_game(dev)
-            creds = load_creds()
+            creds = load_creds(creds_file)
             captured_data = creds.get(captured_key, captured_data)
             break
 
@@ -627,8 +652,9 @@ def capture_account(dev, xml_path, timeout, use_login):
 def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_success, host_port=PORT):
     global _ROOT_ADBD
     _ROOT_ADBD = enable_root(dev) or _ROOT_ADBD
+    creds_file = part_creds(host_port)          # ไฟล์ creds แยกต่อจอ
     setup_routing(dev, host_port)
-    mitm = start_mitm(mitmdump, host_port)
+    mitm = start_mitm(mitmdump, host_port, creds_file)
 
     success_list = []
     failed_list = []
@@ -637,26 +663,27 @@ def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_su
         total = len(xml_files)
         for i, xml_path in enumerate(xml_files, 1):
             fname = os.path.basename(xml_path)
-            print(f"\n===== [{i}/{total}] ประมวลผล: {fname} =====", flush=True)
-            ok, key, cred = capture_account(dev, xml_path, timeout, use_login)
+            print(f"\n===== [{dev}][{i}/{total}] {fname} =====", flush=True)
+            ok, key, cred = capture_account(dev, xml_path, timeout, use_login, creds_file)
 
             if ok:
-                info = fetch_account_info(cred, fname)
+                info = fetch_account_info(cred, fname, creds_file)
                 success_list.append((fname, key, cred, info))
-                print(f"[OK] จับสำเร็จ: id={key} | file={fname} | ruby={info['ruby']} "
-                      f"| ticket={info['ticket']} | coin={info['coin']} | Lv {info['level']}", flush=True)
-
+                print(f"[OK] [{dev}] id={key} | {fname} | ruby={info['ruby']} "
+                      f"| ticket={info['ticket']} | Lv {info['level']}", flush=True)
                 if delete_on_success:
                     try:
                         os.remove(xml_path)
-                        print(f"[OK] ลบไฟล์ {fname} ออกจากโฟลเดอร์เรียบร้อยแล้ว", flush=True)
-                    except Exception as e:
-                        print(f"[!] ลบไฟล์ {fname} ไม่สำเร็จ: {e}", flush=True)
-                else:
-                    print(f"[*] คงไฟล์ {fname} ไว้ (โหมด --no-delete)", flush=True)
+                    except Exception:
+                        pass
             else:
                 failed_list.append(fname)
-                print(f"[X] จับไม่สำเร็จ: {fname} (ไม่ลบไฟล์ เพื่อความปลอดภัย)", flush=True)
+                # login ไม่ได้ = บัญชีเข้าไม่ได้ -> ลบ XML ทิ้งเลยตามที่ขอ
+                try:
+                    os.remove(xml_path)
+                    print(f"[X] [{dev}] {fname} เข้าไม่ได้ -> ลบทิ้ง", flush=True)
+                except Exception:
+                    print(f"[X] [{dev}] {fname} เข้าไม่ได้ (ลบไม่สำเร็จ)", flush=True)
 
             time.sleep(1)
 
@@ -786,6 +813,8 @@ def main():
             t.join()
         success = [x for r in results if r for x in r[0]]
         failed = [x for r in results if r for x in r[1]]
+        n_total = merge_parts_into_creds([part_creds(PORT + i) for i in range(n)])
+        print(f"\n[*] รวม creds.json = {n_total} บัญชี", flush=True)
 
         print("\n" + "=" * 55, flush=True)
         print(f"สรุปการทำงาน:", flush=True)
@@ -809,12 +838,13 @@ def main():
             global _ROOT_ADBD
             _ROOT_ADBD = enable_root(d) or _ROOT_ADBD
             hp = PORT + idx
+            cf = part_creds(hp)
             setup_routing(d, hp)
-            mitm = start_mitm(mitmdump, hp)
+            mitm = start_mitm(mitmdump, hp, cf)
             try:
-                ok, key, cred = capture_account(d, None, args.timeout, args.use_login)
+                ok, key, cred = capture_account(d, None, args.timeout, args.use_login, cf)
                 if ok:
-                    info = fetch_account_info(cred)
+                    info = fetch_account_info(cred, None, cf)
                     print(f"[OK] [{d}] id={key} | file={info.get('file', '-')} | ruby={info['ruby']} "
                           f"| ticket={info['ticket']} | Lv {info['level']}", flush=True)
                 else:
@@ -831,7 +861,8 @@ def main():
             t.start()
         for t in threads:
             t.join()
-        print("\n[*] จับ guest ครบทุกจอแล้ว -> ต่อด้วย: python collect_all.py", flush=True)
+        n_total = merge_parts_into_creds([part_creds(PORT + i) for i in range(len(devices))])
+        print(f"\n[*] จับ guest ครบทุกจอแล้ว (creds.json รวม {n_total} บัญชี) -> python collect_all.py", flush=True)
 
 
 if __name__ == "__main__":
