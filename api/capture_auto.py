@@ -37,6 +37,13 @@ import time
 import cv2
 import numpy as np
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)   # โฟลเดอร์โปรเจคหลัก (มี adb/ img/ input-id/ login.py)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
 from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
 
 try:
@@ -44,8 +51,6 @@ try:
 except Exception:
     pass
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # โฟลเดอร์โปรเจคหลัก (มี adb/ img/ input-id/ login.py)
 CREDS = os.path.join(HERE, "creds.json")
 ADDON = os.path.join(HERE, "capture_credential.py")
 PKG = "com.linecorp.LGRGS"
@@ -411,71 +416,64 @@ def handle_failure_file(xml_path, dev=""):
 
 
 def inject_xml(dev, xml_path):
-    """ส่งไฟล์ _LINE_COCOS_PREF_KEY.xml ของบัญชีเข้าเกม (เหมือน login.py Robust Mode)"""
-    src = os.path.abspath(xml_path)
+    """ส่งไฟล์ _LINE_COCOS_PREF_KEY.xml ของบัญชีเข้าเกม (ใช้วิธีเดียวกับ login.py เป๊ะๆ)"""
     safe_name = os.path.basename(xml_path)
-    tmp = f"/data/local/tmp/temp_pref_{dev.replace(':', '_')}.xml"
+    print(f"[{dev}] กำลังส่งไฟล์เข้าเกม: {safe_name} (Robust Mode เหมือน login.py)...", flush=True)
 
-    # ล็อคคิวฉีดไฟล์: ให้ทีละจอฉีดเข้าเครื่อง ไม่ชน/แย่งกันใน ADB
     with _INJECT_LOCK:
-        print(f"[*] [{dev}] ส่งไฟล์เข้าเกม (Robust Mode): {safe_name}", flush=True)
-
-        # 1. ปลดล็อก Read-only (best-effort เหมือน login.py)
+        # 1. ปลดล็อก Read-only (ถ้ามี เหมือน login.py)
         try:
-            sh("mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null", device=dev, timeout=15)
+            adb(["shell", "su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'"], device=dev, timeout=15)
         except Exception as e:
             print(f"[{dev}] [WARN] remount ข้ามไป (ไม่ critical): {e}", flush=True)
 
-        # 2. ปิดแอปให้สนิท (force-stop 2s + killall 1s เหมือน login.py)
         try:
-            adb(["shell", "am", "force-stop", PKG], device=dev, timeout=15)
+            adb(["shell", "am", "force-stop", "com.linecorp.LGRGS"], device=dev, timeout=15)
         except Exception as e:
             print(f"[{dev}] [WARN] force-stop ข้ามไป (ไม่ critical): {e}", flush=True)
         time.sleep(2)
 
         try:
-            sh(f"killall -9 {PKG} 2>/dev/null || true", device=dev, timeout=15)
+            adb(["shell", "su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'"], device=dev, timeout=15)
         except Exception as e:
             print(f"[{dev}] [WARN] killall ข้ามไป (ไม่ critical): {e}", flush=True)
         time.sleep(1)
 
-        # ลบไฟล์ temp เก่าถ้ามีค้างอยู่
-        sh(f"rm -f {tmp}", device=dev, timeout=10)
+        src = os.path.abspath(xml_path)
+        tmp = f"/data/local/tmp/temp_pref_{dev.replace(':', '_')}.xml"
+        final_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
+        final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
 
-        # 3. Push เข้า tmp แล้ว copy เข้า shared_prefs พร้อม retry สูงสุด 3 ครั้ง เหมือน login.py
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                r = adb(["push", src, tmp], device=dev, timeout=60)
-                if r.returncode != 0:
-                    err = r.stderr.strip() or r.stdout.strip()
-                    print(f"[{dev}] Push รอบ {attempt} ล้มเหลว: {err}", flush=True)
+                # Push to tmp (60 วิ: ตอนรันหลายจอพร้อมกัน ดิสก์หนัก 30 วิอาจไม่พอ)
+                result = adb(["push", src, tmp], device=dev, timeout=60)
+                if result.returncode != 0:
+                    err = (result.stderr or result.stdout or 'Unknown Error').strip()
+                    print(f"[{dev}] Push attempt {attempt} failed: {err}", flush=True)
                     time.sleep(2)
                     continue
 
+                # Copy, set permissions and owner (เหมือน login.py เป๊ะๆ)
                 shell_cmd = (
-                    f"mkdir -p {PREF_DIR} && "
-                    f"rm -f {PREF_FILE} && "
-                    f"cp {tmp} {PREF_FILE} && "
-                    f"chmod 666 {PREF_FILE} && "
-                    f"chown $(stat -c %u:%g {PREF_DIR} 2>/dev/null || stat -c %u:%g {PREF_DIR}/.. 2>/dev/null || echo 1000:1000) {PREF_FILE} || true && "
+                    f"su -c '"
+                    f"cp {tmp} {final} && "
+                    f"chmod 666 {final} && "
+                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {final_dir}/.. 2>/dev/null || echo 1000:1000) {final} || true && "
                     f"rm -f {tmp}"
+                    f"'"
                 )
-                sh(shell_cmd, device=dev, timeout=20)
+                adb(["shell", shell_cmd], device=dev, timeout=20)
 
-                # ยืนยันว่าไฟล์ถูก copy เข้าไปจริงและมีขนาด > 0
-                chk = sh(f"test -s {PREF_FILE} && echo OK || echo FAIL", device=dev, timeout=10)
-                if "OK" in (chk.stdout or ""):
-                    print(f"[{dev}] ส่งไฟล์เข้าเกมสำเร็จ (รอบที่ {attempt})", flush=True)
-                    return True
-                else:
-                    print(f"[{dev}] รอบ {attempt}: ตรวจสอบไฟล์ใน shared_prefs ไม่พบ กำลังลองใหม่...", flush=True)
-                    time.sleep(2)
+                print(f"[{dev}] [OK] ส่งไฟล์เข้าเกมสำเร็จ! (Injection successful on attempt {attempt}: {safe_name})", flush=True)
+                return True
+
             except Exception as e:
-                print(f"[{dev}] รอบที่ {attempt} error: {e}", flush=True)
+                print(f"[{dev}] Attempt {attempt} error: {e}", flush=True)
                 time.sleep(2)
 
-        print(f"[X] [{dev}] ส่งไฟล์ล้มเหลวหลังลองครบ {max_retries} รอบ!", flush=True)
+        print(f"[{dev}] [FAIL] ส่งไฟล์เข้าเกมไม่สำเร็จหลังลองครบ {max_retries} รอบ! (Injection FAILED: {safe_name})", flush=True)
         return False
 
 
@@ -742,8 +740,11 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
     target_udid = None
     if xml_path:
         target_udid = extract_udid_from_xml(xml_path)
-        if not inject_xml(dev, xml_path):
+        ok_inject = inject_xml(dev, xml_path)
+        if not ok_inject:
+            print(f"[X] [{dev}] ส่งไฟล์เข้าเกมไม่สำเร็จ! -> ข้ามไฟล์ {os.path.basename(xml_path)}", flush=True)
             return False, None, None
+        print(f"[OK] [{dev}] ส่งไฟล์เข้าเกมสำเร็จเรียบร้อย -> กำลังเปิดเกม...", flush=True)
 
     before_creds = load_creds(creds_file)
     prev_entry = None
@@ -978,11 +979,38 @@ def main():
         print("=" * 55, flush=True)
         return
 
-    # ค้นหาไฟล์ XML ใน input-dir
-    input_path = os.path.join(ROOT, args.input_dir) if not os.path.isabs(args.input_dir) else args.input_dir
+    # ค้นหาไฟล์ XML ใน input-dir (ค้นหาทั้ง ROOT, CWD และโฟลเดอร์ย่อย recursive)
     xml_files = []
-    if os.path.exists(input_path):
-        xml_files = sorted(glob.glob(os.path.join(input_path, "*.xml")))
+    input_path = None
+    candidates = [
+        args.input_dir if os.path.isabs(args.input_dir) else os.path.join(ROOT, args.input_dir),
+        os.path.join(os.getcwd(), args.input_dir),
+        args.input_dir,
+        os.path.join(ROOT, "input-id"),
+        os.path.join(os.getcwd(), "input-id"),
+        os.path.join(ROOT, "backup"),
+        os.path.join(os.getcwd(), "backup"),
+    ]
+    seen_cand = set()
+    for cand in candidates:
+        cand_abs = os.path.abspath(cand)
+        if cand_abs in seen_cand or not os.path.exists(cand_abs):
+            continue
+        seen_cand.add(cand_abs)
+        found = []
+        for r, _, fs in os.walk(cand_abs):
+            for f in fs:
+                if f.lower().endswith(".xml"):
+                    found.append(os.path.join(r, f))
+        if found:
+            input_path = cand_abs
+            xml_files = sorted(found)
+            break
+
+    if xml_files:
+        print(f"[*] พบ {len(xml_files)} ไฟล์ .xml ใน '{input_path}'", flush=True)
+    else:
+        print(f"[*] ไม่พบไฟล์ .xml ใน '{args.input_dir}/' (ค้นหาที่: {os.path.abspath(os.path.join(ROOT, args.input_dir))})", flush=True)
 
     if args.single and xml_files:
         xml_files = xml_files[:1]
