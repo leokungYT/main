@@ -78,6 +78,20 @@ class LGRClient:
     def giftbox_list(self):
         return self.call("GET", "/giftbox/list")
 
+    # inventory ที่มีจำนวนตั๋วกาชา (แสดงหน้า gacha ข้าง ๆ ruby) - ตั๋วไม่อยู่ใน /home
+    ITEM_PATH = ("/player/item?pGacha=true&clsGacha=true&etGacha=true"
+                 "&battleAuto=false&battleManual=false&evolve=false")
+
+    def player_items(self):
+        return self.call("GET", self.ITEM_PATH)
+
+    def ticket_count(self):
+        """คืน dict {premium, classic, event, total} ของตั๋วกาชาที่ถืออยู่จริง"""
+        st, d = self.player_items()
+        if st != 200 or not isinstance(d, dict):
+            return {"premium": 0, "classic": 0, "event": 0, "total": 0, "_status": st}
+        return sum_tickets(d.get("result", {}) or {})
+
     def receive_all_gifts(self):
         """รับของขวัญทั้งกล่อง gift — คืน player ที่อัปเดตแล้ว"""
         return self.call("POST", "/giftbox/gift/receive/all")
@@ -136,7 +150,7 @@ class LGRClient:
             "level": player.get("level") or result.get("level"),
             "ruby": parse_ruby(result, player),
             "coin": parse_coin(result, player),
-            "ticket": parse_tickets(result, player),
+            "ticket": self.ticket_count().get("total", 0),   # ตั๋วกาชาจาก /player/item (ไม่อยู่ใน /home)
             "gift_badge": badge.get("GIFT", 0),
             "lf_ac_next": self.lf_ac,
         }
@@ -207,6 +221,21 @@ def parse_tickets(result, player=None):
         return 0
     total = sum(found.values())
     return total if len(found) <= 1 else found
+
+
+def sum_tickets(item_result):
+    """รวมจำนวนตั๋วกาชาจาก /player/item -> {premium, classic, event, total}
+       (แต่ละลิสต์เป็น item ที่มี field 'amount' = จำนวนที่ถือ)"""
+    r = item_result or {}
+
+    def _sum(lst):
+        return sum(int(x.get("amount") or x.get("freeAmount") or 0)
+                   for x in (r.get(lst) or []) if isinstance(x, dict))
+
+    prem = _sum("premiumGachaTicketItems")
+    cls = _sum("classicGachaTicketItems")
+    evt = _sum("eventGachaTicketItems")
+    return {"premium": prem, "classic": cls, "event": evt, "total": prem + cls + evt}
 
 
 def parse_gacha_rewards(confirm_resp):

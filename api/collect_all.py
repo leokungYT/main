@@ -62,7 +62,8 @@ def _one(key, cred):
         player = res.get("player") or {}
         ruby = parse_ruby(res, player) or cred.get("ruby", 0)
         coin = parse_coin(res, player) or cred.get("coin", 0)
-        ticket = parse_tickets(res, player) or cred.get("ticket", 0)
+        tk = c.ticket_count()               # ตั๋วกาชาจริงจาก /player/item (นับหลังรับของแล้ว)
+        ticket = tk.get("total", 0)
 
         return key, {
             "ok": True,
