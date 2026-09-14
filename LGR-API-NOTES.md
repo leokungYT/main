@@ -219,3 +219,48 @@ capture ต้องทำบน **arm64 แท้ครั้งเดียว
 - **ทางเลี่ยง:** หา **APK เวอร์ชันเก่า** (ก่อนใส่ pinning/LIAPP) ลงบน x86 → mitmproxy ธรรมดาดักได้ทันที เรียนรู้ header + auth scheme (server เดิม) — เสี่ยงเรื่อง auth เก่า/ใหม่ต่างกัน แต่เร็วสุดบนเครื่องที่มี
 
 หลัง capture ได้ 1 flow: ถ้าไม่มี HMAC ต่อ request (ตามที่คาด) → เขียน Python client `ล็อกอิน(ยืม token)+รับของ` ได้จริง โดยดึง `X-LINEGAME-USERKEY/APPSECRET/Cookie` สดจากแอปที่รันอยู่
+
+---
+
+## 11. ✅ สำเร็จ: ยิง API เอง "ล็อกอิน + รับของ" ได้จริง (2026-09-14)
+
+**MITM ทะลุได้** ด้วย reverse-proxy (ไม่ต้อง bypass pin — เกมยอมรับ cert ของ mitmproxy!):
+- routing: hosts `rangers-api.line-apps.com → 127.0.0.1` (bind-mount) + `iptables REDIRECT 443→8443` + `adb reverse 8443` + `mitmdump --mode reverse:https://rangers-api.line-apps.com --listen-port 8443`
+- เกมยิงผ่าน mitm ได้ decrypt เห็น request/response ครบ
+
+### auth model จริง (ถอดจากทราฟฟิก)
+```
+GET/POST https://rangers-api.line-apps.com/v12.3/<path>
+Cookie: udid=<device_uuid>; LF_AC=<session>            <-- auth มีแค่นี้ ไม่มีลายเซ็น/HMAC
+(login ใช้ guestCookie=<credential ถาวร> เพิ่ม)
+```
+- **`LF_AC`** = session cookie ใช้เรียก endpoint ที่ต้อง auth ได้ตรง ๆ (ไม่ต้อง /login ซ้ำ)
+  เซิร์ฟหมุนค่าใหม่ทาง `Set-Cookie: LF_AC=...` ทุก request -> เก็บค่าใหม่ไว้ใช้ต่อ
+- **`guestCookie`** = ถอดจาก `_ENC_LF_AC_KEY` ในเครื่อง หมุนทุก login เก็บกลับแบบเข้ารหัส
+- `udid` = `_DEVICE_UUID_KEY` (คงที่ต่อเครื่อง)
+- ไม่มี `X-LINEGAME-APPSECRET/USERKEY/SIGNATURE` ในทราฟฟิกจริง (เดาผิดจาก static ก่อนหน้า — พวกนั้นคือ format string ที่มีแต่ไม่ได้ใช้เส้นนี้)
+
+### endpoint รับของ (จาก libgame)
+- `POST /v12.3/giftbox/gift/receive/all`  = รับของขวัญทั้งกล่อง
+- `POST /v12.3/giftbox/{type}/receive/{giftSn}` = รับทีละชิ้น
+- อื่น ๆ: `/mission/receive/reward/*`, `/dailyquest/receive/reward/*`, `/pass/receive/reward/*`,
+  `/guild/raid/reward/receive/*`, `/roulette/accumulatedReward/receive/*`, `/tokenbox/reward/received` ฯลฯ
+
+### พิสูจน์แล้ว (บัญชี guest 10a86152)
+```
+GET  /home              -> 200  badge GIFT=12
+GET  /giftbox/list      -> 200  giftBox.gift.playerGifts[] (giftSn, receive:false)
+POST /giftbox/gift/receive/all -> 200  (คืน player อัปเดต หัวใจ +)
+ผล: unclaimed 12 -> 1  (รับไป 11 ชิ้น เช่น Feather+40, Leonard Soul+100, กาชาทิกเก็ต)
+```
+
+### ของที่ส่งมอบ
+- [`lgr_api.py`](lgr_api.py) — client: `LGRClient(udid, lf_ac)` มี `.home()/.giftbox_list()/.receive_all_gifts()`
+  + `collect_account(udid, lf_ac)` เช็กเข้าเกม+รับของทั้งหมด คืน lf_ac_next ให้เก็บใช้รอบหน้า
+- [`capture_credential.py`](capture_credential.py) — mitmproxy addon จับ udid+LF_AC ต่อบัญชี -> creds.json (ทำครั้งเดียว/บัญชี)
+
+### ข้อจำกัด/วิธีใช้จริง
+- credential (LF_AC/guestCookie) **หมุน** -> ต้องเป็นเจ้าของคนเดียว: จับ credential ครั้งเดียวผ่าน MITM
+  แล้วบัญชีนั้นใช้ API อย่างเดียว (อย่าเปิดเกมบัญชีเดิมพร้อมกัน เดี๋ยว credential ชนกัน)
+- LF_AC หมดอายุได้ -> ถ้า 401 ให้ /login ด้วย guestCookie ใหม่ หรือ re-capture
+- นี่คือ "ยิง API รับของโดยไม่ต้องเปิดเกม" ที่ต้องการ — เร็วมาก ทำขนานหลายบัญชีได้ (แค่วน creds.json)
