@@ -708,7 +708,7 @@ def main():
     ap.add_argument("--device", help="serial เช่น 127.0.0.1:16512 หรือ emulator-5556 (ไม่ใส่ = auto-detect)")
     ap.add_argument("--input-dir", default="input-id", help="โฟลเดอร์เก็บไฟล์ XML บัญชี (default: input-id)")
     ap.add_argument("--use-login", action="store_true", help="ใช้ login.py ช่วยกดผ่านหน้า PLAY อัตโนมัติ")
-    ap.add_argument("--timeout", type=int, default=120, help="รอจับ credential กี่วินาทีต่อไฟล์ (default 120)")
+    ap.add_argument("--timeout", type=int, default=50, help="รอจับ credential กี่วินาทีต่อไฟล์ (default 50)")
     ap.add_argument("--no-delete", action="store_true", help="ไม่ลบไฟล์ XML หลังจับสำเร็จ (default: ลบออกตามคำขอ)")
     ap.add_argument("--single", action="store_true", help="ทำแค่ไฟล์แรกไฟล์เดียวแล้วหยุด (ใช้ทดสอบ)")
     ap.add_argument("--limit", type=int, default=0, help="จำกัดจำนวนไฟล์ที่จะทำ (0 = ทำทั้งหมด)")
