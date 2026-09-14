@@ -150,18 +150,23 @@ def part_creds(host_port):
     return os.path.join(HERE, f"creds.part{host_port}.json")
 
 
+import threading as _threading
+_MERGE_LOCK = _threading.Lock()
+
+
 def merge_parts_into_creds(part_files):
-    """รวม creds.partN.json ทุกไฟล์เข้า creds.json (ทำครั้งเดียวตอนจบ = ไม่มี race)"""
-    merged = load_creds()
-    for pf in part_files:
-        for k, v in load_creds(pf).items():
-            merged[k] = v
-        try:
-            os.remove(pf)
-        except OSError:
-            pass
-    save_creds(merged)
-    return len(merged)
+    """รวม creds.partN.json เข้า creds.json (ล็อกกัน thread เขียนชนกัน)"""
+    with _MERGE_LOCK:
+        merged = load_creds()
+        for pf in part_files:
+            for k, v in load_creds(pf).items():
+                merged[k] = v
+            try:
+                os.remove(pf)
+            except OSError:
+                pass
+        save_creds(merged)
+        return len(merged)
 
 
 def fetch_account_info(cred, fname=None, creds_file=None):
@@ -737,6 +742,7 @@ def main():
     ap.add_argument("--input-dir", default="input-id", help="โฟลเดอร์เก็บไฟล์ XML บัญชี (default: input-id)")
     ap.add_argument("--use-login", action="store_true", help="ใช้ login.py ช่วยกดผ่านหน้า PLAY อัตโนมัติ")
     ap.add_argument("--timeout", type=int, default=50, help="รอจับ credential กี่วินาทีต่อไฟล์ (default 50)")
+    ap.add_argument("--jobs", type=int, default=4, help="จำนวนจอที่รันพร้อมกัน (default 4 กันเน็ต/CPU ดึงจนล็อกอินไม่ทัน)")
     ap.add_argument("--no-delete", action="store_true", help="ไม่ลบไฟล์ XML หลังจับสำเร็จ (default: ลบออกตามคำขอ)")
     ap.add_argument("--single", action="store_true", help="ทำแค่ไฟล์แรกไฟล์เดียวแล้วหยุด (ใช้ทดสอบ)")
     ap.add_argument("--limit", type=int, default=0, help="จำกัดจำนวนไฟล์ที่จะทำ (0 = ทำทั้งหมด)")
@@ -788,33 +794,37 @@ def main():
     delete_on_success = not args.no_delete
 
     if xml_files:
-        # กระจายไฟล์ให้ทุกจอทำขนานกัน (แต่ละจอ = mitmdump host-port แยก, creds.json ล็อกกันเขียนชน)
+        # แบ่งไฟล์ให้ทุกจอ แต่รันพร้อมกันแค่ --jobs จอ (กันเน็ต/CPU ดึงจนล็อกอินไม่ทัน)
+        # ไล่จนครบทุกไฟล์ ไม่หยุดกลางคัน
+        import concurrent.futures as _cf
         n = len(devices)
-        print(f"[*] พบ {len(xml_files)} ไฟล์ | ใช้ {n} จอขนานกัน: {devices}", flush=True)
-        chunks = [xml_files[i::n] for i in range(n)]   # แบ่งแบบ round-robin
-        results = [None] * n
-        import threading
+        jobs = max(1, min(args.jobs, n))
+        chunks = [xml_files[i::n] for i in range(n)]   # แบ่ง round-robin ต่อจอ
+        print(f"[*] พบ {len(xml_files)} ไฟล์ | {n} จอ | รันพร้อมกัน {jobs} จอ/รอบ (ไล่จนครบ)", flush=True)
+        results = [([], []) for _ in range(n)]
 
-        def _worker(idx, d, files):
+        def _worker(idx):
+            files = chunks[idx]
             if not files:
-                results[idx] = ([], []); return
+                return
+            d = devices[idx]
             try:
                 results[idx] = process_xml_queue(d, files, mitmdump, args.use_login,
                                                  args.timeout, delete_on_success, PORT + idx)
             except Exception as e:
                 print(f"[X] [{d}] worker error: {e}", flush=True)
                 results[idx] = ([], [os.path.basename(f) for f in files])
+            # merge ทันทีที่จอนี้เสร็จ (กันข้อมูลหายถ้าปิดกลางคัน)
+            try:
+                merge_parts_into_creds([part_creds(PORT + idx)])
+            except Exception:
+                pass
 
-        threads = [threading.Thread(target=_worker, args=(i, devices[i], chunks[i]), daemon=True)
-                   for i in range(n)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        success = [x for r in results if r for x in r[0]]
-        failed = [x for r in results if r for x in r[1]]
-        n_total = merge_parts_into_creds([part_creds(PORT + i) for i in range(n)])
-        print(f"\n[*] รวม creds.json = {n_total} บัญชี", flush=True)
+        with _cf.ThreadPoolExecutor(max_workers=jobs) as ex:
+            list(ex.map(_worker, range(n)))
+        success = [x for r in results for x in r[0]]
+        failed = [x for r in results for x in r[1]]
+        print(f"\n[*] creds.json รวม {len(load_creds())} บัญชี", flush=True)
 
         print("\n" + "=" * 55, flush=True)
         print(f"สรุปการทำงาน:", flush=True)
@@ -834,8 +844,13 @@ def main():
         print(f"[*] ไม่พบไฟล์ .xml ใน '{args.input_dir}/' — จะจับ/สร้าง guest ของทุกจอ ({len(devices)} จอ) ขนานกัน", flush=True)
         import threading
 
-        def _cap_one(idx, d):
+        import concurrent.futures as _cf
+        jobs = max(1, min(args.jobs, len(devices)))
+        print(f"[*] รันพร้อมกัน {jobs} จอ/รอบ", flush=True)
+
+        def _cap_one(idx):
             global _ROOT_ADBD
+            d = devices[idx]
             _ROOT_ADBD = enable_root(d) or _ROOT_ADBD
             hp = PORT + idx
             cf = part_creds(hp)
@@ -845,8 +860,7 @@ def main():
                 ok, key, cred = capture_account(d, None, args.timeout, args.use_login, cf)
                 if ok:
                     info = fetch_account_info(cred, None, cf)
-                    print(f"[OK] [{d}] id={key} | file={info.get('file', '-')} | ruby={info['ruby']} "
-                          f"| ticket={info['ticket']} | Lv {info['level']}", flush=True)
+                    print(f"[OK] [{d}] id={key} | ruby={info['ruby']} | ticket={info['ticket']} | Lv {info['level']}", flush=True)
                 else:
                     print(f"[X] [{d}] จับไม่สำเร็จ", flush=True)
             except Exception as e:
@@ -854,15 +868,14 @@ def main():
             finally:
                 stop_mitm(mitm)
                 teardown_routing(d)
+                try:
+                    merge_parts_into_creds([cf])   # merge ทันทีที่จอนี้เสร็จ
+                except Exception:
+                    pass
 
-        threads = [threading.Thread(target=_cap_one, args=(i, devices[i]), daemon=True)
-                   for i in range(len(devices))]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        n_total = merge_parts_into_creds([part_creds(PORT + i) for i in range(len(devices))])
-        print(f"\n[*] จับ guest ครบทุกจอแล้ว (creds.json รวม {n_total} บัญชี) -> python collect_all.py", flush=True)
+        with _cf.ThreadPoolExecutor(max_workers=jobs) as ex:
+            list(ex.map(_cap_one, range(len(devices))))
+        print(f"\n[*] จับ guest ครบทุกจอ (creds.json รวม {len(load_creds())} บัญชี) -> python collect_all.py", flush=True)
 
 
 if __name__ == "__main__":
