@@ -801,23 +801,37 @@ def main():
         print("=" * 55, flush=True)
 
     else:
-        # Fallback: ถ้าไม่มีไฟล์ใน input-dir จับบัญชีที่เปิดอยู่ในเครื่องปัจจุบัน
-        print(f"[*] ไม่พบไฟล์ .xml ใน '{args.input_dir}/' — จะจับ credential ของบัญชีปัจจุบันในเครื่อง {dev}", flush=True)
-        global _ROOT_ADBD
-        _ROOT_ADBD = enable_root(dev)
-        setup_routing(dev)
-        mitm = start_mitm(mitmdump)
-        try:
-            ok, key, cred = capture_account(dev, None, args.timeout, args.use_login)
-            if ok:
-                info = fetch_account_info(cred)
-                print(f"\n[OK] จับสำเร็จ: id={key} | file={info.get('file', '-')} | ruby={info['ruby']} "
-                      f"| ticket={info['ticket']} | coin={info['coin']} | Lv {info['level']}", flush=True)
-            else:
-                print(f"\n[X] จับไม่สำเร็จสำหรับเครื่อง {dev}", flush=True)
-        finally:
-            stop_mitm(mitm)
-            teardown_routing(dev)
+        # Fallback: ไม่มีไฟล์ใน input-dir -> สร้าง/จับ guest ปัจจุบันของ "ทุกจอ" ขนานกัน
+        print(f"[*] ไม่พบไฟล์ .xml ใน '{args.input_dir}/' — จะจับ/สร้าง guest ของทุกจอ ({len(devices)} จอ) ขนานกัน", flush=True)
+        import threading
+
+        def _cap_one(idx, d):
+            global _ROOT_ADBD
+            _ROOT_ADBD = enable_root(d) or _ROOT_ADBD
+            hp = PORT + idx
+            setup_routing(d, hp)
+            mitm = start_mitm(mitmdump, hp)
+            try:
+                ok, key, cred = capture_account(d, None, args.timeout, args.use_login)
+                if ok:
+                    info = fetch_account_info(cred)
+                    print(f"[OK] [{d}] id={key} | file={info.get('file', '-')} | ruby={info['ruby']} "
+                          f"| ticket={info['ticket']} | Lv {info['level']}", flush=True)
+                else:
+                    print(f"[X] [{d}] จับไม่สำเร็จ", flush=True)
+            except Exception as e:
+                print(f"[X] [{d}] error: {e}", flush=True)
+            finally:
+                stop_mitm(mitm)
+                teardown_routing(d)
+
+        threads = [threading.Thread(target=_cap_one, args=(i, devices[i]), daemon=True)
+                   for i in range(len(devices))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        print("\n[*] จับ guest ครบทุกจอแล้ว -> ต่อด้วย: python collect_all.py", flush=True)
 
 
 if __name__ == "__main__":
