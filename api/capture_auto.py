@@ -388,6 +388,62 @@ def get_template(name):
     return _TPL_CACHE[name]
 
 
+def grab_screen(dev):
+    """จับภาพจอ -> img (BGR) หรือ None"""
+    res = subprocess.run([ADB, "-s", dev, "exec-out", "screencap", "-p"], capture_output=True)
+    if not res.stdout or len(res.stdout) < 1000:
+        return None
+    img = cv2.imdecode(np.frombuffer(res.stdout, np.uint8), cv2.IMREAD_COLOR)
+    return img if (img is not None and img.shape[0] > 0) else None
+
+
+def find_template(img, name, thr=0.8):
+    """หา template ในภาพ -> (found, cx, cy, score)"""
+    tpl = get_template(name)
+    if tpl is None or img is None:
+        return False, 0, 0, 0.0
+    m = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
+    _, v, _, loc = cv2.minMaxLoc(m)
+    return v >= thr, loc[0] + tpl.shape[1] // 2, loc[1] + tpl.shape[0] // 2, v
+
+
+def _tap(dev, x, y):
+    adb(["shell", "input", "tap", str(int(x)), str(int(y))], device=dev)
+
+
+def _wait_template(dev, name, timeout=30, thr=0.8):
+    """รอจน template โผล่ (เจอก่อนค่อยทำต่อ) -> (found, cx, cy)"""
+    end = time.time() + timeout
+    while time.time() < end:
+        img = grab_screen(dev)
+        ok, cx, cy, _ = find_template(img, name, thr)
+        if ok:
+            return True, cx, cy
+        time.sleep(1)
+    return False, 0, 0
+
+
+def checkline_sequence(dev):
+    """พอร์ตจาก login.py: จับ checkline.png -> คลิก -> รอ check-l1 -> ติ๊ก 3 จุด
+       -> รอ check-l4 คลิก -> รอ check-ok1 คลิก (ยืนยันด้วย template ทุกสเต็ป)"""
+    print(f"[*] [{dev}] checkline.png -> รัน sequence (เจอก่อนค่อยติ๊ก)", flush=True)
+    ok, cx, cy, _ = find_template(grab_screen(dev), "checkline.png", 0.8)
+    if ok:
+        _tap(dev, cx, cy)
+    time.sleep(2)
+    _wait_template(dev, "check-l1.png", timeout=40, thr=0.85)   # รอหน้าติ๊กโหลดก่อน
+    for (x, y) in [(932, 133), (930, 253), (926, 327)]:          # ติ๊ก 3 ช่อง
+        _tap(dev, x, y)
+        time.sleep(2)
+    found, cx, cy = _wait_template(dev, "check-l4.png", timeout=40, thr=0.8)
+    if found:
+        _tap(dev, cx, cy)
+    found, cx, cy = _wait_template(dev, "check-ok1.png", timeout=40, thr=0.8)
+    if found:
+        _tap(dev, cx, cy)
+        print(f"[*] [{dev}] checkline sequence เสร็จ", flush=True)
+
+
 def handle_screen_flow(dev):
     """
     ตรวจจับและคลิกผ่านหน้าจออัตโนมัติ:
@@ -408,6 +464,12 @@ def handle_screen_flow(dev):
             return
         img = cv2.imdecode(np.frombuffer(res.stdout, np.uint8), cv2.IMREAD_COLOR)
         if img is None or img.shape[0] == 0:
+            return
+
+        # 0. checkline.png (หน้าติ๊ก terms) - เจอก่อนค่อยรัน sequence แม่น ๆ (พอร์ตจาก login.py)
+        ok_cl, _, _, _ = find_template(img, "checkline.png", 0.8)
+        if ok_cl:
+            checkline_sequence(dev)
             return
 
         # 1. เช็คหน้าจอ Terms of Use (มีแถบสีเขียว LINE GAME ด้านบน)
