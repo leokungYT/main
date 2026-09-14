@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import sysconfig
+import threading
 import time
 import cv2
 import numpy as np
@@ -55,6 +56,8 @@ PREF_DIR = f"/data/data/{PKG}/shared_prefs"
 PREF_FILE = f"{PREF_DIR}/_LINE_COCOS_PREF_KEY.xml"
 OUTPUT_DIR = os.path.join(ROOT, "login-success")   # ที่เก็บ .xml ของบัญชีที่สำเร็จ (เหมือน login.py)
 FAILED_DIR = os.path.join(ROOT, "login-failed")     # ที่เก็บ .xml ของบัญชีที่เข้าไม่ได้ (เหมือน login.py)
+
+_INJECT_LOCK = threading.Lock()   # ล็อคคิวฉีดไฟล์ ให้ทำทีละจอ ป้องกันแย่ง ADB / disk I/O ชนกัน
 
 
 # ---------- helpers ----------
@@ -113,10 +116,12 @@ _ROOT_ADBD = False
 
 
 def sh(cmd, device=None, timeout=30):
-    """รันเป็น root: ถ้า adbd เป็น root แล้ว สั่งตรง; ไม่งั้น fallback ไป su -c"""
+    """รันเป็น root: ถ้า adbd เป็น root แล้ว สั่งตรง; ไม่งั้น fallback ไป su -c '...'"""
     if _ROOT_ADBD:
         return adb(["shell", cmd], device=device, timeout=timeout)
-    return adb(["shell", "su", "-c", cmd], device=device, timeout=timeout)
+    if cmd.strip().startswith("su -c"):
+        return adb(["shell", cmd], device=device, timeout=timeout)
+    return adb(["shell", f"su -c '{cmd}'"], device=device, timeout=timeout)
 
 
 def list_devices():
@@ -410,54 +415,68 @@ def inject_xml(dev, xml_path):
     src = os.path.abspath(xml_path)
     safe_name = os.path.basename(xml_path)
     tmp = f"/data/local/tmp/temp_pref_{dev.replace(':', '_')}.xml"
-    print(f"[*] [{dev}] ส่งไฟล์เข้าเกม (Robust Mode): {safe_name}", flush=True)
 
-    # 1. ปลดล็อก Read-only (best-effort เหมือน login.py)
-    try:
-        sh("mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null", device=dev, timeout=15)
-    except Exception as e:
-        print(f"[{dev}] [WARN] remount ข้ามไป (ไม่ critical): {e}", flush=True)
+    # ล็อคคิวฉีดไฟล์: ให้ทีละจอฉีดเข้าเครื่อง ไม่ชน/แย่งกันใน ADB
+    with _INJECT_LOCK:
+        print(f"[*] [{dev}] ส่งไฟล์เข้าเกม (Robust Mode): {safe_name}", flush=True)
 
-    # 2. ปิดแอปให้สนิท (force-stop 2s + killall 1s เหมือน login.py)
-    try:
-        adb(["shell", "am", "force-stop", PKG], device=dev, timeout=15)
-    except Exception as e:
-        print(f"[{dev}] [WARN] force-stop ข้ามไป (ไม่ critical): {e}", flush=True)
-    time.sleep(2)
-
-    try:
-        sh(f"killall -9 {PKG} 2>/dev/null || true", device=dev, timeout=15)
-    except Exception as e:
-        print(f"[{dev}] [WARN] killall ข้ามไป (ไม่ critical): {e}", flush=True)
-    time.sleep(1)
-
-    # 3. Push เข้า tmp แล้ว copy เข้า shared_prefs พร้อม retry สูงสุด 3 ครั้ง เหมือน login.py
-    max_retries = 3
-    for attempt in range(1, max_retries + 1):
+        # 1. ปลดล็อก Read-only (best-effort เหมือน login.py)
         try:
-            r = adb(["push", src, tmp], device=dev, timeout=60)
-            if r.returncode != 0:
-                err = r.stderr.strip() or r.stdout.strip()
-                print(f"[{dev}] Push รอบ {attempt} ล้มเหลว: {err}", flush=True)
-                time.sleep(2)
-                continue
-
-            shell_cmd = (
-                f"mkdir -p {PREF_DIR} && "
-                f"cp {tmp} {PREF_FILE} && "
-                f"chmod 666 {PREF_FILE} && "
-                f"chown $(stat -c %u:%g {PREF_DIR} 2>/dev/null || stat -c %u:%g {PREF_DIR}/.. 2>/dev/null || echo 1000:1000) {PREF_FILE} || true && "
-                f"rm -f {tmp}"
-            )
-            sh(shell_cmd, device=dev, timeout=20)
-            print(f"[{dev}] ส่งไฟล์เข้าเกมสำเร็จ (รอบที่ {attempt})", flush=True)
-            return True
+            sh("mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null", device=dev, timeout=15)
         except Exception as e:
-            print(f"[{dev}] รอบที่ {attempt} error: {e}", flush=True)
-            time.sleep(2)
+            print(f"[{dev}] [WARN] remount ข้ามไป (ไม่ critical): {e}", flush=True)
 
-    print(f"[X] [{dev}] ส่งไฟล์ล้มเหลวหลังลองครบ {max_retries} รอบ!", flush=True)
-    return False
+        # 2. ปิดแอปให้สนิท (force-stop 2s + killall 1s เหมือน login.py)
+        try:
+            adb(["shell", "am", "force-stop", PKG], device=dev, timeout=15)
+        except Exception as e:
+            print(f"[{dev}] [WARN] force-stop ข้ามไป (ไม่ critical): {e}", flush=True)
+        time.sleep(2)
+
+        try:
+            sh(f"killall -9 {PKG} 2>/dev/null || true", device=dev, timeout=15)
+        except Exception as e:
+            print(f"[{dev}] [WARN] killall ข้ามไป (ไม่ critical): {e}", flush=True)
+        time.sleep(1)
+
+        # ลบไฟล์ temp เก่าถ้ามีค้างอยู่
+        sh(f"rm -f {tmp}", device=dev, timeout=10)
+
+        # 3. Push เข้า tmp แล้ว copy เข้า shared_prefs พร้อม retry สูงสุด 3 ครั้ง เหมือน login.py
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                r = adb(["push", src, tmp], device=dev, timeout=60)
+                if r.returncode != 0:
+                    err = r.stderr.strip() or r.stdout.strip()
+                    print(f"[{dev}] Push รอบ {attempt} ล้มเหลว: {err}", flush=True)
+                    time.sleep(2)
+                    continue
+
+                shell_cmd = (
+                    f"mkdir -p {PREF_DIR} && "
+                    f"rm -f {PREF_FILE} && "
+                    f"cp {tmp} {PREF_FILE} && "
+                    f"chmod 666 {PREF_FILE} && "
+                    f"chown $(stat -c %u:%g {PREF_DIR} 2>/dev/null || stat -c %u:%g {PREF_DIR}/.. 2>/dev/null || echo 1000:1000) {PREF_FILE} || true && "
+                    f"rm -f {tmp}"
+                )
+                sh(shell_cmd, device=dev, timeout=20)
+
+                # ยืนยันว่าไฟล์ถูก copy เข้าไปจริงและมีขนาด > 0
+                chk = sh(f"test -s {PREF_FILE} && echo OK || echo FAIL", device=dev, timeout=10)
+                if "OK" in (chk.stdout or ""):
+                    print(f"[{dev}] ส่งไฟล์เข้าเกมสำเร็จ (รอบที่ {attempt})", flush=True)
+                    return True
+                else:
+                    print(f"[{dev}] รอบ {attempt}: ตรวจสอบไฟล์ใน shared_prefs ไม่พบ กำลังลองใหม่...", flush=True)
+                    time.sleep(2)
+            except Exception as e:
+                print(f"[{dev}] รอบที่ {attempt} error: {e}", flush=True)
+                time.sleep(2)
+
+        print(f"[X] [{dev}] ส่งไฟล์ล้มเหลวหลังลองครบ {max_retries} รอบ!", flush=True)
+        return False
 
 
 # ---------- screen navigation helpers ----------
@@ -919,6 +938,8 @@ def main():
     ap.add_argument("--use-login", action="store_true", help="ใช้ login.py ช่วยกดผ่านหน้า PLAY อัตโนมัติ")
     ap.add_argument("--timeout", type=int, default=50, help="รอจับ credential กี่วินาทีต่อไฟล์ (default 50)")
     ap.add_argument("--jobs", type=int, default=4, help="จำนวนจอที่รันพร้อมกัน (default 4 กันเน็ต/CPU ดึงจนล็อกอินไม่ทัน)")
+    ap.add_argument("--stagger", type=int, default=5,
+                    help="หน่วงเวลาระหว่างเริ่มแต่ละจอกี่วินาที กันแย่ง ADB/ฉีดไฟล์ชนกัน (default: 5 เหมือน thread_delay ใน login.py)")
     ap.add_argument("--no-move", "--no-delete", dest="no_move", action="store_true",
                     help="คงไฟล์ไว้ที่เดิม ไม่ย้ายไฟล์ไป login-success/ หรือ login-failed/")
     ap.add_argument("--delete", action="store_true",
@@ -993,6 +1014,13 @@ def main():
 
         def _worker(idx):
             d = devices[idx]
+            # หน่วงเวลาเริ่มแต่ละจอ (stagger delay เหมือน thread_delay ใน login.py)
+            # ป้องกันแย่งกันตอนเริ่ม (ไม่แย่ง CPU / ADB / Network / port binding)
+            if idx > 0 and getattr(args, "stagger", 5) > 0:
+                stagger_sec = idx * args.stagger
+                print(f"[*] [{d}] หน่วงเวลาปล่อยจอ {stagger_sec}s เพื่อไม่ให้แย่งกันตอนเริ่ม (เหมือน login.py thread_delay)...", flush=True)
+                time.sleep(stagger_sec)
+
             try:
                 results[idx] = process_xml_queue(d, q, mitmdump, args.use_login,
                                                  args.timeout, action_on_finish, PORT + idx)
@@ -1037,6 +1065,10 @@ def main():
         def _cap_one(idx):
             global _ROOT_ADBD
             d = devices[idx]
+            if idx > 0 and rnd == 1 and getattr(args, "stagger", 5) > 0:
+                stagger_sec = idx * args.stagger
+                print(f"[*] [{d}] หน่วงเวลาเริ่ม {stagger_sec}s เพื่อไม่ให้แย่งกันตอนเริ่ม...", flush=True)
+                time.sleep(stagger_sec)
             _ROOT_ADBD = enable_root(d) or _ROOT_ADBD
             hp = PORT + idx
             cf = part_creds(hp)
