@@ -35,6 +35,8 @@ import time
 import cv2
 import numpy as np
 
+from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
+
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -126,9 +128,90 @@ def list_devices():
 
 def load_creds():
     try:
-        return json.load(open(CREDS, encoding="utf-8"))
+        content = open(CREDS, encoding="utf-8").read().strip()
+        return json.loads(content) if content else {}
     except Exception:
         return {}
+
+
+def save_creds(data):
+    try:
+        with open(CREDS, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[!] บันทึก {CREDS} ไม่สำเร็จ: {e}", flush=True)
+
+
+def fetch_account_info(cred, fname=None):
+    """เรียก GET API เพื่อดึง ruby, ticket, coin, level ทันทีหลังจับ credential ได้"""
+    udid, lf = cred.get("udid"), cred.get("LF_AC")
+    info = {
+        "file": fname or cred.get("file", "-"),
+        "ruby": cred.get("ruby", 0),
+        "coin": cred.get("coin", 0),
+        "ticket": cred.get("ticket", 0),
+        "level": cred.get("level", 1),
+    }
+    if not (udid and lf):
+        return info
+
+    try:
+        cli = LGRClient(udid, lf)
+        st, home = cli.home()
+        if st == 401 and cred.get("guestCookie"):
+            cli.login(cred["guestCookie"])
+            st, home = cli.home()
+
+        if st == 200 and isinstance(home, dict):
+            res = home.get("result", {}) or {}
+            player = res.get("player", {}) or {}
+            badge = res.get("badge", {}) or {}
+
+            r_ruby = parse_ruby(res, player)
+            r_coin = parse_coin(res, player)
+            r_ticket = parse_tickets(res, player)
+            r_level = player.get("level") or res.get("level")
+
+            if r_ruby is not None:
+                info["ruby"] = r_ruby
+            if r_coin is not None:
+                info["coin"] = r_coin
+            if r_ticket is not None:
+                info["ticket"] = r_ticket
+            if r_level is not None:
+                info["level"] = r_level
+            info["gift_badge"] = badge.get("GIFT", 0)
+
+            if cli.lf_ac:
+                cred["LF_AC"] = cli.lf_ac
+    except Exception as e:
+        print(f"[!] เรียก API ดึงข้อมูลผู้เล่นไม่สำเร็จ: {e}", flush=True)
+
+    if fname:
+        cred["file"] = fname
+    cred["ruby"] = info["ruby"]
+    cred["coin"] = info["coin"]
+    cred["ticket"] = info["ticket"]
+    cred["level"] = info["level"]
+
+    # บันทึกข้อมูลที่อัปเดต (รวม LF_AC ล่าสุด) ลง creds.json
+    try:
+        all_c = load_creds()
+        rsn = cred.get("rsn") or cred.get("udid")
+        target_keys = [k for k in (rsn, cred.get("udid")) if k]
+        for k in target_keys:
+            if k in all_c:
+                all_c[k].update(cred)
+                save_creds(all_c)
+                break
+        else:
+            if rsn:
+                all_c[rsn] = cred
+                save_creds(all_c)
+    except Exception:
+        pass
+
+    return info
 
 
 def extract_udid_from_xml(xml_path):
@@ -208,6 +291,19 @@ def pull_account_xml(dev, name):
         return dst
     print(f"[!] pull .xml ไม่สำเร็จ: {r.stderr.strip() or r.stdout.strip()}", flush=True)
     return None
+
+
+def pull_before_wipe(dev):
+    """ก่อนล้างบัญชี: ถ้ามีบัญชีค้างอยู่ ให้ดึง .xml เก็บก่อน (save ก่อน delete ไม่ให้ตก)"""
+    r = sh(f"cat {PREF_FILE} 2>/dev/null", device=dev, timeout=10)
+    m = re.search(r'_DEVICE_UUID_KEY">([^<]+)<', r.stdout or "")
+    if not m:
+        return None
+    udid = m.group(1).strip()
+    dst = pull_account_xml(dev, f"pre_[{udid[:12]}]")
+    if dst:
+        print(f"[*] เซฟบัญชีค้างก่อน wipe: {os.path.basename(dst)}", flush=True)
+    return dst
 
 
 def launch_game(dev):
@@ -415,10 +511,29 @@ def stop_mitm(proc):
                 pass
 
 
+def guest_login_flow(dev):
+    """ขับปุ่มสร้าง guest ใหม่จริง (ลำดับยืนยันจาก screenshot 960x540):
+       ⟳ refresh -> CHECK (resource) -> GUEST Login -> Log in (ยืนยัน) -> Terms
+       เกมจะทำ Trident handshake สร้าง guest ใหม่ + ยิง /login เอง"""
+    def tap(x, y, w=0.0):
+        adb(["shell", "input", "tap", str(x), str(y)], device=dev)
+        if w: time.sleep(w)
+    print("[*] ขับ GUEST Login flow (สร้าง id ใหม่)...", flush=True)
+    tap(895, 483, 3)     # ⟳ refresh -> โผล่ GUEST Login + resource modal
+    tap(475, 410, 4)     # CHECK internal resources
+    tap(480, 483, 3)     # GUEST Login
+    tap(553, 408, 4)     # "Log in" ยืนยัน (Really login as guest?)
+    # Terms of Use (ถ้าโผล่): ติ๊ก 4 ช่อง + Agree
+    for pt in [(928, 142), (928, 260), (928, 340), (928, 405)]:
+        tap(pt[0], pt[1], 0.15)
+    tap(437, 484, 1)     # Agree (4-box)
+    tap(437, 408, 1)     # Agree (3-box)
+
+
 def capture_account(dev, xml_path, timeout, use_login):
     """
     จับ credential ของ 1 บัญชี:
-      1) inject XML (ถ้ามี)
+      1) inject XML (ถ้ามี) หรือ สร้าง guest ใหม่ (guest_login_flow)
       2) เปิดเกม
       3) วนตรวจหน้าจอ + รอจน creds.json มี udid/key นี้ และได้ LF_AC
       4) force-stop เกมทันทีเพื่อตรึง session
@@ -441,6 +556,13 @@ def capture_account(dev, xml_path, timeout, use_login):
     login_proc = None
     if use_login:
         login_proc = launch_login_py(dev)
+    elif not xml_path:
+        # สร้าง guest ใหม่: เซฟบัญชีเดิมก่อน -> ลบ _LINE_COCOS_PREF_KEY.xml -> เปิดเกม -> GUEST Login
+        pull_before_wipe(dev)                 # save ก่อน delete (กันตกบัญชีเดิม)
+        wipe_account(dev)                     # ลบ _LINE_COCOS_PREF_KEY.xml + session -> เกมไม่มีบัญชีค้าง
+        launch_game(dev)
+        time.sleep(22)
+        guest_login_flow(dev)
     else:
         force_stop_game(dev)
         launch_game(dev)
@@ -518,9 +640,10 @@ def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_su
             ok, key, cred = capture_account(dev, xml_path, timeout, use_login)
 
             if ok:
-                success_list.append((fname, key, cred))
-                print(f"[OK] จับสำเร็จ: id={key} udid={str(cred.get('udid'))[:8]}.. "
-                      f"LF_AC={str(cred.get('LF_AC'))[:16]}.. guestCookie={'มี' if cred.get('guestCookie') else 'ไม่มี'}", flush=True)
+                info = fetch_account_info(cred, fname)
+                success_list.append((fname, key, cred, info))
+                print(f"[OK] จับสำเร็จ: id={key} | file={fname} | ruby={info['ruby']} "
+                      f"| ticket={info['ticket']} | coin={info['coin']} | Lv {info['level']}", flush=True)
 
                 if delete_on_success:
                     try:
@@ -560,7 +683,7 @@ def reroll_loop(dev, count, mitmdump, use_login, timeout):
     try:
         for i in range(1, count + 1):
             print(f"\n===== [reroll {i}/{count}] สร้าง guest ใหม่ =====", flush=True)
-            wipe_account(dev)                          # ล้าง -> เกมจะสร้าง guest ใหม่ตอนเปิด
+            # capture_account (xml_path=None) จะ pull บัญชีเดิม -> wipe -> สร้างใหม่ ให้เอง
             ok, key, cred = capture_account(dev, None, timeout, use_login)
             if not ok:
                 failed += 1
@@ -568,8 +691,10 @@ def reroll_loop(dev, count, mitmdump, use_login, timeout):
                 continue
             # จับได้ -> เกม force-stop แล้ว pref ยังอยู่บนดิสก์ -> pull .xml ออกมา
             xml = pull_account_xml(dev, key)
-            success.append((key, cred, xml))
-            print(f"[OK] รอบ {i}: id={key} guestCookie={'มี' if cred.get('guestCookie') else 'ไม่มี'} "
+            xml_fname = os.path.basename(xml) if xml else None
+            info = fetch_account_info(cred, xml_fname)
+            success.append((key, cred, xml, info))
+            print(f"[OK] รอบ {i}: id={key} | file={xml_fname or '-'} | ruby={info['ruby']} | ticket={info['ticket']} "
                   f"| .xml={'saved' if xml else 'FAIL'}", flush=True)
     finally:
         stop_mitm(mitm)
@@ -611,8 +736,9 @@ def main():
         success, failed = reroll_loop(dev, args.reroll, mitmdump, args.use_login, args.timeout)
         print("\n" + "=" * 55, flush=True)
         print(f"สรุป REROLL: สำเร็จ {len(success)} / ล้มเหลว {failed} (จาก {args.reroll} รอบ)", flush=True)
-        for key, cred, xml in success:
-            print(f"    - {key:<12} | .xml={os.path.basename(xml) if xml else '-'}", flush=True)
+        for key, cred, xml, info in success:
+            fname = os.path.basename(xml) if xml else '-'
+            print(f"    - {key:<12} | {fname} | ruby={info.get('ruby', 0)} | ticket={info.get('ticket', 0)}", flush=True)
         print(f"\n.xml เก็บที่: {OUTPUT_DIR}", flush=True)
         print(f"creds เก็บที่: {CREDS}  -> ต่อด้วย: python collect_all.py", flush=True)
         print("=" * 55, flush=True)
@@ -643,8 +769,8 @@ def main():
         print(f"  - ล้มเหลว/ข้าม: {len(failed)} ไฟล์", flush=True)
         if success:
             print(f"\nบัญชีที่จับได้ในรอบนี้:", flush=True)
-            for fname, key, cred in success:
-                print(f"    - {key:<10} | {fname}", flush=True)
+            for fname, key, cred, info in success:
+                print(f"    - {key:<10} | {fname} | ruby={info.get('ruby', 0)} | ticket={info.get('ticket', 0)}", flush=True)
         print(f"\nขั้นตอนถัดไป:", flush=True)
         print(f"  python test_login.py      # ตรวจสอบล็อกอินผ่าน API ทุกบัญชี", flush=True)
         print(f"  python collect_all.py     # ล็อกอิน + รับของทั้งหมดผ่าน API", flush=True)
@@ -660,8 +786,9 @@ def main():
         try:
             ok, key, cred = capture_account(dev, None, args.timeout, args.use_login)
             if ok:
-                print(f"\n[OK] จับสำเร็จ: id={key} udid={str(cred.get('udid'))[:8]}.. "
-                      f"LF_AC={str(cred.get('LF_AC'))[:16]}.. guestCookie={'มี' if cred.get('guestCookie') else 'ไม่มี'}", flush=True)
+                info = fetch_account_info(cred)
+                print(f"\n[OK] จับสำเร็จ: id={key} | file={info.get('file', '-')} | ruby={info['ruby']} "
+                      f"| ticket={info['ticket']} | coin={info['coin']} | Lv {info['level']}", flush=True)
             else:
                 print(f"\n[X] จับไม่สำเร็จสำหรับเครื่อง {dev}", flush=True)
         finally:

@@ -59,3 +59,9 @@
 [flow] GET  /v12.3/login -> 200
 [creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=2Ft/UNDRQ5UgnsKW.. gc=Y
 [flow] POST /v12.3/push/register -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=2Ft/UNDRQ5UgnsKW.. gc=Y
+[flow] GET  /v12.3/exapi/nation.nhn -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=vmFm5R4TYpQR4R3N.. gc=Y
+[flow] GET  /v12.3/login -> 200
+[creds] saved acct=30bb89e4 udid=383907ac.. LF_AC=vmFm5R4TYpQR4R3N.. gc=Y
+[flow] POST /v12.3/push/register -> 200

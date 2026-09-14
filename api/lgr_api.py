@@ -117,6 +117,97 @@ class LGRClient:
     def stage_main(self):
         return self.call("GET", "/stage/main")
 
+    def get_profile(self, guest_cookie=None):
+        """ดึงข้อมูลสถานะผู้เล่น: level, ruby, coin, ticket, gift_badge (ลอง /home ก่อน ถ้า 401 ค่อย /login)"""
+        st, home = self.home()
+        if st == 401 and guest_cookie:
+            self.login(guest_cookie)
+            st, home = self.home()
+        if st != 200 or not isinstance(home, dict):
+            return {"ok": False, "status": st, "data": home, "lf_ac_next": self.lf_ac}
+
+        result = home.get("result", {}) or {}
+        player = result.get("player", {}) or {}
+        badge = result.get("badge", {}) or {}
+        return {
+            "ok": True,
+            "rsn": player.get("rsn") or result.get("rsn"),
+            "userName": player.get("userName"),
+            "level": player.get("level") or result.get("level"),
+            "ruby": parse_ruby(result, player),
+            "coin": parse_coin(result, player),
+            "ticket": parse_tickets(result, player),
+            "gift_badge": badge.get("GIFT", 0),
+            "lf_ac_next": self.lf_ac,
+        }
+
+
+# ---------- resource parsing helpers ----------
+def _amount(v):
+    """currency ในเกมเป็น object {innerFree,...,total} หรือเลขตรง ๆ -> คืนยอดรวม"""
+    if isinstance(v, dict):
+        return v.get("total", v.get("free", 0))
+    if isinstance(v, (int, float)):
+        return int(v)
+    return 0
+
+
+def parse_ruby(result, player=None):
+    """ดึงจำนวน Ruby / เพชร จาก response ของ /home หรือ /login"""
+    result = result or {}
+    player = player or {}
+    for src in (result.get("ruby"), result.get("rubyBalance"), player.get("ruby"), player.get("gem")):
+        if src not in (None, 0):
+            return _amount(src)
+    return 0
+
+
+def parse_coin(result, player=None):
+    """ดึงจำนวนเหรียญทอง จาก response ของ /home หรือ /login"""
+    result = result or {}
+    player = player or {}
+    for src in (result.get("coin"), result.get("gold"), player.get("coin"), player.get("gold")):
+        if src not in (None, 0):
+            return _amount(src)
+    return 0
+
+
+IGNORE_TICKET_KEYS = {
+    "ticketpayablecost", "needticket", "needclassicticket", "needeventticket",
+    "displayticketprice", "displayoriginalticketprice", "displayeventticketprice",
+    "displayoriginaleventticketprice", "displayclassicticketprice", "displayoriginalclassicticketprice",
+    "eventticketyn", "classicticketyn", "ticketpayabletype",
+}
+
+
+def parse_tickets(result, player=None):
+    """สแกนหา key ที่มีคำว่า ticket (นับตั๋วกาชาทุกชนิด) โดยกรองตัดคีย์ราคาของตู้กาชาออก -> int รวม หรือ dict"""
+    found = {}
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                kl = k.lower()
+                if "ticket" in kl:
+                    if kl in IGNORE_TICKET_KEYS or "price" in kl or "cost" in kl or "need" in kl:
+                        continue
+                    if isinstance(v, (int, float)) and v:
+                        found[k] = found.get(k, 0) + int(v)
+                walk(v)
+        elif isinstance(o, list):
+            for it in o:
+                walk(it)
+
+    if isinstance(result, dict):
+        walk(result)
+    if isinstance(player, dict):
+        walk(player)
+
+    if not found:
+        return 0
+    total = sum(found.values())
+    return total if len(found) <= 1 else found
+
 
 def parse_gacha_rewards(confirm_resp):
     """ดึงรหัสของที่ได้จาก response ของ /gacha/group/confirm

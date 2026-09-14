@@ -17,7 +17,7 @@ import json
 import os
 import sys
 
-from lgr_api import LGRClient
+from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")   # กัน UnicodeEncodeError บน console Windows
@@ -32,7 +32,15 @@ def _load_creds():
         print(f"[X] ไม่พบ {CREDS}")
         print("    ต้องจับ credential ก่อน 1 รอบด้วย capture_credential.py (MITM)")
         sys.exit(1)
-    return json.load(open(CREDS, encoding="utf-8"))
+    try:
+        content = open(CREDS, encoding="utf-8").read().strip()
+        if not content:
+            print(f"[!] {CREDS} ว่างอยู่ (ยังไม่มีบัญชีที่บันทึกไว้)")
+            return {}
+        return json.loads(content)
+    except Exception as e:
+        print(f"[!] ไม่สามารถอ่าน {CREDS}: {e}")
+        return {}
 
 
 def login_one(key, cred):
@@ -62,9 +70,13 @@ def login_one(key, cred):
     badge = result.get("badge", {}) or {}
     return {
         "ok": True,
-        "rsn": player.get("rsn") or result.get("rsn"),
+        "file": cred.get("file", "-"),
+        "rsn": player.get("rsn") or result.get("rsn") or key,
         "userName": player.get("userName"),
-        "level": player.get("level"),
+        "level": player.get("level") or result.get("level"),
+        "ruby": parse_ruby(result, player),          # เพชร/รูบี้ (พรีเมียม)
+        "coin": parse_coin(result, player),          # เหรียญทอง
+        "ticket": parse_tickets(result, player),     # ตั๋วกาชา (best-effort scan)
         "gift_badge": badge.get("GIFT", 0),
         "lf_ac_next": c.lf_ac,   # เก็บไว้ใช้รอบหน้า (เซิร์ฟหมุนค่าแล้ว)
     }
@@ -72,6 +84,9 @@ def login_one(key, cred):
 
 def main():
     creds = _load_creds()
+    if not creds:
+        return
+
     if len(sys.argv) > 1:
         target = sys.argv[1]
         if target not in creds:
@@ -85,8 +100,15 @@ def main():
         if res.get("ok"):
             # เก็บ LF_AC ที่หมุนใหม่กลับ
             cred["LF_AC"] = res.pop("lf_ac_next")
+            cred["ruby"] = res.get("ruby")
+            cred["coin"] = res.get("coin")
+            cred["ticket"] = res.get("ticket")
+            cred["level"] = res.get("level")
             changed = True
-            print(f"[OK ] {key}: login สำเร็จ | {res}")
+            fname = res.get("file") or cred.get("file")
+            file_str = f" | file={fname}" if fname and fname != "-" else ""
+            print(f"[OK ] {key}{file_str}: Lv {res.get('level')} | ruby={res.get('ruby')} "
+                  f"coin={res.get('coin')} ticket={res.get('ticket')} gift={res.get('gift_badge')}")
         else:
             print(f"[ERR] {key}: {res}")
 

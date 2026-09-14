@@ -11,7 +11,7 @@ import json
 import os
 import sys
 import concurrent.futures as cf
-from lgr_api import LGRClient
+from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")   # กัน UnicodeEncodeError บน console Windows
@@ -21,10 +21,20 @@ except Exception:
 CREDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
 
 
+def load_creds():
+    try:
+        with open(CREDS, "r", encoding="utf-8") as f:
+            c = f.read().strip()
+            return json.loads(c) if c else {}
+    except Exception:
+        return {}
+
+
 def _one(key, cred):
     udid, lf = cred.get("udid"), cred.get("LF_AC")
+    fname = cred.get("file", "-")
     if not (udid and lf):
-        return key, {"ok": False, "err": "no udid/LF_AC"}
+        return key, {"ok": False, "file": fname, "err": "no udid/LF_AC"}
     try:
         c = LGRClient(udid, lf)
         st, home = c.home()
@@ -35,7 +45,7 @@ def _one(key, cred):
                 c.login(gc)
                 st, home = c.home()
         if st != 200:
-            return key, {"ok": False, "step": "home", "status": st}
+            return key, {"ok": False, "file": fname, "step": "home", "status": st}
         badge = home.get("result", {}).get("badge", {})
         st_b, un = c.unclaimed_gifts()
         n = len(un or [])
@@ -44,27 +54,61 @@ def _one(key, cred):
             c.receive_all_gifts()
             st2, un2 = c.unclaimed_gifts()
             claimed = n - len(un2 or [])
-        return key, {"ok": True, "gift_badge": badge.get("GIFT", 0),
-                     "claimed": claimed, "lf_ac_next": c.lf_ac}
+            st_fresh, home_fresh = c.home()
+            if st_fresh == 200 and isinstance(home_fresh, dict):
+                home = home_fresh
+
+        res = home.get("result", {})
+        player = res.get("player") or {}
+        ruby = parse_ruby(res, player) or cred.get("ruby", 0)
+        coin = parse_coin(res, player) or cred.get("coin", 0)
+        ticket = parse_tickets(res, player) or cred.get("ticket", 0)
+
+        return key, {
+            "ok": True,
+            "file": fname,
+            "ruby": ruby,
+            "ticket": ticket,
+            "coin": coin,
+            "gift_badge": badge.get("GIFT", 0),
+            "claimed": claimed,
+            "lf_ac_next": c.lf_ac,
+        }
     except Exception as e:
-        return key, {"ok": False, "err": str(e)}
+        return key, {"ok": False, "file": fname, "err": str(e)}
 
 
 def main():
-    creds = json.load(open(CREDS, encoding="utf-8"))
+    creds = load_creds()
     if len(sys.argv) > 1:
         creds = {k: v for k, v in creds.items() if k == sys.argv[1]}
     results = {}
     with cf.ThreadPoolExecutor(max_workers=min(16, max(1, len(creds)))) as ex:
         for key, res in ex.map(lambda kv: _one(*kv), creds.items()):
             results[key] = res
-            # เก็บ LF_AC ที่หมุนใหม่กลับ (บัญชี API เป็นเจ้าของ ต้องตามค่าล่าสุด)
-            if res.get("ok") and res.get("lf_ac_next"):
-                creds.setdefault(key, {})["LF_AC"] = res.pop("lf_ac_next")
+            # เก็บ LF_AC และค่า ruby/ticket ที่หมุนใหม่กลับ (บัญชี API เป็นเจ้าของ ต้องตามค่าล่าสุด)
+            if res.get("ok"):
+                entry = creds.setdefault(key, {})
+                if res.get("lf_ac_next"):
+                    entry["LF_AC"] = res.pop("lf_ac_next")
+                if "ruby" in res:
+                    entry["ruby"] = res["ruby"]
+                if "ticket" in res:
+                    entry["ticket"] = res["ticket"]
+                if "coin" in res:
+                    entry["coin"] = res["coin"]
             else:
                 res.pop("lf_ac_next", None)
             ok = "OK " if res.get("ok") else "ERR"
-            print(f"[{ok}] {key}: {res}")
+            fname = res.get("file", "-")
+            if res.get("ok"):
+                ruby = res.get("ruby", 0)
+                ticket = res.get("ticket", 0)
+                coin = res.get("coin", 0)
+                claimed = res.get("claimed", 0)
+                print(f"[{ok}] {key} | file={fname} | ruby={ruby} | ticket={ticket} | coin={coin} | claimed={claimed}")
+            else:
+                print(f"[{ok}] {key} | file={fname}: {res}")
     json.dump(creds, open(CREDS, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     good = sum(1 for r in results.values() if r.get("ok"))
     tot_claim = sum(r.get("claimed", 0) for r in results.values())

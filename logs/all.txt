@@ -2005,3 +2005,34 @@
 [2026-09-13 21:14:46] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
 [2026-09-13 21:15:16] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
 [2026-09-13 21:15:16] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-14 17:12:02] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-14 17:12:02] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-14 08:41
+[2026-09-14 17:12:02] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-09-14 17:12:02] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-09-14 17:12:02] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-14 17:12:02] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-09-14 17:12:03] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-09-14 17:12:03] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-14 17:12:08] --- [ADB] Auto-scanning 151 ports (5555-5755 odd + 16384+32n) ---
+[2026-09-14 17:12:15] [ADB] Port scan found 2 device(s): 127.0.0.1:16416, 127.0.0.1:5557
+[2026-09-14 17:12:15] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-09-14 17:12:18] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-09-14 17:12:20] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-09-14 17:12:20] [ADB] adb devices เห็นทั้งหมด 1 เครื่องหลังรอให้นิ่ง
+[2026-09-14 17:12:20] --- Scan Complete ---
+[2026-09-14 17:12:21] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-09-14 17:12:21] [INFO] Connected Devices (1): 127.0.0.1:16416
+[2026-09-14 17:12:21] [INFO] Pre-loading OCR model...
+[2026-09-14 17:12:42] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-14 17:12:42] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-14 17:12:46] C:\Users\leoku\AppData\Roaming\Python\Python311\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+[2026-09-14 17:12:46]   w_ih = torch.quantize_per_tensor(
+[2026-09-14 17:12:46] [OK] EasyOCR model loaded!
+[2026-09-14 17:12:46] [OK] OCR model loaded.
+[2026-09-14 17:12:46] [FILE] Found 0 files in c:\Users\leoku\Downloads\LGR\main\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-14 17:12:46] [32m[START] Launching GUI Mode...[0m
+[2026-09-14 17:12:48] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-14 17:12:48] [GUI] auto_start=1 - จะเริ่มบอทอัตโนมัติใน 2 วินาที
+[2026-09-14 17:12:53] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-09-14 17:12:53] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-09-14 17:12:59] [GUI] Shutting down... Killing background processes.

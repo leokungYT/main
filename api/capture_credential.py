@@ -71,11 +71,31 @@ def response(flow: http.HTTPFlow):
         return
     # rsn (เลขบัญชีในเกม = USER_GAME_ID) มาจาก response ของ /login
     rsn = None
+    ruby = None
+    coin = None
+    level = None
     try:
         body = resp.get_text(strict=False) or ""
-        m = re.search(r'"rsn"\s*:\s*"?([a-zA-Z0-9_-]+)"?', body)
-        if m:
-            rsn = m.group(1)
+        if "/login" in r.path:
+            import json as _json
+            data = _json.loads(body)
+            res_obj = data.get("result", {})
+            rsn = res_obj.get("rsn")
+            level = res_obj.get("level")
+            ruby_obj = res_obj.get("ruby", {})
+            if isinstance(ruby_obj, dict):
+                ruby = ruby_obj.get("total", ruby_obj.get("free", 0))
+            elif isinstance(ruby_obj, (int, float)):
+                ruby = int(ruby_obj)
+            coin_obj = res_obj.get("coin", {})
+            if isinstance(coin_obj, dict):
+                coin = coin_obj.get("total", coin_obj.get("free", 0))
+            elif isinstance(coin_obj, (int, float)):
+                coin = int(coin_obj)
+        else:
+            m = re.search(r'"rsn"\s*:\s*"?([a-zA-Z0-9_-]+)"?', body)
+            if m:
+                rsn = m.group(1)
     except Exception:
         pass
     d = _load()
@@ -90,6 +110,12 @@ def response(flow: http.HTTPFlow):
     entry["LF_AC"] = lf                       # อัปเดตเป็นค่าล่าสุดเสมอ (เซิร์ฟหมุน)
     if key != udid:
         entry["rsn"] = key
+    if ruby is not None:
+        entry["ruby"] = ruby
+    if coin is not None:
+        entry["coin"] = coin
+    if level is not None:
+        entry["level"] = level
     gc = ck.get("guestCookie")
     if gc:                                    # อย่าเขียนทับด้วย None (มีแค่ตอน /login)
         entry["guestCookie"] = gc
@@ -100,4 +126,6 @@ def response(flow: http.HTTPFlow):
     if key != udid and udid in d:             # ลบ entry ซ้ำที่คีย์ด้วย udid
         d.pop(udid, None)
     _save(d)
-    print(f"[creds] saved acct={key} udid={udid[:8]}.. LF_AC={lf[:16]}.. gc={'Y' if entry.get('guestCookie') else '-'}", flush=True)
+    ruby_str = f" ruby={entry['ruby']}" if "ruby" in entry else ""
+    coin_str = f" coin={entry['coin']}" if "coin" in entry else ""
+    print(f"[creds] saved acct={key} udid={udid[:8]}.. LF_AC={lf[:16]}.. gc={'Y' if entry.get('guestCookie') else '-'}{ruby_str}{coin_str}", flush=True)
