@@ -26,14 +26,23 @@ import argparse
 import glob
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
 import sysconfig
+import threading
 import time
 import cv2
 import numpy as np
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)   # โฟลเดอร์โปรเจคหลัก (มี adb/ img/ input-id/ login.py)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
 
@@ -42,8 +51,6 @@ try:
 except Exception:
     pass
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # โฟลเดอร์โปรเจคหลัก (มี adb/ img/ input-id/ login.py)
 CREDS = os.path.join(HERE, "creds.json")
 ADDON = os.path.join(HERE, "capture_credential.py")
 PKG = "com.linecorp.LGRGS"
@@ -52,7 +59,10 @@ API_HOST = "rangers-api.line-apps.com"
 PORT = 8443
 PREF_DIR = f"/data/data/{PKG}/shared_prefs"
 PREF_FILE = f"{PREF_DIR}/_LINE_COCOS_PREF_KEY.xml"
-OUTPUT_DIR = os.path.join(ROOT, "login-success")   # ที่เก็บ .xml ของบัญชี guest ที่สร้างใหม่
+OUTPUT_DIR = os.path.join(ROOT, "login-success")   # ที่เก็บ .xml ของบัญชีที่สำเร็จ (เหมือน login.py)
+FAILED_DIR = os.path.join(ROOT, "login-failed")     # ที่เก็บ .xml ของบัญชีที่เข้าไม่ได้ (เหมือน login.py)
+
+_INJECT_LOCK = threading.Lock()   # ล็อคคิวฉีดไฟล์ ให้ทำทีละจอ ป้องกันแย่ง ADB / disk I/O ชนกัน
 
 
 # ---------- helpers ----------
@@ -111,10 +121,12 @@ _ROOT_ADBD = False
 
 
 def sh(cmd, device=None, timeout=30):
-    """รันเป็น root: ถ้า adbd เป็น root แล้ว สั่งตรง; ไม่งั้น fallback ไป su -c"""
+    """รันเป็น root: ถ้า adbd เป็น root แล้ว สั่งตรง; ไม่งั้น fallback ไป su -c '...'"""
     if _ROOT_ADBD:
         return adb(["shell", cmd], device=device, timeout=timeout)
-    return adb(["shell", "su", "-c", cmd], device=device, timeout=timeout)
+    if cmd.strip().startswith("su -c"):
+        return adb(["shell", cmd], device=device, timeout=timeout)
+    return adb(["shell", f"su -c '{cmd}'"], device=device, timeout=timeout)
 
 
 def list_devices():
@@ -137,6 +149,12 @@ def load_creds(path=None):
 def save_creds(data, path=None):
     path = path or CREDS
     try:
+        if os.path.exists(path):
+            import shutil
+            try:
+                shutil.copy2(path, path + ".bak")
+            except Exception:
+                pass
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -154,18 +172,35 @@ import threading as _threading
 _MERGE_LOCK = _threading.Lock()
 
 
-def merge_parts_into_creds(part_files):
-    """รวม creds.partN.json เข้า creds.json (ล็อกกัน thread เขียนชนกัน)"""
+def merge_parts_into_creds(part_files=None):
+    """รวม creds.partN.json เข้า creds.json (ล็อกกัน thread เขียนชนกัน และค้นหาทุก part อัตโนมัติ)"""
     with _MERGE_LOCK:
+        if part_files is None:
+            part_files = sorted(glob.glob(os.path.join(HERE, "creds.part*.json")))
+        if not part_files:
+            return len(load_creds())
         merged = load_creds()
+        merged_count = 0
         for pf in part_files:
-            for k, v in load_creds(pf).items():
-                merged[k] = v
+            if not os.path.exists(pf):
+                continue
+            part_data = load_creds(pf)
+            if part_data:
+                for k, v in part_data.items():
+                    if k in merged and isinstance(merged[k], dict) and isinstance(v, dict):
+                        for field, val in v.items():
+                            if val is not None or field not in merged[k]:
+                                merged[k][field] = val
+                    else:
+                        merged[k] = v
+                merged_count += 1
             try:
                 os.remove(pf)
             except OSError:
                 pass
         save_creds(merged)
+        if merged_count > 0:
+            print(f"[*] อัปเดตรวมข้อมูลจาก {merged_count} ไฟล์เข้า creds.json เรียบร้อย (รวมทั้งหมด {len(merged)} บัญชี)", flush=True)
         return len(merged)
 
 
@@ -351,27 +386,118 @@ def launch_login_py(dev):
     )
 
 
+def handle_success_file(xml_path, dev=""):
+    """ย้ายไฟล์สำเร็จไป login-success/ เหมือน login.py"""
+    try:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        base = os.path.basename(xml_path)
+        dst = os.path.join(OUTPUT_DIR, base)
+        if os.path.abspath(xml_path) != os.path.abspath(dst):
+            if os.path.exists(dst):
+                try:
+                    os.remove(dst)
+                except Exception:
+                    pass
+            shutil.move(xml_path, dst)
+            print(f"[*] [{dev}] ส่งไฟล์สำเร็จไปที่ {OUTPUT_DIR}: {base}", flush=True)
+        lock = xml_path + ".lock"
+        if os.path.exists(lock):
+            try:
+                os.remove(lock)
+            except Exception:
+                pass
+        return dst
+    except Exception as e:
+        print(f"[!] [{dev}] ย้ายไฟล์สำเร็จไม่สำเร็จ: {e}", flush=True)
+        return xml_path
+
+
+def handle_failure_file(xml_path, dev=""):
+    """ย้ายไฟล์ล้มเหลวไป login-failed/ เหมือน login.py"""
+    try:
+        os.makedirs(FAILED_DIR, exist_ok=True)
+        base = os.path.basename(xml_path)
+        dst = os.path.join(FAILED_DIR, base)
+        if os.path.abspath(xml_path) != os.path.abspath(dst):
+            if os.path.exists(dst):
+                try:
+                    os.remove(dst)
+                except Exception:
+                    pass
+            shutil.move(xml_path, dst)
+            print(f"[*] [{dev}] ส่งไฟล์ล้มเหลวไปที่ {FAILED_DIR}: {base}", flush=True)
+        lock = xml_path + ".lock"
+        if os.path.exists(lock):
+            try:
+                os.remove(lock)
+            except Exception:
+                pass
+        return dst
+    except Exception as e:
+        print(f"[!] [{dev}] ย้ายไฟล์ล้มเหลวไม่สำเร็จ: {e}", flush=True)
+        return xml_path
+
+
 def inject_xml(dev, xml_path):
-    """ส่งไฟล์ _LINE_COCOS_PREF_KEY.xml ของบัญชีเข้าเกม (สลับบัญชี) — คืน True ถ้าสำเร็จ"""
-    src = os.path.abspath(xml_path)
+    """ส่งไฟล์ _LINE_COCOS_PREF_KEY.xml ของบัญชีเข้าเกม (ใช้วิธีเดียวกับ login.py เป๊ะๆ)"""
     safe_name = os.path.basename(xml_path)
-    tmp = f"/data/local/tmp/_cap_pref_{dev.replace(':', '_')}.xml"
-    print(f"[*] inject เข้าเกม: {safe_name}", flush=True)
-    force_stop_game(dev)
-    clear_session_files(dev)
+    print(f"[{dev}] กำลังส่งไฟล์เข้าเกม: {safe_name} (Robust Mode เหมือน login.py)...", flush=True)
 
-    r = adb(["push", src, tmp], device=dev, timeout=60)
-    if r.returncode != 0:
-        print(f"[X] push ล้มเหลว: {r.stderr.strip() or r.stdout.strip()}", flush=True)
+    with _INJECT_LOCK:
+        # 1. ปลดล็อก Read-only (ถ้ามี เหมือน login.py)
+        try:
+            adb(["shell", "su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'"], device=dev, timeout=15)
+        except Exception as e:
+            print(f"[{dev}] [WARN] remount ข้ามไป (ไม่ critical): {e}", flush=True)
+
+        try:
+            adb(["shell", "am", "force-stop", "com.linecorp.LGRGS"], device=dev, timeout=15)
+        except Exception as e:
+            print(f"[{dev}] [WARN] force-stop ข้ามไป (ไม่ critical): {e}", flush=True)
+        time.sleep(2)
+
+        try:
+            adb(["shell", "su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'"], device=dev, timeout=15)
+        except Exception as e:
+            print(f"[{dev}] [WARN] killall ข้ามไป (ไม่ critical): {e}", flush=True)
+        time.sleep(1)
+
+        src = os.path.abspath(xml_path)
+        tmp = f"/data/local/tmp/temp_pref_{dev.replace(':', '_')}.xml"
+        final_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
+        final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
+
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Push to tmp (60 วิ: ตอนรันหลายจอพร้อมกัน ดิสก์หนัก 30 วิอาจไม่พอ)
+                result = adb(["push", src, tmp], device=dev, timeout=60)
+                if result.returncode != 0:
+                    err = (result.stderr or result.stdout or 'Unknown Error').strip()
+                    print(f"[{dev}] Push attempt {attempt} failed: {err}", flush=True)
+                    time.sleep(2)
+                    continue
+
+                # Copy, set permissions and owner (เหมือน login.py เป๊ะๆ)
+                shell_cmd = (
+                    f"su -c '"
+                    f"cp {tmp} {final} && "
+                    f"chmod 666 {final} && "
+                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {final_dir}/.. 2>/dev/null || echo 1000:1000) {final} || true && "
+                    f"rm -f {tmp}"
+                    f"'"
+                )
+                adb(["shell", shell_cmd], device=dev, timeout=20)
+
+                print(f"[{dev}] [OK] ส่งไฟล์เข้าเกมสำเร็จ! (Injection successful on attempt {attempt}: {safe_name})", flush=True)
+                return True
+
+            except Exception as e:
+                print(f"[{dev}] Attempt {attempt} error: {e}", flush=True)
+                time.sleep(2)
+
+        print(f"[{dev}] [FAIL] ส่งไฟล์เข้าเกมไม่สำเร็จหลังลองครบ {max_retries} รอบ! (Injection FAILED: {safe_name})", flush=True)
         return False
-
-    cmd = (
-        f"cp {tmp} {PREF_FILE} && chmod 666 {PREF_FILE} && "
-        f"chown $(stat -c %u:%g {PREF_DIR} 2>/dev/null || echo 1000:1000) {PREF_FILE}; "
-        f"rm -f {tmp}"
-    )
-    sh(cmd, device=dev, timeout=25)
-    return True
 
 
 # ---------- screen navigation helpers ----------
@@ -637,8 +763,11 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
     target_udid = None
     if xml_path:
         target_udid = extract_udid_from_xml(xml_path)
-        if not inject_xml(dev, xml_path):
+        ok_inject = inject_xml(dev, xml_path)
+        if not ok_inject:
+            print(f"[X] [{dev}] ส่งไฟล์เข้าเกมไม่สำเร็จ! -> ข้ามไฟล์ {os.path.basename(xml_path)}", flush=True)
             return False, None, None
+        print(f"[OK] [{dev}] ส่งไฟล์เข้าเกมสำเร็จเรียบร้อย -> กำลังเปิดเกม...", flush=True)
 
     before_creds = load_creds(creds_file)
     prev_entry = None
@@ -676,16 +805,22 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
         if target_udid:
             for k, v in creds.items():
                 if v.get("udid") == target_udid and v.get("LF_AC"):
-                    if (not prev_entry) or (v.get("LF_AC") != prev_entry.get("LF_AC")) or (v.get("guestCookie") != prev_entry.get("guestCookie")):
+                    # สำคัญมาก: ต้องรอจนกว่าจะได้ guestCookie หรือ rsn (ผ่านหน้า /login จริง)
+                    # ถ้าเพิ่งได้แค่ nation.nhn (ยังไม่มี guestCookie) อย่าเพิ่ง force-stop เพราะ session ยังไม่สมบูรณ์
+                    has_login = bool(v.get("guestCookie") or (v.get("rsn") and len(k) < 32))
+                    if has_login and ((not prev_entry) or (v.get("LF_AC") != prev_entry.get("LF_AC")) or (v.get("guestCookie") != prev_entry.get("guestCookie")) or (not prev_entry.get("guestCookie"))):
                         captured_key = k
                         captured_data = v
                         break
         else:
             diff = set(creds.keys()) - set(before_creds.keys())
-            if diff:
-                captured_key = list(diff)[0]
-                captured_data = creds[captured_key]
-                break
+            for k in diff:
+                v = creds[k]
+                has_login = bool(v.get("guestCookie") or (v.get("rsn") and len(k) < 32))
+                if has_login:
+                    captured_key = k
+                    captured_data = v
+                    break
 
         if captured_key:
             # จับได้แล้ว: รอ 2 วิ เก็บ Set-Cookie รอบสุดท้าย แล้วปิดเกมทันที
@@ -723,7 +858,7 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
 
 
 # ---------- queue batch processor ----------
-def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_success, host_port=PORT):
+def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_finish="move", host_port=PORT):
     global _ROOT_ADBD
     _ROOT_ADBD = enable_root(dev) or _ROOT_ADBD
     creds_file = part_creds(host_port)          # ไฟล์ creds แยกต่อจอ
@@ -734,8 +869,22 @@ def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_su
     failed_list = []
 
     try:
-        total = len(xml_files)
-        for i, xml_path in enumerate(xml_files, 1):
+        while True:
+            if isinstance(xml_input, queue.Queue):
+                try:
+                    item = xml_input.get_nowait()
+                except queue.Empty:
+                    break
+                i, total, xml_path = item
+            elif isinstance(xml_input, list):
+                if not xml_input:
+                    break
+                xml_path = xml_input.pop(0)
+                i = len(success_list) + len(failed_list) + 1
+                total = i + len(xml_input)
+            else:
+                break
+
             fname = os.path.basename(xml_path)
             print(f"\n===== [{dev}][{i}/{total}] {fname} =====", flush=True)
             ok, key, cred = capture_account(dev, xml_path, timeout, use_login, creds_file)
@@ -745,19 +894,30 @@ def process_xml_queue(dev, xml_files, mitmdump, use_login, timeout, delete_on_su
                 success_list.append((fname, key, cred, info))
                 print(f"[OK] [{dev}] id={key} | {fname} | ruby={info['ruby']} "
                       f"| ticket={info['ticket']} | Lv {info['level']}", flush=True)
-                if delete_on_success:
+                try:
+                    merge_parts_into_creds([creds_file])
+                except Exception:
+                    pass
+                if action_on_finish == "move":
+                    handle_success_file(xml_path, dev)
+                elif action_on_finish == "delete":
                     try:
                         os.remove(xml_path)
                     except Exception:
                         pass
             else:
                 failed_list.append(fname)
-                # login ไม่ได้ = บัญชีเข้าไม่ได้ -> ลบ XML ทิ้งเลยตามที่ขอ
-                try:
-                    os.remove(xml_path)
-                    print(f"[X] [{dev}] {fname} เข้าไม่ได้ -> ลบทิ้ง", flush=True)
-                except Exception:
-                    print(f"[X] [{dev}] {fname} เข้าไม่ได้ (ลบไม่สำเร็จ)", flush=True)
+                if action_on_finish == "move":
+                    handle_failure_file(xml_path, dev)
+                elif action_on_finish == "delete":
+                    try:
+                        os.remove(xml_path)
+                        print(f"[X] [{dev}] {fname} เข้าไม่ได้ -> ลบทิ้ง", flush=True)
+                    except Exception:
+                        print(f"[X] [{dev}] {fname} เข้าไม่ได้ (ลบไม่สำเร็จ)", flush=True)
+
+            if isinstance(xml_input, queue.Queue):
+                xml_input.task_done()
 
             time.sleep(1)
 
@@ -812,7 +972,12 @@ def main():
     ap.add_argument("--use-login", action="store_true", help="ใช้ login.py ช่วยกดผ่านหน้า PLAY อัตโนมัติ")
     ap.add_argument("--timeout", type=int, default=50, help="รอจับ credential กี่วินาทีต่อไฟล์ (default 50)")
     ap.add_argument("--jobs", type=int, default=4, help="จำนวนจอที่รันพร้อมกัน (default 4 กันเน็ต/CPU ดึงจนล็อกอินไม่ทัน)")
-    ap.add_argument("--no-delete", action="store_true", help="ไม่ลบไฟล์ XML หลังจับสำเร็จ (default: ลบออกตามคำขอ)")
+    ap.add_argument("--stagger", type=int, default=5,
+                    help="หน่วงเวลาระหว่างเริ่มแต่ละจอกี่วินาที กันแย่ง ADB/ฉีดไฟล์ชนกัน (default: 5 เหมือน thread_delay ใน login.py)")
+    ap.add_argument("--no-move", "--no-delete", dest="no_move", action="store_true",
+                    help="คงไฟล์ไว้ที่เดิม ไม่ย้ายไฟล์ไป login-success/ หรือ login-failed/")
+    ap.add_argument("--delete", action="store_true",
+                    help="ลบไฟล์ XML ทิ้งแทนการย้ายไป login-success/login-failed")
     ap.add_argument("--single", action="store_true", help="ทำแค่ไฟล์แรกไฟล์เดียวแล้วหยุด (ใช้ทดสอบ)")
     ap.add_argument("--limit", type=int, default=0, help="จำกัดจำนวนไฟล์ที่จะทำ (0 = ทำทั้งหมด)")
     ap.add_argument("--reroll", type=int, default=0, metavar="N",
@@ -833,6 +998,14 @@ def main():
     dev = devices[0]
     print(f"[*] เครื่องที่จะใช้งาน: {dev} (ทั้งหมดที่พบ: {devices})", flush=True)
 
+    # รวม creds.part*.json ที่อาจค้างอยู่จากรอบก่อนเข้า creds.json ทันที
+    try:
+        import atexit
+        atexit.register(lambda: merge_parts_into_creds())
+        merge_parts_into_creds()
+    except Exception:
+        pass
+
     # ---- โหมดรีสร้าง guest ใหม่เอง (reroll) ----
     if args.reroll and args.reroll > 0:
         print(f"[*] โหมด REROLL: จะสร้าง guest ใหม่เอง {args.reroll} รอบ", flush=True)
@@ -847,11 +1020,38 @@ def main():
         print("=" * 55, flush=True)
         return
 
-    # ค้นหาไฟล์ XML ใน input-dir
-    input_path = os.path.join(ROOT, args.input_dir) if not os.path.isabs(args.input_dir) else args.input_dir
+    # ค้นหาไฟล์ XML ใน input-dir (ค้นหาทั้ง ROOT, CWD และโฟลเดอร์ย่อย recursive)
     xml_files = []
-    if os.path.exists(input_path):
-        xml_files = sorted(glob.glob(os.path.join(input_path, "*.xml")))
+    input_path = None
+    candidates = [
+        args.input_dir if os.path.isabs(args.input_dir) else os.path.join(ROOT, args.input_dir),
+        os.path.join(os.getcwd(), args.input_dir),
+        args.input_dir,
+        os.path.join(ROOT, "input-id"),
+        os.path.join(os.getcwd(), "input-id"),
+        os.path.join(ROOT, "backup"),
+        os.path.join(os.getcwd(), "backup"),
+    ]
+    seen_cand = set()
+    for cand in candidates:
+        cand_abs = os.path.abspath(cand)
+        if cand_abs in seen_cand or not os.path.exists(cand_abs):
+            continue
+        seen_cand.add(cand_abs)
+        found = []
+        for r, _, fs in os.walk(cand_abs):
+            for f in fs:
+                if f.lower().endswith(".xml"):
+                    found.append(os.path.join(r, f))
+        if found:
+            input_path = cand_abs
+            xml_files = sorted(found)
+            break
+
+    if xml_files:
+        print(f"[*] พบ {len(xml_files)} ไฟล์ .xml ใน '{input_path}'", flush=True)
+    else:
+        print(f"[*] ไม่พบไฟล์ .xml ใน '{args.input_dir}/' (ค้นหาที่: {os.path.abspath(os.path.join(ROOT, args.input_dir))})", flush=True)
 
     if args.single and xml_files:
         xml_files = xml_files[:1]
@@ -860,29 +1060,41 @@ def main():
         xml_files = xml_files[:args.limit]
         print(f"[*] โหมด --limit {args.limit}: จะประมวลผล {len(xml_files)} ไฟล์", flush=True)
 
-    delete_on_success = not args.no_delete
+    if getattr(args, "delete", False):
+        action_on_finish = "delete"
+    elif getattr(args, "no_move", False):
+        action_on_finish = "keep"
+    else:
+        action_on_finish = "move"   # ดีฟอลต์: ย้ายไฟล์ไป login-success / login-failed เหมือน login.py
 
     if xml_files:
-        # แบ่งไฟล์ให้ทุกจอ แต่รันพร้อมกันแค่ --jobs จอ (กันเน็ต/CPU ดึงจนล็อกอินไม่ทัน)
-        # ไล่จนครบทุกไฟล์ ไม่หยุดกลางคัน
         import concurrent.futures as _cf
         n = len(devices)
         jobs = max(1, min(args.jobs, n))
-        chunks = [xml_files[i::n] for i in range(n)]   # แบ่ง round-robin ต่อจอ
-        print(f"[*] พบ {len(xml_files)} ไฟล์ | {n} จอ | รันพร้อมกัน {jobs} จอ/รอบ (ไล่จนครบ)", flush=True)
+
+        # ใส่คิวแชร์ร่วมกันทุกจอ ใครว่างก็หยิบไฟล์ถัดไปทำงานทันทีเหมือน login.py
+        q = queue.Queue()
+        total_files = len(xml_files)
+        for i, f in enumerate(xml_files, 1):
+            q.put((i, total_files, f))
+
+        print(f"[*] พบ {total_files} ไฟล์ | {n} จอ | รันพร้อมกัน {jobs} จอ/รอบ (คิวแชร์อัตโนมัติเหมือน login.py)", flush=True)
         results = [([], []) for _ in range(n)]
 
         def _worker(idx):
-            files = chunks[idx]
-            if not files:
-                return
             d = devices[idx]
+            # หน่วงเวลาเริ่มแต่ละจอ (stagger delay เหมือน thread_delay ใน login.py)
+            # ป้องกันแย่งกันตอนเริ่ม (ไม่แย่ง CPU / ADB / Network / port binding)
+            if idx > 0 and getattr(args, "stagger", 5) > 0:
+                stagger_sec = idx * args.stagger
+                print(f"[*] [{d}] หน่วงเวลาปล่อยจอ {stagger_sec}s เพื่อไม่ให้แย่งกันตอนเริ่ม (เหมือน login.py thread_delay)...", flush=True)
+                time.sleep(stagger_sec)
+
             try:
-                results[idx] = process_xml_queue(d, files, mitmdump, args.use_login,
-                                                 args.timeout, delete_on_success, PORT + idx)
+                results[idx] = process_xml_queue(d, q, mitmdump, args.use_login,
+                                                 args.timeout, action_on_finish, PORT + idx)
             except Exception as e:
                 print(f"[X] [{d}] worker error: {e}", flush=True)
-                results[idx] = ([], [os.path.basename(f) for f in files])
             # merge ทันทีที่จอนี้เสร็จ (กันข้อมูลหายถ้าปิดกลางคัน)
             try:
                 merge_parts_into_creds([part_creds(PORT + idx)])
@@ -891,14 +1103,20 @@ def main():
 
         with _cf.ThreadPoolExecutor(max_workers=jobs) as ex:
             list(ex.map(_worker, range(n)))
+        try:
+            merge_parts_into_creds()
+        except Exception:
+            pass
         success = [x for r in results for x in r[0]]
         failed = [x for r in results for x in r[1]]
         print(f"\n[*] creds.json รวม {len(load_creds())} บัญชี", flush=True)
 
         print("\n" + "=" * 55, flush=True)
         print(f"สรุปการทำงาน:", flush=True)
-        print(f"  - สำเร็จ: {len(success)} ไฟล์ (บันทึกลง creds.json {'และลบจาก ' + args.input_dir if delete_on_success else ''})", flush=True)
-        print(f"  - ล้มเหลว/ข้าม: {len(failed)} ไฟล์", flush=True)
+        suc_act = "ย้ายไป " + OUTPUT_DIR if action_on_finish == "move" else ("ลบออกจาก " + args.input_dir if action_on_finish == "delete" else "คงไว้ใน " + args.input_dir)
+        fail_act = "ย้ายไป " + FAILED_DIR if action_on_finish == "move" else ("ลบออกจาก " + args.input_dir if action_on_finish == "delete" else "คงไว้ใน " + args.input_dir)
+        print(f"  - สำเร็จ: {len(success)} ไฟล์ ({suc_act})", flush=True)
+        print(f"  - ล้มเหลว/ข้าม: {len(failed)} ไฟล์ ({fail_act})", flush=True)
         if success:
             print(f"\nบัญชีที่จับได้ในรอบนี้:", flush=True)
             for fname, key, cred, info in success:
@@ -920,6 +1138,10 @@ def main():
         def _cap_one(idx):
             global _ROOT_ADBD
             d = devices[idx]
+            if idx > 0 and rnd == 1 and getattr(args, "stagger", 5) > 0:
+                stagger_sec = idx * args.stagger
+                print(f"[*] [{d}] หน่วงเวลาเริ่ม {stagger_sec}s เพื่อไม่ให้แย่งกันตอนเริ่ม...", flush=True)
+                time.sleep(stagger_sec)
             _ROOT_ADBD = enable_root(d) or _ROOT_ADBD
             hp = PORT + idx
             cf = part_creds(hp)
@@ -930,6 +1152,10 @@ def main():
                 if ok:
                     info = fetch_account_info(cred, None, cf)
                     print(f"[OK] [{d}] id={key} | ruby={info['ruby']} | ticket={info['ticket']} | Lv {info['level']}", flush=True)
+                    try:
+                        merge_parts_into_creds([cf])
+                    except Exception:
+                        pass
                 else:
                     print(f"[X] [{d}] จับไม่สำเร็จ", flush=True)
             except Exception as e:
@@ -950,10 +1176,24 @@ def main():
                 print(f"\n========== รอบที่ {rnd} (สร้าง guest ทุกจอ) ==========", flush=True)
                 with _cf.ThreadPoolExecutor(max_workers=jobs) as ex:
                     list(ex.map(_cap_one, range(len(devices))))
+                # รวมข้อมูลทุก part เข้า creds.json ตอนจบรอบ
+                try:
+                    merge_parts_into_creds()
+                except Exception:
+                    pass
                 print(f"[*] รอบ {rnd} จบ | creds.json รวม {len(load_creds())} บัญชี (Ctrl+C เพื่อหยุด)", flush=True)
                 time.sleep(2)
         except KeyboardInterrupt:
+            try:
+                merge_parts_into_creds()
+            except Exception:
+                pass
             print(f"\n[*] หยุดแล้ว (ทำไป {rnd} รอบ) | creds.json รวม {len(load_creds())} บัญชี -> python collect_all.py", flush=True)
+        finally:
+            try:
+                merge_parts_into_creds()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

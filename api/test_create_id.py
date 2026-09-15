@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 test_create_id.py — เช็คบัญชีที่จับได้ (creds.json) ว่า "สุ่มได้ตัวเป้า" ไหม แล้วเซฟออก
@@ -22,19 +22,30 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import time
 
-from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
-
 try:
-    import sys
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 ROOT = os.path.dirname(HERE)
-CREDS = os.path.join(HERE, "creds.json")
+
+from lgr_api import (
+    LGRClient,
+    parse_ruby,
+    parse_coin,
+    parse_tickets,
+    load_creds as _api_load_creds,
+    save_creds as _api_save_creds,
+    merge_part_creds,
+    CREDS_FILE,
+)
+CREDS = CREDS_FILE
 OUT_DIR = os.path.join(ROOT, "test_api")          # โฟลเดอร์เก็บบัญชีที่ได้ตัวเป้า
 CFG = os.path.join(ROOT, "configmain.json")
 PKG = "com.linecorp.LGRGS"
@@ -81,12 +92,7 @@ def device_current_udid(device):
 
 
 def load_creds():
-    try:
-        with open(CREDS, "r", encoding="utf-8") as f:
-            c = f.read().strip()
-            return json.loads(c) if c else {}
-    except Exception:
-        return {}
+    return _api_load_creds(CREDS, auto_merge=True)
 
 
 def default_targets():
@@ -126,7 +132,7 @@ def check_account(key, cred, targets):
         return False, [], set(), {}
     cli = LGRClient(udid, lf)
     st, codes, home = account_unit_codes(cli)
-    if st == 401 and cred.get("guestCookie"):
+    if st != 200 and cred.get("guestCookie"):
         cli.login(cred["guestCookie"])
         st, codes, home = account_unit_codes(cli)
     cred["LF_AC"] = cli.lf_ac   # เก็บ LF_AC ที่หมุนใหม่
@@ -193,6 +199,10 @@ def save_hit(key, cred, hits, codes, info, device=None):
 
 def run_once(target_id, targets, device=None):
     creds = load_creds()
+    if not creds:
+        print(f"[!] ไม่พบบัญชีใน {CREDS} (และไม่พบไฟล์ creds.part*.json)")
+        print("    ยังไม่มี credential บันทึกอยู่ในระบบ")
+        return 0
     if target_id:
         creds = {k: v for k, v in creds.items() if k == target_id}
     hits_total = 0
@@ -215,7 +225,7 @@ def run_once(target_id, targets, device=None):
     for k, v in creds.items():
         if k in allc:
             allc[k].update(v)
-    json.dump(allc, open(CREDS, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    _api_save_creds(allc, CREDS)
     return hits_total
 
 

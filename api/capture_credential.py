@@ -89,6 +89,9 @@ def response(flow: http.HTTPFlow):
     r, resp = flow.request, flow.response
     if "rangers-api" not in r.pretty_host:
         return
+    # ข้าม pre-check เช่น /exapi/ (เช่น /exapi/nation.nhn) เพราะยังไม่ได้ล็อกอิน (ยังไม่มี guestCookie / rsn)
+    if "/exapi/" in r.path:
+        return
     ck = _cookie_parts(r.headers.get("cookie", ""))
     udid = ck.get("udid")
     # LF_AC ล่าสุด = Set-Cookie ของ response (เซิร์ฟหมุนค่าใหม่) ถ้าไม่มีค่อยใช้ของ request
