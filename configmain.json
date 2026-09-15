@@ -71,7 +71,7 @@
     "kaibycheck": 0,
     "misson": 0,
     "move_success": {
-        "enabled": 1,
+        "enabled": 0,
         "time": "00:00",
         "source": "login-success",
         "dest": "input-id"
