@@ -97,6 +97,7 @@ def _one(key, cred):
             "gift_badge": badge.get("GIFT", 0),
             "claimed": claimed,
             "lf_ac_next": c.lf_ac,
+            "gc_next": c.guest_cookie_next,     # guestCookie ที่เซิร์ฟหมุนใหม่ (ถ้ามี) ของเก่าใช้ /login ไม่ได้อีก
         }
     except Exception as e:
         return key, {"ok": False, "file": fname, "err": str(e)}
@@ -128,6 +129,8 @@ def main():
                 entry = creds.setdefault(key, {})
                 if res.get("lf_ac_next"):
                     entry["LF_AC"] = res.pop("lf_ac_next")
+                if res.pop("gc_next", None):
+                    entry["guestCookie"] = res["gc_next"]
                 if "ruby" in res:
                     entry["ruby"] = res["ruby"]
                 if "ticket" in res:
@@ -136,6 +139,7 @@ def main():
                     entry["coin"] = res["coin"]
             else:
                 res.pop("lf_ac_next", None)
+                res.pop("gc_next", None)
             ok = "OK " if res.get("ok") else "ERR"
             fname = res.get("file", "-")
             if res.get("ok"):

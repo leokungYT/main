@@ -48,12 +48,39 @@ def _safe_print(*args, **kwargs):
 
 
 BASE = "https://rangers-api.line-apps.com/v12.3"
-# creds.json อยู่ที่ "root ของโปรเจกต์" ไฟล์เดียว (api/ กับ root เคยแยกกันจนสคริปต์เห็นบัญชีไม่ครบ)
+# creds.json ควรมีที่เดียว = root ของโปรเจกต์
+# แต่ของจริงเคยมีทั้ง root และ api/ -> ถ้า root ว่าง/ไม่มี ให้ใช้ api/creds.json ที่มีข้อมูลแทน
+# (ไม่งั้นสคริปต์ขึ้น "ไม่พบบัญชี" ทั้งที่มีบัญชีอยู่ในอีกไฟล์)
 _API_DIR = os.path.dirname(os.path.abspath(__file__))
-CREDS_FILE = os.path.join(os.path.dirname(_API_DIR), "creds.json")
+
+
+def _pick_creds_file():
+    root_f = os.path.join(os.path.dirname(_API_DIR), "creds.json")
+    api_f = os.path.join(_API_DIR, "creds.json")
+
+    def _n(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                c = f.read().strip()
+            return len(json.loads(c)) if c else 0
+        except Exception:
+            return 0
+
+    # ใช้ไฟล์ที่ "มีบัญชีมากกว่า" เสมอ (กันกรณี part file จรทำให้ root มีไม่กี่บัญชี
+    # แล้วไปเลือก root ทับ api ที่มีบัญชีจริงเป็นร้อย)
+    nr, na = _n(root_f), _n(api_f)
+    if na > nr:
+        return api_f
+    return root_f
+
+
+CREDS_FILE = _pick_creds_file()
 
 # LF_AC/guestCookie ของจริงยาว 280 ตัว ถ้าสั้นกว่านี้ = token ช่วงก่อนล็อกอินเสร็จ (ใช้ยิง API ไม่ได้ -> 401)
 MIN_COOKIE_LEN = 200
+
+# path รับรางวัลภารกิจ 7 วันที่ "ยิงผ่านแล้ว" (ค้นเจอครั้งแรกแล้วใช้ซ้ำทั้งโปรเซส)
+_SD_ENDPOINT_CACHE = None
 
 
 def merge_part_creds(base_dir=None):
@@ -133,6 +160,16 @@ def load_creds(path=None, auto_merge=True):
 def save_creds(data, path=None):
     """บันทึก creds.json แบบ atomic พร้อมสำรองไฟล์ .bak"""
     path = path or CREDS_FILE
+    # กันเขียนทับด้วย dict ว่างเมื่อไฟล์เดิมมีข้อมูล (เคยทำบัญชีหายทั้งไฟล์ตอน process ชนกัน)
+    if not data and os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                cur = f.read().strip()
+            if cur and cur != "{}":
+                _safe_print(f"[!] ปฏิเสธการเขียน creds ว่างทับ {path} (ของเดิมมีข้อมูล)", flush=True)
+                return False
+        except Exception:
+            pass
     try:
         if os.path.exists(path):
             try:
@@ -155,6 +192,7 @@ class LGRClient:
                  lang="en", model="SM-A528B", android="12"):
         self.udid = udid
         self.lf_ac = lf_ac                    # session cookie (จะถูกอัปเดตเมื่อเซิร์ฟหมุน)
+        self.guest_cookie_next = None         # guestCookie ใหม่ ถ้าเซิร์ฟหมุนมาระหว่างทาง (ต้องเซฟทับของเดิม)
         self.app_version = app_version
         self.s = requests.Session()
         self.s.headers.update({
@@ -183,10 +221,12 @@ class LGRClient:
             headers.setdefault("Content-Type", "application/json")
             kw["data"] = "{}"
         r = self.s.request(method, BASE + path, headers=headers, timeout=25, **kw)
-        # เก็บ LF_AC ที่หมุนใหม่
+        # เก็บ LF_AC ที่หมุนใหม่ (และ guestCookie ถ้าเซิร์ฟหมุนมาด้วย — ของเก่าจะใช้ /login ไม่ได้อีก)
         for c in r.cookies:
             if c.name == "LF_AC" and c.value:
                 self.lf_ac = c.value
+            elif c.name == "guestCookie" and c.value and len(c.value) >= MIN_COOKIE_LEN:
+                self.guest_cookie_next = c.value
         try:
             return r.status_code, r.json()
         except Exception:
@@ -256,6 +296,58 @@ class LGRClient:
 
     def stage_main(self):
         return self.call("GET", "/stage/main")
+
+    # ---------- ภารกิจ / mission (ยืนยันสดจากเซิร์ฟ 2026-09-16) ----------
+    # หน้า "ภารกิจ" ของเกมจริงใช้ GET /mission/list/new/ -> daily / weekly / specialMissionTab
+    # รับรางวัล: POST /mission/receive/reward/<missionNo>   (พิสูจน์แล้ว: missionNo 3688 -> 200)
+    # หมายเหตุ: /mission/sevendays/list มีจริงแต่คืน errorCode 120900 กับบัญชีใหม่
+    #           (เป็นอีเวนต์เฉพาะช่วง/เฉพาะกลุ่ม) -> อย่าใช้เป็นทางหลัก
+    MISSION_LIST = "/mission/list/new/"
+    MISSION_RECEIVE = "/mission/receive/reward/{no}"
+
+    def mission_list(self):
+        return self.call("GET", self.MISSION_LIST)
+
+    def sevendays_list(self):
+        """ภารกิจ 7 วันแบบอีเวนต์ (บัญชีทั่วไปมักได้ 400/120900) — เก็บไว้เผื่ออีเวนต์เปิด"""
+        return self.call("GET", "/mission/sevendays/list")
+
+    def mission_pending(self):
+        """คืน (status, list ของภารกิจที่ 'ทำครบแล้วแต่ยังไม่รับ' จากทุก tab)"""
+        st, d = self.mission_list()
+        if st != 200 or not isinstance(d, dict):
+            return st, []
+        return st, parse_missions(d.get("result", {}) or {})
+
+    def mission_receive(self, mission_no):
+        """รับรางวัลภารกิจ 1 ชิ้นด้วย missionNo"""
+        return self.call("POST", self.MISSION_RECEIVE.format(no=mission_no))
+
+    def mission_receive_all(self, pending=None):
+        """
+        รับรางวัลภารกิจที่ค้างอยู่ทั้งหมด -> dict สรุป
+        ส่ง pending ที่ดึงไว้แล้วเข้ามาได้ (สำคัญ: ยิง /mission/list/new/ ซ้ำติด ๆ กัน
+        เซิร์ฟตอบ 400 -> อย่าเรียกซ้ำถ้ามีของอยู่แล้ว)
+        """
+        if pending is None:
+            st, pending = self.mission_pending()
+        else:
+            st = 200
+        if st != 200:
+            return {"ok": False, "step": "mission/list", "status": st, "pending": 0, "claimed": 0}
+        claimed, failed = 0, []
+        for m in pending:
+            st_r, resp = self.mission_receive(m["seq"])
+            if st_r == 200 and isinstance(resp, dict) and "result" in resp:
+                claimed += 1
+            else:
+                failed.append({"seq": m["seq"], "status": st_r, "resp": str(resp)[:120]})
+        return {"ok": True, "pending": len(pending), "claimed": claimed,
+                "failed": failed, "missions": pending}
+
+    # ชื่อเดิม (ตอนยังไม่รู้ path จริง) — ให้ชี้มาที่ของจริง กันโค้ดเก่าพัง
+    sevendays_pending = mission_pending
+    sevendays_receive_all = mission_receive_all
 
     def get_profile(self, guest_cookie=None):
         """ดึงข้อมูลสถานะผู้เล่น: level, ruby, coin, ticket, gift_badge (ลอง /home ก่อน ถ้า 401 ค่อย /login)"""
@@ -380,6 +472,52 @@ def parse_gacha_rewards(confirm_resp):
             if item:
                 out.append(f"equip:{item.get('itemCode') or item.get('equipItemCode')}")
     return out
+
+
+# ---------- mission parsing (สคีมายืนยันสดจาก /mission/list/new/ 2026-09-16) ----------
+# รูปแบบจริงต่อ 1 ภารกิจ:
+#   {missionNo, missionType, missionCondition, currentCount, completionCount,
+#    missionComplete: bool, receiveReward: bool, missionRewards:[{rewardType,code,amount}]}
+# tab ของ daily/weekly ไม่มี missionNo ต่อชิ้น (รับรวมทั้ง tab) -> เก็บเฉพาะชิ้นที่มี missionNo
+_MISSION_TABS = ("dailyMissionTab", "weeklyMissionTab", "specialMissionTab")
+
+
+def _mission_rewards(m):
+    out = []
+    for r in m.get("missionRewards") or []:
+        code = r.get("code") or r.get("rewardType") or "?"
+        out.append(f"{code}x{r.get('amount', 1)}")
+    return out
+
+
+def parse_missions(result):
+    """
+    คืนภารกิจที่ 'ทำครบแล้วแต่ยังไม่รับ' จาก result ของ /mission/list/new/
+    -> list ของ {seq(=missionNo), tab, title(=missionType), rewards, raw}
+    """
+    out = []
+    for tab in _MISSION_TABS:
+        v = (result or {}).get(tab)
+        items = v if isinstance(v, list) else ((v or {}).get("detail") or [])
+        for m in items:
+            if not isinstance(m, dict):
+                continue
+            no = m.get("missionNo")
+            if no is None:                       # daily/weekly รายชิ้นไม่มี missionNo -> รับไม่ได้ทีละอัน
+                continue
+            if m.get("missionComplete") and not m.get("receiveReward"):
+                out.append({
+                    "seq": no,
+                    "tab": tab,
+                    "title": m.get("missionType") or str(no),
+                    "rewards": _mission_rewards(m),
+                    "raw": m,
+                })
+    return out
+
+
+# ชื่อเดิม กันโค้ดเก่าเรียกพัง
+parse_sevendays = parse_missions
 
 
 def collect_account(udid, lf_ac):

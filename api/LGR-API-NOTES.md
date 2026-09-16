@@ -264,3 +264,39 @@ POST /giftbox/gift/receive/all -> 200  (คืน player อัปเดต ห�
   แล้วบัญชีนั้นใช้ API อย่างเดียว (อย่าเปิดเกมบัญชีเดิมพร้อมกัน เดี๋ยว credential ชนกัน)
 - LF_AC หมดอายุได้ -> ถ้า 401 ให้ /login ด้วย guestCookie ใหม่ หรือ re-capture
 - นี่คือ "ยิง API รับของโดยไม่ต้องเปิดเกม" ที่ต้องการ — เร็วมาก ทำขนานหลายบัญชีได้ (แค่วน creds.json)
+
+## 12. ✅ ภารกิจ (mission) + กาชา — ยืนยันสดกับเซิร์ฟจริง 2026-09-16
+
+ทดสอบกับบัญชีจริง `a0a604d8` (guest, Lv 3, ruby 121) ทุกอย่าง **200 หมด**
+
+### ภารกิจ
+```
+GET  /v12.3/mission/list/new/                 -> dailyMissionTab / weeklyMissionTab / specialMissionTab
+POST /v12.3/mission/receive/reward/<missionNo> -> รับ 1 ชิ้น (พิสูจน์: 3688 -> 200, ค้างเหลือ 1 -> 0)
+```
+- ชิ้นที่รับได้ = `missionComplete: true` และ `receiveReward: false`
+- **daily/weekly รายชิ้นไม่มี `missionNo`** -> รับทีละอันไม่ได้ (ที่รับได้คือ specialMissionTab)
+- ⚠️ **ยิง `/mission/list/new/` ซ้ำติด ๆ กันได้ 400** -> ดึงครั้งเดียวแล้วส่งต่อ อย่าเรียกซ้ำ
+- `/mission/sevendays/list` **มีจริง** แต่คืน `errorCode 120900` กับบัญชีทั่วไป = อีเวนต์เฉพาะช่วง/กลุ่ม
+- เครื่องมือ: `seven_days.py` (`--list` ดูเฉย ๆ / `--dump <id>` พ่น JSON ดิบ) , `seven-days.bat` ,
+  `GET /api/missions?id=<key>&claim=0` ใน `web_app.py`
+
+### กาชา — ยิงผ่าน API ได้จริง (ครั้งแรกที่พิสูจน์)
+```
+GET  /gacha/info                 -> gachaGroupResponseList[].gachaGroup.gachaGroupInfos[]
+POST /gacha/group/reserve  {groupId,gachaId,gachaIndex} -> reserveSeq
+POST /gacha/group/confirm  <ทั้งก้อน result ของ reserve> -> gachaResults[].rewards[].rewardUnit.unitCode
+```
+พิสูจน์: `grp_gacha_1 / gacha_grp_1` (10 ruby) -> ได้ `u2030e-jessica` , `usedRubyBalance.total=10`
+- กาชาที่เปิดให้บัญชี Lv 3: `grp_gacha_1` 10 ruby/ครั้ง, `g_grp_tuto_pity1~3` 40-100 ruby,
+  `grp_gacha_15` 50 ruby (ลดวันละครั้งเหลือ 30), 6 ใบ 300 ruby, ตั๋วอีเวนต์ `grp_gacha_40`
+- **ไม่ต้องผ่าน tutorial step ใด ๆ** — บัญชีที่ผ่าน onboarding มาแล้วยิงได้เลย
+
+### ทริคหา endpoint (ใช้ซ้ำได้)
+เซิร์ฟแยก 2 แบบชัดเจน -> ใช้ id ปลอมยิงหา path ได้โดยไม่กระทบบัญชี
+- path **ไม่มีจริง** -> `404` + `errorMessage` echo path นั้นกลับมา
+- path **มีจริง** แต่ข้อมูลผิด -> `400` + `errorCode` ของเกม (เช่น 108101)
+
+### creds.json อยู่ 2 ที่
+root ว่าง (0 บัญชี) แต่ `api/creds.json` มี 414 บัญชี -> `lgr_api._pick_creds_file()`
+เลือกไฟล์ที่ "มีข้อมูล" ให้อัตโนมัติแล้ว แต่ควรรวมให้เหลือไฟล์เดียวจริง ๆ

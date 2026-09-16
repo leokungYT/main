@@ -16,6 +16,7 @@ API:
   GET /                     -> หน้าเว็บ (web/index.html)
   GET /api/accounts         -> รายชื่อบัญชีจาก creds.json (เร็ว ใช้ค่าที่แคชไว้) + targets
   GET /api/check?id=<key>   -> เช็คบัญชีเดียวสด ๆ ผ่าน API: heroes + hits + ruby/ticket/level
+  GET /api/missions?id=<key>&claim=0 -> ภารกิจ daily/weekly/special (claim=0 = ดูเฉย ๆ)
 """
 import argparse
 import json
@@ -248,6 +249,136 @@ def _persist(key, fields):
             _api_save_creds(creds, CREDS_FILE)
 
 
+def mission_account(key, claim=True):
+    """เช็ค/รับ ภารกิจของบัญชีเดียว (ใช้กับ GET /api/missions)"""
+    creds = load_creds()
+    cred = creds.get(key)
+    if not cred:
+        return {"ok": False, "key": key, "err": "ไม่พบบัญชีนี้ใน creds.json"}
+
+    c = LGRClient(cred["udid"], cred["LF_AC"])
+    st, _ = c.home()
+    if st != 200 and cred.get("guestCookie"):
+        st_l, _ = c.login(cred["guestCookie"])
+        if st_l == 200:
+            st, _ = c.home()
+    if st != 200:
+        return {"ok": False, "key": key, "step": "home", "status": st}
+
+    if not claim:
+        st_l, pending = c.mission_pending()
+        _persist(key, {"LF_AC": c.lf_ac})
+        return {"ok": st_l == 200, "key": key, "status": st_l, "claimed": 0,
+                "pending": len(pending),
+                "missions": [{"seq": m["seq"], "title": m["title"]} for m in pending]}
+
+    r = c.mission_receive_all()
+    _persist(key, {"LF_AC": c.lf_ac})
+    r["key"] = key
+    r["missions"] = [{"seq": m["seq"], "title": m["title"]} for m in r.get("missions", [])]
+    return r
+
+
+def _catalog_names():
+    """code(lower) -> ชื่อจริง จาก catalog (ไว้โชว์ผลกาชา)"""
+    cat = build_catalog()
+    return {u["code"].lower(): u["name"] for u in cat.get("units", []) if u.get("code")}
+
+
+def _name_for(code):
+    if not code:
+        return code
+    names = _catalog_names()
+    c = code.lower()
+    return names.get(c) or names.get(_base_code(c)) or code
+
+
+def _client_ready(key):
+    """สร้าง client ที่ล็อกอินแล้ว (คืน (client, cred) หรือ (None, err_dict))"""
+    creds = load_creds()
+    cred = creds.get(key)
+    if not cred:
+        return None, {"ok": False, "key": key, "err": "ไม่พบบัญชีนี้ใน creds.json"}
+    c = LGRClient(cred["udid"], cred["LF_AC"])
+    st, _ = c.home()
+    if st != 200 and cred.get("guestCookie"):
+        st_l, _ = c.login(cred["guestCookie"])
+        if st_l == 200:
+            st, _ = c.home()
+    if st != 200:
+        return None, {"ok": False, "key": key, "step": "home", "status": st}
+    return c, cred
+
+
+def gacha_info_account(key):
+    """รายการตู้กาชาที่บัญชีนี้เปิดยิงได้ (groupId/gachaId/index + ราคา) พร้อมยอด ruby"""
+    c, cred = _client_ready(key)
+    if c is None:
+        return cred
+    st, d = c.gacha_info()
+    _persist(key, {"LF_AC": c.lf_ac})
+    if st != 200 or not isinstance(d, dict):
+        return {"ok": False, "key": key, "step": "gacha/info", "status": st}
+    groups = []
+    for grp in d.get("result", {}).get("gachaGroupResponseList", []) or []:
+        gg = grp.get("gachaGroup", {}) or {}
+        for gi in gg.get("gachaGroupInfos", []) or []:
+            groups.append({
+                "groupId": gi.get("groupId"),
+                "gachaId": gi.get("gachaId"),
+                "index": gi.get("gachaIndex", 1),
+                "count": gi.get("gachaCount", 1),
+                "bonus": gi.get("bonusCount", 0),
+                "payType": gi.get("gachaPlayType") or gi.get("gachaType"),
+                "needRuby": gi.get("needRuby", 0),
+                "needFriendship": gi.get("needFriendship", 0),
+                "needEventTicket": gi.get("needEventTicket", 0),
+                "displayRuby": gi.get("displayRubyPrice", gi.get("needRuby", 0)),
+            })
+    tk = c.ticket_count()
+    ruby = cred.get("ruby", 0)
+    return {"ok": True, "key": key, "ruby": ruby,
+            "tickets": tk, "groups": groups}
+
+
+def gacha_pull_account(key, group_id, gacha_id, index=1, targets=None, max_pulls=1):
+    """
+    สุ่มกาชา: ยิง (reserve->confirm) ซ้ำได้ถึง max_pulls ครั้ง
+    ถ้าใส่ targets (list โค้ดตัวที่อยากได้) จะหยุดทันทีที่สุ่มติดตัวใดตัวหนึ่ง (รีโรล)
+    """
+    c, cred = _client_ready(key)
+    if c is None:
+        return cred
+    targets = [t.lower().strip() for t in (targets or []) if t.strip()]
+    tbase = set(_base_code(t) for t in targets)
+    pulls = []
+    hit = None
+    for i in range(max(1, int(max_pulls))):
+        st, rewards, raw = c.gacha_pull(group_id, gacha_id, index)
+        if st != 200:
+            pulls.append({"n": i + 1, "status": st, "err": str(raw)[:160]})
+            break
+        named = [{"code": rc, "name": _name_for(rc.split(":", 1)[-1])} for rc in rewards]
+        pulls.append({"n": i + 1, "rewards": named})
+        if targets:
+            for rc in rewards:
+                code = rc.split(":", 1)[-1].lower()
+                if code in targets or _base_code(code) in tbase:
+                    hit = {"code": code, "name": _name_for(code), "pull": i + 1}
+                    break
+            if hit:
+                break
+    # เก็บ LF_AC + ruby ล่าสุด
+    fields = {"LF_AC": c.lf_ac}
+    stp, prof = c.home()
+    if stp == 200 and isinstance(prof, dict):
+        res = prof.get("result", {})
+        fields["ruby"] = parse_ruby(res, res.get("player") or {})
+    _persist(key, fields)
+    return {"ok": True, "key": key, "pulls": pulls, "hit": hit,
+            "count": len(pulls), "ruby": fields.get("ruby", cred.get("ruby", 0))}
+
+
 # ---------------------------------------------------------------- HTTP
 
 def _json_bytes(obj):
@@ -308,6 +439,50 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 self._send(200, _json_bytes(check_account(key, targets)))
+            except Exception as e:
+                self._send(200, _json_bytes({"ok": False, "key": key, "err": str(e)}))
+            return
+
+        # ภารกิจ: ?id=<key>  (&claim=0 = ดูอย่างเดียว ไม่รับ)
+        if path in ("/api/missions", "/api/sevendays"):   # ชื่อเดิมยังใช้ได้
+            key = (qs.get("id") or [""])[0]
+            claim = (qs.get("claim") or ["1"])[0] != "0"
+            if not key:
+                self._send(400, _json_bytes({"ok": False, "err": "ต้องระบุ id"}))
+                return
+            try:
+                self._send(200, _json_bytes(mission_account(key, claim)))
+            except Exception as e:
+                self._send(200, _json_bytes({"ok": False, "key": key, "err": str(e)}))
+            return
+
+        # กาชา: รายการตู้ที่ยิงได้ + ruby/ตั๋ว
+        if path == "/api/gacha/info":
+            key = (qs.get("id") or [""])[0]
+            if not key:
+                self._send(400, _json_bytes({"ok": False, "err": "ต้องระบุ id"}))
+                return
+            try:
+                self._send(200, _json_bytes(gacha_info_account(key)))
+            except Exception as e:
+                self._send(200, _json_bytes({"ok": False, "key": key, "err": str(e)}))
+            return
+
+        # กาชา: สุ่ม/รีโรล — group,gacha,index + targets(โค้ด, คั่นด้วย ,) + max
+        if path == "/api/gacha/pull":
+            key = (qs.get("id") or [""])[0]
+            group = (qs.get("group") or [""])[0]
+            gacha = (qs.get("gacha") or [""])[0]
+            index = int((qs.get("index") or ["1"])[0] or 1)
+            maxp = int((qs.get("max") or ["1"])[0] or 1)
+            tstr = (qs.get("targets") or [""])[0]
+            targets = [t.strip() for t in tstr.split(",") if t.strip()]
+            if not (key and group and gacha):
+                self._send(400, _json_bytes({"ok": False, "err": "ต้องระบุ id, group, gacha"}))
+                return
+            try:
+                self._send(200, _json_bytes(
+                    gacha_pull_account(key, group, gacha, index, targets, maxp)))
             except Exception as e:
                 self._send(200, _json_bytes({"ok": False, "key": key, "err": str(e)}))
             return
