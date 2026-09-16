@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LGR RANGER</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Athiti:wght@300;400;500;600;700&display=swap">
+<style>
+  :root{
+    --bg:#0e1117; --panel:#161b22; --panel2:#1c232d; --line:#2a323d;
+    --tx:#e6edf3; --mut:#8b98a5; --acc:#4f9dff; --acc2:#7b5cff;
+    --ok:#3fb950; --hit:#f0b429; --err:#f85149; --chip:#22303f;
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f8fc; --panel:#ffffff; --panel2:#eef2f8; --line:#e2e8f1;
+    --tx:#1b232e; --mut:#5b6672; --acc:#2b7cff; --acc2:#6b4bff;
+    --ok:#1a7f37; --hit:#bf8700; --err:#cf222e; --chip:#eef2f8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Athiti,system-ui,sans-serif;background:var(--bg);color:var(--tx);font-size:15px}
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 16px 40px}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .brand{font-weight:700;font-size:22px;letter-spacing:.5px;background:linear-gradient(90deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .spacer{flex:1}
+  button,select,input{font-family:inherit;font-size:14px;color:var(--tx)}
+  .btn{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--acc)}
+  .btn.primary{background:linear-gradient(90deg,var(--acc),var(--acc2));border:none;color:#fff;font-weight:600}
+  .btn.ghost{background:transparent}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input[type=text],select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+  input[type=text]{min-width:220px;flex:1}
+  /* target bar */
+  .tbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .tpill{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--acc);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600}
+  .tpill .n{background:var(--acc);color:#fff;border-radius:999px;padding:0 8px;font-size:13px}
+  .stats{display:flex;gap:8px;flex-wrap:wrap}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:7px 14px;min-width:84px;text-align:center}
+  .stat b{display:block;font-size:20px;line-height:1.1}
+  .stat span{color:var(--mut);font-size:12px}
+  .prog{height:6px;background:var(--panel2);border-radius:999px;overflow:hidden;margin:10px 0 0;border:1px solid var(--line)}
+  .prog>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .2s}
+  /* table */
+  .tbl-wrap{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;cursor:pointer;white-space:nowrap;font-size:13px;text-transform:uppercase;letter-spacing:.4px}
+  th[data-s]:after{content:" ⇅";opacity:.35}
+  th.asc:after{content:" ↑";opacity:1}
+  th.desc:after{content:" ↓";opacity:1}
+  tbody tr:hover td{background:var(--panel2)}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .idname{font-weight:600}
+  .heroes{color:var(--mut);font-size:13px;margin-top:4px;max-width:560px;line-height:1.5;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+  .heroes .lbl{font-size:12px}
+  .heroes .h{width:30px;height:30px;border-radius:6px;object-fit:cover;background:#0003;border:2px solid var(--line)}
+  .heroes .h.hit{border-color:var(--hit);box-shadow:0 0 0 1px var(--hit)}
+  .heroes .txt{color:var(--tx)}
+  .heroes .txt.hit{color:var(--hit);font-weight:700}
+  .mut{color:var(--mut)}
+  .badge{font-size:11px;padding:2px 9px;border-radius:999px;white-space:nowrap}
+  .b-wait{background:var(--panel2);color:var(--mut)} .b-run{background:var(--panel2);color:var(--acc)}
+  .b-ok{background:rgba(63,185,80,.16);color:var(--ok)} .b-hit{background:var(--hit);color:#000;font-weight:700}
+  .b-err{background:rgba(248,81,73,.16);color:var(--err)}
+  .act{display:flex;gap:6px}
+  .ico{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--panel2);cursor:pointer;text-decoration:none;color:var(--tx)}
+  .ico:hover{border-color:var(--acc)}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:#0008;backdrop-filter:blur(2px);display:none;z-index:50;align-items:center;justify-content:center;padding:16px}
+  .overlay.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;width:min(960px,100%);max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+  .modal h3{margin:0;font-size:18px}
+  .mhead{padding:16px 18px;border-bottom:1px solid var(--line)}
+  .mbody{padding:14px 18px;overflow:auto}
+  .mfoot{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;align-items:center}
+  .tabs{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+  .tab{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:5px 13px;cursor:pointer;font-size:13px}
+  .tab.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:9px;margin-top:12px}
+  .cell{position:relative;border:2px solid var(--line);border-radius:11px;padding:5px;text-align:center;cursor:pointer;background:var(--panel2);transition:.12s}
+  .cell:hover{border-color:var(--acc)}
+  .cell.on{border-color:var(--hit);box-shadow:0 0 0 2px var(--hit) inset}
+  .cell img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;background:#0003}
+  .cell .nm{font-size:11px;display:block;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cell .gr{position:absolute;top:3px;left:4px;font-size:10px;color:var(--hit)}
+  .cell .tick{position:absolute;top:3px;right:4px;width:16px;height:16px;border-radius:5px;background:var(--hit);color:#000;font-size:12px;display:none;place-items:center}
+  .cell.on .tick{display:grid}
+  .x{cursor:pointer;font-size:22px;color:var(--mut);border:none;background:none}
+  @media(max-width:640px){ .heroes{max-width:200px} th.hcol,td.hcol{display:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="brand">LGR RANGER</span>
+    <span class="mut" id="src"></span>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="theme">◐ ธีม</button>
+  </header>
+
+  <!-- target bar -->
+  <div class="tbar">
+    <div class="tpill" id="openpick">⚙ ตั้งค่าตัวที่จะเช็ค <span class="n" id="tcount">0</span></div>
+    <button class="btn ghost" id="cleart">ล้างเป้าหมาย</button>
+    <span class="spacer"></span>
+    <button class="btn primary" id="run">▶ เริ่มเช็ค</button>
+    <button class="btn" id="stop" disabled>■ หยุด</button>
+    <button class="btn" id="dlhit">⬇ ZIP ที่เจอเป้า</button>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <input type="text" id="q" placeholder="ค้นหาชื่อ / ไอดี / ตัวละคร...">
+      <select id="filter">
+        <option value="all">ทั้งหมด</option>
+        <option value="hit">เจอเป้าหมาย</option>
+        <option value="ok">สำเร็จ</option>
+        <option value="err">เช็คไม่ได้</option>
+      </select>
+      <label class="mut" style="display:flex;align-items:center;gap:6px">พร้อมกัน
+        <input type="number" id="conc" value="4" min="1" max="12" style="width:54px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px">
+      </label>
+      <span class="mut" id="status">กำลังโหลด...</span>
+    </div>
+    <div class="prog"><i id="bar"></i></div>
+  </div>
+
+  <div class="panel stats" id="stats"></div>
+
+  <div class="tbl-wrap">
+    <table id="tbl">
+      <thead><tr>
+        <th data-s="rsn">ไอดี</th>
+        <th data-s="level" class="num">Lv</th>
+        <th data-s="nranger" class="num">Ranger</th>
+        <th data-s="nhit" class="num">เจอเป้า</th>
+        <th data-s="ruby" class="num">Ruby</th>
+        <th data-s="ticket" class="num">Ticket</th>
+        <th data-s="state">สถานะ</th>
+        <th>จัดการ</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- picker modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mhead">
+      <div class="row"><h3>ตั้งค่าตัวละครที่จะเช็ค</h3><span class="spacer"></span><button class="x" id="mclose">×</button></div>
+      <div class="mut" style="font-size:13px;margin-top:2px">เลือกตัวที่ต้องการค้นหาในไอดี (คลิกที่รูป) — เฉพาะเรนเจอร์ 6★ · ชื่อจากโค้ดเกม</div>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="pq" placeholder="ค้นหาชื่อ/โค้ด เช่น kappa, leonard, -ka...">
+      </div>
+      <div class="tabs" id="tabs"></div>
+    </div>
+    <div class="mbody"><div class="grid" id="grid"></div><div id="more" class="mut" style="text-align:center;padding:10px"></div></div>
+    <div class="mfoot">
+      <span class="mut" id="selinfo">เลือกไว้ 0</span>
+      <span class="spacer"></span>
+      <button class="btn" id="pclear">ยกเลิกทั้งหมด</button>
+      <button class="btn primary" id="papply">บันทึกและนำไปใช้</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), rowsEl=$("#rows");
+let DATA=[], SELT=new Set(), sortKey="nhit", sortDir=-1, running=false, abort=false;
+let CAT=[], IMG_BASE="https://rangers.lerico.net/res", tab="all", pageN=200;
+const NAMEMAP=new Map();   // base code -> ชื่อจริง (จาก catalog)
+const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+const sufOf=code=>{const m=(code||"").match(/-([a-z0-9]+)$/i);return m?m[1]:code;};
+const baseCode=c=>(c||"").toLowerCase().replace(/^(u\d+)[a-z]+(-.+)$/,"$1$2");
+const heroImg=c=>IMG_BASE+"/"+c+"/"+c+"-thum.png";
+// ชื่ออ่านออก: ใช้ชื่อ "ตรงร่าง" ก่อน ถ้าไม่มีค่อยใช้ชื่อ base (ร่างอื่นในตระกูล) ไม่งั้น suffix
+const dispName=code=>{const c=(code||"").toLowerCase();
+  return NAMEMAP.get(c)||NAMEMAP.get(baseCode(c))||cap(sufOf(code));};
+// จับ hit ให้ตรงกับ backend: โค้ดเต็ม=จับทุกร่าง(เทียบ base), ข้อความอิสระ=substring
+function hitCode(owned,target){
+  const o=owned.toLowerCase(), t=target.toLowerCase();
+  if(t.startsWith("u")&&t.includes("-")) return o===t||baseCode(o)===baseCode(t);
+  return o.includes(t);
+}
+
+// theme
+$("#theme").onclick=()=>{const r=document.documentElement,t=r.getAttribute("data-theme")==="dark"?"light":"dark";r.setAttribute("data-theme",t);try{localStorage.setItem("lgr_theme",t)}catch(e){}};
+try{const t=localStorage.getItem("lgr_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}
+
+// ---------- boot
+async function boot(){
+  const j=await (await fetch("/api/accounts")).json();
+  $("#src").textContent="· "+j.count+" บัญชี";
+  DATA=(j.accounts||[]).map(a=>({...a,state:a.has_cred?"wait":"nocred",heroes:[],team:[],hits:[],nhit:0,nranger:0,checked:false}));
+  render(); $("#status").textContent="โหลด "+j.count+" บัญชีแล้ว — ตั้งค่าตัวเป้า แล้วกด ‘เริ่มเช็ค’";
+  loadCatalog();
+}
+async function loadCatalog(){
+  try{ const c=await (await fetch("/api/catalog")).json();
+       if(c.ok){ CAT=c.units; IMG_BASE=c.img_base||IMG_BASE;
+         CAT.forEach(u=>{ NAMEMAP.set(u.code.toLowerCase(),u.name); });
+         $("#openpick").title="เรนเจอร์ "+c.rangers+" · เกียร์ "+c.gears;
+         if($("#overlay").classList.contains("open")){renderTabs();renderGrid();}
+         render();
+       } }catch(e){}
+}
+
+// ---------- picker modal
+function openPick(){ $("#overlay").classList.add("open"); renderTabs(); renderGrid(); }
+function closePick(){ $("#overlay").classList.remove("open"); }
+$("#openpick").onclick=openPick; $("#mclose").onclick=closePick;
+$("#overlay").onclick=e=>{ if(e.target===$("#overlay"))closePick(); };
+function renderTabs(){
+  const nr=CAT.filter(u=>u.kind==="ranger").length, ng=CAT.filter(u=>u.kind==="gear").length;
+  const t=[["all","ทั้งหมด ("+CAT.length+")"],["ranger","เรนเจอร์ ("+nr+")"],["gear","เกียร์ ("+ng+")"],["sel","ที่เลือก ("+SELT.size+")"]];
+  $("#tabs").innerHTML=t.map(([k,l])=>'<span class="tab'+(tab===k?" on":"")+'" data-k="'+k+'">'+l+'</span>').join("");
+  $("#tabs").querySelectorAll(".tab").forEach(el=>el.onclick=()=>{tab=el.dataset.k;pageN=200;renderTabs();renderGrid();});
+}
+function pickList(){
+  const q=$("#pq").value.trim().toLowerCase();
+  let arr=CAT;
+  if(tab==="sel") arr=arr.filter(u=>SELT.has(u.code));
+  else if(tab==="ranger"||tab==="gear") arr=arr.filter(u=>u.kind===tab);
+  if(q) arr=arr.filter(u=>u.name.toLowerCase().includes(q)||u.code.toLowerCase().includes(q));
+  return arr;
+}
+function renderGrid(){
+  const arr=pickList(), show=arr.slice(0,pageN);
+  $("#grid").innerHTML=show.map(u=>
+    '<div class="cell'+(SELT.has(u.code)?" on":"")+'" data-c="'+u.code+'" title="'+u.code+'">'
+    +(u.kind==="gear"?'<span class="gr">⚙</span>':'')+'<span class="tick">✓</span>'
+    +'<img loading="lazy" src="'+u.img+'" onerror="this.style.opacity=.12">'
+    +'<span class="nm">'+u.name+'</span></div>').join("")
+    || '<span class="mut">ไม่พบ</span>';
+  $("#more").textContent=arr.length>show.length?("แสดง "+show.length+"/"+arr.length+" — เลื่อนลงเพื่อโหลดเพิ่ม"):"";
+  $("#grid").querySelectorAll(".cell").forEach(el=>el.onclick=()=>{
+    const c=el.dataset.c; SELT.has(c)?SELT.delete(c):SELT.add(c);
+    el.classList.toggle("on");
+    if(tab==="sel")renderGrid(); renderTabs();
+    $("#selinfo").textContent="เลือกไว้ "+SELT.size;
+  });
+  $("#selinfo").textContent="เลือกไว้ "+SELT.size;
+}
+$("#pq").oninput=()=>{pageN=200;renderGrid();};
+document.querySelector(".mbody").addEventListener("scroll",e=>{
+  const el=e.target; if(el.scrollTop+el.clientHeight>el.scrollHeight-80){ if(pageN<pickList().length){pageN+=200;renderGrid();} }
+});
+$("#pclear").onclick=()=>{SELT.clear();renderGrid();renderTabs();};
+$("#papply").onclick=()=>{ closePick(); recomputeHits(); updateTargetBar(); render(); };
+$("#cleart").onclick=()=>{SELT.clear();recomputeHits();updateTargetBar();render();};
+function updateTargetBar(){ $("#tcount").textContent=SELT.size; }
+function recomputeHits(){
+  const ts=[...SELT];
+  DATA.forEach(a=>{ if(a.checked&&a.state==="ok"){
+    a.hits=ts.filter(t=>a.heroes.some(h=>hitCode(h,t))); a.nhit=a.hits.length; } });
+}
+
+// ---------- checking
+async function runCheck(){
+  if(running)return; running=true; abort=false;
+  $("#run").disabled=true; $("#stop").disabled=false;
+  const todo=DATA.filter(a=>a.has_cred); let done=0;
+  const conc=Math.max(1,Math.min(12,+$("#conc").value||4)), ts=[...SELT].join(",");
+  let i=0;
+  async function worker(){
+    while(i<todo.length&&!abort){
+      const a=todo[i++]; a.state="run"; renderRow(a);
+      try{
+        const j=await (await fetch("/api/check?id="+encodeURIComponent(a.key)+"&targets="+encodeURIComponent(ts))).json();
+        if(j.ok){ a.state="ok"; a.rsn=j.rsn||a.rsn; a.level=j.level; a.ruby=j.ruby; a.ticket=j.ticket; a.userName=j.userName;
+                  a.heroes=j.heroes||[]; a.team=j.team||[]; a.hits=j.hits||[]; a.nhit=a.hits.length; a.nranger=a.heroes.length; }
+        else{ a.state="err"; a.err=j.err||("status "+(j.status||"?")); }
+      }catch(e){ a.state="err"; a.err=String(e); }
+      a.checked=true; done++;
+      const pct=Math.round(done/todo.length*100);
+      $("#bar").style.width=pct+"%"; $("#status").textContent="เช็คแล้ว: "+done+"/"+todo.length+" ("+pct+"%)";
+      renderRow(a); updateStats();
+    }
+  }
+  await Promise.all(Array.from({length:conc},worker));
+  running=false; $("#run").disabled=false; $("#stop").disabled=true;
+  $("#status").textContent=abort?("หยุดที่ "+done+"/"+todo.length):("เสร็จ "+done+"/"+todo.length+" บัญชี");
+  render();
+}
+$("#run").onclick=runCheck; $("#stop").onclick=()=>abort=true;
+$("#dlhit").onclick=()=>{
+  const ids=DATA.filter(a=>a.checked&&a.nhit>0&&a.has_xml).map(a=>a.key);
+  if(!ids.length){alert("ยังไม่มีบัญชีที่เจอเป้า (หรือไม่มีไฟล์ .xml)");return;}
+  window.location="/api/xml_zip?id="+encodeURIComponent(ids.join(","));
+};
+
+// ---------- render table
+const SB={wait:["b-wait","รอเช็ค"],run:["b-run","กำลังเช็ค"],ok:["b-ok","สำเร็จ"],err:["b-err","เช็คไม่ได้"],nocred:["b-err","ไม่มี cred"]};
+function heroLine(a){
+  if(!a.checked) return "";
+  if(a.state==="err") return '<div class="heroes">'+(a.err||"")+'</div>';
+  const ts=[...SELT], show=(a.team&&a.team.length?a.team:a.heroes).slice(0,12);
+  const parts=show.map(h=>{const code=h.split("(")[0];const hit=ts.some(t=>hitCode(code,t));
+    return '<img class="h'+(hit?" hit":"")+'" loading="lazy" src="'+heroImg(code)+'" '
+      +'title="'+dispName(code)+'" alt="'+dispName(code)+'" '
+      +'onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{className:\'txt'+(hit?' hit':'')+'\',textContent:this.alt}))">';});
+  const extra=a.heroes.length>show.length?('<span class="mut">+'+(a.heroes.length-show.length)+'</span>'):"";
+  return '<div class="heroes"><span class="lbl">ตัวในทีม:</span>'+(parts.join("")||'—')+extra+'</div>';
+}
+function rowHTML(a){
+  const [cls,txt]=SB[a.state]||["b-wait",a.state];
+  const nh=a.checked&&a.state==="ok"?(a.nhit>0?'<span class="badge b-hit">'+a.nhit+' ✓</span>':'<span class="mut">0</span>'):'<span class="mut">—</span>';
+  const dl=a.has_xml?'<a class="ico" title="โหลด .xml" href="/api/xml?id='+encodeURIComponent(a.key)+'">⬇</a>':'';
+  return '<td><div class="idname">'+(a.rsn||a.key)+'</div>'
+        +'<div class="mut" style="font-size:12px">'+(a.userName||"[no name]")+'</div>'+heroLine(a)+'</td>'
+        +'<td class="num">'+(a.level||"")+'</td>'
+        +'<td class="num">'+(a.checked&&a.state==="ok"?a.nranger:"—")+'</td>'
+        +'<td class="num">'+nh+'</td>'
+        +'<td class="num">'+fmt(a.ruby)+'</td><td class="num">'+fmt(a.ticket)+'</td>'
+        +'<td><span class="badge '+cls+'">'+txt+'</span></td>'
+        +'<td><div class="act">'+dl+'</div></td>';
+}
+function fmt(n){n=+n||0;return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"k":n;}
+function renderRow(a){const tr=document.getElementById("r-"+a.key);if(tr)tr.innerHTML=rowHTML(a);}
+function visible(){
+  const q=$("#q").value.trim().toLowerCase(), f=$("#filter").value;
+  let arr=DATA.filter(a=>{
+    if(f==="hit"&&!(a.checked&&a.nhit>0))return false;
+    if(f==="ok"&&a.state!=="ok")return false;
+    if(f==="err"&&!(a.state==="err"||a.state==="nocred"))return false;
+    if(q){const hay=(a.rsn+" "+a.key+" "+(a.userName||"")+" "+(a.heroes||[]).join(" ")).toLowerCase();if(!hay.includes(q))return false;}
+    return true;
+  });
+  arr.sort((x,y)=>{let a=x[sortKey],b=y[sortKey];if(typeof a==="string"){return(a||"").localeCompare(b||"")*sortDir;}return((+a||0)-(+b||0))*sortDir;});
+  return arr;
+}
+function render(){
+  const arr=visible();
+  rowsEl.innerHTML=arr.map(a=>'<tr id="r-'+a.key+'">'+rowHTML(a)+'</tr>').join("");
+  updateStats(); updateTargetBar();
+  document.querySelectorAll("th[data-s]").forEach(th=>{th.className=(th.classList.contains("num")?"num ":"")+(th.dataset.s===sortKey?(sortDir>0?"asc":"desc"):"");});
+}
+function updateStats(){
+  const total=DATA.length,checked=DATA.filter(a=>a.checked).length;
+  const ok=DATA.filter(a=>a.state==="ok").length,err=DATA.filter(a=>a.state==="err"||a.state==="nocred").length;
+  const hit=DATA.filter(a=>a.checked&&a.nhit>0).length;
+  const ruby=DATA.reduce((s,a)=>s+(+a.ruby||0),0),tk=DATA.reduce((s,a)=>s+(+a.ticket||0),0);
+  $("#stats").innerHTML=[["ทั้งหมด",total],["เช็คแล้ว",checked],["เจอเป้า",hit],["สำเร็จ",ok],["ไม่ได้",err],["Ruby",fmt(ruby)],["Ticket",fmt(tk)]]
+    .map(([s,b])=>'<div class="stat"><b>'+b+'</b><span>'+s+'</span></div>').join("");
+}
+document.querySelectorAll("th[data-s]").forEach(th=>th.onclick=()=>{const k=th.dataset.s;if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=(k==="rsn")?1:-1;}render();});
+$("#q").oninput=render; $("#filter").onchange=render;
+boot();
+</script>
+</body>
+</html>

@@ -31,7 +31,11 @@ import re
 from mitmproxy import http
 
 # แต่ละจอตั้ง env LGR_CREDS_FILE ให้เขียนไฟล์แยกกัน (ไม่แย่ง .lock เดียวกัน) แล้ว capture_auto merge ตอนจบ
-CREDS = os.environ.get("LGR_CREDS_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
+CREDS = os.environ.get("LGR_CREDS_FILE") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "creds.json")   # root/creds.json
+
+# LF_AC ของจริงยาว 280 ตัว; ค่าสั้น ๆ (~40) คือ token ช่วงยังล็อกอินไม่เสร็จ -> เก็บไปก็ 401
+MIN_COOKIE_LEN = 200
 _UDID2RSN = {}   # จำ udid -> rsn ภายในรอบจับ (กัน entry ซ้ำ)
 
 
@@ -103,6 +107,8 @@ def response(flow: http.HTTPFlow):
     lf = lf or ck.get("LF_AC")
     if not (udid and lf):
         return
+    if len(lf) < MIN_COOKIE_LEN:               # ยังล็อกอินไม่เสร็จ -> รอ request ถัดไป อย่าเพิ่งเขียนทับของดี
+        return
     # rsn (เลขบัญชีในเกม = USER_GAME_ID) มาจาก response ของ /login
     rsn = None
     ruby = None
@@ -151,6 +157,8 @@ def response(flow: http.HTTPFlow):
         if level is not None:
             entry["level"] = level
         gc = ck.get("guestCookie")
+        if gc and len(gc) < MIN_COOKIE_LEN:       # gc สั้น = ยังไม่ใช่ credential ถาวร
+            gc = None
         if gc:                                    # อย่าเขียนทับด้วย None (มีแค่ตอน /login)
             entry["guestCookie"] = gc
         elif not entry.get("guestCookie") and old_udid_entry.get("guestCookie"):

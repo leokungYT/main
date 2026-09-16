@@ -48,7 +48,12 @@ def _safe_print(*args, **kwargs):
 
 
 BASE = "https://rangers-api.line-apps.com/v12.3"
-CREDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "creds.json")
+# creds.json อยู่ที่ "root ของโปรเจกต์" ไฟล์เดียว (api/ กับ root เคยแยกกันจนสคริปต์เห็นบัญชีไม่ครบ)
+_API_DIR = os.path.dirname(os.path.abspath(__file__))
+CREDS_FILE = os.path.join(os.path.dirname(_API_DIR), "creds.json")
+
+# LF_AC/guestCookie ของจริงยาว 280 ตัว ถ้าสั้นกว่านี้ = token ช่วงก่อนล็อกอินเสร็จ (ใช้ยิง API ไม่ได้ -> 401)
+MIN_COOKIE_LEN = 200
 
 
 def merge_part_creds(base_dir=None):

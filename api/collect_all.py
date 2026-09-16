@@ -9,7 +9,9 @@ collect_all.py — รับของทุกบัญชีใน creds.json �
 """
 import json
 import os
+import random
 import sys
+import time
 import concurrent.futures as cf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +36,11 @@ except Exception:
 
 CREDS = CREDS_FILE
 
+# ยิงให้เนียน: อย่ารัวขนานเยอะ + หน่วงสุ่มก่อนเริ่มแต่ละบัญชี (ลด pattern ที่ฝั่งเซิร์ฟมองออก)
+WORKERS = int(os.environ.get("LGR_WORKERS", "4"))
+JITTER_MIN = float(os.environ.get("LGR_JITTER_MIN", "1.5"))
+JITTER_MAX = float(os.environ.get("LGR_JITTER_MAX", "5.0"))
+
 
 def load_creds():
     return _api_load_creds(CREDS, auto_merge=True)
@@ -45,6 +52,7 @@ def _one(key, cred):
     if not (udid and lf):
         return key, {"ok": False, "file": fname, "err": "no udid/LF_AC"}
     try:
+        time.sleep(random.uniform(JITTER_MIN, JITTER_MAX))
         c = LGRClient(udid, lf)
         st, home = c.home()
         # ถ้า home ไม่ผ่าน (400, 401 หรืออื่นๆ) -> ถ้ามี guestCookie ให้ลอง /login เพื่อขอ session ใหม่ทันที
@@ -112,7 +120,7 @@ def main():
 
     print(f"[*] พบทั้งหมด {len(targets)} บัญชี ใน creds.json กำลังเริ่มล็อกอินและรับของอัตโนมัติผ่าน API...\n", flush=True)
     results = {}
-    with cf.ThreadPoolExecutor(max_workers=min(16, max(1, len(targets)))) as ex:
+    with cf.ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(targets)))) as ex:
         for key, res in ex.map(lambda kv: _one(*kv), targets):
             results[key] = res
             # เก็บ LF_AC และค่า ruby/ticket ที่หมุนใหม่กลับ (บัญชี API เป็นเจ้าของ ต้องตามค่าล่าสุด)

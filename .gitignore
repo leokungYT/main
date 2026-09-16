@@ -50,3 +50,5 @@ creds.json
 creds.part*.json
 creds*.lock
 creds*.tmp
+creds*.json*
+creds.json.bak
