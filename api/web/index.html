@@ -146,6 +146,27 @@
   </div>
 </div>
 
+<!-- gacha modal -->
+<div class="overlay" id="goverlay">
+  <div class="modal" style="max-width:560px">
+    <div class="mhead">
+      <div class="row"><h3>🎲 สุ่มกาชา <span id="gkey" class="mut"></span></h3><span class="spacer"></span><button class="x" id="gclose">×</button></div>
+      <div class="mut" style="font-size:13px;margin-top:2px">เป้าหมาย = ตัวที่เลือกไว้ (⚙ ด้านบน) — ถ้ามีเป้า จะรีโรลจนกว่าจะติด/หมด budget; ถ้าไม่มีเป้า สุ่มตามจำนวน</div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
+        <select id="ggroup" style="flex:1;min-width:240px"></select>
+        <label class="mut" style="display:flex;align-items:center;gap:6px">จำนวน/เพดาน
+          <input type="number" id="gmax" value="10" min="1" max="200" style="width:64px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px">
+        </label>
+        <button class="btn primary" id="groll">▶ สุ่ม</button>
+        <button class="btn" id="gstop" disabled>■ หยุด</button>
+      </div>
+      <div class="mut" style="margin-top:6px" id="gtargets"></div>
+    </div>
+    <div class="mbody"><div id="glog" style="font-size:13px;line-height:1.9"></div></div>
+    <div class="mfoot"><span class="mut" id="ginfo">—</span></div>
+  </div>
+</div>
+
 <!-- picker modal -->
 <div class="overlay" id="overlay">
   <div class="modal">
@@ -309,6 +330,7 @@ function rowHTML(a){
   const [cls,txt]=SB[a.state]||["b-wait",a.state];
   const nh=a.checked&&a.state==="ok"?(a.nhit>0?'<span class="badge b-hit">'+a.nhit+' ✓</span>':'<span class="mut">0</span>'):'<span class="mut">—</span>';
   const dl=a.has_xml?'<a class="ico" title="โหลด .xml" href="/api/xml?id='+encodeURIComponent(a.key)+'">⬇</a>':'';
+  const ga=a.has_cred?'<button class="ico" title="สุ่มกาชา" onclick="openGacha(\''+a.key+'\')">🎲</button>':'';
   return '<td><div class="idname">'+(a.rsn||a.key)+'</div>'
         +'<div class="mut" style="font-size:12px">'+(a.userName||"[no name]")+'</div>'+heroLine(a)+'</td>'
         +'<td class="num">'+(a.level||"")+'</td>'
@@ -316,7 +338,7 @@ function rowHTML(a){
         +'<td class="num">'+nh+'</td>'
         +'<td class="num">'+fmt(a.ruby)+'</td><td class="num">'+fmt(a.ticket)+'</td>'
         +'<td><span class="badge '+cls+'">'+txt+'</span></td>'
-        +'<td><div class="act">'+dl+'</div></td>';
+        +'<td><div class="act">'+dl+ga+'</div></td>';
 }
 function fmt(n){n=+n||0;return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"k":n;}
 function renderRow(a){const tr=document.getElementById("r-"+a.key);if(tr)tr.innerHTML=rowHTML(a);}
@@ -346,6 +368,68 @@ function updateStats(){
   $("#stats").innerHTML=[["ทั้งหมด",total],["เช็คแล้ว",checked],["เจอเป้า",hit],["สำเร็จ",ok],["ไม่ได้",err],["Ruby",fmt(ruby)],["Ticket",fmt(tk)]]
     .map(([s,b])=>'<div class="stat"><b>'+b+'</b><span>'+s+'</span></div>').join("");
 }
+// ---------- gacha ----------
+let GKEY=null, GSTOP=false, GROLLING=false;
+function closeGacha(){ $("#goverlay").style.display="none"; GSTOP=true; }
+$("#gclose").onclick=closeGacha;
+$("#goverlay").onclick=e=>{ if(e.target===$("#goverlay"))closeGacha(); };
+$("#gstop").onclick=()=>{ GSTOP=true; };
+async function openGacha(key){
+  GKEY=key; GSTOP=false;
+  const a=DATA.find(x=>x.key===key)||{};
+  $("#gkey").textContent="· "+(a.rsn||key);
+  $("#glog").innerHTML="<span class='mut'>กำลังโหลดตู้กาชา...</span>";
+  $("#ggroup").innerHTML=""; $("#ginfo").textContent="—";
+  const ts=[...SELT];
+  $("#gtargets").innerHTML = ts.length
+    ? "เป้าหมาย ("+ts.length+"): "+ts.map(t=>'<span class="badge b-hit">'+dispName(t.split("(")[0])+'</span>').join(" ")
+    : "<span class='mut'>ยังไม่ได้เลือกเป้า → จะสุ่มตามจำนวน (ไม่รีโรล)</span>";
+  $("#goverlay").style.display="flex";
+  try{
+    const j=await (await fetch("/api/gacha/info?id="+encodeURIComponent(key))).json();
+    if(!j.ok){ $("#glog").innerHTML="<span class='badge b-err'>โหลดไม่ได้: "+(j.err||j.status||"?")+"</span>"; return; }
+    $("#ginfo").textContent="Ruby "+fmt(j.ruby)+" · ตั๋ว "+(j.tickets&&j.tickets.total||0);
+    $("#ggroup").innerHTML=j.groups.map(g=>{
+      const cost=g.needRuby?(g.needRuby+" ruby"):(g.needFriendship?(g.needFriendship+" FP"):(g.needEventTicket?"ตั๋วอีเวนต์":"ฟรี"));
+      return '<option value="'+g.groupId+'|'+g.gachaId+'|'+g.index+'">'
+        +g.groupId+' · '+g.count+'ใบ'+(g.bonus?'(+'+g.bonus+')':'')+' · '+cost+'</option>';
+    }).join("");
+    $("#glog").innerHTML="<span class='mut'>เลือกตู้แล้วกด ▶ สุ่ม</span>";
+  }catch(e){ $("#glog").innerHTML="<span class='badge b-err'>error: "+e+"</span>"; }
+}
+$("#groll").onclick=async()=>{
+  if(GROLLING) return;
+  const sel=$("#ggroup").value; if(!sel){return;}
+  const [group,gacha,index]=sel.split("|");
+  const ts=[...SELT], maxp=Math.max(1,+$("#gmax").value||1);
+  GROLLING=true; GSTOP=false; $("#groll").disabled=true; $("#gstop").disabled=false;
+  const log=$("#glog"); log.innerHTML="";
+  let done=0, hit=null;
+  // ยิงทีละครั้ง (เห็นผลสด + หยุดได้) — targets ส่งให้ backend หยุดเองด้วยถ้าติด
+  for(let i=0;i<maxp && !GSTOP && !hit;i++){
+    let j;
+    try{ j=await (await fetch("/api/gacha/pull?id="+encodeURIComponent(GKEY)
+        +"&group="+encodeURIComponent(group)+"&gacha="+encodeURIComponent(gacha)
+        +"&index="+encodeURIComponent(index)
+        +"&targets="+encodeURIComponent(ts.join(","))+"&max=1")).json();
+    }catch(e){ log.innerHTML+='<div class="badge b-err">error: '+e+'</div>'; break; }
+    if(!j.ok){ log.innerHTML+='<div class="badge b-err">หยุด: '+(j.err||j.status||"?")+'</div>'; break; }
+    const p=(j.pulls&&j.pulls[0])||{};
+    if(p.err){ log.innerHTML+='<div class="badge b-err">['+(done+1)+'] '+p.err+'</div>'; break; }
+    done++;
+    const names=(p.rewards||[]).map(r=>{const isHit=ts.some(t=>hitCode(r.code.split(":").pop(),t));
+      return '<span class="'+(isHit?'badge b-hit':'')+'">'+(r.name||r.code)+'</span>';}).join(", ");
+    log.innerHTML+='<div>['+done+'] '+names+'</div>';
+    $("#ginfo").textContent="Ruby "+fmt(j.ruby)+" · สุ่มไป "+done+" ครั้ง";
+    if(j.hit){ hit=j.hit; log.innerHTML+='<div class="badge b-hit">★ ติดเป้า: '+(j.hit.name||j.hit.code)+' (ครั้งที่ '+done+')</div>'; }
+    log.scrollTop=log.scrollHeight;
+    // อัปเดต ruby ในตารางหลัก
+    const a=DATA.find(x=>x.key===GKEY); if(a){a.ruby=j.ruby;renderRow(a);updateStats();}
+  }
+  if(ts.length && !hit && !GSTOP) log.innerHTML+='<div class="mut">— ครบเพดาน ยังไม่ติดเป้า —</div>';
+  GROLLING=false; $("#groll").disabled=false; $("#gstop").disabled=true;
+};
+
 document.querySelectorAll("th[data-s]").forEach(th=>th.onclick=()=>{const k=th.dataset.s;if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=(k==="rsn")?1:-1;}render();});
 $("#q").oninput=render; $("#filter").onchange=render;
 boot();

@@ -300,3 +300,16 @@ POST /gacha/group/confirm  <ทั้งก้อน result ของ reserve> -
 ### creds.json อยู่ 2 ที่
 root ว่าง (0 บัญชี) แต่ `api/creds.json` มี 414 บัญชี -> `lgr_api._pick_creds_file()`
 เลือกไฟล์ที่ "มีข้อมูล" ให้อัตโนมัติแล้ว แต่ควรรวมให้เหลือไฟล์เดียวจริง ๆ
+
+## 13. กาชาผ่านเว็บ + รีโรลเลือกตัว — 2026-09-16/17
+- `web_app.py` เพิ่ม: `GET /api/gacha/info?id=<key>` (ตู้ที่ยิงได้+ruby/ตั๋ว) ,
+  `GET /api/gacha/pull?id=<key>&group=&gacha=&index=&targets=&max=` (สุ่ม/รีโรล)
+- หน้าเว็บ: ปุ่ม 🎲 ต่อแถว -> modal เลือกตู้ + ใช้ "ตัวที่เลือกไว้ (SELT)" เป็นเป้า -> รีโรลจนติด/หมด budget เห็นผลสด
+- CLI: `gacha_reroll.py <id> --list | --group .. --gacha .. --index .. [--target ..]* [--max N] [--n N]`
+- พิสูจน์: `grp_gacha_1/gacha_grp_1` (10 ruby) ยิงผ่านเว็บ+CLI ได้ตัวจริง, ruby ลดจริง
+- ⚠️ `grp_gacha_1` เป็นตู้ tutorial/newbie (pool ล็อกผล) -> รีโรลจริงใช้ตู้ปกติ (ดู --list)
+
+### creds.json เคยมี 2 พูลตีกัน (แก้แล้ว)
+- root `creds.json` = ที่ capture_auto เขียน (ผ่าน creds.part<port>.json) ; `api/creds.json` = พูล API (414)
+- รวมเป็นไฟล์เดียว 419 บัญชี เขียนตรงกันทั้ง root+api แล้ว
+- `lgr_api._pick_creds_file()` = เลือกไฟล์ที่ "บัญชีเยอะกว่า" ; `save_creds()` = กันเขียน dict ว่างทับ

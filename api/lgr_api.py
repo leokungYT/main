@@ -48,33 +48,9 @@ def _safe_print(*args, **kwargs):
 
 
 BASE = "https://rangers-api.line-apps.com/v12.3"
-# creds.json ควรมีที่เดียว = root ของโปรเจกต์
-# แต่ของจริงเคยมีทั้ง root และ api/ -> ถ้า root ว่าง/ไม่มี ให้ใช้ api/creds.json ที่มีข้อมูลแทน
-# (ไม่งั้นสคริปต์ขึ้น "ไม่พบบัญชี" ทั้งที่มีบัญชีอยู่ในอีกไฟล์)
+# creds.json อยู่ที่เดียว = โฟลเดอร์ api/ (ทุกสคริปต์ + capture_auto ใช้ไฟล์นี้ร่วมกัน)
 _API_DIR = os.path.dirname(os.path.abspath(__file__))
-
-
-def _pick_creds_file():
-    root_f = os.path.join(os.path.dirname(_API_DIR), "creds.json")
-    api_f = os.path.join(_API_DIR, "creds.json")
-
-    def _n(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                c = f.read().strip()
-            return len(json.loads(c)) if c else 0
-        except Exception:
-            return 0
-
-    # ใช้ไฟล์ที่ "มีบัญชีมากกว่า" เสมอ (กันกรณี part file จรทำให้ root มีไม่กี่บัญชี
-    # แล้วไปเลือก root ทับ api ที่มีบัญชีจริงเป็นร้อย)
-    nr, na = _n(root_f), _n(api_f)
-    if na > nr:
-        return api_f
-    return root_f
-
-
-CREDS_FILE = _pick_creds_file()
+CREDS_FILE = os.path.join(_API_DIR, "creds.json")
 
 # LF_AC/guestCookie ของจริงยาว 280 ตัว ถ้าสั้นกว่านี้ = token ช่วงก่อนล็อกอินเสร็จ (ใช้ยิง API ไม่ได้ -> 401)
 MIN_COOKIE_LEN = 200

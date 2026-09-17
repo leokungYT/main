@@ -51,7 +51,7 @@ try:
 except Exception:
     pass
 
-CREDS = os.path.join(ROOT, "creds.json")   # ไฟล์เดียวที่ root (ให้ตรงกับ lgr_api.CREDS_FILE)
+CREDS = os.path.join(HERE, "creds.json")   # ไฟล์เดียวใน api/ (ตรงกับ lgr_api.CREDS_FILE)
 ADDON = os.path.join(HERE, "capture_credential.py")
 PKG = "com.linecorp.LGRGS"
 ACT = f"{PKG}/.LineRangersAdr"
@@ -165,7 +165,7 @@ def save_creds(data, path=None):
 
 def part_creds(host_port):
     """ไฟล์ creds แยกต่อจอ (กันแย่ง .lock/เขียนชนกัน) -> merge เข้า creds.json ตอนจบ"""
-    return os.path.join(ROOT, f"creds.part{host_port}.json")
+    return os.path.join(HERE, f"creds.part{host_port}.json")
 
 
 import threading as _threading
@@ -176,7 +176,7 @@ def merge_parts_into_creds(part_files=None):
     """รวม creds.partN.json เข้า creds.json (ล็อกกัน thread เขียนชนกัน และค้นหาทุก part อัตโนมัติ)"""
     with _MERGE_LOCK:
         if part_files is None:
-            part_files = sorted(glob.glob(os.path.join(ROOT, "creds.part*.json")))
+            part_files = sorted(glob.glob(os.path.join(HERE, "creds.part*.json")))
         if not part_files:
             return len(load_creds())
         merged = load_creds()
