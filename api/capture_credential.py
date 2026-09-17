@@ -32,7 +32,7 @@ from mitmproxy import http
 
 # แต่ละจอตั้ง env LGR_CREDS_FILE ให้เขียนไฟล์แยกกัน (ไม่แย่ง .lock เดียวกัน) แล้ว capture_auto merge ตอนจบ
 CREDS = os.environ.get("LGR_CREDS_FILE") or os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "creds.json")   # root/creds.json
+    os.path.dirname(os.path.abspath(__file__)), "creds.json")   # api/creds.json
 
 # LF_AC ของจริงยาว 280 ตัว; ค่าสั้น ๆ (~40) คือ token ช่วงยังล็อกอินไม่เสร็จ -> เก็บไปก็ 401
 MIN_COOKIE_LEN = 200
