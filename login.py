@@ -780,6 +780,7 @@ if GUI_AVAILABLE:
             # Initialize cached stats and start background thread to offload disk I/O from Main Thread
             self.qsize = 0
             self.backup_id_counts = {}
+            self.folder_counts = {}       # นับไฟล์จริงในโฟลเดอร์ (รีเฟรชทุก 30 วิ)
             self.bg_stats_thread = threading.Thread(target=self._bg_stats_counter_loop, daemon=True)
             self.bg_stats_thread.start()
 
@@ -805,6 +806,20 @@ if GUI_AVAILABLE:
                                 prefix = f.split("-")[0].replace(".xml", "").replace(".XML", "")
                                 counts[prefix] = counts.get(prefix, 0) + 1
                     self.backup_id_counts = counts
+                    # 3. นับไฟล์จริงในโฟลเดอร์ผลลัพธ์ (login-success / login-failed / ฯลฯ)
+                    #    ของหนัก -> ทำทุก 30 วิพอ ไม่ให้ดิสก์ทำงานถี่เกิน
+                    if time.time() - getattr(self, "_last_folder_scan", 0) >= 30:
+                        self._last_folder_scan = time.time()
+                        fc = {}
+                        for name in ("login-success", "login-failed", "random-fail",
+                                     "not-found", "kaiby", "7day-check"):
+                            folder = os.path.join(_base, name)
+                            n = 0
+                            if os.path.isdir(folder):
+                                for _root, _dirs, _files in os.walk(folder):
+                                    n += len([f for f in _files if f.lower().endswith(".xml")])
+                            fc[name] = n
+                        self.folder_counts = fc
                 except Exception as e:
                     print(f"[GUI BG] Stats helper error: {e}")
                 time.sleep(5)  # Scan every 5 seconds
@@ -1062,10 +1077,17 @@ if GUI_AVAILABLE:
                     # Get cached file count from background thread
                     qsize = getattr(self, "qsize", 0)
                     
+                    # ตัวเลขบนแถบบน = จำนวนไฟล์จริงในโฟลเดอร์ (อัปเดตทุก 30 วิจาก bg thread)
+                    # ถ้ายังไม่ได้สแกนรอบแรก ค่อยใช้ตัวนับในหน่วยความจำไปก่อน
+                    folder_counts = getattr(self, "folder_counts", {})
+                    succ_count = folder_counts.get("login-success", ui_stats.success_count)
+                    fail_count = folder_counts.get("login-failed", ui_stats.fail_count)
+                    rand_count = folder_counts.get("random-fail", ui_stats.random_fail_count)
+
                     self.lbl_file_count.configure(text=f"📁 {qsize}")
-                    self.lbl_succ_count.configure(text=f"✅ {ui_stats.success_count}")
-                    self.lbl_fail_count.configure(text=f"❌ {ui_stats.fail_count}")
-                    self.lbl_random_fail.configure(text=f"🎲 {ui_stats.random_fail_count}")
+                    self.lbl_succ_count.configure(text=f"✅ {succ_count}")
+                    self.lbl_fail_count.configure(text=f"❌ {fail_count}")
+                    self.lbl_random_fail.configure(text=f"🎲 {rand_count}")
                     
                     for dev, stat in ui_stats.device_statuses.items():
                         if dev in self.device_monitors:
@@ -1079,13 +1101,13 @@ if GUI_AVAILABLE:
                     for prefix, count in backup_id_counts.items():
                         hero_data[prefix] = count
                     
-                    # Handle Login Failures (fixid x 8)
-                    login_fail_count = ui_stats.fail_count
+                    # Handle Login Failures (fixid x 8) - ใช้จำนวนไฟล์จริงใน login-failed/
+                    login_fail_count = fail_count
                     if login_fail_count > 0:
                         hero_data["❌ เข้าไม่ได้ (Login Failed)"] = login_fail_count
                     
                     # Handle Gacha Failures (swap_shop/gachaout)
-                    random_fail_count = ui_stats.random_fail_count
+                    random_fail_count = rand_count
                     # Also collect raw "สุ่มไม่ได้" from hero_found_list
                     raw_random_fail = hero_data.pop("สุ่มไม่ได้", 0)
                     total_gacha_fail = max(random_fail_count, raw_random_fail)
@@ -1098,6 +1120,9 @@ if GUI_AVAILABLE:
                                        hero_data.pop("Not Found", 0) + 
                                        hero_data.pop("Success", 0))
                     
+                    # ถ้าสแกนโฟลเดอร์แล้ว ใช้จำนวนไฟล์จริงใน login-success/ เป็นตัวเลขหลัก
+                    if "login-success" in folder_counts:
+                        not_found_count = folder_counts["login-success"]
                     if not_found_count > 0:
                         # Hide "Success" label if swap_shop is enabled as per user request
                         if not config.get("swap_shop", 0):
@@ -1257,6 +1282,68 @@ def queue_folder_names():
     if isinstance(folders, str):
         folders = [folders]
     return [str(f) for f in folders]
+
+
+_last_recycle_ts = 0.0
+
+
+def recycle_failed_into_queue(source_dir="login-failed"):
+    """คิวหมด -> ย้ายไฟล์ใน login-failed/ กลับเข้าโฟลเดอร์คิวตัวสุดท้าย (input-id) เพื่อวนใหม่
+
+    - ปิดได้ด้วย config "recycle_failed": 0
+    - กันหลาย process ย้ายพร้อมกันด้วย lock file แบบ O_EXCL
+    - ไฟล์ชื่อซ้ำกับที่มีอยู่แล้วในคิว = ข้าม (ไม่ทับของเดิม)
+    คืน True ถ้าย้ายได้อย่างน้อย 1 ไฟล์
+    """
+    global _last_recycle_ts
+    if not config.get("recycle_failed", 1):
+        return False
+    # กันวนรัว ๆ: ไฟล์ที่ล็อกอินไม่ผ่านจริงจะเด้งกลับมา login-failed ทันที
+    # ถ้าไม่หน่วงไว้จะกลายเป็นลูปย้ายไฟล์ไม่จบ
+    cooldown = float(config.get("recycle_failed_cooldown", 600))
+    if time.time() - _last_recycle_ts < cooldown:
+        return False
+    _last_recycle_ts = time.time()
+    base = os.path.dirname(os.path.abspath(__file__))
+    src = os.path.join(base, source_dir)
+    if not os.path.isdir(src):
+        return False
+    qnames = queue_folder_names()
+    dst = os.path.join(base, qnames[-1] if qnames else "input-id")
+
+    lock_path = os.path.join(src, ".recycle.lock")
+    try:
+        if os.path.exists(lock_path) and time.time() - os.path.getmtime(lock_path) > 300:
+            try: os.remove(lock_path)
+            except OSError: pass
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except (FileExistsError, OSError):
+        return False   # process อื่นกำลังวนอยู่
+
+    moved = 0
+    try:
+        os.makedirs(dst, exist_ok=True)
+        for root, _dirs, filenames in os.walk(src):
+            for f in filenames:
+                if not f.lower().endswith(".xml"):
+                    continue
+                s_path = os.path.join(root, f)
+                d_path = os.path.join(dst, f)
+                if os.path.exists(d_path):
+                    continue
+                try:
+                    shutil.move(s_path, d_path)
+                    moved += 1
+                except Exception:
+                    pass
+    finally:
+        try: os.remove(lock_path)
+        except OSError: pass
+
+    if moved:
+        print(f"[QUEUE] คิวหมด - ดึง {moved} ไฟล์จาก {source_dir}/ กลับไปวนต่อที่ {os.path.basename(dst)}/")
+    return moved > 0
 
 
 def load_config():
@@ -2506,6 +2593,10 @@ class RangerGearBot(threading.Thread):
         """
         if getattr(self, "app_missing", False):
             print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+            return True
+        # adb หลุด/offline → ยังเชื่อผลไม่ได้ เก็บไฟล์คาคิวไว้ก่อน
+        if not self.device_is_online():
+            self._keep_file_in_queue(file_path, "adb offline/หลุดการเชื่อมต่อ")
             return True
         try:
             dst_dir = self.CHECK7DAY_DIR
@@ -4183,6 +4274,13 @@ class RangerGearBot(threading.Thread):
             picked = self._pick_file_from(os.path.join(script_dir, folder_name))
             if picked:
                 return picked
+
+        # คิวหมดแล้ว -> เอา login-failed กลับมาวนใหม่ (ปิดได้ด้วย recycle_failed=0)
+        if recycle_failed_into_queue():
+            for folder_name in queue_folder_names():
+                picked = self._pick_file_from(os.path.join(script_dir, folder_name))
+                if picked:
+                    return picked
         return None
 
     def _pick_file_from(self, source_folder):
@@ -4244,6 +4342,10 @@ class RangerGearBot(threading.Thread):
         if getattr(self, "app_missing", False):
             print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
             return
+        # adb หลุด/offline → ผลที่อ่านได้เชื่อไม่ได้ ห้ามตัดสินว่าล็อกอินไม่ผ่าน
+        if not self.device_is_online():
+            self._keep_file_in_queue(file_path, "adb offline/หลุดการเชื่อมต่อ")
+            return
         dst_dir = "login-failed"
         if not os.path.exists(dst_dir): os.makedirs(dst_dir)
         base = os.path.basename(file_path)
@@ -4277,6 +4379,10 @@ class RangerGearBot(threading.Thread):
         # แอปไม่มีบนเครื่องนี้ → ห้ามย้ายไฟล์ไปไหน ปล่อยไว้ในคิวเหมือนเดิม
         if getattr(self, "app_missing", False):
             print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+            return
+        # adb หลุด/offline → ผลที่อ่านได้เชื่อไม่ได้ ห้ามตัดสินว่าล็อกอินไม่ผ่าน
+        if not self.device_is_online():
+            self._keep_file_in_queue(file_path, "adb offline/หลุดการเชื่อมต่อ")
             return
         dst_dir = "login-failed"
         if not os.path.exists(dst_dir):
@@ -4319,6 +4425,10 @@ class RangerGearBot(threading.Thread):
         # แอปไม่มีบนเครื่องนี้ → ห้ามย้ายไฟล์ไปไหน ปล่อยไว้ในคิวเหมือนเดิม
         if getattr(self, "app_missing", False):
             print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+            return
+        # adb หลุด/offline → ผลที่อ่านได้เชื่อไม่ได้ ห้ามตัดสินว่าล็อกอินไม่ผ่าน
+        if not self.device_is_online():
+            self._keep_file_in_queue(file_path, "adb offline/หลุดการเชื่อมต่อ")
             return
         """สุ่มไม่ได้ -> เก็บไว้ที่ random-fail/ ใช้ชื่อไฟล์เดิม
 
@@ -4366,6 +4476,10 @@ class RangerGearBot(threading.Thread):
         # แอปไม่มีบนเครื่องนี้ → ห้ามย้ายไฟล์ไปไหน ปล่อยไว้ในคิวเหมือนเดิม
         if getattr(self, "app_missing", False):
             print(f"[{self.device_id}] ⛔ ไม่มีแอปบนเครื่องนี้ — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+            return
+        # adb หลุด/offline → ผลที่อ่านได้เชื่อไม่ได้ ห้ามตัดสินว่าล็อกอินไม่ผ่าน
+        if not self.device_is_online():
+            self._keep_file_in_queue(file_path, "adb offline/หลุดการเชื่อมต่อ")
             return
         dst_dir = "kaiby"
         if not os.path.exists(dst_dir):
@@ -4428,6 +4542,32 @@ class RangerGearBot(threading.Thread):
         return subprocess.run(
             [self.adb_cmd, "-s", self.device_id, "shell", shell_cmd],
             capture_output=True, timeout=timeout, **kwargs)
+
+    def device_is_online(self, retries=2):
+        """เครื่องนี้ยังต่อ adb อยู่จริงไหม (get-state == device)
+
+        กันเคส adb offline/หลุด แล้วบอทเข้าใจผิดว่า "ล็อกอินไม่ผ่าน"
+        จนไฟล์ไหลไป login-failed ทั้งที่ไอดีไม่ได้พัง
+        """
+        for i in range(max(1, retries)):
+            try:
+                r = self.adb_run([self.adb_cmd, "-s", self.device_id, "get-state"], timeout=8)
+                state = (r.stdout or b"").decode(errors="ignore").strip().lower()
+                if state == "device":
+                    return True
+            except Exception:
+                pass
+            if i + 1 < retries:
+                try:
+                    self.adb_run([self.adb_cmd, "-s", self.device_id, "reconnect"], timeout=8)
+                except Exception:
+                    pass
+                time.sleep(1.5)
+        return False
+
+    def _keep_file_in_queue(self, file_path, reason):
+        """ไม่ย้ายไฟล์ไปไหน ปล่อยคาคิวไว้ให้รอบหน้าหยิบใหม่"""
+        print(f"[{self.device_id}] ⛔ {reason} — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
 
     def _decode_raw_screencap(self, raw_data):
         """Decode raw screencap data (ไม่ต้อง encode/decode PNG = เร็วกว่า 50-100x)
