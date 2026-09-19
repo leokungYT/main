@@ -79,5 +79,21 @@
     "minitouch": 1,
     "pos_cache": 0,
     "scan_interval": 1.0,
-    "loop_delay": null
+    "loop_delay": null,
+    "screen_check": 1,
+    "screen_width": 960,
+    "screen_height": 540,
+    "screen_dpi": 160,
+    "screen_restart_mumu": 1,
+    "screen_boot_wait": 180,
+    "screen_auto_relaunch": 1,
+    "screen_max_relaunch": 2,
+    "recycle_failed": 1,
+    "recycle_failed_cooldown": 600,
+    "mumu_fps": 120,
+    "mumu_cpu": 2,
+    "mumu_ram": 2,
+    "mumu_root": "เปิด",
+    "mumu_renderer": "DirectX",
+    "mumu_app_running": "เปิด"
 }

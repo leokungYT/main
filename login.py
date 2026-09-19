@@ -3,6 +3,7 @@ import numpy as np
 import subprocess
 import os
 import struct
+import re
 
 # ลดการแย่งชิง CPU สำหรับ OpenCV เมื่อรันหลายเครื่องพร้อมกัน
 cv2.setNumThreads(1)
@@ -385,6 +386,57 @@ if GUI_AVAILABLE:
 
             ctk.CTkButton(scroll_frame, text="📤 ย้ายเลยตอนนี้", command=self.manual_move_success, fg_color="#3b8ed0", hover_color="#2f72a8", width=150).pack(pady=5, padx=20, anchor="w")
 
+            # =============================================
+            # ส่วนตั้งค่าหน้าจออีมูเลเตอร์ (ต้องตรง ไม่งั้นบอทกดเพี้ยน)
+            # =============================================
+            ctk.CTkFrame(scroll_frame, height=2, fg_color="gray30").pack(fill="x", pady=10)
+            ctk.CTkLabel(scroll_frame, text="⚙ ตั้งค่าจอ MuMu — ความละเอียด / FPS / CPU / RAM / root / renderer / App running (ปล่อยว่าง = ไม่แตะค่าเดิม)", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(5, 5), anchor="w")
+
+            mumu_row = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            mumu_row.pack(fill="x", padx=20, pady=5)
+
+            def _entry(parent, label, value, width=60, color=None):
+                ctk.CTkLabel(parent, text=label, anchor="w",
+                             text_color=color or "#dddddd").pack(side="left", padx=(0, 3))
+                e = ctk.CTkEntry(parent, width=width)
+                e.insert(0, "" if value is None else str(value))
+                e.pack(side="left", padx=(0, 10))
+                return e
+
+            self.screen_w_entry = _entry(mumu_row, "กว้าง", self.cfg.get("screen_width", 960))
+            self.screen_h_entry = _entry(mumu_row, "สูง", self.cfg.get("screen_height", 540))
+            self.screen_dpi_entry = _entry(mumu_row, "DPI", self.cfg.get("screen_dpi", 160))
+            self.mumu_fps_entry = _entry(mumu_row, "FPS", self.cfg.get("mumu_fps", 120), color="#3b8ed0")
+            self.mumu_cpu_entry = _entry(mumu_row, "CPU core", self.cfg.get("mumu_cpu", 2))
+            self.mumu_ram_entry = _entry(mumu_row, "RAM GB", self.cfg.get("mumu_ram", 2))
+
+            ctk.CTkLabel(mumu_row, text="root", anchor="w").pack(side="left", padx=(0, 3))
+            self.mumu_root_menu = ctk.CTkOptionMenu(mumu_row, width=80, values=["", "เปิด", "ปิด"])
+            self.mumu_root_menu.set(str(self.cfg.get("mumu_root", "เปิด")))
+            self.mumu_root_menu.pack(side="left", padx=(0, 10))
+
+            ctk.CTkLabel(mumu_row, text="renderer", anchor="w").pack(side="left", padx=(0, 3))
+            self.mumu_renderer_menu = ctk.CTkOptionMenu(mumu_row, width=100, values=["", "DirectX", "OpenGL", "Vulkan"])
+            self.mumu_renderer_menu.set(str(self.cfg.get("mumu_renderer", "DirectX")))
+            self.mumu_renderer_menu.pack(side="left", padx=(0, 10))
+
+            ctk.CTkLabel(mumu_row, text="App running", anchor="w").pack(side="left", padx=(0, 3))
+            self.mumu_app_menu = ctk.CTkOptionMenu(mumu_row, width=80, values=["", "เปิด", "ปิด"])
+            self.mumu_app_menu.set(str(self.cfg.get("mumu_app_running", "เปิด")))
+            self.mumu_app_menu.pack(side="left", padx=(0, 10))
+
+            ctk.CTkLabel(scroll_frame, text="ค่าที่ปล่อยว่างจะไม่ถูกแตะ · ความละเอียดต้องใส่ครบทั้ง กว้าง+สูง+DPI ถึงจะมีผล · จอที่ปิดอยู่ค่าจะมีผลตอนเปิดครั้งถัดไป",
+                         font=ctk.CTkFont(size=11), text_color="#7a8fa6", anchor="w").pack(padx=20, anchor="w")
+
+            self.screen_check_var = ctk.BooleanVar(value=bool(self.cfg.get("screen_check", 1)))
+            ctk.CTkSwitch(scroll_frame, text="เช็คค่าพวกนี้ก่อนเริ่ม (ไม่ตรง = ตั้งให้อัตโนมัติ)", variable=self.screen_check_var).pack(pady=5, padx=20, anchor="w")
+
+            self.screen_restart_var = ctk.BooleanVar(value=bool(self.cfg.get("screen_restart_mumu", 1)))
+            ctk.CTkSwitch(scroll_frame, text="ตั้งค่าแล้วรี MuMu ให้เอง", variable=self.screen_restart_var).pack(pady=5, padx=20, anchor="w")
+
+            self.screen_relaunch_var = ctk.BooleanVar(value=bool(self.cfg.get("screen_auto_relaunch", 1)))
+            ctk.CTkSwitch(scroll_frame, text="รีเสร็จแล้วรันโปรแกรมใหม่เอง (auto)", variable=self.screen_relaunch_var).pack(pady=5, padx=20, anchor="w")
+
             btn_frame = ctk.CTkFrame(self, fg_color="transparent")
             btn_frame.pack(fill="x", padx=20, pady=10)
             
@@ -496,6 +548,29 @@ if GUI_AVAILABLE:
                 self.cfg["move_success"]["time"] = (self.move_time_entry.get().strip() or "09:00")
                 self.cfg["move_success"].setdefault("source", "login-success")
                 self.cfg["move_success"].setdefault("dest", "input-id")
+
+                # Save screen settings (ตั้งค่าหน้าจออีมูเลเตอร์)
+                self.cfg["screen_check"] = 1 if self.screen_check_var.get() else 0
+                self.cfg["screen_restart_mumu"] = 1 if self.screen_restart_var.get() else 0
+                self.cfg["screen_auto_relaunch"] = 1 if self.screen_relaunch_var.get() else 0
+                # ช่องตัวเลข: ว่าง = "" (ไม่แตะค่าเดิมของอีมู), ไม่ใช่เลข = คืนค่าเดิมใน config
+                for key, entry in (("screen_width", self.screen_w_entry),
+                                   ("screen_height", self.screen_h_entry),
+                                   ("screen_dpi", self.screen_dpi_entry),
+                                   ("mumu_fps", self.mumu_fps_entry),
+                                   ("mumu_cpu", self.mumu_cpu_entry),
+                                   ("mumu_ram", self.mumu_ram_entry)):
+                    raw = entry.get().strip()
+                    if raw == "":
+                        self.cfg[key] = ""
+                        continue
+                    try:
+                        self.cfg[key] = int(float(raw))
+                    except Exception:
+                        pass   # กรอกมั่ว = เก็บค่าเดิมไว้
+                self.cfg["mumu_root"] = self.mumu_root_menu.get().strip()
+                self.cfg["mumu_renderer"] = self.mumu_renderer_menu.get().strip()
+                self.cfg["mumu_app_running"] = self.mumu_app_menu.get().strip()
 
                 with open('configmain.json', 'w', encoding='utf-8') as f:
                     json.dump(self.cfg, f, indent=4, ensure_ascii=False)
@@ -1554,6 +1629,333 @@ def get_mumu_instances():
     except Exception as e:
         print(f"[MuMu] อ่านข้อมูล instance ไม่ได้: {e}")
         return None
+
+
+# =========================================================
+# ตรวจ/ตั้งค่าความละเอียดหน้าจออีมูเลเตอร์ (default 960x540 dpi 160)
+# template ทุกรูปใน img/ ตัดมาจากจอ 960x540 ถ้าจอไม่ตรงบอทจะกดเพี้ยน
+# ตั้งค่าได้ใน config: screen_check / screen_width / screen_height / screen_dpi
+#                      screen_restart_mumu / screen_boot_wait / screen_auto_relaunch
+# =========================================================
+
+def screen_target():
+    """ขนาดจอที่ต้องการจาก config -> (w, h, dpi)"""
+    try:
+        w = int(config.get("screen_width", 960))
+        h = int(config.get("screen_height", 540))
+        dpi = int(config.get("screen_dpi", 160))
+    except Exception:
+        w, h, dpi = 960, 540, 160
+    return w, h, dpi
+
+
+def _adb_out(dev, args, timeout=15):
+    kwargs = {'creationflags': 0x08000000} if os.name == 'nt' else {}
+    try:
+        r = subprocess.run([adb_path, "-s", dev] + args, capture_output=True,
+                           text=True, timeout=timeout, **kwargs)
+        return (r.stdout or "") + (r.stderr or "")
+    except Exception:
+        return ""
+
+
+def get_device_screen(dev):
+    """อ่านขนาดจอ+dpi ที่ใช้งานจริงของเครื่องนี้ คืน (w, h, dpi) หรือ None ถ้าอ่านไม่ได้
+
+    ถ้ามี Override size/density (ตั้งด้วย wm size) ให้ถือค่า override เป็นค่าจริง
+    """
+    size_out = _adb_out(dev, ["shell", "wm", "size"])
+    den_out = _adb_out(dev, ["shell", "wm", "density"])
+    w = h = dpi = None
+    for line in size_out.splitlines():
+        m = re.search(r"(Override|Physical) size:\s*(\d+)x(\d+)", line)
+        if m:
+            if m.group(1) == "Override" or w is None:
+                w, h = int(m.group(2)), int(m.group(3))
+    for line in den_out.splitlines():
+        m = re.search(r"(Override|Physical) density:\s*(\d+)", line)
+        if m:
+            if m.group(1) == "Override" or dpi is None:
+                dpi = int(m.group(2))
+    if w and h and dpi:
+        return (w, h, dpi)
+    return None
+
+
+def set_device_screen(dev, w, h, dpi):
+    """สั่ง wm size / wm density ให้ตรงตามที่ตั้งไว้ (ค่าอยู่ถาวรข้ามการรีบูต)"""
+    out = _adb_out(dev, ["shell", "wm", "size", f"{w}x{h}"], timeout=25)
+    out += _adb_out(dev, ["shell", "wm", "density", str(dpi)], timeout=25)
+    print(f"[SCREEN] {dev} ตั้งจอเป็น {w}x{h} dpi {dpi} แล้ว"
+          + (f" | {out.strip()[:120]}" if out.strip() else ""))
+    return True
+
+
+def mumu_index_of(dev):
+    """หา index ของ MuMu instance จาก adb address คืน None ถ้าหาไม่เจอ"""
+    try:
+        for idx, addr in (get_mumu_instances() or []):
+            if addr == dev:
+                return idx
+    except Exception:
+        pass
+    return None
+
+
+def mumu_restart_instance(idx, boot_wait=120):
+    """รีสตาร์ท MuMu instance ตัวนั้น (restart ก่อน ถ้าไม่ได้ค่อย shutdown+launch)"""
+    exe = find_mumu_manager()
+    if not exe:
+        print("[SCREEN] หา MuMuManager.exe ไม่เจอ - ข้ามการรีอีมู")
+        return False
+    kwargs = {'creationflags': 0x08000000} if os.name == 'nt' else {}
+    try:
+        r = subprocess.run([exe, "control", "-v", str(idx), "restart"],
+                           capture_output=True, text=True, timeout=120, **kwargs)
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or r.stdout or "").strip()[:200])
+        print(f"[SCREEN] สั่งรีสตาร์ท MuMu instance {idx} แล้ว")
+        return True
+    except Exception as e:
+        print(f"[SCREEN] restart instance {idx} ไม่สำเร็จ ({e}) - ลอง shutdown แล้ว launch")
+        try:
+            subprocess.run([exe, "control", "-v", str(idx), "shutdown"],
+                           capture_output=True, text=True, timeout=120, **kwargs)
+            time.sleep(5)
+            subprocess.run([exe, "control", "-v", str(idx), "launch"],
+                           capture_output=True, text=True, timeout=120, **kwargs)
+            return True
+        except Exception as e2:
+            print(f"[SCREEN] launch instance {idx} ไม่สำเร็จ: {e2}")
+            return False
+
+
+def wait_devices_boot(devs, timeout=180):
+    """รอให้เครื่องที่รีไปบูตเสร็จ (sys.boot_completed = 1) ภายในเวลาที่กำหนด"""
+    deadline = time.time() + timeout
+    left = list(devs)
+    while left and time.time() < deadline:
+        for d in list(left):
+            try:
+                subprocess.run([adb_path, "connect", d], capture_output=True, timeout=10,
+                               **({'creationflags': 0x08000000} if os.name == 'nt' else {}))
+            except Exception:
+                pass
+            if "1" in _adb_out(d, ["shell", "getprop", "sys.boot_completed"], timeout=10):
+                print(f"[SCREEN] {d} บูตเสร็จแล้ว")
+                left.remove(d)
+        if left:
+            time.sleep(5)
+    if left:
+        print(f"[SCREEN] รอบูตไม่ครบ ({', '.join(left)}) - ไปต่อเลย")
+    return not left
+
+
+# คีย์ของ MuMuManager setting ที่ใช้ (แก้ได้ใน config "mumu_setting_keys" ถ้า MuMu คนละเวอร์ชันใช้ชื่อไม่ตรง)
+MUMU_SETTING_KEYS = {
+    "resolution_mode": "resolution_mode",
+    "custom_resolution": "custom_resolution",
+    "fps": "max_frame_rate",
+    "cpu": "performance_cpu_custom",
+    "ram": "performance_mem_custom",
+    "performance_mode": "performance_mode",
+    "root": "root_permission",
+    "renderer": "renderer_mode",
+    "app_running": "app_keptlive",
+}
+
+
+def _mumu_key(name):
+    return (config.get("mumu_setting_keys") or {}).get(name, MUMU_SETTING_KEYS[name])
+
+
+def _as_bool_str(v):
+    """รับได้ทั้ง เปิด/ปิด, 1/0, true/false -> คืน "true"/"false" หรือ None ถ้าปล่อยว่าง"""
+    if v is None:
+        return None
+    t = str(v).strip().lower()
+    if t == "":
+        return None
+    if t in ("1", "true", "yes", "on", "เปิด"):
+        return "true"
+    if t in ("0", "false", "no", "off", "ปิด"):
+        return "false"
+    return None
+
+
+def _as_int_str(v):
+    """เลขจำนวนเต็ม -> str ; ว่าง/ไม่ใช่เลข -> None (= ไม่แตะค่าเดิม)"""
+    try:
+        t = str(v).strip()
+        if t == "":
+            return None
+        return str(int(float(t)))
+    except Exception:
+        return None
+
+
+def desired_mumu_settings():
+    """รวมค่าที่ผู้ใช้ตั้งไว้ -> dict {คีย์ MuMuManager: ค่า} (ช่องที่ปล่อยว่าง = ไม่ใส่)
+
+    ความละเอียดต้องครบทั้ง กว้าง+สูง+DPI ถึงจะส่ง (MuMu รับเป็นชุดเดียว)
+    """
+    want = {}
+    w = _as_int_str(config.get("screen_width", ""))
+    h = _as_int_str(config.get("screen_height", ""))
+    dpi = _as_int_str(config.get("screen_dpi", ""))
+    if w and h and dpi:
+        want[_mumu_key("resolution_mode")] = "custom"
+        want[_mumu_key("custom_resolution")] = f"{w},{h},{dpi}"
+
+    fps = _as_int_str(config.get("mumu_fps", ""))
+    if fps:
+        want[_mumu_key("fps")] = fps
+
+    cpu = _as_int_str(config.get("mumu_cpu", ""))
+    ram = _as_int_str(config.get("mumu_ram", ""))
+    if cpu or ram:
+        want[_mumu_key("performance_mode")] = "custom"
+    if cpu:
+        want[_mumu_key("cpu")] = cpu
+    if ram:
+        want[_mumu_key("ram")] = ram
+
+    root = _as_bool_str(config.get("mumu_root", ""))
+    if root:
+        want[_mumu_key("root")] = root
+
+    renderer = str(config.get("mumu_renderer", "") or "").strip().lower()
+    if renderer:
+        want[_mumu_key("renderer")] = renderer
+
+    app_running = _as_bool_str(config.get("mumu_app_running", ""))
+    if app_running:
+        want[_mumu_key("app_running")] = app_running
+    return want
+
+
+def get_mumu_settings(idx):
+    """อ่านค่า setting ปัจจุบันของ instance คืน dict (ว่าง = อ่านไม่ได้)"""
+    exe = find_mumu_manager()
+    if not exe:
+        return {}
+    kwargs = {'creationflags': 0x08000000} if os.name == 'nt' else {}
+    try:
+        r = subprocess.run([exe, "setting", "-v", str(idx), "-a"],
+                           capture_output=True, text=True, timeout=30, **kwargs)
+        data = json.loads((r.stdout or "").strip())
+        return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def apply_mumu_settings(dev, idx=None):
+    """ตั้งค่า MuMu (ความละเอียด/FPS/CPU/RAM/root/renderer/App running) ให้ตรง config
+
+    เขียนเฉพาะคีย์ที่ค่าไม่ตรงของเดิม คืน True ถ้ามีการเปลี่ยน (= ต้องรีอีมู)
+    """
+    want = desired_mumu_settings()
+    if not want:
+        return False
+    if idx is None:
+        idx = mumu_index_of(dev)
+    if idx is None:
+        return False
+    exe = find_mumu_manager()
+    if not exe:
+        print("[SCREEN] หา MuMuManager.exe ไม่เจอ - ตั้งค่า MuMu ไม่ได้")
+        return False
+
+    cur = get_mumu_settings(idx)
+    kwargs = {'creationflags': 0x08000000} if os.name == 'nt' else {}
+    changed = []
+    for key, val in want.items():
+        if cur and str(cur.get(key, "")).strip().lower() == str(val).strip().lower():
+            continue
+        try:
+            r = subprocess.run([exe, "setting", "-v", str(idx), "-k", key, "-val", str(val)],
+                               capture_output=True, text=True, timeout=30, **kwargs)
+            if r.returncode == 0:
+                changed.append(f"{key}={val}")
+            else:
+                print(f"[SCREEN] ตั้ง {key}={val} ไม่สำเร็จ: "
+                      f"{((r.stderr or r.stdout) or '').strip()[:150]}")
+        except Exception as e:
+            print(f"[SCREEN] ตั้ง {key}={val} ไม่สำเร็จ: {e}")
+    if changed:
+        print(f"[SCREEN] {dev} (instance {idx}) ตั้งค่า MuMu ใหม่: {', '.join(changed)}")
+    return bool(changed)
+
+
+def ensure_screen_resolution(devices):
+    """เช็คทุกเครื่องว่าจอตรง config ไหม ถ้าไม่ตรง -> ตั้งค่า -> รี MuMu -> รอบูต
+
+    คืน True ถ้ามีเครื่องที่ต้องแก้ (แปลว่าควรรันตัวเองใหม่)
+    """
+    if not config.get("screen_check", 1):
+        return False
+    w, h, dpi = screen_target()
+    want_screen = all(_as_int_str(config.get(k, "")) for k in
+                      ("screen_width", "screen_height", "screen_dpi"))
+    bad = []
+    for dev in devices:
+        idx = mumu_index_of(dev)
+        # 1) ค่า MuMu เอง (ความละเอียด/FPS/CPU/RAM/root/renderer/App running)
+        need_restart = apply_mumu_settings(dev, idx)
+
+        # 2) ความละเอียดที่ Android เห็นจริง - เช็คซ้ำด้วย adb แล้วบังคับ wm size/density
+        if want_screen:
+            cur = get_device_screen(dev)
+            if cur is None:
+                print(f"[SCREEN] {dev} อ่านขนาดจอไม่ได้ - ข้าม")
+            elif cur == (w, h, dpi):
+                print(f"[SCREEN] {dev} จอ {cur[0]}x{cur[1]} dpi {cur[2]} ✓")
+            else:
+                print(f"[SCREEN] {dev} จอ {cur[0]}x{cur[1]} dpi {cur[2]} ไม่ตรงกับที่ตั้งไว้ "
+                      f"({w}x{h} dpi {dpi}) -> จะตั้งค่าใหม่")
+                set_device_screen(dev, w, h, dpi)
+                need_restart = True
+        if need_restart:
+            bad.append(dev)
+
+    if not bad:
+        return False
+
+    if config.get("screen_restart_mumu", 1):
+        restarted = []
+        for dev in bad:
+            idx = mumu_index_of(dev)
+            if idx is None:
+                print(f"[SCREEN] {dev} ไม่รู้ว่าเป็น MuMu instance ไหน - ใช้ adb reboot แทน")
+                _adb_out(dev, ["reboot"], timeout=20)
+                restarted.append(dev)
+            elif mumu_restart_instance(idx):
+                restarted.append(dev)
+        if restarted:
+            time.sleep(8)
+            wait_devices_boot(restarted, timeout=int(config.get("screen_boot_wait", 180)))
+    return True
+
+
+def relaunch_self(reason=""):
+    """รันสคริปต์ตัวเองใหม่ (หลังตั้งจอ+รีอีมู) กันลูปด้วยตัวนับใน env"""
+    if not config.get("screen_auto_relaunch", 1):
+        print("[SCREEN] screen_auto_relaunch=0 - ไม่รันใหม่ ไปต่อเลย")
+        return False
+    rounds = int(os.environ.get("LGR_SCREEN_FIX_ROUND", "0"))
+    if rounds >= int(config.get("screen_max_relaunch", 2)):
+        print("[SCREEN] ตั้งจอ+รันใหม่ครบจำนวนรอบแล้ว ยังไม่ตรงอีก - ไปต่อเลย")
+        return False
+    os.environ["LGR_SCREEN_FIX_ROUND"] = str(rounds + 1)
+    print(f"[SCREEN] {reason} -> รันโปรแกรมใหม่ (รอบที่ {rounds + 1})")
+    sys.stdout.flush()
+    try:
+        script = os.path.abspath(__file__)
+        os.execv(sys.executable, [sys.executable, script] + sys.argv[1:])
+    except Exception as e:
+        print(f"[SCREEN] รันใหม่ไม่สำเร็จ: {e} - ไปต่อด้วยโปรเซสเดิม")
+        return False
+    return True
 
 
 def connect_known_ports():
@@ -7274,7 +7676,23 @@ if __name__ == "__main__":
         sys.exit(1)
 
     print(f"[INFO] Connected Devices ({len(devices)}): {', '.join(devices)}")
-    
+
+    # === เช็คขนาดหน้าจอทุกเครื่องก่อนเริ่ม (default 960x540 dpi 160) ===
+    # ไม่ตรง -> ตั้งค่าให้ -> รี MuMu -> รอบูต -> รันโปรแกรมตัวเองใหม่
+    try:
+        if ensure_screen_resolution(devices):
+            if relaunch_self("ตั้งค่าหน้าจอใหม่แล้ว"):
+                sys.exit(0)
+            # ไม่ได้รันใหม่ -> เชื่อม adb ใหม่แล้วอ่านรายชื่อเครื่องรอบสอง
+            connect_known_ports()
+            redetect = [d for d in get_connected_devices()
+                        if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
+            if redetect:
+                devices = redetect
+                print(f"[INFO] Devices after screen fix ({len(devices)}): {', '.join(devices)}")
+    except Exception as e:
+        print(f"[SCREEN] เช็คหน้าจอไม่สำเร็จ: {e} - ไปต่อตามปกติ")
+
     # Prepare OCR
     find_ranger = config.get("find_ranger", 0)
     find_gear = config.get("find_gear", 0)
