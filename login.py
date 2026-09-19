@@ -1673,37 +1673,44 @@ def _adb_out(dev, args, timeout=15):
 
 
 def get_device_screen(dev):
-    """อ่านขนาดจอ+dpi ที่ใช้งานจริงของเครื่องนี้ คืน (w, h, dpi) หรือ None ถ้าอ่านไม่ได้
+    """อ่านขนาดจอ+dpi ของเครื่องนี้ คืน dict หรือ None ถ้าอ่านไม่ได้
 
-    ถ้ามี Override size/density (ตั้งด้วย wm size) ให้ถือค่า override เป็นค่าจริง
+    {"size": (w, h), "dpi": n, "override": True/False}
+    - size/dpi = ค่าที่ Android ใช้จริงตอนนี้ (มี Override ก็เอา Override)
+    - override = มีใครไปสั่ง wm size/density ทับไว้ไหม
     """
     size_out = _adb_out(dev, ["shell", "wm", "size"])
     den_out = _adb_out(dev, ["shell", "wm", "density"])
     w = h = dpi = None
+    override = False
     for line in size_out.splitlines():
         m = re.search(r"(Override|Physical) size:\s*(\d+)x(\d+)", line)
         if m:
+            if m.group(1) == "Override":
+                override = True
             if m.group(1) == "Override" or w is None:
                 w, h = int(m.group(2)), int(m.group(3))
     for line in den_out.splitlines():
         m = re.search(r"(Override|Physical) density:\s*(\d+)", line)
         if m:
+            if m.group(1) == "Override":
+                override = True
             if m.group(1) == "Override" or dpi is None:
                 dpi = int(m.group(2))
     if w and h and dpi:
-        return (w, h, dpi)
+        return {"size": (w, h), "dpi": dpi, "override": override}
     return None
 
 
-def set_device_screen(dev, w, h, dpi):
-    """สั่ง wm size / wm density ให้ตรงตามที่ตั้งไว้ (ค่าอยู่ถาวรข้ามการรีบูต)"""
-    out = _adb_out(dev, ["shell", "wm", "size", f"{w}x{h}"], timeout=25)
-    out += _adb_out(dev, ["shell", "wm", "density", str(dpi)], timeout=25)
-    print(f"[SCREEN] {dev} ตั้งจอเป็น {w}x{h} dpi {dpi} แล้ว"
-          + (f" | {out.strip()[:120]}" if out.strip() else ""))
-    return True
+def reset_wm_override(dev):
+    """ล้าง wm size/density ที่ถูกสั่งทับไว้ ให้กลับไปใช้ค่าของ MuMu เอง
 
-
+    บอทรุ่นก่อนเคยสั่ง wm size 960x540 ทับ ทั้งที่จอของ MuMu เป็นแนวตั้ง
+    (540x960 = จอเดียวกันแค่คนละแนว) ทำให้จอเพี้ยน - เจอ override เมื่อไหร่ล้างทิ้ง
+    """
+    _adb_out(dev, ["shell", "wm", "size", "reset"], timeout=25)
+    _adb_out(dev, ["shell", "wm", "density", "reset"], timeout=25)
+    print(f"[SCREEN] {dev} ล้าง wm size/density override แล้ว (กลับไปใช้ค่าของ MuMu)")
 
 
 def wait_devices_boot(devs, timeout=180):
@@ -2109,39 +2116,63 @@ def mumu_set_display(targets=None, restart=True):
 
 
 def ensure_screen_resolution(devices):
-    """เช็ค/ตั้งค่าจอ MuMu ก่อนเริ่มงาน คืน True ถ้ามีการแก้ (= ควรรันตัวเองใหม่)
+    """ตั้งค่าจอ MuMu ให้ตรง config ก่อนเริ่มงาน คืน True ถ้ามีการรีจอ (= ควรรันตัวเองใหม่)
 
-    1) ตั้งค่าฝั่ง MuMuManager (ความละเอียด/FPS/CPU/RAM/root/renderer/App running)
-    2) เช็คซ้ำด้วย adb ว่า Android เห็นจอตรงจริงไหม ไม่ตรงก็บังคับด้วย wm size/density
+    ทำแบบเดียวกับตัว remote เป๊ะ ๆ คือ **ตั้งผ่าน MuMuManager อย่างเดียว**
+    ไม่ไปสั่ง wm size/density ทับ เพราะ:
+      - จอของ MuMu เป็นแนวตั้ง (adb รายงาน 540x960) ส่วนเกมหมุนเป็นแนวนอนเอง
+        540x960 กับ 960x540 = จอเดียวกัน คนละแนวเท่านั้น
+      - สั่ง wm size ทับ = จอเพี้ยนทั้งเครื่อง (บั๊กของรุ่นก่อน) เจอ override เมื่อไหร่ล้างทิ้ง
     """
     if not config.get("screen_check", 1):
         return False
 
-    changed = False
-    try:
-        r = mumu_set_display(restart=bool(config.get("screen_restart_mumu", 1)))
-        changed = bool(r["changed"])
-        if r["restarted"]:
-            time.sleep(8)
-            wait_devices_boot(devices, timeout=int(config.get("screen_boot_wait", 180)))
-    except Exception as e:
-        print(f"[SCREEN] ตั้งค่า MuMu ไม่สำเร็จ: {e}")
-
-    c = mumu_display_config()
-    if c["width"] and c["height"] and c["dpi"]:
-        w, h, dpi = c["width"], c["height"], c["dpi"]
+    # 0) ล้างร่องรอย wm override ที่รุ่นก่อนเคยสั่งทับไว้
+    if config.get("screen_clear_wm_override", 1):
         for dev in devices:
             cur = get_device_screen(dev)
-            if cur is None:
-                print(f"[SCREEN] {dev} อ่านขนาดจอไม่ได้ - ข้าม")
-            elif cur == (w, h, dpi):
-                print(f"[SCREEN] {dev} จอ {cur[0]}x{cur[1]} dpi {cur[2]} ✓")
-            else:
-                print(f"[SCREEN] {dev} จอ {cur[0]}x{cur[1]} dpi {cur[2]} ไม่ตรงกับที่ตั้งไว้ "
-                      f"({w}x{h} dpi {dpi}) -> บังคับด้วย wm size/density")
-                set_device_screen(dev, w, h, dpi)
-                changed = True
-    return changed
+            if cur and cur["override"]:
+                reset_wm_override(dev)
+
+    # 1) ตั้งค่าฝั่ง MuMuManager (ความละเอียด/FPS/CPU/RAM/root/renderer/App running)
+    restarted = []
+    try:
+        r = mumu_set_display(restart=bool(config.get("screen_restart_mumu", 1)))
+        restarted = r["restarted"]
+    except Exception as e:
+        print(f"[SCREEN] ตั้งค่า MuMu ไม่สำเร็จ: {e}")
+        return False
+
+    if not restarted:
+        # ไม่ได้รีจอไหนเลย = ค่าตรงอยู่แล้ว หรือแก้เฉพาะจอที่ปิดอยู่ (มีผลตอนเปิดเอง)
+        _report_screen_mismatch(devices)
+        return False
+
+    print(f"[SCREEN] รอจอที่รีสตาร์ท {len(restarted)} จอ บูตกลับมา...")
+    time.sleep(8)
+    connect_known_ports()
+    wait_devices_boot(devices, timeout=int(config.get("screen_boot_wait", 180)))
+    return True
+
+
+def _report_screen_mismatch(devices):
+    """เตือนเฉย ๆ ถ้าจอที่ Android เห็นยังไม่ใช่ขนาดที่ตั้งไว้ (ไม่แตะอะไรทั้งนั้น)
+
+    เทียบแบบไม่สนแนวจอ: 540x960 ถือว่าตรงกับ 960x540
+    """
+    c = mumu_display_config()
+    if not (c["width"] and c["height"] and c["dpi"]):
+        return
+    want = tuple(sorted((c["width"], c["height"])))
+    for dev in devices:
+        cur = get_device_screen(dev)
+        if not cur:
+            continue
+        got = tuple(sorted(cur["size"]))
+        if got != want or cur["dpi"] != c["dpi"]:
+            print(f"[SCREEN] {dev} จอ {cur['size'][0]}x{cur['size'][1]} dpi {cur['dpi']} "
+                  f"ยังไม่ตรงกับที่ตั้งไว้ ({c['width']}x{c['height']} dpi {c['dpi']}) "
+                  f"- ลองปิด/เปิดจอนี้ใน MuMu ใหม่อีกที")
 
 
 def relaunch_self(reason=""):
@@ -2158,7 +2189,14 @@ def relaunch_self(reason=""):
     sys.stdout.flush()
     try:
         script = os.path.abspath(__file__)
-        os.execv(sys.executable, [sys.executable, script] + sys.argv[1:])
+        # ห้ามใช้ os.execv บน Windows: มันเอา argv ไปต่อเป็นสตริงเดียวแล้ว
+        # path ที่มีช่องว่าง ("C:\Program Files\Python311\python.exe") จะโดนตัดกลางคัน
+        # -> "C:\Program: can't open file ..." (บั๊กที่เจอ) ใช้ Popen เปิดโปรเซสใหม่แทน
+        kwargs = {}
+        if os.name == "nt":
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        subprocess.Popen([sys.executable, script] + sys.argv[1:],
+                         cwd=os.path.dirname(script), env=os.environ.copy(), **kwargs)
     except Exception as e:
         print(f"[SCREEN] รันใหม่ไม่สำเร็จ: {e} - ไปต่อด้วยโปรเซสเดิม")
         return False
@@ -7884,21 +7922,20 @@ if __name__ == "__main__":
 
     print(f"[INFO] Connected Devices ({len(devices)}): {', '.join(devices)}")
 
-    # === เช็คขนาดหน้าจอทุกเครื่องก่อนเริ่ม (default 960x540 dpi 160) ===
-    # ไม่ตรง -> ตั้งค่าให้ -> รี MuMu -> รอบูต -> รันโปรแกรมตัวเองใหม่
+    # === ตั้งค่าจอ MuMu ให้ตรง config ก่อนเริ่ม (ความละเอียด/FPS/CPU/RAM/root/renderer/App running) ===
+    # ค่าไม่ตรง -> ตั้งผ่าน MuMuManager -> รีเฉพาะจอที่เปิดอยู่ -> รอบูต -> รันโปรแกรมใหม่
     try:
         if ensure_screen_resolution(devices):
-            if relaunch_self("ตั้งค่าหน้าจอใหม่แล้ว"):
+            if relaunch_self("ตั้งค่าจอใหม่แล้ว"):
                 sys.exit(0)
-            # ไม่ได้รันใหม่ -> เชื่อม adb ใหม่แล้วอ่านรายชื่อเครื่องรอบสอง
-            connect_known_ports()
+            # ไม่ได้รันใหม่ -> อ่านรายชื่อเครื่องรอบสอง (พอร์ตอาจเปลี่ยนหลังรีจอ)
             redetect = [d for d in get_connected_devices()
                         if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
             if redetect:
                 devices = redetect
                 print(f"[INFO] Devices after screen fix ({len(devices)}): {', '.join(devices)}")
     except Exception as e:
-        print(f"[SCREEN] เช็คหน้าจอไม่สำเร็จ: {e} - ไปต่อตามปกติ")
+        print(f"[SCREEN] ตั้งค่าจอไม่สำเร็จ: {e} - ไปต่อตามปกติ")
 
     # Prepare OCR
     find_ranger = config.get("find_ranger", 0)

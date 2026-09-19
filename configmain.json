@@ -95,5 +95,6 @@
     "mumu_ram": 2,
     "mumu_root": "เปิด",
     "mumu_renderer": "DirectX",
-    "mumu_app_running": "เปิด"
+    "mumu_app_running": "เปิด",
+    "screen_clear_wm_override": 1
 }
