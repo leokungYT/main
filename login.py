@@ -8,7 +8,6 @@ import re
 # ลดการแย่งชิง CPU สำหรับ OpenCV เมื่อรันหลายเครื่องพร้อมกัน
 cv2.setNumThreads(1)
 import time
-import random
 from time import sleep
 import sys
 import shutil
@@ -1040,7 +1039,7 @@ if GUI_AVAILABLE:
             connect_known_ports()
             
             current_devices = get_connected_devices()
-            emulator_devices = [d for d in current_devices if d.startswith("127.0.0.1:")]   # บังคับใช้เฉพาะ 127.0.0.1:PORT (ตัด emulator-XXXX ซ้ำ)
+            emulator_devices = [d for d in current_devices if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
             
             new_count = 0
             for dev in emulator_devices:
@@ -1359,56 +1358,6 @@ _ocr_lock = threading.Lock()  # Thread-safe OCR init
 
 # Guards the one-time minitouch startup (shared by every bot thread).
 _minitouch_init_lock = threading.Lock()
-_inject_lock = threading.Lock()  # in-process (thread เดียวกัน)
-_INJECT_LOCKFILE = os.path.join(tempfile.gettempdir(), "ranger-locks", "_inject_global.lock")
-
-# ===== auth queue ข้ามโปรเซส: ทีละจอกด refresh (auth) กัน refresh พร้อมกันจนโดนบล็อค =====
-_AUTH_LOCKFILE = os.path.join(tempfile.gettempdir(), "ranger-locks", "_auth_queue.lock")
-_AUTH_MAX_HOLD = 45   # วิ กันจอค้างถือคิวนานเกิน -> จออื่นยึดคิวต่อได้
-
-def _auth_try_acquire(device_id):
-    """ขอคิว auth (non-blocking). ได้=True / จออื่นถืออยู่=False (มี stale-steal)"""
-    try:
-        os.makedirs(os.path.dirname(_AUTH_LOCKFILE), exist_ok=True)
-    except OSError:
-        pass
-    try:
-        fd = os.open(_AUTH_LOCKFILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        os.write(fd, str(device_id).encode()); os.close(fd)
-        return True
-    except FileExistsError:
-        try:
-            if time.time() - os.path.getmtime(_AUTH_LOCKFILE) > _AUTH_MAX_HOLD:
-                os.remove(_AUTH_LOCKFILE)
-                fd = os.open(_AUTH_LOCKFILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.write(fd, str(device_id).encode()); os.close(fd)
-                return True
-        except OSError:
-            pass
-        return False
-    except OSError:
-        return False
-
-def _auth_touch():
-    """กันโดนยึดคิวขณะกำลังทำงานจริง (update mtime)"""
-    try:
-        os.utime(_AUTH_LOCKFILE, None)
-    except OSError:
-        pass
-
-def _auth_release():
-    try:
-        os.remove(_AUTH_LOCKFILE)
-    except OSError:
-        pass
-
-
-class _InjectGuard:
-    """แต่ละจอมี adb server แยกพอร์ตของตัวเองแล้ว (run_bot_process ตั้ง ANDROID_ADB_SERVER_PORT) -> push ขนานได้เลย ไม่ต้อง serialize"""
-    def __enter__(self):
-        return self
-    def __exit__(self, *a):
-        return False
 
 def get_ocr_reader():
     """Get or create EasyOCR reader (singleton, thread-safe)"""
@@ -1445,10 +1394,7 @@ def recycle_failed_into_queue(source_dir="login-failed"):
     คืน True ถ้าย้ายได้อย่างน้อย 1 ไฟล์
     """
     global _last_recycle_ts
-    # BOTLOGIN keeps failed accounts in the result folder; it does not silently
-    # put them back in the live queue.  Keep the old recycle option available
-    # only when a user explicitly enables it in config.
-    if not config.get("recycle_failed", 0):
+    if not config.get("recycle_failed", 1):
         return False
     # กันวนรัว ๆ: ไฟล์ที่ล็อกอินไม่ผ่านจริงจะเด้งกลับมา login-failed ทันที
     # ถ้าไม่หน่วงไว้จะกลายเป็นลูปย้ายไฟล์ไม่จบ
@@ -2463,13 +2409,6 @@ def get_connected_devices():
                 seen_boot_ids[boot_id] = d
             unique_devices.append(d)
 
-        # ★ บังคับใช้เฉพาะ 127.0.0.1:PORT — ถ้ามีอย่างน้อย 1 ตัว ตัด emulator-XXXX ทิ้งทั้งหมด (VM ตัวเดียวโผล่ 2 ชื่อ)
-        _tcp = [d for d in unique_devices if d.startswith("127.0.0.1:")]
-        if _tcp:
-            for _d in unique_devices:
-                if not _d.startswith("127.0.0.1:"):
-                    print(f"[ADB] ข้าม {_d} (บังคับใช้เฉพาะ 127.0.0.1:PORT)")
-            unique_devices = _tcp
         return unique_devices
     except Exception as e:
         print(f"[ERR] get_connected_devices: {e}")
@@ -3018,15 +2957,27 @@ class RangerGearBot(threading.Thread):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
         # เช็คว่าเกมติดตั้งอยู่ไหม - retry 3 รอบก่อนตัดสิน
         # (ตอน VM เพิ่งบูต pm อาจตอบว่างเปล่าทั้งที่แอปติดตั้งอยู่ -> อย่าเพิ่งฟันธงจากรอบเดียว)
-        # เช็คแอปแยก "ไม่มีจริง" (pm ยืนยัน) ออกจาก "adb ช้า/ตอบไม่ทัน" (None)
-        # กัน 3 จอโหลดหนัก pm timeout แล้วฟันธงผิดว่า ghost -> หยุดถาวร ทั้งที่แอปมีอยู่
-        installed = self._is_app_installed(tries=3)
-        if installed is False:
-            print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS (pm ยืนยันว่าไม่มีจริง) - หยุด retry")
-            self.app_missing = True
-            return False
-        if installed is None:
-            print(f"[{self.device_id}] [WARN] เช็คแอปไม่ได้ (adb ช้า/ค้างตอนหลายจอ) - ไม่ฟันธงว่าไม่มีแอป เปิดเกมต่อ")
+        try:
+            app_found = False
+            for pm_attempt in range(3):
+                pm_res = self.adb_run([
+                    self.adb_cmd, "-s", self.device_id, "shell",
+                    "pm", "list", "packages", "com.linecorp.LGRGS"
+                ], timeout=8)
+                pm_out = (pm_res.stdout or b"").decode("utf-8", "ignore").strip()
+                if "com.linecorp.LGRGS" in pm_out:
+                    app_found = True
+                    break
+                print(f"[{self.device_id}] [WARN] pm ยังไม่เจอแอป (รอบ {pm_attempt+1}/3) - รอ 2 วิแล้วเช็คใหม่...")
+                sleep(2)
+            if not app_found:
+                print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS บนเครื่องนี้! (เช็คแล้ว 3 รอบ - ยังไม่ได้ติดตั้ง/ชื่อ package ไม่ตรง/เครื่อง ghost) - หยุด retry")
+                # ปักธงไว้: เครื่องนี้ไม่มีแอป → ห้ามย้ายไฟล์ไปโฟลเดอร์ไหนทั้งนั้น
+                # และให้ลูปหลักหยุดหยิบไฟล์ใหม่ (ไฟล์ค้างไว้ในคิวเหมือนเดิม)
+                self.app_missing = True
+                return False
+        except Exception as e:
+            print(f"[{self.device_id}] [WARN] เช็ค package ไม่ได้: {e} - ลองเปิดต่อ")
 
         attempt = 0
         while attempt < 5:
@@ -4791,10 +4742,6 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [WARN] เช็คแอปไม่ได้ (adb ช้า/ค้าง) - ไม่ถือว่าไม่มีแอป เดินต่อ", flush=True)
                 self.update_gui_status("adb ช้า - เดินต่อ", "waiting")
 
-            # ★ ครั้งแรกต่อจอ: prime (ลบ 4 prefs -> เปิดเกม -> ปิด) ก่อนเริ่มฉีด
-            if config.get("first_run_prime", 1) and not getattr(self, "_primed", False):
-                self._prime_first_run()
-                self._primed = True
             while True:
                 # 0. Reload Config
                 load_config()
@@ -4828,15 +4775,6 @@ class RangerGearBot(threading.Thread):
                 try:
                     # Store original filename
                     self.current_original_filename = os.path.basename(xml_file)
-                    # ★ log จำนวนไฟล์ที่เหลือในคิว (backup/input-id) — ไฟล์ถูกย้ายออกคิวตอน claim แล้ว จะได้รู้ว่าเหลือกี่
-                    try:
-                        _root = os.path.dirname(os.path.abspath(__file__))
-                        _remain = sum(1 for _qf in queue_folder_names()
-                                      for _r, _d, _fs in os.walk(os.path.join(_root, _qf))
-                                      for _f in _fs if _f.lower().endswith(".xml"))
-                        print(f"[{self.device_id}] [QUEUE] หยิบ: {self.current_original_filename} | เหลือในคิว {_remain} ไฟล์ (backup+input-id)", flush=True)
-                    except Exception:
-                        pass
                     
                     # 1. Check First Loop Process Toggle
                     current_first_loop_enabled = config.get("first_loop", True)
@@ -4866,39 +4804,11 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Processing file: {self.current_original_filename}")
                     self.update_gui_status(f"Injecting: {self.current_original_filename}")
 
-                    # ★ desync: หน่วงสุ่มก่อน login (กันหลายจอ authenticate พร้อมกันจนเน็ต/เซิร์ฟไม่ไหว = Authentication failed)
-                    _jit = float(config.get("login_jitter", 6))
-                    if _jit > 0:
-                        time.sleep(random.uniform(0, _jit))
-                    # 2. Inject + Login (retry รอบชั่วคราว: crash/adb ช้า จะได้ไม่หลุดเป็น fail)
-                    login_retries = int(config.get("login_retries", 2))
-                    injected_file = None
-                    status = None
-                    for _login_try in range(login_retries + 1):
-                        injected_file = self.inject_file(xml_file)
-                        if not injected_file:
-                            break   # inject ไม่ผ่าน -> ไป handle_dead_file ด้านล่าง
-                        # ★ ยืนยันไฟล์เข้า MuMu ครบ 100% (ขนาด+md5) ก่อน start เกม
-                        time.sleep(float(config.get("post_inject_wait", 5)))
-                        _confirm = False
-                        for _cv in range(int(config.get("confirm_retries", 2)) + 1):
-                            if self._verify_on_device(injected_file):
-                                _confirm = True
-                                print(f"[{self.device_id}] [INJECT] ไฟล์เข้า MuMu ครบ 100% → เริ่มเข้าเกม", flush=True)
-                                break
-                            print(f"[{self.device_id}] [INJECT] ไฟล์ยังไม่ครบ 100% ({_cv+1}) -> ฉีดซ้ำ", flush=True)
-                            self.inject_file(xml_file)
-                            time.sleep(1)
-                        if not _confirm:
-                            print(f"[{self.device_id}] [INJECT] ไฟล์ไม่ครบ 100% → ข้ามการ start (จะ retry/fail)", flush=True)
-                            status = "failed"
-                            if _login_try < login_retries:
-                                self.first_loop_done = False
-                                try: self.clear_and_restart()
-                                except Exception: pass
-                                sleep(3 + random.uniform(0, float(config.get("login_jitter", 6))))
-                                continue
-                            break
+                    # 2. Inject
+                    injected_file = self.inject_file(xml_file)
+                    
+                    if injected_file:
+                        # 3. Login
                         self.update_gui_status("Logging in...")
                         login_start_time = time.time()
                         try:
@@ -4907,19 +4817,7 @@ class RangerGearBot(threading.Thread):
                             status = "timeout"
                             print(f"[{self.device_id}] Caught 500s Timeout!")
                             self.clear_and_restart()
-                        self._auth_release_if_held()   # ปล่อยคิว auth ทุกครั้งที่ main_login จบ
-                        # ผลที่ถือว่า "จบแล้ว" ไม่ต้องลองซ้ำ (retry ไม่ช่วย)
-                        if status in ("success", "kaiby", "random-Fail"):
-                            break
-                        # ผลชั่วคราว (failed/timeout/unknown) -> เคลียร์แล้วลองใหม่ ถ้ายังเหลือรอบ
-                        if _login_try < login_retries:
-                            print(f"[{self.device_id}] login ไม่ผ่าน (status={status}) - ลองใหม่รอบ {_login_try+2}/{login_retries+1}")
-                            self.first_loop_done = False
-                            try: self.clear_and_restart()
-                            except Exception: pass
-                            sleep(3 + random.uniform(0, float(config.get("login_jitter", 6))))   # desync retry
-
-                    if injected_file:
+                        
                         if status == "success":
                             ui_stats.record_login_time(time.time() - login_start_time)
                             self.handle_success(xml_file)
@@ -5019,11 +4917,6 @@ class RangerGearBot(threading.Thread):
         โฟลเดอร์ย่อยที่ใช้ไฟล์หมดแล้วทิ้งไปด้วย
         """
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        # Match BOTLOGIN's worker lifecycle: an XML left in this device's
-        # private folder is an interrupted job, not the next account to run.
-        # Quarantine it before claiming a new file so a crash cannot make an
-        # old/incomplete account run again unexpectedly.
-        self._quarantine_stale_private_files()
         for folder_name in queue_folder_names():
             picked = self._pick_file_from(os.path.join(script_dir, folder_name))
             if picked:
@@ -5075,13 +4968,7 @@ class RangerGearBot(threading.Thread):
                     try: os.remove(lock_file)
                     except OSError: pass
                     continue
-                # BOTLOGIN: ย้ายไฟล์ออกจากคิวเข้าโฟลเดอร์ส่วนตัวของจอ (atomic) กันโปรเซส/จออื่นแตะระหว่างทำงาน
-                _private = self._claim_private_path(xml_file)
-                try: os.remove(lock_file)
-                except OSError: pass
-                if _private:
-                    return _private
-                continue
+                return xml_file
             except FileExistsError:
                 continue
             except Exception as e:
@@ -5089,70 +4976,6 @@ class RangerGearBot(threading.Thread):
                 continue
                 
         return None
-
-    def _claim_private_path(self, xml_file):
-        """ย้ายไฟล์ที่จองได้เข้าโฟลเดอร์ส่วนตัวของจอ (atomic os.rename) คืน path ใหม่ หรือ None"""
-        try:
-            base = os.path.basename(xml_file)
-            root = os.path.dirname(os.path.abspath(__file__))
-            pdir = os.path.join(root, "_processing", str(self.device_id).replace(":", "_"))
-            os.makedirs(pdir, exist_ok=True)
-            dst = os.path.join(pdir, base)
-            if os.path.abspath(dst) == os.path.abspath(xml_file):
-                return xml_file
-            # A same-named stale job must never be overwritten.  BOTLOGIN
-            # leaves the source in the queue until a worker can claim it
-            # safely; deleting the private copy here could lose an account.
-            if os.path.exists(dst):
-                return None
-            os.rename(xml_file, dst)   # atomic; ล้มเหลว = โดนแย่งไปแล้ว
-            try:
-                _rel = os.path.relpath(xml_file, root)
-            except Exception:
-                _rel = xml_file
-            print(f"[{self.device_id}] [QUEUE] ลบ/ย้ายออกจากคิวแล้ว (ก่อนส่งเข้าเกม): {_rel}", flush=True)
-            return dst
-        except OSError:
-            return None
-
-    def _quarantine_stale_private_files(self):
-        """Move this device's interrupted XMLs to login-failed safely.
-
-        This follows BOTLOGIN's queue policy: before a worker claims its next
-        job, files left in its private processing folder are finalised as
-        interrupted work rather than resumed or returned to the live queue.
-        """
-        moved = 0
-        try:
-            pdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_processing", str(self.device_id).replace(":", "_"))
-            if not os.path.isdir(pdir):
-                return 0
-            dst_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "login-failed")
-            os.makedirs(dst_dir, exist_ok=True)
-            for fn in sorted(os.listdir(pdir)):
-                if not fn.lower().endswith(".xml"):
-                    continue
-                src = os.path.join(pdir, fn)
-                if not os.path.isfile(src):
-                    continue
-                stem, ext = os.path.splitext(fn)
-                dst = os.path.join(dst_dir, fn)
-                if os.path.exists(dst):
-                    dst = os.path.join(dst_dir, f"{stem}_{time.time_ns()}{ext}")
-                try:
-                    shutil.move(src, dst)
-                    moved += 1
-                except OSError as e:
-                    print(f"[{self.device_id}] [QUEUE] ย้ายไฟล์ค้าง {fn} ไม่สำเร็จ: {e}")
-            try:
-                os.rmdir(pdir)
-            except OSError:
-                pass
-        except OSError:
-            return moved
-        if moved:
-            print(f"[{self.device_id}] [QUEUE] ย้ายไฟล์ค้าง {moved} ไฟล์ไป login-failed/")
-        return moved
 
     def _release_file_lock(self, xml_file):
         lock_file = self._get_lock_path(xml_file)
@@ -5212,23 +5035,35 @@ class RangerGearBot(threading.Thread):
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         base = os.path.basename(file_path)
-        stem, ext = os.path.splitext(base)
         dst = os.path.join(dst_dir, base)
-        if os.path.exists(dst):
-            dst = os.path.join(dst_dir, f"{stem}_{time.time_ns()}{ext}")
-
-        # Same as BOTLOGIN: preserve the source XML that was actually queued.
-        # The game may change its on-device preference during a failed attempt;
-        # pulling it back can overwrite a good input with a partial session.
-        try:
-            shutil.move(file_path, dst)
-            print(f"[{self.device_id}] Login FAILED. Moved source XML to {dst}")
-        except OSError as e:
-            print(f"[{self.device_id}] Failed to move source XML to login-failed: {e}")
         
-        # Stop the app before the next account.  clear_specific_shared_prefs()
-        # intentionally keeps the companion preference state intact.
-        print(f"[{self.device_id}] Preparing device for the next account...")
+        print(f"[{self.device_id}] Login FAILED. Pulling file from device for debug...")
+        
+        # Pull the current file from the device to see its state
+        src_remote = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
+        temp_remote = f"/data/local/tmp/failed_pref_{self.device_id.replace(':','_')}.xml"
+        
+        try:
+            self.adb_shell(f"su -c 'cp {src_remote} {temp_remote}'")
+            self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "pull", temp_remote, dst])
+            print(f"[{self.device_id}] Saved failed session file to {dst}")
+        except Exception as e:
+            print(f"[{self.device_id}] Failed to pull remote file: {e}")
+            # Fallback: move the original local file
+            try:
+                if os.path.exists(file_path):
+                    shutil.move(file_path, dst)
+            except: pass
+
+        # Clean up local backup file if it still exists
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except: pass
+        
+        # Clear app and shared prefs to ensure device is clean
+        print(f"[{self.device_id}] Clearing app data after failure...")
         self.clear_specific_shared_prefs()
         self.clear_and_restart()
 
@@ -6635,67 +6470,16 @@ class RangerGearBot(threading.Thread):
     # ADB & Interaction
     # =========================================================
     def clear_specific_shared_prefs(self):
-        """Stop the game and clear only the account-switch preference files."""
-        prefs_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
-        targets = " ".join(
-            f"{prefs_dir}/{name}" for name in (
-                "_LINE_COCOS_PREF_KEY.xml",
-                "Cocos2dxPrefsFile.xml",
-                "com.linecorp.LGRGS_preferences.xml",
-                "trident.preferences.xml",
-            )
-        )
-        try:
-            self.adb_run(
-                [self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"],
-                timeout=15,
-            )
-            self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
-            self.adb_shell(f"su -c 'rm -f {targets}'", timeout=20)
-        except Exception as e:
-            print(f"[{self.device_id}] [WARN] Preference cleanup failed: {e}")
+        """Delete ALL shared_prefs and clear app cache"""
+        base = "/data/data/com.linecorp.LGRGS/shared_prefs"
+        cache_dir = "/data/data/com.linecorp.LGRGS/cache"
+        
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(1)
-        print(f"[{self.device_id}] Cleared 4 account-switch preference files")
-
-    def _prime_first_run(self):
-        """ครั้งแรกต่อจอ: ลบ 4 prefs -> เปิดเกม -> ปิด (prime state สะอาดก่อนฉีดบัญชี)"""
-        try:
-            print(f"[{self.device_id}] [PRIME] first-run: ลบ 4 prefs -> เปิดเกม -> ปิด", flush=True)
-            self.clear_specific_shared_prefs()
-            self.open_app()
-            sleep(float(config.get("first_run_prime_wait", 8)))
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
-            self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
-            sleep(1)
-        except Exception as e:
-            print(f"[{self.device_id}] [PRIME] error: {e}", flush=True)
-
-    def _verify_on_device(self, local_path):
-        """เช็คว่าไฟล์เข้า MuMu ครบ 100% (ขนาด+md5 ตรงกับต้นทาง) -> True/False"""
-        final = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
-        try:
-            lsize = os.path.getsize(local_path)
-            with open(local_path, "rb") as _fh:
-                lmd5 = hashlib.md5(_fh.read()).hexdigest()
-        except Exception:
-            return False
-        if self._remote_size(final) != lsize:
-            return False
-        try:
-            _r = self.adb_shell(f"su -c 'md5sum {final} 2>/dev/null || toybox md5sum {final} 2>/dev/null'", timeout=15)
-            _dm = ((_r.stdout or b"").decode("utf-8", "ignore").strip().split() or [""])[0]
-        except Exception:
-            _dm = ""
-        if _dm and _dm != lmd5:
-            return False
-        return True
-
-    def _auth_release_if_held(self):
-        """ถ้าจอนี้ถือคิว auth อยู่ -> ปล่อยให้จอถัดไป"""
-        if getattr(self, "_auth_lock_held", False):
-            _auth_release()
-            self._auth_lock_held = False
-            print(f"[{self.device_id}] [AUTH-Q] refresh หาย (auth ผ่าน) -> ปล่อยคิวให้จอถัดไป", flush=True)
+        
+        # Total clear including cache (Restore to Full Clear)
+        self.adb_shell(f"su -c 'rm -rf {base}/* && rm -rf {cache_dir}/*'")
+        print(f"[{self.device_id}] Cleared shared_prefs + cache (Full)")
 
     def _remote_size(self, remote_path):
         """ขนาดไฟล์บนเครื่อง (ไบต์) หรือ None ถ้าไม่มีไฟล์/อ่านไม่ได้"""
@@ -6732,23 +6516,9 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [WARN] killall ข้ามไป (ไม่ critical): {e}")
         sleep(1)
 
-        src_orig = os.path.abspath(local_xml_path)
-        # ★ สำเนาไฟล์ไป local ส่วนตัวก่อน push (กันไฟล์ต้นทางถูกย้าย/prune ระหว่าง push → ไฟล์ขาด) เหมือน BOTLOGIN
-        try:
-            _inj_dir = os.path.join(tempfile.gettempdir(), "ranger-inject")
-            os.makedirs(_inj_dir, exist_ok=True)
-            src = os.path.join(_inj_dir, f"pref_{self.device_id.replace(':', '_')}.xml")
-            shutil.copy2(src_orig, src)
-        except Exception as _e:
-            print(f"[{self.device_id}] [WARN] สำเนาไฟล์ local ไม่สำเร็จ ใช้ไฟล์ต้นทางแทน: {_e}")
-            src = src_orig
+        src = os.path.abspath(local_xml_path)
         try:
             local_size = os.path.getsize(src)
-            try:
-                with open(src, "rb") as _fh:
-                    local_md5 = hashlib.md5(_fh.read()).hexdigest()
-            except Exception:
-                local_md5 = None
         except OSError as e:
             print(f"[{self.device_id}] อ่านไฟล์ต้นทางไม่ได้: {e}")
             return None
@@ -6762,93 +6532,63 @@ class RangerGearBot(threading.Thread):
         final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
 
         max_retries = 3
-        with _InjectGuard():            # ★ ส่งไฟล์ทีละจอ (ข้ามโปรเซสได้) กันไฟล์เสีย/แย่งดิสก์
-            # Clear only the account-switch files for every injected account,
-            # after the game is stopped and immediately before the push.
+        for attempt in range(1, max_retries + 1):
             try:
-                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
-                self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
-                prefs_to_remove = " ".join(
-                    f"{final_dir}/{name}" for name in (
-                        "_LINE_COCOS_PREF_KEY.xml",
-                        "Cocos2dxPrefsFile.xml",
-                        "com.linecorp.LGRGS_preferences.xml",
-                        "trident.preferences.xml",
-                    )
-                )
-                wipe = self.adb_shell(f"su -c 'rm -f {prefs_to_remove}'", timeout=20)
-                if wipe.returncode != 0:
-                    out = ((wipe.stdout or b"") + (wipe.stderr or b"")).decode("utf-8", "ignore").strip()
-                    print(f"[{self.device_id}] Cannot clear account preferences before injection: {out[:200]}")
-                    return None
-            except Exception as e:
-                print(f"[{self.device_id}] Cannot clear account preferences before injection: {e}")
-                return None
-            for attempt in range(1, max_retries + 1):
-                try:
-                    # 1) push ลง /data/local/tmp ก่อน (60 วิ: หลายจอพร้อมกันดิสก์หนัก 30 วิอาจไม่พอ)
-                    result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=60)
-                    if result.returncode != 0:
-                        err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
-                        print(f"[{self.device_id}] Push attempt {attempt} failed: {err.strip()[:200]}")
-                        sleep(2)
-                        continue
-
-                    # push สำเร็จแต่ไฟล์ขาด/ไม่ครบก็มี - เช็คขนาดก่อนเอาไปใช้
-                    tmp_size = self._remote_size(tmp)
-                    if tmp_size is not None and tmp_size != local_size:
-                        print(f"[{self.device_id}] Push attempt {attempt}: ไฟล์บนเครื่องขนาดไม่ตรง "
-                              f"({tmp_size} != {local_size}) - ลองใหม่")
-                        sleep(2)
-                        continue
-
-                    # 2) แอปที่เพิ่งลง/เพิ่งถูกล้างจะยังไม่มีโฟลเดอร์ shared_prefs -> cp ล้มเงียบ ๆ
-                    #    (เคสนี้แหละที่ทำให้ "ไฟล์ไม่เข้า" ทั้งที่ไฟล์ไม่เสีย) สร้างให้ก่อนพร้อมตั้งเจ้าของ
-                    self.adb_shell(
-                        f"su -c 'mkdir -p {final_dir} && "
-                        f"chown $(stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final_dir} && "
-                        f"chmod 771 {final_dir}'", timeout=20)
-
-                    # 3) copy เข้าที่จริง + ตั้งสิทธิ์/เจ้าของให้เหมือนไฟล์ที่แอปสร้างเอง
-                    shell_cmd = (
-                        f"su -c '"
-                        f"cp {tmp} {final} && "
-                        f"chmod 666 {final} && "
-                        f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final}"
-                        f"'"
-                    )
-                    res = self.adb_shell(shell_cmd, timeout=20)
-                    out = ((res.stdout or b"") + (res.stderr or b"")).decode("utf-8", "ignore").strip()
-
-                    # 4) ยืนยันว่าไฟล์เข้าจริงและครบ - คำสั่งชุดบนคืน rc=0 ได้ทั้งที่ cp ล้มเหลว
-                    #    (su สำเร็จ ไม่ได้แปลว่า cp สำเร็จ) ของเดิมไม่เช็คเลย เลยรายงานว่า
-                    #    "Injection successful" ทั้งที่ไฟล์ไม่เข้า แล้วไปล็อกอินเป็นไอดีใหม่
-                    final_size = self._remote_size(final)
-                    if final_size != local_size:
-                        print(f"[{self.device_id}] Inject attempt {attempt}: ไฟล์ไม่เข้า/ไม่ครบ "
-                              f"(บนเครื่อง {final_size} ไบต์, ต้นทาง {local_size} ไบต์)"
-                              + (f" | {out[:200]}" if out else ""))
-                        sleep(2)
-                        continue
-
-                    # ★ เช็ค md5 (แน่นกว่าขนาด) — byte เพี้ยนแม้ขนาดเท่าก็จับได้
-                    if local_md5:
-                        _mr = self.adb_shell(f"su -c 'md5sum {final} 2>/dev/null || toybox md5sum {final} 2>/dev/null'", timeout=15)
-                        _dev_md5 = ((_mr.stdout or b"").decode("utf-8", "ignore").strip().split() or [""])[0]
-                        if _dev_md5 and _dev_md5 != local_md5:
-                            print(f"[{self.device_id}] Inject attempt {attempt}: md5 ไม่ตรง (byte เพี้ยน) dev={_dev_md5[:8]} src={local_md5[:8]} - push ใหม่")
-                            sleep(2)
-                            continue
-                    self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
-                    print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
-                    return local_xml_path
-
-                except Exception as e:
-                    print(f"[{self.device_id}] Attempt {attempt} error: {e}")
+                # 1) push ลง /data/local/tmp ก่อน (60 วิ: หลายจอพร้อมกันดิสก์หนัก 30 วิอาจไม่พอ)
+                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=60)
+                if result.returncode != 0:
+                    err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
+                    print(f"[{self.device_id}] Push attempt {attempt} failed: {err.strip()[:200]}")
                     sleep(2)
+                    continue
 
-            print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
-            return None
+                # push สำเร็จแต่ไฟล์ขาด/ไม่ครบก็มี - เช็คขนาดก่อนเอาไปใช้
+                tmp_size = self._remote_size(tmp)
+                if tmp_size is not None and tmp_size != local_size:
+                    print(f"[{self.device_id}] Push attempt {attempt}: ไฟล์บนเครื่องขนาดไม่ตรง "
+                          f"({tmp_size} != {local_size}) - ลองใหม่")
+                    sleep(2)
+                    continue
+
+                # 2) แอปที่เพิ่งลง/เพิ่งถูกล้างจะยังไม่มีโฟลเดอร์ shared_prefs -> cp ล้มเงียบ ๆ
+                #    (เคสนี้แหละที่ทำให้ "ไฟล์ไม่เข้า" ทั้งที่ไฟล์ไม่เสีย) สร้างให้ก่อนพร้อมตั้งเจ้าของ
+                self.adb_shell(
+                    f"su -c 'mkdir -p {final_dir} && "
+                    f"chown $(stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final_dir} && "
+                    f"chmod 771 {final_dir}'", timeout=20)
+
+                # 3) copy เข้าที่จริง + ตั้งสิทธิ์/เจ้าของให้เหมือนไฟล์ที่แอปสร้างเอง
+                shell_cmd = (
+                    f"su -c '"
+                    f"cp {tmp} {final} && "
+                    f"chmod 666 {final} && "
+                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final}"
+                    f"'"
+                )
+                res = self.adb_shell(shell_cmd, timeout=20)
+                out = ((res.stdout or b"") + (res.stderr or b"")).decode("utf-8", "ignore").strip()
+
+                # 4) ยืนยันว่าไฟล์เข้าจริงและครบ - คำสั่งชุดบนคืน rc=0 ได้ทั้งที่ cp ล้มเหลว
+                #    (su สำเร็จ ไม่ได้แปลว่า cp สำเร็จ) ของเดิมไม่เช็คเลย เลยรายงานว่า
+                #    "Injection successful" ทั้งที่ไฟล์ไม่เข้า แล้วไปล็อกอินเป็นไอดีใหม่
+                final_size = self._remote_size(final)
+                if final_size != local_size:
+                    print(f"[{self.device_id}] Inject attempt {attempt}: ไฟล์ไม่เข้า/ไม่ครบ "
+                          f"(บนเครื่อง {final_size} ไบต์, ต้นทาง {local_size} ไบต์)"
+                          + (f" | {out[:200]}" if out else ""))
+                    sleep(2)
+                    continue
+
+                self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
+                print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
+                return local_xml_path
+
+            except Exception as e:
+                print(f"[{self.device_id}] Attempt {attempt} error: {e}")
+                sleep(2)
+
+        print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
+        return None
 
     def first_loop_process(self):
         try:
@@ -7458,8 +7198,6 @@ class RangerGearBot(threading.Thread):
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
-        self._fixid1_reset_count = 0  # นับจำนวน reset+re-inject ตอนเจอ fixid1
-        self._auth_lock_held = False  # ถือคิว auth (กด refresh) อยู่ไหม
         
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -7578,24 +7316,10 @@ class RangerGearBot(threading.Thread):
                 self._alert2_start_time = None
 
 
-            # === fixid1.png → สับขาหลอก: reset app + ฉีดไฟล์เดิมซ้ำ + เข้าใหม่ (ก่อนยอมแพ้) ===
+            # === fixid1.png → failed ทันที ===
             if self.exists_in_cache("img/fixid1.png", similarity=0.95):
-                self._fixid1_reset_count = getattr(self, "_fixid1_reset_count", 0) + 1
-                _max_fixid1 = int(config.get("fixid1_retries", 2))
-                if self._fixid1_reset_count <= _max_fixid1:
-                    print(f"[{self.device_id}] Found fixid1.png! -> reset app + ฉีดไฟล์เดิมซ้ำ ({self._fixid1_reset_count}/{_max_fixid1})")
-                    self.clear_and_restart()
-                    try:
-                        self.inject_file(current_filename)
-                    except Exception as _e:
-                        print(f"[{self.device_id}] [WARN] re-inject fixid1 ไม่สำเร็จ: {_e}")
-                    self.open_app()
-                    self._login_fixid_count = 0
-                    sleep(3)
-                    continue
-                print(f"[{self.device_id}] fixid1.png ยังค้างหลัง reset {_max_fixid1} รอบ -> login-failed")
+                print(f"[{self.device_id}] Found fixid1.png! -> login-failed immediately")
                 self._login_fixid_count = 0
-                self._fixid1_reset_count = 0
                 return "failed"
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
@@ -7668,19 +7392,8 @@ class RangerGearBot(threading.Thread):
                 
                 continue
 
-            # === เจอ refresh.png (ไม่มี fixid) -> auth queue: กดทีละจอ ===
-            _has_refresh = self.exists_in_cache("img/refresh.png", similarity=0.8)
-            if not _has_refresh:
-                self._auth_release_if_held()   # refresh หาย -> ปล่อยคิว
-            if _has_refresh:
-                if not getattr(self, "_auth_lock_held", False):
-                    if not _auth_try_acquire(self.device_id):
-                        print(f"[{self.device_id}] [AUTH-Q] รอคิว auth (จออื่นกำลังกด refresh)...", flush=True)
-                        sleep(2)
-                        continue
-                    self._auth_lock_held = True
-                    print(f"[{self.device_id}] [AUTH-Q] ได้คิว auth -> เริ่มกด refresh", flush=True)
-                _auth_touch()
+            # === เจอ refresh.png (ไม่มี fixid) -> กด refresh -> check ===
+            if self.exists_in_cache("img/refresh.png", similarity=0.8):
                 print(f"[{self.device_id}] Found refresh.png (no fixid), clicking refresh -> check...")
                 self.click("img/refresh.png", similarity=0.8)
                 sleep(3)
@@ -7724,17 +7437,11 @@ class RangerGearBot(threading.Thread):
                     capture_output=True, text=True, timeout=5
                 )
                 if not pid_result.stdout.strip():
-                    sleep(2)   # เช็คซ้ำ (timeout ยาวขึ้น) กัน adb ช้าตอนหลายจอหลอกว่า crash
-                    try:
-                        _pid2 = subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"], capture_output=True, text=True, timeout=12)
-                    except Exception:
-                        _pid2 = None
-                    if _pid2 is None or not _pid2.stdout.strip():
-                        print(f"[{self.device_id}] App crashed during login. Relaunching...")
-                        self.open_app()
-                        sleep(5)
-                        loop_count = 0
-                        continue
+                    print(f"[{self.device_id}] App crashed during login. Relaunching...")
+                    self.open_app()
+                    sleep(5)
+                    loop_count = 0
+                    continue
             except:
                 pass
             
@@ -8151,22 +7858,8 @@ def run_bot_process(device_id, cli_args_dict, ready_q=None):
     """
     try:
         # Re-initialize everything in the new process
-        # ★ แต่ละจอใช้ adb server แยกคนละพอร์ต (กันหลายจอยิง adb server เดียวจน push ชน/shell ค้าง)
-        try:
-            _dp = int(str(device_id).rsplit(":", 1)[1])
-            _idx = (_dp - 16384) // 32 if _dp >= 16384 else (_dp % 200)
-            _srv_port = 5100 + max(0, _idx)
-        except Exception:
-            _srv_port = 5100
-        os.environ["ANDROID_ADB_SERVER_PORT"] = str(_srv_port)
-        print(f"[ADB] {device_id} → adb server แยกพอร์ต {_srv_port} (เส้นแยกต่อจอ)", flush=True)
         load_config()
         find_adb_executable()
-        try:
-            subprocess.run([adb_path, "connect", device_id], capture_output=True, timeout=15,
-                           creationflags=(subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0))
-        except Exception:
-            pass
         
         # Recreate args namespace from dict
         class Args:
@@ -8234,15 +7927,6 @@ if __name__ == "__main__":
     if cleanup_count > 0:
         print(f"[CLEANUP] Removed {cleanup_count} stale .lock file(s)")
 
-    # 2.5 BOTLOGIN-style queue setup: create the queue/result folders but do
-    # not sweep private worker folders into the live queue at application boot.
-    # A worker handles only its own interrupted XML before claiming the next
-    # account, preventing a newly started process from touching another live
-    # worker's file.
-    _runtime_root = os.path.dirname(os.path.abspath(__file__))
-    for _folder in (*queue_folder_names(), "_processing", "login-success", "login-failed", "random-fail", "7day-check"):
-        os.makedirs(os.path.join(_runtime_root, _folder), exist_ok=True)
-
     # 3. ลบไฟล์ shared_stats.json เพื่อล้างค่าจากรอบเก่า
     shared_stats_file = ui_stats._get_shared_file()
     if os.path.exists(shared_stats_file):
@@ -8273,7 +7957,7 @@ if __name__ == "__main__":
     else:
         for attempt in range(3):
             devices = get_connected_devices()
-            emulator_devices = [d for d in devices if d.startswith("127.0.0.1:")]   # บังคับใช้เฉพาะ 127.0.0.1:PORT
+            emulator_devices = [d for d in devices if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
             if emulator_devices:
                 devices = emulator_devices
                 break
