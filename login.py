@@ -8,6 +8,7 @@ import re
 # ลดการแย่งชิง CPU สำหรับ OpenCV เมื่อรันหลายเครื่องพร้อมกัน
 cv2.setNumThreads(1)
 import time
+import random
 from time import sleep
 import sys
 import shutil
@@ -4812,6 +4813,10 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Processing file: {self.current_original_filename}")
                     self.update_gui_status(f"Injecting: {self.current_original_filename}")
 
+                    # ★ desync: หน่วงสุ่มก่อน login (กันหลายจอ authenticate พร้อมกันจนเน็ต/เซิร์ฟไม่ไหว = Authentication failed)
+                    _jit = float(config.get("login_jitter", 6))
+                    if _jit > 0:
+                        time.sleep(random.uniform(0, _jit))
                     # 2. Inject + Login (retry รอบชั่วคราว: crash/adb ช้า จะได้ไม่หลุดเป็น fail)
                     login_retries = int(config.get("login_retries", 2))
                     injected_file = None
@@ -4837,7 +4842,7 @@ class RangerGearBot(threading.Thread):
                             self.first_loop_done = False
                             try: self.clear_and_restart()
                             except Exception: pass
-                            sleep(3)
+                            sleep(3 + random.uniform(0, float(config.get("login_jitter", 6))))   # desync retry
 
                     if injected_file:
                         if status == "success":
