@@ -1363,41 +1363,10 @@ _INJECT_LOCKFILE = os.path.join(tempfile.gettempdir(), "ranger-locks", "_inject_
 
 
 class _InjectGuard:
-    """ล็อกส่งไฟล์ทั้งเครื่อง: กันทั้ง thread และข้ามโปรเซส (หลาย .exe/หน้าต่าง) ให้ push/inject ทีละจอ"""
+    """แต่ละจอมี adb server แยกพอร์ตของตัวเองแล้ว (run_bot_process ตั้ง ANDROID_ADB_SERVER_PORT) -> push ขนานได้เลย ไม่ต้อง serialize"""
     def __enter__(self):
-        _inject_lock.acquire()
-        try:
-            os.makedirs(os.path.dirname(_INJECT_LOCKFILE), exist_ok=True)
-        except OSError:
-            pass
-        self.fd = None
-        deadline = time.time() + 180
-        while True:
-            try:
-                self.fd = os.open(_INJECT_LOCKFILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                break
-            except FileExistsError:
-                try:
-                    if time.time() - os.path.getmtime(_INJECT_LOCKFILE) > 120:
-                        os.remove(_INJECT_LOCKFILE)
-                        continue
-                except OSError:
-                    pass
-                if time.time() > deadline:
-                    break
-                time.sleep(0.25)
         return self
     def __exit__(self, *a):
-        if getattr(self, "fd", None) is not None:
-            try:
-                os.close(self.fd)
-            except OSError:
-                pass
-            try:
-                os.remove(_INJECT_LOCKFILE)
-            except OSError:
-                pass
-        _inject_lock.release()
         return False
 
 def get_ocr_reader():
