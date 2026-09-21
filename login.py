@@ -1039,7 +1039,7 @@ if GUI_AVAILABLE:
             connect_known_ports()
             
             current_devices = get_connected_devices()
-            emulator_devices = [d for d in current_devices if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
+            emulator_devices = [d for d in current_devices if d.startswith("127.0.0.1:")]   # บังคับใช้เฉพาะ 127.0.0.1:PORT (ตัด emulator-XXXX ซ้ำ)
             
             new_count = 0
             for dev in emulator_devices:
@@ -2450,6 +2450,13 @@ def get_connected_devices():
                 seen_boot_ids[boot_id] = d
             unique_devices.append(d)
 
+        # ★ บังคับใช้เฉพาะ 127.0.0.1:PORT — ถ้ามีอย่างน้อย 1 ตัว ตัด emulator-XXXX ทิ้งทั้งหมด (VM ตัวเดียวโผล่ 2 ชื่อ)
+        _tcp = [d for d in unique_devices if d.startswith("127.0.0.1:")]
+        if _tcp:
+            for _d in unique_devices:
+                if not _d.startswith("127.0.0.1:"):
+                    print(f"[ADB] ข้าม {_d} (บังคับใช้เฉพาะ 127.0.0.1:PORT)")
+            unique_devices = _tcp
         return unique_devices
     except Exception as e:
         print(f"[ERR] get_connected_devices: {e}")
@@ -8072,7 +8079,7 @@ if __name__ == "__main__":
     else:
         for attempt in range(3):
             devices = get_connected_devices()
-            emulator_devices = [d for d in devices if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
+            emulator_devices = [d for d in devices if d.startswith("127.0.0.1:")]   # บังคับใช้เฉพาะ 127.0.0.1:PORT
             if emulator_devices:
                 devices = emulator_devices
                 break
