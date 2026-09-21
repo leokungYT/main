@@ -1958,9 +1958,9 @@ class RangerPlusBot(multiprocessing.Process):
         โฟลเดอร์ย่อยที่ใช้ไฟล์หมดแล้วทิ้งไปด้วย
         """
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        _resume = self._resume_private_file()
-        if _resume:
-            return _resume
+        # BOTLOGIN-style lifecycle: do not resume an interrupted private job.
+        # Put it in login-failed before claiming a fresh account instead.
+        self._quarantine_stale_private_files()
         total = locked = 0
         for name in self._queue_folders():
             picked, n_files, n_locked = self._pick_file_from(os.path.join(script_dir, name))
@@ -2053,24 +2053,45 @@ class RangerPlusBot(multiprocessing.Process):
             if os.path.abspath(dst) == os.path.abspath(xml_file):
                 return xml_file
             if os.path.exists(dst):
-                try: os.remove(dst)
-                except OSError: pass
+                return None
             os.rename(xml_file, dst)
             return dst
         except OSError:
             return None
 
-    def _resume_private_file(self):
-        """ไฟล์ค้างในโฟลเดอร์ส่วนตัวของจอ (รอบก่อนปิดกลางคัน) -> ทำต่อ"""
+    def _quarantine_stale_private_files(self):
+        """Move this device's interrupted XMLs to login-failed safely."""
+        moved = 0
         try:
             pdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_processing", str(self.device_id).replace(":", "_"))
-            if os.path.isdir(pdir):
-                for fn in sorted(os.listdir(pdir)):
-                    if fn.lower().endswith(".xml"):
-                        return os.path.join(pdir, fn)
+            if not os.path.isdir(pdir):
+                return 0
+            dst_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "login-failed")
+            os.makedirs(dst_dir, exist_ok=True)
+            for fn in sorted(os.listdir(pdir)):
+                if not fn.lower().endswith(".xml"):
+                    continue
+                src = os.path.join(pdir, fn)
+                if not os.path.isfile(src):
+                    continue
+                stem, ext = os.path.splitext(fn)
+                dst = os.path.join(dst_dir, fn)
+                if os.path.exists(dst):
+                    dst = os.path.join(dst_dir, f"{stem}_{time.time_ns()}{ext}")
+                try:
+                    shutil.move(src, dst)
+                    moved += 1
+                except OSError as e:
+                    print(f"[{self.device_id}] [QUEUE] ย้ายไฟล์ค้าง {fn} ไม่สำเร็จ: {e}")
+            try:
+                os.rmdir(pdir)
+            except OSError:
+                pass
         except OSError:
-            pass
-        return None
+            return moved
+        if moved:
+            print(f"[{self.device_id}] [QUEUE] ย้ายไฟล์ค้าง {moved} ไฟล์ไป login-failed/")
+        return moved
 
     def _release_file_lock(self, xml_file):
         lock_file = self._get_lock_path(xml_file)
@@ -2122,35 +2143,20 @@ class RangerPlusBot(multiprocessing.Process):
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         base = os.path.basename(file_path)
+        stem, ext = os.path.splitext(base)
         dst = os.path.join(dst_dir, base)
-        
-        print(f"[{self.device_id}] Login FAILED. Pulling file from device for debug...")
-        
-        # Pull the current file from the device to see its state
-        src_remote = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
-        temp_remote = f"/data/local/tmp/failed_pref_{self.device_id.replace(':','_')}.xml"
-        
-        try:
-            self.adb_shell(f"su -c 'cp {src_remote} {temp_remote}'")
-            self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "pull", temp_remote, dst])
-            print(f"[{self.device_id}] Saved failed session file to {dst}")
-        except Exception as e:
-            print(f"[{self.device_id}] Failed to pull remote file: {e}")
-            # Fallback: move the original local file
-            try:
-                if os.path.exists(file_path):
-                    shutil.move(file_path, dst)
-            except: pass
+        if os.path.exists(dst):
+            dst = os.path.join(dst_dir, f"{stem}_{time.time_ns()}{ext}")
 
-        # Clean up local backup file if it still exists
+        # Preserve the original queued XML.  Pulling the in-game preference
+        # after a failed login can replace it with a partial session.
         try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except: pass
+            shutil.move(file_path, dst)
+            print(f"[{self.device_id}] Login FAILED. Moved source XML to {dst}")
+        except OSError as e:
+            print(f"[{self.device_id}] Failed to move source XML to login-failed: {e}")
 
-        # Clear app and shared prefs to ensure device is clean
-        print(f"[{self.device_id}] Clearing app data after failure...")
+        print(f"[{self.device_id}] Preparing device for the next account...")
         self.clear_specific_shared_prefs()
         self.clear_and_restart()
 
@@ -2897,22 +2903,19 @@ class RangerPlusBot(multiprocessing.Process):
     # Logic Methods
     # =========================================================
     def clear_specific_shared_prefs(self):
-        """Stop the game before an account switch without deleting its login state.
-
-        ``inject_file`` replaces only ``_LINE_COCOS_PREF_KEY.xml``.  Keeping
-        the companion preferences is required for the next injected account
-        to open after a previous account has failed.
-        """
+        """BOTLOGIN-style reset: stop the game and remove all shared prefs."""
+        prefs_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
         try:
             self.adb_run(
                 [self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"],
                 timeout=15,
             )
             self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
+            self.adb_shell(f"su -c 'rm -rf {prefs_dir}'", timeout=20)
         except Exception as e:
-            print(f"[{self.device_id}] [WARN] Stop before next injection failed: {e}")
+            print(f"[{self.device_id}] [WARN] SharedPrefs reset failed: {e}")
         sleep(1)
-        print(f"[{self.device_id}] Kept shared_prefs + cache; next injection will replace only the account XML")
+        print(f"[{self.device_id}] Cleared shared_prefs (BOTLOGIN mode)")
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
@@ -2942,12 +2945,27 @@ class RangerPlusBot(multiprocessing.Process):
         
         max_retries = 3
         with _InjectGuard():            # ★ ส่งไฟล์ทีละจอ (ข้ามโปรเซสได้) กันไฟล์เสีย/แย่งดิสก์
-            # ★ หยุด+ฆ่าเกมซ้ำภายใน lock ก่อน push (กัน 3 จอโหลดหนัก force-stop ก่อนหน้าไม่ทัน แล้วเกมเขียนทับ)
+            # BOTLOGIN clears the complete preference directory for every
+            # account, after the game is definitely stopped and before push.
             try:
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
                 self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
-            except Exception:
-                pass
+                wipe = self.adb_shell(f"su -c 'rm -rf {final_dir}'", timeout=20)
+                if wipe.returncode != 0:
+                    out = ((wipe.stdout or b"") + (wipe.stderr or b"")).decode("utf-8", "ignore").strip()
+                    print(f"[{self.device_id}] Cannot clear shared_prefs before injection: {out[:200]}")
+                    return None
+                prepare = self.adb_shell(
+                    f"su -c 'mkdir -p {final_dir} && "
+                    f"chown $(stat -c %u:%g {final_dir}/.. 2>/dev/null || echo 1000:1000) {final_dir} && "
+                    f"chmod 771 {final_dir}'", timeout=20)
+                if prepare.returncode != 0:
+                    out = ((prepare.stdout or b"") + (prepare.stderr or b"")).decode("utf-8", "ignore").strip()
+                    print(f"[{self.device_id}] Cannot recreate shared_prefs before injection: {out[:200]}")
+                    return None
+            except Exception as e:
+                print(f"[{self.device_id}] Cannot clear shared_prefs before injection: {e}")
+                return None
             for attempt in range(1, max_retries + 1):
                 try:
                     # Push to tmp

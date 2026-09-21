@@ -1,5 +1,5 @@
 {
-    "7day": 0,
+    "7day": 1,
     "shopgacha": 0,
     "swap_shop": 0,
     "swap_shopevent": 0,
@@ -61,7 +61,7 @@
     "check-gear": 0,
     "use_ocr": 0,
     "box_settings": {
-        "first_round": 0,
+        "first_round": 1,
         "second_round": 0
     },
     "black_screen_timeout": 8,
@@ -71,7 +71,7 @@
     "kaibycheck": 0,
     "misson": 0,
     "move_success": {
-        "enabled": 1,
+        "enabled": 0,
         "time": "00:00",
         "source": "login-success",
         "dest": "input-id"
@@ -88,7 +88,7 @@
     "screen_boot_wait": 180,
     "screen_auto_relaunch": 1,
     "screen_max_relaunch": 2,
-    "recycle_failed": 1,
+    "recycle_failed": 0,
     "recycle_failed_cooldown": 600,
     "mumu_fps": 120,
     "mumu_cpu": 2,

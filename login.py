@@ -1435,7 +1435,10 @@ def recycle_failed_into_queue(source_dir="login-failed"):
     คืน True ถ้าย้ายได้อย่างน้อย 1 ไฟล์
     """
     global _last_recycle_ts
-    if not config.get("recycle_failed", 1):
+    # BOTLOGIN keeps failed accounts in the result folder; it does not silently
+    # put them back in the live queue.  Keep the old recycle option available
+    # only when a user explicitly enables it in config.
+    if not config.get("recycle_failed", 0):
         return False
     # กันวนรัว ๆ: ไฟล์ที่ล็อกอินไม่ผ่านจริงจะเด้งกลับมา login-failed ทันที
     # ถ้าไม่หน่วงไว้จะกลายเป็นลูปย้ายไฟล์ไม่จบ
@@ -4967,9 +4970,11 @@ class RangerGearBot(threading.Thread):
         โฟลเดอร์ย่อยที่ใช้ไฟล์หมดแล้วทิ้งไปด้วย
         """
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        _resume = self._resume_private_file()
-        if _resume:
-            return _resume
+        # Match BOTLOGIN's worker lifecycle: an XML left in this device's
+        # private folder is an interrupted job, not the next account to run.
+        # Quarantine it before claiming a new file so a crash cannot make an
+        # old/incomplete account run again unexpectedly.
+        self._quarantine_stale_private_files()
         for folder_name in queue_folder_names():
             picked = self._pick_file_from(os.path.join(script_dir, folder_name))
             if picked:
@@ -5046,25 +5051,54 @@ class RangerGearBot(threading.Thread):
             dst = os.path.join(pdir, base)
             if os.path.abspath(dst) == os.path.abspath(xml_file):
                 return xml_file
+            # A same-named stale job must never be overwritten.  BOTLOGIN
+            # leaves the source in the queue until a worker can claim it
+            # safely; deleting the private copy here could lose an account.
             if os.path.exists(dst):
-                try: os.remove(dst)
-                except OSError: pass
+                return None
             os.rename(xml_file, dst)   # atomic; ล้มเหลว = โดนแย่งไปแล้ว
             return dst
         except OSError:
             return None
 
-    def _resume_private_file(self):
-        """ไฟล์ค้างในโฟลเดอร์ส่วนตัวของจอ (รอบก่อนปิดกลางคัน) -> ทำต่อ"""
+    def _quarantine_stale_private_files(self):
+        """Move this device's interrupted XMLs to login-failed safely.
+
+        This follows BOTLOGIN's queue policy: before a worker claims its next
+        job, files left in its private processing folder are finalised as
+        interrupted work rather than resumed or returned to the live queue.
+        """
+        moved = 0
         try:
             pdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_processing", str(self.device_id).replace(":", "_"))
-            if os.path.isdir(pdir):
-                for fn in sorted(os.listdir(pdir)):
-                    if fn.lower().endswith(".xml"):
-                        return os.path.join(pdir, fn)
+            if not os.path.isdir(pdir):
+                return 0
+            dst_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "login-failed")
+            os.makedirs(dst_dir, exist_ok=True)
+            for fn in sorted(os.listdir(pdir)):
+                if not fn.lower().endswith(".xml"):
+                    continue
+                src = os.path.join(pdir, fn)
+                if not os.path.isfile(src):
+                    continue
+                stem, ext = os.path.splitext(fn)
+                dst = os.path.join(dst_dir, fn)
+                if os.path.exists(dst):
+                    dst = os.path.join(dst_dir, f"{stem}_{time.time_ns()}{ext}")
+                try:
+                    shutil.move(src, dst)
+                    moved += 1
+                except OSError as e:
+                    print(f"[{self.device_id}] [QUEUE] ย้ายไฟล์ค้าง {fn} ไม่สำเร็จ: {e}")
+            try:
+                os.rmdir(pdir)
+            except OSError:
+                pass
         except OSError:
-            pass
-        return None
+            return moved
+        if moved:
+            print(f"[{self.device_id}] [QUEUE] ย้ายไฟล์ค้าง {moved} ไฟล์ไป login-failed/")
+        return moved
 
     def _release_file_lock(self, xml_file):
         lock_file = self._get_lock_path(xml_file)
@@ -5124,35 +5158,23 @@ class RangerGearBot(threading.Thread):
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         base = os.path.basename(file_path)
+        stem, ext = os.path.splitext(base)
         dst = os.path.join(dst_dir, base)
-        
-        print(f"[{self.device_id}] Login FAILED. Pulling file from device for debug...")
-        
-        # Pull the current file from the device to see its state
-        src_remote = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
-        temp_remote = f"/data/local/tmp/failed_pref_{self.device_id.replace(':','_')}.xml"
-        
-        try:
-            self.adb_shell(f"su -c 'cp {src_remote} {temp_remote}'")
-            self.adb_shell(f"su -c 'chmod 666 {temp_remote}'")
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "pull", temp_remote, dst])
-            print(f"[{self.device_id}] Saved failed session file to {dst}")
-        except Exception as e:
-            print(f"[{self.device_id}] Failed to pull remote file: {e}")
-            # Fallback: move the original local file
-            try:
-                if os.path.exists(file_path):
-                    shutil.move(file_path, dst)
-            except: pass
+        if os.path.exists(dst):
+            dst = os.path.join(dst_dir, f"{stem}_{time.time_ns()}{ext}")
 
-        # Clean up local backup file if it still exists
+        # Same as BOTLOGIN: preserve the source XML that was actually queued.
+        # The game may change its on-device preference during a failed attempt;
+        # pulling it back can overwrite a good input with a partial session.
         try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except: pass
+            shutil.move(file_path, dst)
+            print(f"[{self.device_id}] Login FAILED. Moved source XML to {dst}")
+        except OSError as e:
+            print(f"[{self.device_id}] Failed to move source XML to login-failed: {e}")
         
-        # Clear app and shared prefs to ensure device is clean
-        print(f"[{self.device_id}] Clearing app data after failure...")
+        # Stop the app before the next account.  clear_specific_shared_prefs()
+        # intentionally keeps the companion preference state intact.
+        print(f"[{self.device_id}] Preparing device for the next account...")
         self.clear_specific_shared_prefs()
         self.clear_and_restart()
 
@@ -6559,24 +6581,19 @@ class RangerGearBot(threading.Thread):
     # ADB & Interaction
     # =========================================================
     def clear_specific_shared_prefs(self):
-        """Stop the game before an account switch without deleting its login state.
-
-        The injected XML is deliberately written over only
-        ``_LINE_COCOS_PREF_KEY.xml`` in ``inject_file``.  Deleting all of
-        shared_prefs here also deletes the companion state that lets the game
-        open that XML, which made every later, known-good account fail after
-        one failed account.
-        """
+        """BOTLOGIN-style reset: stop the game and remove all shared prefs."""
+        prefs_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
         try:
             self.adb_run(
                 [self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"],
                 timeout=15,
             )
             self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
+            self.adb_shell(f"su -c 'rm -rf {prefs_dir}'", timeout=20)
         except Exception as e:
-            print(f"[{self.device_id}] [WARN] Stop before next injection failed: {e}")
+            print(f"[{self.device_id}] [WARN] SharedPrefs reset failed: {e}")
         sleep(1)
-        print(f"[{self.device_id}] Kept shared_prefs + cache; next injection will replace only the account XML")
+        print(f"[{self.device_id}] Cleared shared_prefs (BOTLOGIN mode)")
 
     def _remote_size(self, remote_path):
         """ขนาดไฟล์บนเครื่อง (ไบต์) หรือ None ถ้าไม่มีไฟล์/อ่านไม่ได้"""
@@ -6639,12 +6656,19 @@ class RangerGearBot(threading.Thread):
 
         max_retries = 3
         with _InjectGuard():            # ★ ส่งไฟล์ทีละจอ (ข้ามโปรเซสได้) กันไฟล์เสีย/แย่งดิสก์
-            # ★ หยุด+ฆ่าเกมซ้ำภายใน lock ก่อน push (กัน 3 จอโหลดหนัก force-stop ก่อนหน้าไม่ทัน แล้วเกมเขียนทับ)
+            # BOTLOGIN clears the complete preference directory for every
+            # account, after the game is definitely stopped and before push.
             try:
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
                 self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
-            except Exception:
-                pass
+                wipe = self.adb_shell(f"su -c 'rm -rf {final_dir}'", timeout=20)
+                if wipe.returncode != 0:
+                    out = ((wipe.stdout or b"") + (wipe.stderr or b"")).decode("utf-8", "ignore").strip()
+                    print(f"[{self.device_id}] Cannot clear shared_prefs before injection: {out[:200]}")
+                    return None
+            except Exception as e:
+                print(f"[{self.device_id}] Cannot clear shared_prefs before injection: {e}")
+                return None
             for attempt in range(1, max_retries + 1):
                 try:
                     # 1) push ลง /data/local/tmp ก่อน (60 วิ: หลายจอพร้อมกันดิสก์หนัก 30 วิอาจไม่พอ)
@@ -8046,30 +8070,14 @@ if __name__ == "__main__":
     if cleanup_count > 0:
         print(f"[CLEANUP] Removed {cleanup_count} stale .lock file(s)")
 
-    # 2.5 กู้ไฟล์ค้างใน _processing/ (จากรอบก่อนที่ปิดกลางคัน) กลับเข้าคิว กันไอดีหาย
-    _proc_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_processing")
-    _recovered = 0
-    if os.path.isdir(_proc_root):
-        _qf_list = queue_folder_names()
-        _back = os.path.join(os.path.dirname(os.path.abspath(__file__)), _qf_list[0] if _qf_list else "input-id")
-        os.makedirs(_back, exist_ok=True)
-        for _sub in os.listdir(_proc_root):
-            _subp = os.path.join(_proc_root, _sub)
-            if not os.path.isdir(_subp): continue
-            for _fn in os.listdir(_subp):
-                if not _fn.lower().endswith(".xml"): continue
-                try:
-                    _dst = os.path.join(_back, _fn)
-                    if os.path.exists(_dst):
-                        import uuid as _uuid
-                        _stem, _ext = os.path.splitext(_fn)
-                        _dst = os.path.join(_back, f"{_stem}_{_uuid.uuid4().hex[:8]}{_ext}")
-                    shutil.move(os.path.join(_subp, _fn), _dst); _recovered += 1
-                except OSError: pass
-            try: os.rmdir(_subp)
-            except OSError: pass
-    if _recovered > 0:
-        print(f"[CLEANUP] กู้ไฟล์ค้างจาก _processing/ กลับเข้าคิว: {_recovered} ไฟล์")
+    # 2.5 BOTLOGIN-style queue setup: create the queue/result folders but do
+    # not sweep private worker folders into the live queue at application boot.
+    # A worker handles only its own interrupted XML before claiming the next
+    # account, preventing a newly started process from touching another live
+    # worker's file.
+    _runtime_root = os.path.dirname(os.path.abspath(__file__))
+    for _folder in (*queue_folder_names(), "_processing", "login-success", "login-failed", "random-fail", "7day-check"):
+        os.makedirs(os.path.join(_runtime_root, _folder), exist_ok=True)
 
     # 3. ลบไฟล์ shared_stats.json เพื่อล้างค่าจากรอบเก่า
     shared_stats_file = ui_stats._get_shared_file()
