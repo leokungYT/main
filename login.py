@@ -1362,6 +1362,46 @@ _minitouch_init_lock = threading.Lock()
 _inject_lock = threading.Lock()  # in-process (thread เดียวกัน)
 _INJECT_LOCKFILE = os.path.join(tempfile.gettempdir(), "ranger-locks", "_inject_global.lock")
 
+# ===== auth queue ข้ามโปรเซส: ทีละจอกด refresh (auth) กัน refresh พร้อมกันจนโดนบล็อค =====
+_AUTH_LOCKFILE = os.path.join(tempfile.gettempdir(), "ranger-locks", "_auth_queue.lock")
+_AUTH_MAX_HOLD = 45   # วิ กันจอค้างถือคิวนานเกิน -> จออื่นยึดคิวต่อได้
+
+def _auth_try_acquire(device_id):
+    """ขอคิว auth (non-blocking). ได้=True / จออื่นถืออยู่=False (มี stale-steal)"""
+    try:
+        os.makedirs(os.path.dirname(_AUTH_LOCKFILE), exist_ok=True)
+    except OSError:
+        pass
+    try:
+        fd = os.open(_AUTH_LOCKFILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, str(device_id).encode()); os.close(fd)
+        return True
+    except FileExistsError:
+        try:
+            if time.time() - os.path.getmtime(_AUTH_LOCKFILE) > _AUTH_MAX_HOLD:
+                os.remove(_AUTH_LOCKFILE)
+                fd = os.open(_AUTH_LOCKFILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, str(device_id).encode()); os.close(fd)
+                return True
+        except OSError:
+            pass
+        return False
+    except OSError:
+        return False
+
+def _auth_touch():
+    """กันโดนยึดคิวขณะกำลังทำงานจริง (update mtime)"""
+    try:
+        os.utime(_AUTH_LOCKFILE, None)
+    except OSError:
+        pass
+
+def _auth_release():
+    try:
+        os.remove(_AUTH_LOCKFILE)
+    except OSError:
+        pass
+
 
 class _InjectGuard:
     """แต่ละจอมี adb server แยกพอร์ตของตัวเองแล้ว (run_bot_process ตั้ง ANDROID_ADB_SERVER_PORT) -> push ขนานได้เลย ไม่ต้อง serialize"""
@@ -4867,6 +4907,7 @@ class RangerGearBot(threading.Thread):
                             status = "timeout"
                             print(f"[{self.device_id}] Caught 500s Timeout!")
                             self.clear_and_restart()
+                        self._auth_release_if_held()   # ปล่อยคิว auth ทุกครั้งที่ main_login จบ
                         # ผลที่ถือว่า "จบแล้ว" ไม่ต้องลองซ้ำ (retry ไม่ช่วย)
                         if status in ("success", "kaiby", "random-Fail"):
                             break
@@ -6649,6 +6690,13 @@ class RangerGearBot(threading.Thread):
             return False
         return True
 
+    def _auth_release_if_held(self):
+        """ถ้าจอนี้ถือคิว auth อยู่ -> ปล่อยให้จอถัดไป"""
+        if getattr(self, "_auth_lock_held", False):
+            _auth_release()
+            self._auth_lock_held = False
+            print(f"[{self.device_id}] [AUTH-Q] refresh หาย (auth ผ่าน) -> ปล่อยคิวให้จอถัดไป", flush=True)
+
     def _remote_size(self, remote_path):
         """ขนาดไฟล์บนเครื่อง (ไบต์) หรือ None ถ้าไม่มีไฟล์/อ่านไม่ได้"""
         try:
@@ -7411,6 +7459,7 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
         self._fixid1_reset_count = 0  # นับจำนวน reset+re-inject ตอนเจอ fixid1
+        self._auth_lock_held = False  # ถือคิว auth (กด refresh) อยู่ไหม
         
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -7619,8 +7668,19 @@ class RangerGearBot(threading.Thread):
                 
                 continue
 
-            # === เจอ refresh.png (ไม่มี fixid) -> กด refresh -> check ===
-            if self.exists_in_cache("img/refresh.png", similarity=0.8):
+            # === เจอ refresh.png (ไม่มี fixid) -> auth queue: กดทีละจอ ===
+            _has_refresh = self.exists_in_cache("img/refresh.png", similarity=0.8)
+            if not _has_refresh:
+                self._auth_release_if_held()   # refresh หาย -> ปล่อยคิว
+            if _has_refresh:
+                if not getattr(self, "_auth_lock_held", False):
+                    if not _auth_try_acquire(self.device_id):
+                        print(f"[{self.device_id}] [AUTH-Q] รอคิว auth (จออื่นกำลังกด refresh)...", flush=True)
+                        sleep(2)
+                        continue
+                    self._auth_lock_held = True
+                    print(f"[{self.device_id}] [AUTH-Q] ได้คิว auth -> เริ่มกด refresh", flush=True)
+                _auth_touch()
                 print(f"[{self.device_id}] Found refresh.png (no fixid), clicking refresh -> check...")
                 self.click("img/refresh.png", similarity=0.8)
                 sleep(3)
