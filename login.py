@@ -1358,6 +1358,7 @@ _ocr_lock = threading.Lock()  # Thread-safe OCR init
 
 # Guards the one-time minitouch startup (shared by every bot thread).
 _minitouch_init_lock = threading.Lock()
+_inject_lock = threading.Lock()  # ส่งไฟล์/inject เข้า MuMu ทีละจอทั้งโปรเซส (กัน push ชนกันจนไฟล์เสีย)
 
 def get_ocr_reader():
     """Get or create EasyOCR reader (singleton, thread-safe)"""
@@ -6532,63 +6533,64 @@ class RangerGearBot(threading.Thread):
         final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
 
         max_retries = 3
-        for attempt in range(1, max_retries + 1):
-            try:
-                # 1) push ลง /data/local/tmp ก่อน (60 วิ: หลายจอพร้อมกันดิสก์หนัก 30 วิอาจไม่พอ)
-                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=60)
-                if result.returncode != 0:
-                    err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
-                    print(f"[{self.device_id}] Push attempt {attempt} failed: {err.strip()[:200]}")
+        with _inject_lock:            # ★ ส่งไฟล์ทีละจอ กันไฟล์เสีย/แย่งดิสก์ตอน push หลายจอ
+            for attempt in range(1, max_retries + 1):
+                try:
+                    # 1) push ลง /data/local/tmp ก่อน (60 วิ: หลายจอพร้อมกันดิสก์หนัก 30 วิอาจไม่พอ)
+                    result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=60)
+                    if result.returncode != 0:
+                        err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
+                        print(f"[{self.device_id}] Push attempt {attempt} failed: {err.strip()[:200]}")
+                        sleep(2)
+                        continue
+
+                    # push สำเร็จแต่ไฟล์ขาด/ไม่ครบก็มี - เช็คขนาดก่อนเอาไปใช้
+                    tmp_size = self._remote_size(tmp)
+                    if tmp_size is not None and tmp_size != local_size:
+                        print(f"[{self.device_id}] Push attempt {attempt}: ไฟล์บนเครื่องขนาดไม่ตรง "
+                              f"({tmp_size} != {local_size}) - ลองใหม่")
+                        sleep(2)
+                        continue
+
+                    # 2) แอปที่เพิ่งลง/เพิ่งถูกล้างจะยังไม่มีโฟลเดอร์ shared_prefs -> cp ล้มเงียบ ๆ
+                    #    (เคสนี้แหละที่ทำให้ "ไฟล์ไม่เข้า" ทั้งที่ไฟล์ไม่เสีย) สร้างให้ก่อนพร้อมตั้งเจ้าของ
+                    self.adb_shell(
+                        f"su -c 'mkdir -p {final_dir} && "
+                        f"chown $(stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final_dir} && "
+                        f"chmod 771 {final_dir}'", timeout=20)
+
+                    # 3) copy เข้าที่จริง + ตั้งสิทธิ์/เจ้าของให้เหมือนไฟล์ที่แอปสร้างเอง
+                    shell_cmd = (
+                        f"su -c '"
+                        f"cp {tmp} {final} && "
+                        f"chmod 666 {final} && "
+                        f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final}"
+                        f"'"
+                    )
+                    res = self.adb_shell(shell_cmd, timeout=20)
+                    out = ((res.stdout or b"") + (res.stderr or b"")).decode("utf-8", "ignore").strip()
+
+                    # 4) ยืนยันว่าไฟล์เข้าจริงและครบ - คำสั่งชุดบนคืน rc=0 ได้ทั้งที่ cp ล้มเหลว
+                    #    (su สำเร็จ ไม่ได้แปลว่า cp สำเร็จ) ของเดิมไม่เช็คเลย เลยรายงานว่า
+                    #    "Injection successful" ทั้งที่ไฟล์ไม่เข้า แล้วไปล็อกอินเป็นไอดีใหม่
+                    final_size = self._remote_size(final)
+                    if final_size != local_size:
+                        print(f"[{self.device_id}] Inject attempt {attempt}: ไฟล์ไม่เข้า/ไม่ครบ "
+                              f"(บนเครื่อง {final_size} ไบต์, ต้นทาง {local_size} ไบต์)"
+                              + (f" | {out[:200]}" if out else ""))
+                        sleep(2)
+                        continue
+
+                    self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
+                    print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
+                    return local_xml_path
+
+                except Exception as e:
+                    print(f"[{self.device_id}] Attempt {attempt} error: {e}")
                     sleep(2)
-                    continue
 
-                # push สำเร็จแต่ไฟล์ขาด/ไม่ครบก็มี - เช็คขนาดก่อนเอาไปใช้
-                tmp_size = self._remote_size(tmp)
-                if tmp_size is not None and tmp_size != local_size:
-                    print(f"[{self.device_id}] Push attempt {attempt}: ไฟล์บนเครื่องขนาดไม่ตรง "
-                          f"({tmp_size} != {local_size}) - ลองใหม่")
-                    sleep(2)
-                    continue
-
-                # 2) แอปที่เพิ่งลง/เพิ่งถูกล้างจะยังไม่มีโฟลเดอร์ shared_prefs -> cp ล้มเงียบ ๆ
-                #    (เคสนี้แหละที่ทำให้ "ไฟล์ไม่เข้า" ทั้งที่ไฟล์ไม่เสีย) สร้างให้ก่อนพร้อมตั้งเจ้าของ
-                self.adb_shell(
-                    f"su -c 'mkdir -p {final_dir} && "
-                    f"chown $(stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final_dir} && "
-                    f"chmod 771 {final_dir}'", timeout=20)
-
-                # 3) copy เข้าที่จริง + ตั้งสิทธิ์/เจ้าของให้เหมือนไฟล์ที่แอปสร้างเอง
-                shell_cmd = (
-                    f"su -c '"
-                    f"cp {tmp} {final} && "
-                    f"chmod 666 {final} && "
-                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final}"
-                    f"'"
-                )
-                res = self.adb_shell(shell_cmd, timeout=20)
-                out = ((res.stdout or b"") + (res.stderr or b"")).decode("utf-8", "ignore").strip()
-
-                # 4) ยืนยันว่าไฟล์เข้าจริงและครบ - คำสั่งชุดบนคืน rc=0 ได้ทั้งที่ cp ล้มเหลว
-                #    (su สำเร็จ ไม่ได้แปลว่า cp สำเร็จ) ของเดิมไม่เช็คเลย เลยรายงานว่า
-                #    "Injection successful" ทั้งที่ไฟล์ไม่เข้า แล้วไปล็อกอินเป็นไอดีใหม่
-                final_size = self._remote_size(final)
-                if final_size != local_size:
-                    print(f"[{self.device_id}] Inject attempt {attempt}: ไฟล์ไม่เข้า/ไม่ครบ "
-                          f"(บนเครื่อง {final_size} ไบต์, ต้นทาง {local_size} ไบต์)"
-                          + (f" | {out[:200]}" if out else ""))
-                    sleep(2)
-                    continue
-
-                self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
-                print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
-                return local_xml_path
-
-            except Exception as e:
-                print(f"[{self.device_id}] Attempt {attempt} error: {e}")
-                sleep(2)
-
-        print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
-        return None
+            print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
+            return None
 
     def first_loop_process(self):
         try:

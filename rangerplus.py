@@ -1,4 +1,4 @@
-import cv2
+﻿import cv2
 import numpy as np
 import subprocess
 import os
@@ -762,6 +762,7 @@ _ocr_lock = threading.Lock()  # Thread-safe OCR init
 # Guards the one-time minitouch startup. Module-level on purpose: bot instances
 # must stay picklable for multiprocessing.
 _minitouch_init_lock = threading.Lock()
+_inject_lock = threading.Lock()  # ส่งไฟล์/inject เข้า MuMu ทีละจอทั้งโปรเซส (กัน push ชนกัน)
 
 def get_ocr_reader():
     """Get or create EasyOCR reader (singleton, thread-safe)"""
@@ -2834,36 +2835,37 @@ class RangerPlusBot(multiprocessing.Process):
         final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
         
         max_retries = 3
-        for attempt in range(1, max_retries + 1):
-            try:
-                # Push to tmp
-                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30)
-                if result.returncode != 0:
-                    err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
-                    print(f"[{self.device_id}] Push attempt {attempt} failed: {err}")
-                    sleep(2)
-                    continue
+        with _inject_lock:            # ★ ส่งไฟล์ทีละจอ กันไฟล์เสีย/แย่งดิสก์ push หลายจอ
+            for attempt in range(1, max_retries + 1):
+                try:
+                    # Push to tmp
+                    result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=30)
+                    if result.returncode != 0:
+                        err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
+                        print(f"[{self.device_id}] Push attempt {attempt} failed: {err}")
+                        sleep(2)
+                        continue
                 
-                # Copy, set permissions and owner (no frail 'wc -c' check)
-                shell_cmd = (
-                    f"su -c '"
-                    f"cp {tmp} {final} && "
-                    f"chmod 666 {final} && "
-                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {final_dir}/.. 2>/dev/null || echo 1000:1000) {final} || true && "
-                    f"rm -f {tmp}"
-                    f"'"
-                )
-                self.adb_shell(shell_cmd)
+                    # Copy, set permissions and owner (no frail 'wc -c' check)
+                    shell_cmd = (
+                        f"su -c '"
+                        f"cp {tmp} {final} && "
+                        f"chmod 666 {final} && "
+                        f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {final_dir}/.. 2>/dev/null || echo 1000:1000) {final} || true && "
+                        f"rm -f {tmp}"
+                        f"'"
+                    )
+                    self.adb_shell(shell_cmd)
                 
-                print(f"[{self.device_id}] Injection successful on attempt {attempt}")
-                return local_xml_path
+                    print(f"[{self.device_id}] Injection successful on attempt {attempt}")
+                    return local_xml_path
                     
-            except Exception as e:
-                print(f"[{self.device_id}] Attempt {attempt} error: {e}")
-                sleep(2)
+                except Exception as e:
+                    print(f"[{self.device_id}] Attempt {attempt} error: {e}")
+                    sleep(2)
         
-        print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
-        return None
+            print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
+            return None
 
     def first_loop_process(self):
         try:
