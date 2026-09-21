@@ -3183,19 +3183,27 @@ class RangerGearBot(threading.Thread):
     # Logic Methods
     # =========================================================
     def clear_specific_shared_prefs(self):
-        """BOTLOGIN-style reset: stop the game and remove all shared prefs."""
+        """Stop the game and clear only the account-switch preference files."""
         prefs_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
+        targets = " ".join(
+            f"{prefs_dir}/{name}" for name in (
+                "_LINE_COCOS_PREF_KEY.xml",
+                "Cocos2dxPrefsFile.xml",
+                "com.linecorp.LGRGS_preferences.xml",
+                "trident.preferences.xml",
+            )
+        )
         try:
             self.adb_run(
                 [self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"],
                 timeout=15,
             )
             self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
-            self.adb_shell(f"su -c 'rm -rf {prefs_dir}'", timeout=20)
+            self.adb_shell(f"su -c 'rm -f {targets}'", timeout=20)
         except Exception as e:
-            print(f"[{self.device_id}] [WARN] SharedPrefs reset failed: {e}")
+            print(f"[{self.device_id}] [WARN] Preference cleanup failed: {e}")
         sleep(1)
-        print(f"[{self.device_id}] Cleared shared_prefs (BOTLOGIN mode)")
+        print(f"[{self.device_id}] Cleared 4 account-switch preference files")
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
@@ -3225,15 +3233,23 @@ class RangerGearBot(threading.Thread):
         
         max_retries = 3
         with _InjectGuard():            # ★ ส่งไฟล์ทีละจอ (ข้ามโปรเซสได้) กันไฟล์เสีย/แย่งดิสก์
-            # BOTLOGIN clears the complete preference directory for every
-            # account, after the game is definitely stopped and before push.
+            # Clear only the account-switch files for every injected account,
+            # after the game is stopped and immediately before the push.
             try:
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
                 self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
-                wipe = self.adb_shell(f"su -c 'rm -rf {final_dir}'", timeout=20)
+                prefs_to_remove = " ".join(
+                    f"{final_dir}/{name}" for name in (
+                        "_LINE_COCOS_PREF_KEY.xml",
+                        "Cocos2dxPrefsFile.xml",
+                        "com.linecorp.LGRGS_preferences.xml",
+                        "trident.preferences.xml",
+                    )
+                )
+                wipe = self.adb_shell(f"su -c 'rm -f {prefs_to_remove}'", timeout=20)
                 if wipe.returncode != 0:
                     out = ((wipe.stdout or b"") + (wipe.stderr or b"")).decode("utf-8", "ignore").strip()
-                    print(f"[{self.device_id}] Cannot clear shared_prefs before injection: {out[:200]}")
+                    print(f"[{self.device_id}] Cannot clear account preferences before injection: {out[:200]}")
                     return None
                 prepare = self.adb_shell(
                     f"su -c 'mkdir -p {final_dir} && "
@@ -3244,7 +3260,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Cannot recreate shared_prefs before injection: {out[:200]}")
                     return None
             except Exception as e:
-                print(f"[{self.device_id}] Cannot clear shared_prefs before injection: {e}")
+                print(f"[{self.device_id}] Cannot clear account preferences before injection: {e}")
                 return None
             for attempt in range(1, max_retries + 1):
                 try:
