@@ -52,3 +52,6 @@ creds*.lock
 creds*.tmp
 creds*.json*
 creds.json.bak
+
+# per-device working folder (runtime)
+_processing/
