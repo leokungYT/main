@@ -4751,6 +4751,10 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [WARN] เช็คแอปไม่ได้ (adb ช้า/ค้าง) - ไม่ถือว่าไม่มีแอป เดินต่อ", flush=True)
                 self.update_gui_status("adb ช้า - เดินต่อ", "waiting")
 
+            # ★ ครั้งแรกต่อจอ: prime (ลบ 4 prefs -> เปิดเกม -> ปิด) ก่อนเริ่มฉีด
+            if config.get("first_run_prime", 1) and not getattr(self, "_primed", False):
+                self._prime_first_run()
+                self._primed = True
             while True:
                 # 0. Reload Config
                 load_config()
@@ -4834,6 +4838,8 @@ class RangerGearBot(threading.Thread):
                         injected_file = self.inject_file(xml_file)
                         if not injected_file:
                             break   # inject ไม่ผ่าน -> ไป handle_dead_file ด้านล่าง
+                        # ★ ฉีดเสร็จ -> รอก่อนเข้าเกม (ให้ไฟล์นิ่งก่อน launch)
+                        time.sleep(float(config.get("post_inject_wait", 5)))
                         self.update_gui_status("Logging in...")
                         login_start_time = time.time()
                         try:
@@ -6590,6 +6596,19 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [WARN] Preference cleanup failed: {e}")
         sleep(1)
         print(f"[{self.device_id}] Cleared 4 account-switch preference files")
+
+    def _prime_first_run(self):
+        """ครั้งแรกต่อจอ: ลบ 4 prefs -> เปิดเกม -> ปิด (prime state สะอาดก่อนฉีดบัญชี)"""
+        try:
+            print(f"[{self.device_id}] [PRIME] first-run: ลบ 4 prefs -> เปิดเกม -> ปิด", flush=True)
+            self.clear_specific_shared_prefs()
+            self.open_app()
+            sleep(float(config.get("first_run_prime_wait", 8)))
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
+            self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
+            sleep(1)
+        except Exception as e:
+            print(f"[{self.device_id}] [PRIME] error: {e}", flush=True)
 
     def _remote_size(self, remote_path):
         """ขนาดไฟล์บนเครื่อง (ไบต์) หรือ None ถ้าไม่มีไฟล์/อ่านไม่ได้"""
