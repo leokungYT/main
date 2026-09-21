@@ -7325,6 +7325,7 @@ class RangerGearBot(threading.Thread):
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
+        self._fixid1_reset_count = 0  # นับจำนวน reset+re-inject ตอนเจอ fixid1
         
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -7443,10 +7444,24 @@ class RangerGearBot(threading.Thread):
                 self._alert2_start_time = None
 
 
-            # === fixid1.png → failed ทันที ===
+            # === fixid1.png → สับขาหลอก: reset app + ฉีดไฟล์เดิมซ้ำ + เข้าใหม่ (ก่อนยอมแพ้) ===
             if self.exists_in_cache("img/fixid1.png", similarity=0.95):
-                print(f"[{self.device_id}] Found fixid1.png! -> login-failed immediately")
+                self._fixid1_reset_count = getattr(self, "_fixid1_reset_count", 0) + 1
+                _max_fixid1 = int(config.get("fixid1_retries", 2))
+                if self._fixid1_reset_count <= _max_fixid1:
+                    print(f"[{self.device_id}] Found fixid1.png! -> reset app + ฉีดไฟล์เดิมซ้ำ ({self._fixid1_reset_count}/{_max_fixid1})")
+                    self.clear_and_restart()
+                    try:
+                        self.inject_file(current_filename)
+                    except Exception as _e:
+                        print(f"[{self.device_id}] [WARN] re-inject fixid1 ไม่สำเร็จ: {_e}")
+                    self.open_app()
+                    self._login_fixid_count = 0
+                    sleep(3)
+                    continue
+                print(f"[{self.device_id}] fixid1.png ยังค้างหลัง reset {_max_fixid1} รอบ -> login-failed")
                 self._login_fixid_count = 0
+                self._fixid1_reset_count = 0
                 return "failed"
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
