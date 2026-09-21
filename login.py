@@ -1358,7 +1358,47 @@ _ocr_lock = threading.Lock()  # Thread-safe OCR init
 
 # Guards the one-time minitouch startup (shared by every bot thread).
 _minitouch_init_lock = threading.Lock()
-_inject_lock = threading.Lock()  # ส่งไฟล์/inject เข้า MuMu ทีละจอทั้งโปรเซส (กัน push ชนกันจนไฟล์เสีย)
+_inject_lock = threading.Lock()  # in-process (thread เดียวกัน)
+_INJECT_LOCKFILE = os.path.join(tempfile.gettempdir(), "ranger-locks", "_inject_global.lock")
+
+
+class _InjectGuard:
+    """ล็อกส่งไฟล์ทั้งเครื่อง: กันทั้ง thread และข้ามโปรเซส (หลาย .exe/หน้าต่าง) ให้ push/inject ทีละจอ"""
+    def __enter__(self):
+        _inject_lock.acquire()
+        try:
+            os.makedirs(os.path.dirname(_INJECT_LOCKFILE), exist_ok=True)
+        except OSError:
+            pass
+        self.fd = None
+        deadline = time.time() + 180
+        while True:
+            try:
+                self.fd = os.open(_INJECT_LOCKFILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except FileExistsError:
+                try:
+                    if time.time() - os.path.getmtime(_INJECT_LOCKFILE) > 120:
+                        os.remove(_INJECT_LOCKFILE)
+                        continue
+                except OSError:
+                    pass
+                if time.time() > deadline:
+                    break
+                time.sleep(0.25)
+        return self
+    def __exit__(self, *a):
+        if getattr(self, "fd", None) is not None:
+            try:
+                os.close(self.fd)
+            except OSError:
+                pass
+            try:
+                os.remove(_INJECT_LOCKFILE)
+            except OSError:
+                pass
+        _inject_lock.release()
+        return False
 
 def get_ocr_reader():
     """Get or create EasyOCR reader (singleton, thread-safe)"""
@@ -6533,7 +6573,12 @@ class RangerGearBot(threading.Thread):
         final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
 
         max_retries = 3
-        with _inject_lock:            # ★ ส่งไฟล์ทีละจอ กันไฟล์เสีย/แย่งดิสก์ตอน push หลายจอ
+        with _InjectGuard():            # ★ ส่งไฟล์ทีละจอ (ข้ามโปรเซสได้) กันไฟล์เสีย/แย่งดิสก์
+            # ลบ shared_prefs เก่าก่อนส่งไฟล์ใหม่ (กันไฟล์ค้าง/ปนจนพัง) แล้วค่อย push
+            try:
+                self.adb_shell(f"su -c 'rm -f {final} {final_dir}/trident.preferences.xml {final_dir}/pcvmspf.xml {final_dir}/Cocos2dxPrefsFile.xml'", timeout=15)
+            except Exception as _e:
+                print(f"[{self.device_id}] [WARN] ลบ prefs เก่าไม่สำเร็จ (ไม่ critical): {_e}")
             for attempt in range(1, max_retries + 1):
                 try:
                     # 1) push ลง /data/local/tmp ก่อน (60 วิ: หลายจอพร้อมกันดิสก์หนัก 30 วิอาจไม่พอ)
