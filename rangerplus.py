@@ -1946,6 +1946,9 @@ class RangerPlusBot(multiprocessing.Process):
         โฟลเดอร์ย่อยที่ใช้ไฟล์หมดแล้วทิ้งไปด้วย
         """
         script_dir = os.path.dirname(os.path.abspath(__file__))
+        _resume = self._resume_private_file()
+        if _resume:
+            return _resume
         total = locked = 0
         for name in self._queue_folders():
             picked, n_files, n_locked = self._pick_file_from(os.path.join(script_dir, name))
@@ -2011,7 +2014,13 @@ class RangerPlusBot(multiprocessing.Process):
                     try: os.remove(lock_file)
                     except OSError: pass
                     continue
-                return xml_file, len(files), locked_count
+                # BOTLOGIN: ย้ายไฟล์ออกจากคิวเข้าโฟลเดอร์ส่วนตัวของจอ (atomic) กันแย่งไฟล์
+                _private = self._claim_private_path(xml_file)
+                try: os.remove(lock_file)
+                except OSError: pass
+                if _private:
+                    return _private, len(files), locked_count
+                continue
             except FileExistsError:
                 locked_count += 1
                 continue
@@ -2020,6 +2029,36 @@ class RangerPlusBot(multiprocessing.Process):
                 continue
 
         return None, len(files), locked_count
+
+    def _claim_private_path(self, xml_file):
+        """ย้ายไฟล์ที่จองได้เข้าโฟลเดอร์ส่วนตัวของจอ (atomic) คืน path ใหม่ หรือ None"""
+        try:
+            base = os.path.basename(xml_file)
+            root = os.path.dirname(os.path.abspath(__file__))
+            pdir = os.path.join(root, "_processing", str(self.device_id).replace(":", "_"))
+            os.makedirs(pdir, exist_ok=True)
+            dst = os.path.join(pdir, base)
+            if os.path.abspath(dst) == os.path.abspath(xml_file):
+                return xml_file
+            if os.path.exists(dst):
+                try: os.remove(dst)
+                except OSError: pass
+            os.rename(xml_file, dst)
+            return dst
+        except OSError:
+            return None
+
+    def _resume_private_file(self):
+        """ไฟล์ค้างในโฟลเดอร์ส่วนตัวของจอ (รอบก่อนปิดกลางคัน) -> ทำต่อ"""
+        try:
+            pdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_processing", str(self.device_id).replace(":", "_"))
+            if os.path.isdir(pdir):
+                for fn in sorted(os.listdir(pdir)):
+                    if fn.lower().endswith(".xml"):
+                        return os.path.join(pdir, fn)
+        except OSError:
+            pass
+        return None
 
     def _release_file_lock(self, xml_file):
         lock_file = self._get_lock_path(xml_file)
