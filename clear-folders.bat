@@ -7,7 +7,7 @@ echo       CLEARING BACKUP FOLDERS...
 echo =========================================
 echo.
 
-set FOLDERS=backup backup-id login-failed login-success not-found
+set FOLDERS=backup backup-id login-failed login-success not-found random-fail 7day-check
 
 for %%F in (%FOLDERS%) do (
     if exist "%%F" (

@@ -6559,16 +6559,24 @@ class RangerGearBot(threading.Thread):
     # ADB & Interaction
     # =========================================================
     def clear_specific_shared_prefs(self):
-        """Delete ALL shared_prefs and clear app cache"""
-        base = "/data/data/com.linecorp.LGRGS/shared_prefs"
-        cache_dir = "/data/data/com.linecorp.LGRGS/cache"
-        
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+        """Stop the game before an account switch without deleting its login state.
+
+        The injected XML is deliberately written over only
+        ``_LINE_COCOS_PREF_KEY.xml`` in ``inject_file``.  Deleting all of
+        shared_prefs here also deletes the companion state that lets the game
+        open that XML, which made every later, known-good account fail after
+        one failed account.
+        """
+        try:
+            self.adb_run(
+                [self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"],
+                timeout=15,
+            )
+            self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
+        except Exception as e:
+            print(f"[{self.device_id}] [WARN] Stop before next injection failed: {e}")
         sleep(1)
-        
-        # Total clear including cache (Restore to Full Clear)
-        self.adb_shell(f"su -c 'rm -rf {base}/* && rm -rf {cache_dir}/*'")
-        print(f"[{self.device_id}] Cleared shared_prefs + cache (Full)")
+        print(f"[{self.device_id}] Kept shared_prefs + cache; next injection will replace only the account XML")
 
     def _remote_size(self, remote_path):
         """ขนาดไฟล์บนเครื่อง (ไบต์) หรือ None ถ้าไม่มีไฟล์/อ่านไม่ได้"""
