@@ -2932,7 +2932,7 @@ class RangerPlusBot(multiprocessing.Process):
                 pass
             # ลบ shared_prefs เก่าก่อนส่งไฟล์ใหม่ (กันไฟล์ค้าง/ปนจนพัง) แล้วค่อย push
             try:
-                self.adb_shell("su -c 'rm -rf /data/data/com.linecorp.LGRGS/shared_prefs/* /data/data/com.linecorp.LGRGS/cache/*'", timeout=20)
+                self.adb_shell("su -c 'rm -rf /data/data/com.linecorp.LGRGS/shared_prefs/*'", timeout=20)   # ลบแค่ shared_prefs (ไม่แตะ cache กันเกม re-cache แล้วตรวจ success พลาด)
             except Exception as _e:
                 print(f"[{self.device_id}] [WARN] ลบ prefs เก่าไม่สำเร็จ (ไม่ critical): {_e}")
             for attempt in range(1, max_retries + 1):
