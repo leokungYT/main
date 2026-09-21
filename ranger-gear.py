@@ -3204,17 +3204,12 @@ class RangerGearBot(threading.Thread):
         
         max_retries = 3
         with _InjectGuard():            # ★ ส่งไฟล์ทีละจอ (ข้ามโปรเซสได้) กันไฟล์เสีย/แย่งดิสก์
-            # ★ หยุด+ฆ่าเกมซ้ำภายใน lock ก่อนล้าง/push (กัน 3 จอโหลดหนัก force-stop ก่อนหน้าไม่ทัน แล้วเกมเขียนทับ)
+            # ★ หยุด+ฆ่าเกมซ้ำภายใน lock ก่อน push (กัน 3 จอโหลดหนัก force-stop ก่อนหน้าไม่ทัน แล้วเกมเขียนทับ)
             try:
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
                 self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
             except Exception:
                 pass
-            # ลบ shared_prefs เก่าก่อนส่งไฟล์ใหม่ (กันไฟล์ค้าง/ปนจนพัง) แล้วค่อย push
-            try:
-                self.adb_shell("su -c 'rm -rf /data/data/com.linecorp.LGRGS/shared_prefs/*'", timeout=20)   # ลบแค่ shared_prefs (ไม่แตะ cache กันเกม re-cache แล้วตรวจ success พลาด)
-            except Exception as _e:
-                print(f"[{self.device_id}] [WARN] ลบ prefs เก่าไม่สำเร็จ (ไม่ critical): {_e}")
             for attempt in range(1, max_retries + 1):
                 try:
                     # Push to tmp
