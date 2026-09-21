@@ -4834,10 +4834,32 @@ class RangerGearBot(threading.Thread):
                             self.update_gui_status("Random/Gacha Failed", "error")
                             self.first_loop_done = False
                         elif status == "failed":
-                            self.handle_failure(xml_file)
-                            ui_stats.update(fail=ui_stats.fail_count + 1)
-                            self.update_gui_status("Failed", "error")
-                            self.first_loop_done = False
+                            _rec = None
+                            if config.get("recover_failed", 1) and not getattr(self, "_recovering", False):
+                                self._recovering = True
+                                try:
+                                    _rec = self._recover_failed_id(xml_file)
+                                finally:
+                                    self._recovering = False
+                            if _rec == "success":
+                                self.handle_success(xml_file)
+                                ui_stats.update(success=ui_stats.success_count + 1, processed=ui_stats.processed_files + 1)
+                                self.update_gui_status("Completed (recovered)", "idle")
+                            elif _rec == "kaiby":
+                                self.handle_kaiby(xml_file)
+                                ui_stats.update_hero("❌ ไก่บี้")
+                                self.update_gui_status("Kaiby (recover)", "error")
+                                self.first_loop_done = False
+                            elif _rec == "random-Fail":
+                                self.handle_random_fail(xml_file)
+                                ui_stats.update(random_fail=ui_stats.random_fail_count + 1)
+                                self.update_gui_status("Random/Gacha (recover)", "error")
+                                self.first_loop_done = False
+                            else:
+                                self.handle_failure(xml_file)
+                                ui_stats.update(fail=ui_stats.fail_count + 1)
+                                self.update_gui_status("Failed", "error")
+                                self.first_loop_done = False
                         else:
                             print(f"[{self.device_id}] Status: {status}. Moving to next.")
                             self.handle_failure(xml_file)
@@ -5021,6 +5043,38 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Moved to {dst_dir}: {base}")
         except Exception as e:
             print(f"[{self.device_id}] Move error: {e}")
+
+    def _recover_failed_id(self, xml_file):
+        """id ติด failed -> ล้าง shared_prefs หมด -> เข้าเกม 1 รอบ (state สะอาด) -> ล้างอีก -> ฉีดใหม่ -> login"""
+        try:
+            print(f"[{self.device_id}] [RECOVER] failed -> ล้างหมด -> เข้าเกม 1 รอบ -> ล้าง -> ฉีดใหม่ -> login", flush=True)
+            self.clear_specific_shared_prefs()          # ล้าง shared_prefs + cache หมด
+            self.open_app()                              # เข้าเกม 1 รอบ (สร้าง guest ใหม่ state สะอาด)
+            sleep(float(config.get("recover_fresh_wait", 12)))
+            self.clear_specific_shared_prefs()           # ล้างอีกรอบ
+            # ปิดแอพให้สนิทก่อนฉีด (กันเกมยังรันแล้วเขียนทับไฟล์ที่เพิ่งฉีด)
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
+            self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'", timeout=15)
+            for _ in range(10):   # รอจน process ตายจริง (สูงสุด ~10 วิ)
+                _pr = self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"], timeout=8)
+                if not (_pr.stdout or b"").strip():
+                    break
+                sleep(1)
+            injected = self.inject_file(xml_file)        # ฉีดไฟล์บัญชีใหม่
+            if not injected:
+                return "failed"
+            self.first_loop_done = False
+            try:
+                return self.main_login(injected)
+            except RestartTimeoutError:
+                try:
+                    self.clear_and_restart()
+                except Exception:
+                    pass
+                return "timeout"
+        except Exception as e:
+            print(f"[{self.device_id}] [RECOVER] error: {e}", flush=True)
+            return "failed"
 
     def handle_failure(self, file_path):
         # แอปไม่มีบนเครื่องนี้ → ห้ามย้ายไฟล์ไปไหน ปล่อยไว้ในคิวเหมือนเดิม
