@@ -5040,6 +5040,11 @@ class RangerGearBot(threading.Thread):
             if os.path.exists(dst):
                 return None
             os.rename(xml_file, dst)   # atomic; ล้มเหลว = โดนแย่งไปแล้ว
+            try:
+                _rel = os.path.relpath(xml_file, root)
+            except Exception:
+                _rel = xml_file
+            print(f"[{self.device_id}] [QUEUE] ลบ/ย้ายออกจากคิวแล้ว (ก่อนส่งเข้าเกม): {_rel}", flush=True)
             return dst
         except OSError:
             return None
