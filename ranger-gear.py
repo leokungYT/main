@@ -1853,14 +1853,26 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Processing file: {self.current_original_filename}")
                     self.update_gui_status(f"Injecting: {self.current_original_filename}")
 
-                    # 2. Inject
-                    injected_file = self.inject_file(xml_file)
-                    
-                    if injected_file:
-                        # 3. Login
+                    # 2. Inject + Login (retry รอบชั่วคราว: crash/adb ช้า จะได้ไม่หลุดเป็น fail)
+                    login_retries = int(config.get("login_retries", 2))
+                    injected_file = None
+                    status = None
+                    for _login_try in range(login_retries + 1):
+                        injected_file = self.inject_file(xml_file)
+                        if not injected_file:
+                            break
                         self.update_gui_status("Logging in...")
                         status = self.main_login(injected_file)
-                        
+                        if status in ("success", "kaiby", "random-Fail"):
+                            break
+                        if _login_try < login_retries:
+                            print(f"[{self.device_id}] login ไม่ผ่าน (status={status}) - ลองใหม่รอบ {_login_try+2}/{login_retries+1}")
+                            self.first_loop_done = False
+                            try: self.clear_and_restart()
+                            except Exception: pass
+                            sleep(3)
+
+                    if injected_file:
                         if status == "success":
                             self.handle_success(xml_file)
                             ui_stats.update(success=ui_stats.success_count + 1, processed=ui_stats.processed_files + 1)
