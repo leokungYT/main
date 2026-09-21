@@ -4784,6 +4784,15 @@ class RangerGearBot(threading.Thread):
                 try:
                     # Store original filename
                     self.current_original_filename = os.path.basename(xml_file)
+                    # ★ log จำนวนไฟล์ที่เหลือในคิว (backup/input-id) — ไฟล์ถูกย้ายออกคิวตอน claim แล้ว จะได้รู้ว่าเหลือกี่
+                    try:
+                        _root = os.path.dirname(os.path.abspath(__file__))
+                        _remain = sum(1 for _qf in queue_folder_names()
+                                      for _r, _d, _fs in os.walk(os.path.join(_root, _qf))
+                                      for _f in _fs if _f.lower().endswith(".xml"))
+                        print(f"[{self.device_id}] [QUEUE] หยิบ: {self.current_original_filename} | เหลือในคิว {_remain} ไฟล์ (backup+input-id)", flush=True)
+                    except Exception:
+                        pass
                     
                     # 1. Check First Loop Process Toggle
                     current_first_loop_enabled = config.get("first_loop", True)
@@ -6624,6 +6633,11 @@ class RangerGearBot(threading.Thread):
             src = src_orig
         try:
             local_size = os.path.getsize(src)
+            try:
+                with open(src, "rb") as _fh:
+                    local_md5 = hashlib.md5(_fh.read()).hexdigest()
+            except Exception:
+                local_md5 = None
         except OSError as e:
             print(f"[{self.device_id}] อ่านไฟล์ต้นทางไม่ได้: {e}")
             return None
@@ -6706,6 +6720,14 @@ class RangerGearBot(threading.Thread):
                         sleep(2)
                         continue
 
+                    # ★ เช็ค md5 (แน่นกว่าขนาด) — byte เพี้ยนแม้ขนาดเท่าก็จับได้
+                    if local_md5:
+                        _mr = self.adb_shell(f"su -c 'md5sum {final} 2>/dev/null || toybox md5sum {final} 2>/dev/null'", timeout=15)
+                        _dev_md5 = ((_mr.stdout or b"").decode("utf-8", "ignore").strip().split() or [""])[0]
+                        if _dev_md5 and _dev_md5 != local_md5:
+                            print(f"[{self.device_id}] Inject attempt {attempt}: md5 ไม่ตรง (byte เพี้ยน) dev={_dev_md5[:8]} src={local_md5[:8]} - push ใหม่")
+                            sleep(2)
+                            continue
                     self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
                     print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
                     return local_xml_path
