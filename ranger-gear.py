@@ -4095,11 +4095,17 @@ class RangerGearBot(threading.Thread):
                     capture_output=True, text=True, timeout=5
                 )
                 if not pid_result.stdout.strip():
-                    print(f"[{self.device_id}] App crashed during login. Relaunching...")
-                    self.open_app()
-                    sleep(1)
-                    loop_count = 0
-                    continue
+                    sleep(2)   # เช็คซ้ำ (timeout ยาวขึ้น) กัน adb ช้าตอนหลายจอหลอกว่า crash
+                    try:
+                        _pid2 = subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"], capture_output=True, text=True, timeout=12)
+                    except Exception:
+                        _pid2 = None
+                    if _pid2 is None or not _pid2.stdout.strip():
+                        print(f"[{self.device_id}] App crashed during login. Relaunching...")
+                        self.open_app()
+                        sleep(1)
+                        loop_count = 0
+                        continue
             except:
                 pass
             

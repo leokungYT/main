@@ -2998,27 +2998,15 @@ class RangerGearBot(threading.Thread):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
         # เช็คว่าเกมติดตั้งอยู่ไหม - retry 3 รอบก่อนตัดสิน
         # (ตอน VM เพิ่งบูต pm อาจตอบว่างเปล่าทั้งที่แอปติดตั้งอยู่ -> อย่าเพิ่งฟันธงจากรอบเดียว)
-        try:
-            app_found = False
-            for pm_attempt in range(3):
-                pm_res = self.adb_run([
-                    self.adb_cmd, "-s", self.device_id, "shell",
-                    "pm", "list", "packages", "com.linecorp.LGRGS"
-                ], timeout=8)
-                pm_out = (pm_res.stdout or b"").decode("utf-8", "ignore").strip()
-                if "com.linecorp.LGRGS" in pm_out:
-                    app_found = True
-                    break
-                print(f"[{self.device_id}] [WARN] pm ยังไม่เจอแอป (รอบ {pm_attempt+1}/3) - รอ 2 วิแล้วเช็คใหม่...")
-                sleep(2)
-            if not app_found:
-                print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS บนเครื่องนี้! (เช็คแล้ว 3 รอบ - ยังไม่ได้ติดตั้ง/ชื่อ package ไม่ตรง/เครื่อง ghost) - หยุด retry")
-                # ปักธงไว้: เครื่องนี้ไม่มีแอป → ห้ามย้ายไฟล์ไปโฟลเดอร์ไหนทั้งนั้น
-                # และให้ลูปหลักหยุดหยิบไฟล์ใหม่ (ไฟล์ค้างไว้ในคิวเหมือนเดิม)
-                self.app_missing = True
-                return False
-        except Exception as e:
-            print(f"[{self.device_id}] [WARN] เช็ค package ไม่ได้: {e} - ลองเปิดต่อ")
+        # เช็คแอปแยก "ไม่มีจริง" (pm ยืนยัน) ออกจาก "adb ช้า/ตอบไม่ทัน" (None)
+        # กัน 3 จอโหลดหนัก pm timeout แล้วฟันธงผิดว่า ghost -> หยุดถาวร ทั้งที่แอปมีอยู่
+        installed = self._is_app_installed(tries=3)
+        if installed is False:
+            print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS (pm ยืนยันว่าไม่มีจริง) - หยุด retry")
+            self.app_missing = True
+            return False
+        if installed is None:
+            print(f"[{self.device_id}] [WARN] เช็คแอปไม่ได้ (adb ช้า/ค้างตอนหลายจอ) - ไม่ฟันธงว่าไม่มีแอป เปิดเกมต่อ")
 
         attempt = 0
         while attempt < 5:
@@ -7533,11 +7521,17 @@ class RangerGearBot(threading.Thread):
                     capture_output=True, text=True, timeout=5
                 )
                 if not pid_result.stdout.strip():
-                    print(f"[{self.device_id}] App crashed during login. Relaunching...")
-                    self.open_app()
-                    sleep(5)
-                    loop_count = 0
-                    continue
+                    sleep(2)   # เช็คซ้ำ (timeout ยาวขึ้น) กัน adb ช้าตอนหลายจอหลอกว่า crash
+                    try:
+                        _pid2 = subprocess.run([self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"], capture_output=True, text=True, timeout=12)
+                    except Exception:
+                        _pid2 = None
+                    if _pid2 is None or not _pid2.stdout.strip():
+                        print(f"[{self.device_id}] App crashed during login. Relaunching...")
+                        self.open_app()
+                        sleep(5)
+                        loop_count = 0
+                        continue
             except:
                 pass
             
