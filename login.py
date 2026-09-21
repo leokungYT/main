@@ -4838,8 +4838,27 @@ class RangerGearBot(threading.Thread):
                         injected_file = self.inject_file(xml_file)
                         if not injected_file:
                             break   # inject ไม่ผ่าน -> ไป handle_dead_file ด้านล่าง
-                        # ★ ฉีดเสร็จ -> รอก่อนเข้าเกม (ให้ไฟล์นิ่งก่อน launch)
+                        # ★ ยืนยันไฟล์เข้า MuMu ครบ 100% (ขนาด+md5) ก่อน start เกม
                         time.sleep(float(config.get("post_inject_wait", 5)))
+                        _confirm = False
+                        for _cv in range(int(config.get("confirm_retries", 2)) + 1):
+                            if self._verify_on_device(injected_file):
+                                _confirm = True
+                                print(f"[{self.device_id}] [INJECT] ไฟล์เข้า MuMu ครบ 100% → เริ่มเข้าเกม", flush=True)
+                                break
+                            print(f"[{self.device_id}] [INJECT] ไฟล์ยังไม่ครบ 100% ({_cv+1}) -> ฉีดซ้ำ", flush=True)
+                            self.inject_file(xml_file)
+                            time.sleep(1)
+                        if not _confirm:
+                            print(f"[{self.device_id}] [INJECT] ไฟล์ไม่ครบ 100% → ข้ามการ start (จะ retry/fail)", flush=True)
+                            status = "failed"
+                            if _login_try < login_retries:
+                                self.first_loop_done = False
+                                try: self.clear_and_restart()
+                                except Exception: pass
+                                sleep(3 + random.uniform(0, float(config.get("login_jitter", 6))))
+                                continue
+                            break
                         self.update_gui_status("Logging in...")
                         login_start_time = time.time()
                         try:
@@ -6609,6 +6628,26 @@ class RangerGearBot(threading.Thread):
             sleep(1)
         except Exception as e:
             print(f"[{self.device_id}] [PRIME] error: {e}", flush=True)
+
+    def _verify_on_device(self, local_path):
+        """เช็คว่าไฟล์เข้า MuMu ครบ 100% (ขนาด+md5 ตรงกับต้นทาง) -> True/False"""
+        final = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
+        try:
+            lsize = os.path.getsize(local_path)
+            with open(local_path, "rb") as _fh:
+                lmd5 = hashlib.md5(_fh.read()).hexdigest()
+        except Exception:
+            return False
+        if self._remote_size(final) != lsize:
+            return False
+        try:
+            _r = self.adb_shell(f"su -c 'md5sum {final} 2>/dev/null || toybox md5sum {final} 2>/dev/null'", timeout=15)
+            _dm = ((_r.stdout or b"").decode("utf-8", "ignore").strip().split() or [""])[0]
+        except Exception:
+            _dm = ""
+        if _dm and _dm != lmd5:
+            return False
+        return True
 
     def _remote_size(self, remote_path):
         """ขนาดไฟล์บนเครื่อง (ไบต์) หรือ None ถ้าไม่มีไฟล์/อ่านไม่ได้"""
