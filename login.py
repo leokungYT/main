@@ -6557,7 +6557,16 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [WARN] killall ข้ามไป (ไม่ critical): {e}")
         sleep(1)
 
-        src = os.path.abspath(local_xml_path)
+        src_orig = os.path.abspath(local_xml_path)
+        # ★ สำเนาไฟล์ไป local ส่วนตัวก่อน push (กันไฟล์ต้นทางถูกย้าย/prune ระหว่าง push → ไฟล์ขาด) เหมือน BOTLOGIN
+        try:
+            _inj_dir = os.path.join(tempfile.gettempdir(), "ranger-inject")
+            os.makedirs(_inj_dir, exist_ok=True)
+            src = os.path.join(_inj_dir, f"pref_{self.device_id.replace(':', '_')}.xml")
+            shutil.copy2(src_orig, src)
+        except Exception as _e:
+            print(f"[{self.device_id}] [WARN] สำเนาไฟล์ local ไม่สำเร็จ ใช้ไฟล์ต้นทางแทน: {_e}")
+            src = src_orig
         try:
             local_size = os.path.getsize(src)
         except OSError as e:

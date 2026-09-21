@@ -3149,7 +3149,16 @@ class RangerGearBot(threading.Thread):
         self.adb_shell("su -c 'killall -9 com.linecorp.LGRGS 2>/dev/null || true'")
         sleep(1)
 
-        src = os.path.abspath(local_xml_path)
+        src_orig = os.path.abspath(local_xml_path)
+        # ★ สำเนาไฟล์ไป local ส่วนตัวก่อน push (กันไฟล์ต้นทางถูกย้าย/prune ระหว่าง push → ไฟล์ขาด) เหมือน BOTLOGIN
+        try:
+            _inj_dir = os.path.join(tempfile.gettempdir(), "ranger-inject")
+            os.makedirs(_inj_dir, exist_ok=True)
+            src = os.path.join(_inj_dir, f"pref_{self.device_id.replace(':', '_')}.xml")
+            shutil.copy2(src_orig, src)
+        except Exception as _e:
+            print(f"[{self.device_id}] [WARN] สำเนาไฟล์ local ไม่สำเร็จ ใช้ไฟล์ต้นทางแทน: {_e}")
+            src = src_orig
         tmp = f"/data/local/tmp/temp_pref_{self.device_id.replace(':','_')}.xml"
         final_dir = "/data/data/com.linecorp.LGRGS/shared_prefs"
         final = f"{final_dir}/_LINE_COCOS_PREF_KEY.xml"
