@@ -105,13 +105,20 @@
     "screen_clear_wm_override": 1,
     "proxy_enabled": 0,
     "proxy_type": "http",
-    "proxy_host": "",
-    "proxy_port": 0,
+    "proxy_host": "1.1.1.1",
+    "proxy_port": 443,
     "proxy_username": "",
     "proxy_password": "",
     "proxy_bypass": "localhost,127.0.0.1,10.0.2.2",
     "proxy_timeout_sec": 15,
-    "proxy_per_device": {},
+    "proxy_per_device": {
+        "127.0.0.1:16512": {
+            "enabled": 0,
+            "host": "1.1.1.1",
+            "port": 443,
+            "type": "http"
+        }
+    },
     "auth_queue": 1,
     "auth_slots": 1,
     "auth_max_hold": 45,
