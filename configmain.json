@@ -96,8 +96,6 @@
     "inject_method": "auto",
     "inject_shell_max_bytes": 262144,
     "inject_max_concurrent": 0,
-    "inject_clear_siblings": 0,
-    "post_inject_wait": 2,
     "mumu_fps": 120,
     "mumu_cpu": 2,
     "mumu_ram": 2,
