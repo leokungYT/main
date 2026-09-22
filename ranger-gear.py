@@ -3464,7 +3464,9 @@ class RangerGearBot(threading.Thread):
                 # 2.5) ล้าง pref ของบัญชีก่อนหน้าให้หมดก่อนฉีดของใหม่
                 #      4 ไฟล์นี้คือชุดที่คุมการสลับบัญชี ถ้าเหลือของไอดีเก่าไว้
                 #      เกมอาจหยิบของเก่าไปใช้ = ฉีดไฟล์ถูกแต่ล็อกอินไม่ผ่าน/ได้ไอดีเดิม
-                if config.get("inject_clear_siblings", 1):
+                # default = ปิด! เปิดแล้วเจอเกมเด้งหน้า fixid/refresh วนไม่จบ
+                # (3 ไฟล์นั้นมีข้อมูลเครื่อง/token ที่เกมต้องใช้ ลบทิ้งแล้วมันถือว่าเป็นเครื่องใหม่)
+                if config.get("inject_clear_siblings", 0):
                     sib = " ".join(f"{final_dir}/{n}" for n in self.ACCOUNT_PREFS if n != os.path.basename(final))
                     self.adb_shell(f"su -c 'rm -f {sib} {final_dir}/*.bak'", timeout=20)
 
