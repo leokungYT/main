@@ -15,6 +15,8 @@ import glob
 import tempfile
 import json
 import threading
+import base64
+import contextlib
 import queue
 import concurrent.futures
 import argparse
@@ -1371,6 +1373,31 @@ def get_ocr_reader():
                 print("[OK] EasyOCR model loaded!")
     return _ocr_reader
 
+
+# จำกัดจำนวนจอที่ส่งไฟล์เข้าเครื่องพร้อมกัน - หลายจอยิงพร้อมกันคือต้นเหตุ "ไฟล์เข้าไม่ได้"
+_inject_sem = None
+_inject_sem_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _inject_gate():
+    """คิวส่งไฟล์: ให้ส่งพร้อมกันได้ไม่เกิน config "inject_max_concurrent" (0 = ไม่จำกัด)"""
+    global _inject_sem
+    n = int(config.get("inject_max_concurrent", 2) or 0)
+    if n <= 0:
+        yield
+        return
+    with _inject_sem_lock:
+        if _inject_sem is None or getattr(_inject_sem, "_lgr_n", None) != n:
+            _inject_sem = threading.BoundedSemaphore(n)
+            _inject_sem._lgr_n = n
+        sem = _inject_sem
+    sem.acquire()
+    try:
+        yield
+    finally:
+        try: sem.release()
+        except ValueError: pass
 
 def queue_folder_names():
     """ชื่อโฟลเดอร์คิวตาม config ("queue_folders") - ใช้ร่วมกันทั้ง 3 สคริปต์
@@ -6631,6 +6658,99 @@ class RangerGearBot(threading.Thread):
             pass
         return None
 
+    # ---------------------------------------------------------
+    # ส่งไฟล์เข้าเครื่อง (โหมด "คัดลอก-วาง" ไม่ใช้ adb push)
+    # ---------------------------------------------------------
+    def _remote_md5(self, remote_path):
+        """md5 ของไฟล์บนเครื่อง หรือ None ถ้าอ่านไม่ได้"""
+        try:
+            r = self.adb_shell(f"su -c 'md5sum {remote_path} 2>/dev/null'", timeout=20)
+            txt = ((r.stdout or b"") + b" ").decode("utf-8", "ignore").strip()
+            tok = txt.split()[0].lower() if txt.split() else ""
+            if len(tok) == 32 and all(c in "0123456789abcdef" for c in tok):
+                return tok
+        except Exception:
+            pass
+        return None
+
+    def _write_remote_b64(self, data, remote_path, chunk=1200):
+        """เขียนไฟล์ลงเครื่องด้วย echo base64 ทีละท่อน แล้ว decode บนเครื่อง
+
+        ทำไมไม่ใช้ adb push: push ใช้ sync service ของ adb ซึ่งพอเปิดหลายจอพร้อมกัน
+        จะแย่งคิวกันจนค้าง/หลุดกลางทาง = "ไฟล์เข้าไม่ได้เลย" ทั้งที่ไฟล์ไม่ได้พัง
+        วิธีนี้ส่งผ่าน adb shell ธรรมดา (ไฟล์ pref แค่ ~1 KB) เหมือนพิมพ์วางเอง
+        คืน True ถ้าเขียนครบและ md5 ตรงกับต้นทาง
+        """
+        b64 = base64.b64encode(data).decode("ascii")
+        want_md5 = hashlib.md5(data).hexdigest()
+        b64_path = remote_path + ".b64"
+        try:
+            r = self.adb_shell(f"rm -f {b64_path} {remote_path}", timeout=20)
+            for i in range(0, len(b64), chunk):
+                part = b64[i:i + chunk]
+                # base64 มีแค่ A-Za-z0-9+/= จึงไม่มีอักขระที่ทำให้ quote พัง
+                r = self.adb_shell(f"echo -n '{part}' >> {b64_path}", timeout=25)
+                if r.returncode != 0:
+                    err = ((r.stderr or b"")).decode("utf-8", "ignore").strip()
+                    print(f"[{self.device_id}] [PUT] เขียนท่อนที่ {i // chunk + 1} ไม่ผ่าน: {err[:120]}")
+                    return False
+            # decode บนเครื่อง (toybox base64 ก่อน ไม่มีค่อย busybox)
+            dec = self.adb_shell(
+                f"base64 -d {b64_path} > {remote_path} 2>/dev/null || "
+                f"busybox base64 -d {b64_path} > {remote_path}", timeout=30)
+            got = self._remote_md5(remote_path)
+            if got != want_md5:
+                out = (((dec.stdout or b"") + (dec.stderr or b"")).decode("utf-8", "ignore")).strip()
+                print(f"[{self.device_id}] [PUT] decode แล้ว md5 ไม่ตรง ({got} != {want_md5})"
+                      + (f" | {out[:120]}" if out else ""))
+                return False
+            return True
+        except Exception as e:
+            print(f"[{self.device_id}] [PUT] ส่งแบบ base64 ไม่สำเร็จ: {e}")
+            return False
+        finally:
+            try: self.adb_shell(f"rm -f {b64_path}", timeout=15)
+            except Exception: pass
+
+    def _put_remote_file(self, src, remote_path):
+        """เอาไฟล์ local ไปวางที่ remote_path ให้ได้ - คืน (ok, ขนาดไฟล์ต้นทาง)
+
+        ลำดับ: base64-over-shell (ปลอดภัยสุด ไม่แย่ง sync service) -> ถ้าไม่ได้ค่อย adb push
+        สลับลำดับได้ด้วย config "inject_method": "shell" (บังคับ) / "push" (แบบเดิม) / "auto"
+        """
+        try:
+            with open(src, "rb") as f:
+                data = f.read()
+        except OSError as e:
+            print(f"[{self.device_id}] อ่านไฟล์ต้นทางไม่ได้: {e}")
+            return False, 0
+        if not data:
+            print(f"[{self.device_id}] ไฟล์ต้นทางว่างเปล่า ({src}) - ไม่ inject")
+            return False, 0
+
+        method = str(config.get("inject_method", "auto")).lower()
+        limit = int(config.get("inject_shell_max_bytes", 262144))
+        use_shell = method == "shell" or (method == "auto" and len(data) <= limit)
+
+        with _inject_gate():
+            if use_shell and self._write_remote_b64(data, remote_path):
+                return True, len(data)
+
+            # สำรอง: adb push แบบเดิม (ไฟล์ใหญ่ หรือเครื่องไม่มี base64)
+            try:
+                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, remote_path], timeout=60)
+                if result.returncode != 0:
+                    err = result.stderr.decode("utf-8", errors="ignore") if result.stderr else "Unknown Error"
+                    print(f"[{self.device_id}] [PUT] push ไม่ผ่าน: {err.strip()[:200]}")
+                    return False, len(data)
+            except Exception as e:
+                print(f"[{self.device_id}] [PUT] push error: {e}")
+                return False, len(data)
+        if self._remote_size(remote_path) != len(data):
+            print(f"[{self.device_id}] [PUT] push แล้วขนาดไม่ตรง")
+            return False, len(data)
+        return True, len(data)
+
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
 
@@ -6655,14 +6775,6 @@ class RangerGearBot(threading.Thread):
         sleep(1)
 
         src = os.path.abspath(local_xml_path)
-        try:
-            local_size = os.path.getsize(src)
-        except OSError as e:
-            print(f"[{self.device_id}] อ่านไฟล์ต้นทางไม่ได้: {e}")
-            return None
-        if local_size <= 0:
-            print(f"[{self.device_id}] ไฟล์ต้นทางว่างเปล่า ({src}) - ไม่ inject")
-            return None
 
         tmp = f"/data/local/tmp/temp_pref_{self.device_id.replace(':','_')}.xml"
         pkg_dir = "/data/data/com.linecorp.LGRGS"
@@ -6672,19 +6784,12 @@ class RangerGearBot(threading.Thread):
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                # 1) push ลง /data/local/tmp ก่อน (60 วิ: หลายจอพร้อมกันดิสก์หนัก 30 วิอาจไม่พอ)
-                result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, tmp], timeout=60)
-                if result.returncode != 0:
-                    err = result.stderr.decode('utf-8', errors='ignore') if result.stderr else 'Unknown Error'
-                    print(f"[{self.device_id}] Push attempt {attempt} failed: {err.strip()[:200]}")
-                    sleep(2)
-                    continue
-
-                # push สำเร็จแต่ไฟล์ขาด/ไม่ครบก็มี - เช็คขนาดก่อนเอาไปใช้
-                tmp_size = self._remote_size(tmp)
-                if tmp_size is not None and tmp_size != local_size:
-                    print(f"[{self.device_id}] Push attempt {attempt}: ไฟล์บนเครื่องขนาดไม่ตรง "
-                          f"({tmp_size} != {local_size}) - ลองใหม่")
+                # 1) วางไฟล์ลง /data/local/tmp ก่อน (base64 ผ่าน shell, สำรองด้วย adb push)
+                ok, local_size = self._put_remote_file(src, tmp)
+                if not local_size:
+                    return None                    # ไฟล์ต้นทางพัง/ว่าง - ไม่ต้องลองซ้ำ
+                if not ok:
+                    print(f"[{self.device_id}] Put attempt {attempt}: ส่งไฟล์เข้าเครื่องไม่สำเร็จ - ลองใหม่")
                     sleep(2)
                     continue
 
@@ -6716,6 +6821,20 @@ class RangerGearBot(threading.Thread):
                           + (f" | {out[:200]}" if out else ""))
                     sleep(2)
                     continue
+
+                # 5) ขนาดเท่ากันแต่ไฟล์เพี้ยนก็เป็นไปได้ - ตรวจ md5 ซ้ำอีกชั้น (เครื่องไหนไม่มี md5sum = ข้าม)
+                remote_md5 = self._remote_md5(final)
+                if remote_md5 is not None:
+                    try:
+                        with open(src, "rb") as _f:
+                            local_md5 = hashlib.md5(_f.read()).hexdigest()
+                    except OSError:
+                        local_md5 = None
+                    if local_md5 and remote_md5 != local_md5:
+                        print(f"[{self.device_id}] Inject attempt {attempt}: md5 ไม่ตรง "
+                              f"({remote_md5} != {local_md5}) - ลองใหม่")
+                        sleep(2)
+                        continue
 
                 self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
                 print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
