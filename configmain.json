@@ -78,8 +78,8 @@
     },
     "minitouch": 1,
     "pos_cache": 0,
-    "scan_interval": 1.0,
-    "loop_delay": null,
+    "scan_interval": 0.35,
+    "loop_delay": 0.25,
     "screen_check": 1,
     "screen_width": 960,
     "screen_height": 540,
@@ -120,10 +120,10 @@
         }
     },
     "auth_queue": 1,
-    "auth_slots": 1,
-    "auth_max_hold": 45,
-    "auth_backoff_min": 30,
-    "auth_backoff_max": 60,
+    "auth_slots": 2,
+    "auth_max_hold": 15,
+    "auth_backoff_min": 2,
+    "auth_backoff_max": 8,
     "device_identity_check": 1,
     "device_identity_block_on_duplicate": 1
 }

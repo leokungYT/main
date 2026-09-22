@@ -1333,7 +1333,7 @@ if GUI_AVAILABLE:
 # Default config (will be overridden by config files)
 config = {
     "first_loop": True,
-    "thread_delay": 5,
+    "thread_delay": 1,
     "find_ranger": 0,
     "find_gear": 0,
     "find_all": 1,
@@ -1348,13 +1348,13 @@ config = {
     "minitouch": 0,          # 1 = tap via minitouch socket instead of `adb shell input tap`
     "pos_cache": 1,          # 1 = remember where each button was found, re-check only that spot
     "pos_cache_margin": 12,  # px of slack around the remembered spot
-    "scan_interval": 1.0,    # sec between full popup/error sweeps (0 = every frame, old behaviour)
-    "loop_delay": None,      # override the wait-loop poll delay; None = each loop's own default
+    "scan_interval": 0.35,   # sec between full popup/error sweeps (0 = every frame, old behaviour)
+    "loop_delay": 0.25,       # lower than the previous safe defaults to keep the bot responsive
     "auth_queue": 1,
-    "auth_slots": 1,
-    "auth_max_hold": 45,
-    "auth_backoff_min": 30,
-    "auth_backoff_max": 60,
+    "auth_slots": 2,
+    "auth_max_hold": 15,
+    "auth_backoff_min": 2,
+    "auth_backoff_max": 8,
     "device_identity_check": 1,
     "device_identity_block_on_duplicate": 1,
     "proxy_enabled": 0,
