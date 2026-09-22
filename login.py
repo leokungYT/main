@@ -1349,7 +1349,12 @@ config = {
     "pos_cache": 1,          # 1 = remember where each button was found, re-check only that spot
     "pos_cache_margin": 12,  # px of slack around the remembered spot
     "scan_interval": 1.0,    # sec between full popup/error sweeps (0 = every frame, old behaviour)
-    "loop_delay": None       # override the wait-loop poll delay; None = each loop's own default
+    "loop_delay": None,      # override the wait-loop poll delay; None = each loop's own default
+    "auth_queue": 1,
+    "auth_slots": 1,
+    "auth_max_hold": 45,
+    "auth_backoff_min": 30,
+    "auth_backoff_max": 60
 }
 
 adb_path = "adb"
@@ -1398,6 +1403,100 @@ def _inject_gate():
     finally:
         try: sem.release()
         except ValueError: pass
+
+# =============================================================
+# คิว auth ข้ามโปรเซส - ให้ "จังหวะยืนยันตัวตน" (refresh/check) เกิดทีละไม่กี่จอ
+#
+# ทำไมต้องมี: จอเดียวล็อกอินผ่าน 100% เสมอ แต่เปิดพร้อมกันหลายจอแล้วบางจอ
+# วน fixid/refresh ไม่จบ = เซิร์ฟเวอร์ไม่รับ session ไม่ใช่ไฟล์ไม่เข้า
+# (ไฟล์ผ่าน md5 แล้ว และเกมอ่านได้ถึงได้เด้งหน้าขอ auth ใหม่)
+# ตัวคิวนี้กันเฉพาะ "ช่วงกด refresh" ซึ่งกินเวลาไม่กี่วินาทีต่อจอ
+# งานอื่น (โหลดเกม กล่อง สุ่ม) ยังวิ่งพร้อมกันทุกจอเหมือนเดิม
+#
+# ใช้ไฟล์ล็อกใน temp เพราะแต่ละจอเป็นคนละ process (multiprocessing)
+# =============================================================
+_AUTH_DIR = os.path.join(tempfile.gettempdir(), "ranger-locks")
+
+
+def _auth_cfg():
+    """(เปิดใช้ไหม, จำนวนสล็อต, วินาทีที่ถือคิวได้ก่อนโดนยึด, backoff min/max)"""
+    enabled = bool(config.get("auth_queue", 1))
+    slots = max(1, min(3, int(config.get("auth_slots", 1) or 1)))
+    hold = float(config.get("auth_max_hold", 45))
+    backoff_min = max(0.0, float(config.get("auth_backoff_min", 30)))
+    backoff_max = max(backoff_min, float(config.get("auth_backoff_max", 60)))
+    return (enabled, slots, hold, backoff_min, backoff_max)
+
+
+def _auth_slot_path(i):
+    return os.path.join(_AUTH_DIR, f"_auth_slot{i}.lock")
+
+
+def _auth_backoff_delay(blocked_retries=0):
+    """คำนวณ cooldown หลังโดนบล็อก auth queue; เพิ่มแบบค่อย ๆ จนถึง auth_backoff_max"""
+    on, slots, hold, backoff_min, backoff_max = _auth_cfg()
+    if not on or (backoff_min <= 0 and backoff_max <= 0):
+        return 0.0
+    retry = max(0, int(blocked_retries))
+    if retry <= 0:
+        return backoff_min
+    if backoff_max <= backoff_min:
+        return backoff_min
+    delay = backoff_min * (2 ** max(0, retry - 1))
+    return min(backoff_max, delay)
+
+
+def _auth_acquire(device_id):
+    """ขอคิว auth แบบไม่รอ - คืนหมายเลขสล็อตที่ได้ หรือ None ถ้าเต็ม
+
+    สล็อตที่ถูกถือนานเกิน auth_max_hold (จอค้าง/โปรเซสตาย) จะถูกยึดมาใช้ต่อ
+    """
+    on, slots, hold, *_ = _auth_cfg()
+    if not on:
+        return -1                      # ปิดคิว = ผ่านตลอด (ใช้ -1 แทนสล็อตจริง)
+    try:
+        os.makedirs(_AUTH_DIR, exist_ok=True)
+    except OSError:
+        pass
+    for i in range(slots):
+        path = _auth_slot_path(i)
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(device_id).encode())
+            os.close(fd)
+            return i
+        except FileExistsError:
+            try:
+                if time.time() - os.path.getmtime(path) > hold:
+                    os.remove(path)     # คนถือหายไป - ยึดมา
+                    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                    os.write(fd, str(device_id).encode())
+                    os.close(fd)
+                    return i
+            except OSError:
+                pass
+        except OSError:
+            pass
+    return None
+
+
+def _auth_touch(i):
+    """ยังทำงานอยู่ - เลื่อนเวลาออกไปกันโดนยึดคิวกลางคัน"""
+    if i is None or i < 0:
+        return
+    try:
+        os.utime(_auth_slot_path(i), None)
+    except OSError:
+        pass
+
+
+def _auth_release(i):
+    if i is None or i < 0:
+        return
+    try:
+        os.remove(_auth_slot_path(i))
+    except OSError:
+        pass
 
 def queue_folder_names():
     """ชื่อโฟลเดอร์คิวตาม config ("queue_folders") - ใช้ร่วมกันทั้ง 3 สคริปต์
@@ -7452,6 +7551,52 @@ class RangerGearBot(threading.Thread):
     # =========================================================
     # Main Login
     # =========================================================
+    # ---------- คิว auth (ดูคำอธิบายที่ _auth_acquire ด้านบนไฟล์) ----------
+    def _auth_take_turn(self, what="auth"):
+        """ขอคิวก่อนกด refresh/auth - คืน True ถ้าถึงตาเรา (ถือคิวอยู่แล้วก็ True)"""
+        if getattr(self, "_auth_slot", None) is not None:
+            _auth_touch(self._auth_slot)
+            return True
+
+        backoff_until = float(getattr(self, "_auth_backoff_until", 0.0) or 0.0)
+        if backoff_until > time.time():
+            remaining = max(0.0, backoff_until - time.time())
+            if time.time() - getattr(self, "_auth_wait_logged", 0) > 15:
+                self._auth_wait_logged = time.time()
+                print(f"[{self.device_id}] [AUTH-Q] cooldown {what} เหลืออีก {remaining:.0f}s ก่อนลองใหม่...")
+            sleep(min(1.0, max(0.5, remaining)))
+            return False
+
+        slot = _auth_acquire(self.device_id)
+        if slot is None:
+            blocked_retries = int(getattr(self, "_auth_blocked_retries", 0) or 0) + 1
+            self._auth_blocked_retries = blocked_retries
+            delay = _auth_backoff_delay(blocked_retries)
+            self._auth_backoff_until = time.time() + delay
+            if time.time() - getattr(self, "_auth_wait_logged", 0) > 15:
+                self._auth_wait_logged = time.time()
+                print(f"[{self.device_id}] [AUTH-Q] รอคิว {what} (จออื่นกำลังยืนยันตัวตนอยู่) - cooldown {delay:.0f}s")
+            return False
+
+        self._auth_blocked_retries = 0
+        self._auth_backoff_until = 0.0
+        self._auth_slot = slot
+        if slot >= 0:
+            print(f"[{self.device_id}] [AUTH-Q] ได้คิวแล้ว (สล็อต {slot}) - เริ่ม {what}")
+        return True
+
+    def _auth_done(self, why=""):
+        """ปล่อยคิวให้จอถัดไป - เรียกซ้ำได้ ไม่พัง"""
+        slot = getattr(self, "_auth_slot", None)
+        if slot is None:
+            return
+        self._auth_slot = None
+        self._auth_blocked_retries = 0
+        self._auth_backoff_until = 0.0
+        _auth_release(slot)
+        if slot >= 0:
+            print(f"[{self.device_id}] [AUTH-Q] ปล่อยคิวให้จอถัดไป" + (f" ({why})" if why else ""))
+
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID

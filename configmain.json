@@ -102,5 +102,10 @@
     "mumu_root": "เปิด",
     "mumu_renderer": "DirectX",
     "mumu_app_running": "เปิด",
-    "screen_clear_wm_override": 1
+    "screen_clear_wm_override": 1,
+    "auth_queue": 1,
+    "auth_slots": 1,
+    "auth_max_hold": 45,
+    "auth_backoff_min": 30,
+    "auth_backoff_max": 60
 }
