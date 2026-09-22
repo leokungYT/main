@@ -7922,6 +7922,7 @@ class RangerGearBot(threading.Thread):
         loop_count = 0
         status = "unknown"
         event_passed = False  # หลังเจอ event.png แล้วหยุดเช็ค fixok
+        login_idle_loops = 0
 
         
         while True:
@@ -7958,6 +7959,38 @@ class RangerGearBot(threading.Thread):
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
             self.check_floating_popups()
+
+            # Hard recovery for the case where the app is alive but the login
+            # screen has gone dead (no expected login UI for many cycles).
+            if loop_count % 10 == 0:
+                login_idle_hits = False
+                for p in [
+                    "img/fixid.png",
+                    "img/fixid1.png",
+                    "img/refresh.png",
+                    "img/check.png",
+                    "img/fixok.png",
+                    "img/stoplogin.png",
+                    "img/fixnetv3.png",
+                    "img/fikcheck.png",
+                ]:
+                    try:
+                        if self.exists_in_cache(p, similarity=0.8):
+                            login_idle_hits = True
+                            break
+                    except Exception:
+                        pass
+                if login_idle_hits:
+                    login_idle_loops = 0
+                else:
+                    login_idle_loops += 1
+                    if login_idle_loops >= 3:
+                        print(f"[{self.device_id}] [LOGIN-RECOVER] ไม่มี UI login ที่จับได้ใน 3 รอบ -> รีสตาร์ทแอปและเริ่มใหม่")
+                        self.clear_and_restart()
+                        self.open_app()
+                        sleep(3)
+                        login_idle_loops = 0
+                        continue
 
             # fixnetv3.png Check in login loop
             if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
