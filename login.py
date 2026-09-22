@@ -1444,6 +1444,83 @@ def recycle_failed_into_queue(source_dir="login-failed"):
     return moved > 0
 
 
+_last_7day_recycle_ts = 0.0
+SEVEN_DAY_PREFIX_RE = re.compile(r"^\[7=(\d+)\]\+")
+
+
+def recycle_7day_into_queue(source_dir="7day-check"):
+    """คิวหมด -> ดึงไฟล์ใน 7day-check/ ที่ยังรับของไม่ครบ (ไม่ใช่ [7=7]) กลับเข้าคิวเพื่อรับต่อ
+
+    ใช้ตอนเปิด box + 7day: จบรอบแล้วไฟล์จะไปกองที่ 7day-check/ ชื่อ "[7=N]+เดิม"
+    ไฟล์ที่ N < 7 = ยังรับของ 7 วันไม่ครบ เอากลับไปวนใหม่ได้เรื่อย ๆ จนครบ 7/7
+    - ปิดได้ด้วย config "recycle_7day": 0 ; กันวนรัว ๆ ด้วย "recycle_7day_cooldown" (วินาที)
+    - ตัดคำนำหน้า "[7=N]+" ออกก่อนย้าย ชื่อไฟล์จะได้ไม่ยาวขึ้นทุกรอบ
+    คืน True ถ้าย้ายได้อย่างน้อย 1 ไฟล์
+    """
+    global _last_7day_recycle_ts
+    if not config.get("recycle_7day", 1):
+        return False
+    if not config.get("7day", 0):
+        return False                      # ไม่ได้เปิดโหมด 7 วัน = ไม่ต้องวนกลับ
+    target = int(config.get("recycle_7day_target", 7))
+    cooldown = float(config.get("recycle_7day_cooldown", 60))
+    if time.time() - _last_7day_recycle_ts < cooldown:
+        return False
+    _last_7day_recycle_ts = time.time()
+
+    base = os.path.dirname(os.path.abspath(__file__))
+    src = os.path.join(base, source_dir)
+    if not os.path.isdir(src):
+        return False
+    qnames = queue_folder_names()
+    dst = os.path.join(base, qnames[-1] if qnames else "input-id")
+
+    lock_path = os.path.join(src, ".recycle7day.lock")
+    try:
+        if os.path.exists(lock_path) and time.time() - os.path.getmtime(lock_path) > 300:
+            try: os.remove(lock_path)
+            except OSError: pass
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except (FileExistsError, OSError):
+        return False   # process อื่นกำลังวนอยู่
+
+    moved = skipped_done = 0
+    try:
+        os.makedirs(dst, exist_ok=True)
+        for root, _dirs, filenames in os.walk(src):
+            for f in filenames:
+                if not f.lower().endswith(".xml"):
+                    continue
+                m = SEVEN_DAY_PREFIX_RE.match(f)
+                if not m:
+                    continue              # ไม่มี [7=N] = ไม่รู้สถานะ ปล่อยไว้
+                if int(m.group(1)) >= target:
+                    skipped_done += 1     # ครบ 7/7 แล้ว จบ ไม่ต้องวนอีก
+                    continue
+                s_path = os.path.join(root, f)
+                clean = f[m.end():]        # ตัด "[7=N]+" ออก
+                stem, ext = os.path.splitext(clean)
+                d_path = os.path.join(dst, clean)
+                seq = 2
+                while os.path.exists(d_path):
+                    d_path = os.path.join(dst, f"{stem}_{seq}{ext}")
+                    seq += 1
+                try:
+                    shutil.move(s_path, d_path)
+                    moved += 1
+                except Exception:
+                    pass
+    finally:
+        try: os.remove(lock_path)
+        except OSError: pass
+
+    if moved:
+        print(f"[QUEUE] คิวหมด - ดึง {moved} ไฟล์ที่ยังไม่ครบ {target}/{target} จาก {source_dir}/ "
+              f"กลับไปรับของต่อที่ {os.path.basename(dst)}/ (ครบแล้วข้าม {skipped_done} ไฟล์)")
+    return moved > 0
+
+
 def load_config():
     global config
     
@@ -4946,6 +5023,13 @@ class RangerGearBot(threading.Thread):
 
         # คิวหมดแล้ว -> เอา login-failed กลับมาวนใหม่ (ปิดได้ด้วย recycle_failed=0)
         if recycle_failed_into_queue():
+            for folder_name in queue_folder_names():
+                picked = self._pick_file_from(os.path.join(script_dir, folder_name))
+                if picked:
+                    return picked
+
+        # ยังไม่มีอะไรให้ทำ -> ดึงไฟล์ใน 7day-check/ ที่ยังไม่ครบ 7/7 กลับมารับของต่อ
+        if recycle_7day_into_queue():
             for folder_name in queue_folder_names():
                 picked = self._pick_file_from(os.path.join(script_dir, folder_name))
                 if picked:
