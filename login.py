@@ -1432,6 +1432,27 @@ def _auth_slot_path(i):
     return os.path.join(_AUTH_DIR, f"_auth_slot{i}.lock")
 
 
+def _auth_cleanup_stale():
+    """ล้าง lock auth ที่ค้างเกิน auth_max_hold อัตโนมัติ เพื่อไม่ให้จอ fail ติดคิว"""
+    try:
+        os.makedirs(_AUTH_DIR, exist_ok=True)
+    except OSError:
+        return
+    _, _, hold, *_ = _auth_cfg()
+    stale_after = max(10.0, float(hold))
+    try:
+        for entry in os.scandir(_AUTH_DIR):
+            if not entry.name.startswith("_auth_slot") or not entry.name.endswith(".lock"):
+                continue
+            try:
+                if time.time() - entry.stat().st_mtime > stale_after:
+                    os.remove(entry.path)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
 def _auth_backoff_delay(blocked_retries=0):
     """คำนวณ cooldown หลังโดนบล็อก auth queue; เพิ่มแบบค่อย ๆ จนถึง auth_backoff_max"""
     on, slots, hold, backoff_min, backoff_max = _auth_cfg()
@@ -1451,6 +1472,7 @@ def _auth_acquire(device_id):
 
     สล็อตที่ถูกถือนานเกิน auth_max_hold (จอค้าง/โปรเซสตาย) จะถูกยึดมาใช้ต่อ
     """
+    _auth_cleanup_stale()
     on, slots, hold, *_ = _auth_cfg()
     if not on:
         return -1                      # ปิดคิว = ผ่านตลอด (ใช้ -1 แทนสล็อตจริง)
@@ -7326,6 +7348,7 @@ class RangerGearBot(threading.Thread):
     def clear_and_restart(self):
         """Clear app and prepare for next file"""
         self._auth_done("clear_and_restart")
+        _auth_cleanup_stale()
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
 
@@ -7563,6 +7586,8 @@ class RangerGearBot(threading.Thread):
         if getattr(self, "_auth_slot", None) is not None:
             _auth_touch(self._auth_slot)
             return True
+
+        _auth_cleanup_stale()
 
         backoff_until = float(getattr(self, "_auth_backoff_until", 0.0) or 0.0)
         if backoff_until > time.time():
