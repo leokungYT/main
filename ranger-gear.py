@@ -820,9 +820,13 @@ _inject_sem_lock = threading.Lock()
 
 @contextlib.contextmanager
 def _inject_gate():
-    """คิวส่งไฟล์: ให้ส่งพร้อมกันได้ไม่เกิน config "inject_max_concurrent" (0 = ไม่จำกัด)"""
+    """คิวเฉพาะทางสำรอง adb push: จำกัดตาม config "inject_max_concurrent"
+
+    ค่า default = 0 (ไม่จำกัด) ทางหลัก base64-over-shell ไม่เรียกคิวนี้เลย
+    ทุกจอจึงฉีดไฟล์/ล็อกอินพร้อมกันได้เหมือนเดิม (เปิด 100 จอก็ได้)
+    """
     global _inject_sem
-    n = int(config.get("inject_max_concurrent", 2) or 0)
+    n = int(config.get("inject_max_concurrent", 0) or 0)
     if n <= 0:
         yield
         return
@@ -3355,11 +3359,13 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [PUT] จอนี้ adb ไม่พร้อม (offline/ต่อไม่ติด) - ข้ามการส่งไฟล์")
             return False, len(data)
 
-        with _inject_gate():
-            if use_shell and self._write_remote_b64(data, remote_path):
-                return True, len(data)
+        # ทางหลัก (base64 ผ่าน adb shell) ไม่ต้องเข้าคิว - adb shell เปิดพร้อมกันกี่จอก็ได้
+        # ไม่ได้ใช้ sync service เลยไม่มีอะไรให้แย่งกัน 100 จอก็ยิงพร้อมกันได้
+        if use_shell and self._write_remote_b64(data, remote_path):
+            return True, len(data)
 
-            # สำรอง: adb push แบบเดิม (ไฟล์ใหญ่ หรือเครื่องไม่มี base64)
+        # สำรอง: adb push แบบเดิม - อันนี้แย่ง sync service กันจริง จึงจำกัดคิวเฉพาะตรงนี้
+        with _inject_gate():
             try:
                 result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, remote_path], timeout=60)
                 if result.returncode != 0:
