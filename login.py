@@ -1356,7 +1356,16 @@ config = {
     "auth_backoff_min": 30,
     "auth_backoff_max": 60,
     "device_identity_check": 1,
-    "device_identity_block_on_duplicate": 1
+    "device_identity_block_on_duplicate": 1,
+    "proxy_enabled": 0,
+    "proxy_type": "http",
+    "proxy_host": "",
+    "proxy_port": 0,
+    "proxy_username": "",
+    "proxy_password": "",
+    "proxy_bypass": "localhost,127.0.0.1,10.0.2.2",
+    "proxy_timeout_sec": 15,
+    "proxy_per_device": {}
 }
 
 adb_path = "adb"
@@ -1480,6 +1489,43 @@ def _device_identity_duplicate_check(adb_cmd, device_id):
         reason = ", ".join(sorted(set(duplicates)))
         return True, reason, sig
     return False, "ok", sig
+
+
+def _proxy_config_for_device(device_id, config_map=None):
+    """Return proxy settings for this emulator if enabled.
+
+    This is a best-effort, safe feature: if proxy disabled or host/port empty,
+    returns None and the bot keeps its normal behavior.
+    """
+    if config_map is None:
+        config_map = config.get("proxy_per_device", {}) or {}
+    if isinstance(config_map, dict):
+        cfg = config_map.get(device_id) or config_map.get(device_id.replace(":", "_"))
+    else:
+        cfg = {}
+    enabled = bool((cfg or {}).get("enabled", bool(config.get("proxy_enabled", 0))))
+    if not enabled:
+        return None
+    host = str((cfg or {}).get("host") or config.get("proxy_host") or "").strip()
+    port = (cfg or {}).get("port", config.get("proxy_port", 0))
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        port = 0
+    if not host or port <= 0:
+        return None
+    proxy_type = str((cfg or {}).get("type") or config.get("proxy_type") or "http").lower()
+    username = str((cfg or {}).get("username") or config.get("proxy_username") or "").strip()
+    password = str((cfg or {}).get("password") or config.get("proxy_password") or "").strip()
+    return {
+        "enabled": True,
+        "host": host,
+        "port": port,
+        "type": proxy_type,
+        "username": username,
+        "password": password,
+        "bypass": str(config.get("proxy_bypass", "localhost,127.0.0.1,10.0.2.2")).strip(),
+    }
 
 
 @contextlib.contextmanager
@@ -3250,6 +3296,41 @@ class RangerGearBot(threading.Thread):
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
+    def _proxy_config_for_device(self):
+        """Best-effort proxy setup for this emulator. Returns None when disabled."""
+        return _proxy_config_for_device(self.device_id)
+
+    def _apply_proxy_for_device(self):
+        """Set Android global HTTP proxy for this emulator if proxy config is present."""
+        proxy = self._proxy_config_for_device()
+        if not proxy:
+            return False
+        host = proxy["host"]
+        port = int(proxy["port"])
+        proxy_value = f"{host}:{port}"
+        username = proxy.get("username")
+        password = proxy.get("password")
+        if username:
+            proxy_value = f"{username}:{password}@{host}:{port}" if password else f"{username}@{host}:{port}"
+        bypass = proxy.get("bypass", "localhost,127.0.0.1,10.0.2.2")
+        print(f"[{self.device_id}] [PROXY] Trying {proxy['type']} proxy {host}:{port} for emulator")
+        try:
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "put", "global", "http_proxy", proxy_value], timeout=12)
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "put", "global", "proxy_exclusion_list", bypass], timeout=12)
+            return True
+        except Exception as e:
+            print(f"[{self.device_id}] [PROXY] proxy apply failed: {e}")
+            return False
+
+    def _clear_proxy_for_device(self):
+        """Best-effort clean-up for proxy settings when disabled or restarting."""
+        try:
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "put", "global", "http_proxy", ""], timeout=12)
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "put", "global", "proxy_exclusion_list", ""], timeout=12)
+            return True
+        except Exception:
+            return False
+
     def _resolve_game_activity(self):
         """หา launcher activity จริงของเกมจากเครื่อง (ชื่อเปลี่ยนตามเวอร์ชันเกม) แล้ว cache ไว้
         - เดิม hardcode com.linecorp.common.activity.LineActivity ซึ่งเกมเวอร์ชันใหม่เปลี่ยนเป็น .LineRangersAdr แล้ว
@@ -3299,6 +3380,10 @@ class RangerGearBot(threading.Thread):
     def open_app(self):
         self.last_activity_time = time.time()
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
+        # Best-effort per-device proxy activation before launching the game.
+        # This keeps the feature enabled without breaking standard runs if proxy
+        # config is blank or disabled.
+        self._apply_proxy_for_device()
         if not self._check_device_identity():
             print(f"[{self.device_id}] [DEVICE-FP] หยุด login: device identity ซ้ำ/clone -> ข้ามไฟล์นี้ไป")
             self.app_missing = True
