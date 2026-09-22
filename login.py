@@ -5817,7 +5817,26 @@ class RangerGearBot(threading.Thread):
         return self.find(template_path, similarity) is not None
 
     def exists_in_cache(self, template_path, similarity=0.95):
-        """Check if template exists in already-captured screen"""
+        """Check if template exists in already-captured screen.
+
+        If the screen has not been captured yet or the last frame looks stale,
+        grab a fresh one first so the login loop does not keep acting on an old
+        screenshot that can never match the current UI.
+        """
+        if self._screen is None:
+            try:
+                self.capture_screen()
+            except Exception:
+                return False
+        hit = self._find_in_screen(template_path, similarity) is not None
+        if hit:
+            return True
+        # One fresh retry avoids the common stale-frame problem where the bot
+        # keeps looking at an old screenshot and never taps the current button.
+        try:
+            self.capture_screen()
+        except Exception:
+            return False
         return self._find_in_screen(template_path, similarity) is not None
 
     def _get_similarity_score(self, template_path):
@@ -5837,13 +5856,22 @@ class RangerGearBot(threading.Thread):
         self.last_activity_time = time.time()
         target = None
         if isinstance(PSMRL, str):
-            if os.path.exists(PSMRL):
-                target = self._find_in_screen(PSMRL, similarity)
+            candidate = PSMRL
+            if not os.path.isabs(candidate):
+                candidate = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), candidate))
+            if os.path.exists(candidate):
+                target = self._find_in_screen(candidate, similarity)
                 if target is None:
-                    print(f"[{self.device_id}] Template not found: {PSMRL}")
+                    try:
+                        self.capture_screen()
+                        target = self._find_in_screen(candidate, similarity)
+                    except Exception:
+                        pass
+                    if target is None:
+                        print(f"[{self.device_id}] Template not found: {PSMRL}")
         elif isinstance(PSMRL, tuple):
             target = PSMRL
-            
+
         if target:
             x, y = target
             self.tap(x, y) # Use the improved tap method
