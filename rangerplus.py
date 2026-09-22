@@ -2850,6 +2850,38 @@ class RangerPlusBot(multiprocessing.Process):
     # ---------------------------------------------------------
     # ส่งไฟล์เข้าเครื่อง (โหมด "คัดลอก-วาง" ไม่ใช้ adb push)
     # ---------------------------------------------------------
+    # 4 ไฟล์ pref ที่คุมการสลับบัญชี - ต้องล้างให้หมดก่อนฉีดไอดีใหม่
+    ACCOUNT_PREFS = (
+        "_LINE_COCOS_PREF_KEY.xml",
+        "Cocos2dxPrefsFile.xml",
+        "com.linecorp.LGRGS_preferences.xml",
+        "trident.preferences.xml",
+    )
+
+    def _remote_context(self, remote_path):
+        """SELinux context ของไฟล์/โฟลเดอร์บนเครื่อง หรือ None"""
+        try:
+            r = self.adb_shell(f"su -c 'stat -c %C {remote_path} 2>/dev/null'", timeout=15)
+            txt = (r.stdout or b"").decode("utf-8", "ignore").strip()
+            return txt.split()[0] if txt and ":" in txt else None
+        except Exception:
+            return None
+
+    def _context_ok(self, remote_path, ref_dir):
+        """ไฟล์ที่ฉีดมี SELinux context ตรงกับโฟลเดอร์ของแอปไหม (ไม่รู้ = ถือว่าผ่าน)"""
+        want = self._remote_context(ref_dir)
+        got = self._remote_context(remote_path)
+        if not want or not got:
+            return True          # เครื่องไม่รองรับ stat -c %C - ข้ามไป อย่าให้ inject ล้มเพราะเรื่องนี้
+        if got == want:
+            return True
+        print(f"[{self.device_id}] [SELINUX] context ไม่ตรง: ไฟล์={got} / โฟลเดอร์={want} - ซ่อมให้")
+        try:
+            self.adb_shell(f"su -c 'chcon {want} {remote_path} 2>/dev/null || restorecon {remote_path} 2>/dev/null'", timeout=20)
+        except Exception:
+            pass
+        return self._remote_context(remote_path) == want
+
     def _verify_pref_before_launch(self, local_xml_path, retries=2):
         """เช็คว่าไฟล์ pref บนเครื่องยังเป็นไฟล์ที่เราฉีดไว้ - ไม่ตรงก็ฉีดซ้ำให้
 
@@ -3149,12 +3181,24 @@ class RangerPlusBot(multiprocessing.Process):
                     f"chown $(stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final_dir} && "
                     f"chmod 771 {final_dir}'", timeout=20)
 
-                # 3) copy เข้าที่จริง + ตั้งสิทธิ์/เจ้าของให้เหมือนไฟล์ที่แอปสร้างเอง
+                # 2.5) ล้าง pref ของบัญชีก่อนหน้าให้หมดก่อนฉีดของใหม่
+                #      4 ไฟล์นี้คือชุดที่คุมการสลับบัญชี ถ้าเหลือของไอดีเก่าไว้
+                #      เกมอาจหยิบของเก่าไปใช้ = ฉีดไฟล์ถูกแต่ล็อกอินไม่ผ่าน/ได้ไอดีเดิม
+                if config.get("inject_clear_siblings", 1):
+                    sib = " ".join(f"{final_dir}/{n}" for n in self.ACCOUNT_PREFS if n != os.path.basename(final))
+                    self.adb_shell(f"su -c 'rm -f {sib} {final_dir}/*.bak'", timeout=20)
+
+                # 3) copy เข้าที่จริง + ตั้งสิทธิ์/เจ้าของ/SELinux ให้เหมือนไฟล์ที่แอปสร้างเอง
+                #    ** chcon สำคัญมาก **: ไฟล์ที่ cp มาจาก /data/local/tmp จะได้ context
+                #    "u:object_r:app_data_file:s0" เฉย ๆ ไม่มี category (:c44,c256,...) ของแอป
+                #    จอไหนที่ SELinux เป็น Enforcing แอปจะอ่านไฟล์นั้นไม่ได้เลย -> เกมสร้างบัญชีใหม่
+                #    = "ไฟล์เข้า (md5 ตรง) แต่ล็อกอินไม่ผ่าน" ส่วนจอที่ Permissive กลับผ่านปกติ
                 shell_cmd = (
                     f"su -c '"
                     f"cp {tmp} {final} && "
                     f"chmod 666 {final} && "
-                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final}"
+                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final} && "
+                    f"{{ chcon $(stat -c %C {final_dir} 2>/dev/null) {final} 2>/dev/null || restorecon {final} 2>/dev/null || true; }}"
                     f"'"
                 )
                 res = self.adb_shell(shell_cmd, timeout=20)
@@ -3185,9 +3229,18 @@ class RangerPlusBot(multiprocessing.Process):
                         sleep(2)
                         continue
 
+                # 4.5) context ต้องมี category ของแอป ไม่งั้นจอที่ Enforcing จะอ่านไม่ออก
+                if not self._context_ok(final, final_dir):
+                    print(f"[{self.device_id}] Inject attempt {attempt}: SELinux context ไม่ตรงกับโฟลเดอร์ - ลองใหม่")
+                    sleep(2)
+                    continue
+
                 self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
                 self._injected_md5 = remote_md5        # ไว้เทียบก่อนเปิดเกมว่ายังไม่โดนทับ
                 self._injected_final = final
+                # ให้ไฟล์นิ่งก่อนเปิดเกม (เครื่องโหลดหนัก ๆ การเขียนอาจยังไม่ sync ลงดิสก์)
+                self.adb_shell("sync", timeout=20)
+                sleep(float(config.get("post_inject_wait", 2)))
                 print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
                 return local_xml_path
 
