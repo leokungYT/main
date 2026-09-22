@@ -3380,6 +3380,10 @@ class RangerGearBot(threading.Thread):
     def open_app(self):
         self.last_activity_time = time.time()
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
+        # Reset stale network/proxy state before each file/job. This prevents a
+        # reused emulator from keeping a previous IP/proxy binding across files.
+        self._clear_proxy_for_device()
+        sleep(0.5)
         # Best-effort per-device proxy activation before launching the game.
         # This keeps the feature enabled without breaking standard runs if proxy
         # config is blank or disabled.
@@ -7585,6 +7589,9 @@ class RangerGearBot(threading.Thread):
         """Clear app and prepare for next file"""
         self._auth_done("clear_and_restart")
         _auth_cleanup_stale()
+        # Reset stale proxy/IP state for the next file so the emulator does not
+        # reuse a previous session's HTTP proxy configuration between jobs.
+        self._clear_proxy_for_device()
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
 
