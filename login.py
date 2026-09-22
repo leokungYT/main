@@ -1381,13 +1381,9 @@ _inject_sem_lock = threading.Lock()
 
 @contextlib.contextmanager
 def _inject_gate():
-    """คิวเฉพาะทางสำรอง adb push: จำกัดตาม config "inject_max_concurrent"
-
-    ค่า default = 0 (ไม่จำกัด) ทางหลัก base64-over-shell ไม่เรียกคิวนี้เลย
-    ทุกจอจึงฉีดไฟล์/ล็อกอินพร้อมกันได้เหมือนเดิม (เปิด 100 จอก็ได้)
-    """
+    """คิวส่งไฟล์: ให้ส่งพร้อมกันได้ไม่เกิน config "inject_max_concurrent" (0 = ไม่จำกัด)"""
     global _inject_sem
-    n = int(config.get("inject_max_concurrent", 0) or 0)
+    n = int(config.get("inject_max_concurrent", 2) or 0)
     if n <= 0:
         yield
         return
@@ -6665,102 +6661,6 @@ class RangerGearBot(threading.Thread):
     # ---------------------------------------------------------
     # ส่งไฟล์เข้าเครื่อง (โหมด "คัดลอก-วาง" ไม่ใช้ adb push)
     # ---------------------------------------------------------
-    # 4 ไฟล์ pref ที่คุมการสลับบัญชี - ต้องล้างให้หมดก่อนฉีดไอดีใหม่
-    ACCOUNT_PREFS = (
-        "_LINE_COCOS_PREF_KEY.xml",
-        "Cocos2dxPrefsFile.xml",
-        "com.linecorp.LGRGS_preferences.xml",
-        "trident.preferences.xml",
-    )
-
-    def _remote_context(self, remote_path):
-        """SELinux context ของไฟล์/โฟลเดอร์บนเครื่อง หรือ None"""
-        try:
-            r = self.adb_shell(f"su -c 'stat -c %C {remote_path} 2>/dev/null'", timeout=15)
-            txt = (r.stdout or b"").decode("utf-8", "ignore").strip()
-            return txt.split()[0] if txt and ":" in txt else None
-        except Exception:
-            return None
-
-    def _context_ok(self, remote_path, ref_dir):
-        """ไฟล์ที่ฉีดมี SELinux context ตรงกับโฟลเดอร์ของแอปไหม (ไม่รู้ = ถือว่าผ่าน)"""
-        want = self._remote_context(ref_dir)
-        got = self._remote_context(remote_path)
-        if not want or not got:
-            return True          # เครื่องไม่รองรับ stat -c %C - ข้ามไป อย่าให้ inject ล้มเพราะเรื่องนี้
-        if got == want:
-            return True
-        print(f"[{self.device_id}] [SELINUX] context ไม่ตรง: ไฟล์={got} / โฟลเดอร์={want} - ซ่อมให้")
-        try:
-            self.adb_shell(f"su -c 'chcon {want} {remote_path} 2>/dev/null || restorecon {remote_path} 2>/dev/null'", timeout=20)
-        except Exception:
-            pass
-        return self._remote_context(remote_path) == want
-
-    def _verify_pref_before_launch(self, local_xml_path, retries=2):
-        """เช็คว่าไฟล์ pref บนเครื่องยังเป็นไฟล์ที่เราฉีดไว้ - ไม่ตรงก็ฉีดซ้ำให้
-
-        อาการที่แก้: "ไฟล์เข้าแล้ว (md5 ผ่านตอน inject) แต่พอเปิดเกมล็อกอินไม่ผ่าน"
-        ช่วงระหว่าง inject -> เปิดเกม โปรเซสเก่าที่ยังไม่ตายสนิทจะเขียน pref ทับได้
-        """
-        want = getattr(self, "_injected_md5", None)
-        final = getattr(self, "_injected_final", None)
-        if not want or not final:
-            return True
-        for i in range(max(1, retries)):
-            self._wait_app_dead(timeout=10)
-            self._purge_prefs_backups(os.path.dirname(final))
-            got = self._remote_md5(final)
-            if got == want:
-                return True
-            print(f"[{self.device_id}] [PREFS] ไฟล์บัญชีโดนเขียนทับก่อนเปิดเกม "
-                  f"({got} != {want}) - ฉีดใหม่ (ยกที่ {i + 1})")
-            if not local_xml_path or not os.path.exists(local_xml_path):
-                break
-            if not self.inject_file(local_xml_path):
-                break
-            want = getattr(self, "_injected_md5", None)
-        return self._remote_md5(final) == want
-
-    def _wait_app_dead(self, timeout=15):
-        """รอจนโปรเซสเกมตายจริง ๆ - คืน True ถ้าตายแล้ว
-
-        โปรเซสที่ยังไม่ตายจะ flush SharedPreferences ที่ค้างในแรมลงดิสก์ตอนกำลังตาย
-        = เขียนทับไฟล์บัญชีที่เราเพิ่งฉีดไป (md5 ตอน inject ผ่าน แต่พอเปิดเกมเป็นคนละไอดี)
-        เปิดหลายจอพร้อมกัน force-stop จะช้ากว่าปกติมาก sleep(2) ตายตัวจึงไม่พอ
-        """
-        end = time.time() + timeout
-        while time.time() < end:
-            try:
-                r = self.adb_run([self.adb_cmd, "-s", self.device_id, "shell",
-                                  "pidof", "com.linecorp.LGRGS"], timeout=8)
-                if not (r.stdout or b"").decode("utf-8", "ignore").strip():
-                    return True
-            except Exception:
-                pass
-            sleep(0.5)
-        print(f"[{self.device_id}] [WARN] เกมยังไม่ตายใน {timeout} วิ - เสี่ยงโดนเขียน pref ทับ")
-        return False
-
-    def _purge_prefs_backups(self, final_dir):
-        """ลบไฟล์ .bak ที่ค้างใน shared_prefs (ต้องทำทุกครั้งหลังฉีดไฟล์)
-
-        Android (SharedPreferencesImpl.loadFromDisk) ถ้าเจอ "<ชื่อ>.xml.bak" ตอนโหลด pref
-        จะ **ลบไฟล์จริงทิ้งแล้วเอา .bak มาแทน** = ไฟล์บัญชีที่เราฉีดหายเกลี้ยงตอนเปิดเกม
-        ทั้งที่ตอน inject ตรวจ md5 ผ่านแล้ว
-        .bak เกิดตอนแอปกำลังเขียน pref แล้วโดน force-stop/killall - ยิ่งเปิดหลายจอ
-        เครื่องยิ่งช้า ยิ่งโดนฆ่ากลางคัน = บางจอ "ไฟล์เข้าแต่ล็อกอินไม่ผ่าน" แบบสุ่ม
-        """
-        try:
-            r = self.adb_shell(f"su -c 'ls {final_dir}/*.bak 2>/dev/null'", timeout=15)
-            found = (r.stdout or b"").decode("utf-8", "ignore").strip()
-            if found:
-                self.adb_shell(f"su -c 'rm -f {final_dir}/*.bak'", timeout=20)
-                print(f"[{self.device_id}] [PREFS] ลบไฟล์ .bak ค้าง {len(found.splitlines())} ไฟล์ "
-                      f"(ถ้าไม่ลบ แอปจะเอา .bak ทับไฟล์ที่ฉีดไป)")
-        except Exception as e:
-            print(f"[{self.device_id}] [PREFS] ลบ .bak ไม่สำเร็จ: {e}")
-
     def _remote_md5(self, remote_path):
         """md5 ของไฟล์บนเครื่อง หรือ None ถ้าอ่านไม่ได้"""
         try:
@@ -6773,93 +6673,36 @@ class RangerGearBot(threading.Thread):
             pass
         return None
 
-    # คำสั่งเขียนต่อท้ายไฟล์ที่ shell ของเครื่องอาจรองรับต่างกัน (mksh/toybox/busybox)
-    _B64_WRITERS = (
-        ("echo -n", "echo -n '{p}' >> {f}"),
-        ("printf", "printf '%s' '{p}' >> {f}"),
-        ("busybox printf", "busybox printf '%s' '{p}' >> {f}"),
-        ("echo", "echo '{p}' | tr -d '\n' >> {f}"),
-    )
-    _B64_DECODERS = (
-        ("base64", "base64 -d {f} > {o}"),
-        ("busybox base64", "busybox base64 -d {f} > {o}"),
-        ("toybox base64", "toybox base64 -d {f} > {o}"),
-    )
-
-    def _probe_b64_tools(self):
-        """ลองเขียน+decode ข้อความสั้น ๆ เพื่อหาว่าจอนี้ใช้คำสั่งชุดไหนได้ - cache ไว้ต่อเครื่อง
-
-        จอที่ "ไฟล์เข้าไม่ได้" ทั้งที่จออื่นเข้าได้ มักเป็นเพราะ shell/รูทของ instance นั้น
-        ไม่เหมือนกัน (ไม่มี base64 / echo -n ไม่รองรับ) - ตรงนี้จะเลือกคำสั่งที่ใช้ได้จริงให้เอง
-        คืน (write_tmpl, dec_tmpl) หรือ (None, None) ถ้าไม่มีชุดไหนใช้ได้
-        """
-        cached = getattr(self, "_b64_tools", None)
-        if cached is not None:
-            return cached
-        probe = "/data/local/tmp/_lgr_probe_{}.b64".format(self.device_id.replace(":", "_"))
-        out = probe[:-4] + ".out"
-        found = (None, None)
-        for wname, wtmpl in self._B64_WRITERS:
-            try:
-                self.adb_shell(f"rm -f {probe} {out}", timeout=15)
-                w = self.adb_shell(wtmpl.format(p="QUJD", f=probe), timeout=20)
-                if w.returncode != 0:
-                    continue
-                for dname, dtmpl in self._B64_DECODERS:
-                    d = self.adb_shell(dtmpl.format(f=probe, o=out) + f" && cat {out}", timeout=20)
-                    txt = (d.stdout or b"").decode("utf-8", "ignore").strip()
-                    if txt == "ABC":
-                        print(f"[{self.device_id}] [PUT] ใช้ได้: เขียนด้วย {wname} / decode ด้วย {dname}")
-                        found = (wtmpl, dtmpl)
-                        break
-            except Exception:
-                continue
-            if found[0]:
-                break
-        if not found[0]:
-            print(f"[{self.device_id}] [PUT] จอนี้ไม่มีคำสั่ง base64/echo ที่ใช้ได้ - จะใช้ adb push แทน")
-        try: self.adb_shell(f"rm -f {probe} {out}", timeout=15)
-        except Exception: pass
-        self._b64_tools = found
-        return found
-
     def _write_remote_b64(self, data, remote_path, chunk=1200):
-        """เขียนไฟล์ลงเครื่องด้วย base64 ทีละท่อนผ่าน adb shell แล้ว decode บนเครื่อง
+        """เขียนไฟล์ลงเครื่องด้วย echo base64 ทีละท่อน แล้ว decode บนเครื่อง
 
         ทำไมไม่ใช้ adb push: push ใช้ sync service ของ adb ซึ่งพอเปิดหลายจอพร้อมกัน
         จะแย่งคิวกันจนค้าง/หลุดกลางทาง = "ไฟล์เข้าไม่ได้เลย" ทั้งที่ไฟล์ไม่ได้พัง
         วิธีนี้ส่งผ่าน adb shell ธรรมดา (ไฟล์ pref แค่ ~1 KB) เหมือนพิมพ์วางเอง
         คืน True ถ้าเขียนครบและ md5 ตรงกับต้นทาง
         """
-        wtmpl, dtmpl = self._probe_b64_tools()
-        if not wtmpl:
-            return False
         b64 = base64.b64encode(data).decode("ascii")
         want_md5 = hashlib.md5(data).hexdigest()
         b64_path = remote_path + ".b64"
         try:
-            self.adb_shell(f"rm -f {b64_path} {remote_path}", timeout=20)
-            total = (len(b64) + chunk - 1) // chunk
+            r = self.adb_shell(f"rm -f {b64_path} {remote_path}", timeout=20)
             for i in range(0, len(b64), chunk):
                 part = b64[i:i + chunk]
                 # base64 มีแค่ A-Za-z0-9+/= จึงไม่มีอักขระที่ทำให้ quote พัง
-                r = self.adb_shell(wtmpl.format(p=part, f=b64_path), timeout=25)
+                r = self.adb_shell(f"echo -n '{part}' >> {b64_path}", timeout=25)
                 if r.returncode != 0:
                     err = ((r.stderr or b"")).decode("utf-8", "ignore").strip()
-                    print(f"[{self.device_id}] [PUT] เขียนท่อนที่ {i // chunk + 1}/{total} ไม่ผ่าน: {err[:120]}")
+                    print(f"[{self.device_id}] [PUT] เขียนท่อนที่ {i // chunk + 1} ไม่ผ่าน: {err[:120]}")
                     return False
-            # ท่อนอาจขาดหายถ้า shell ตัดคำสั่งยาว - เช็คขนาด .b64 ก่อน decode
-            b64_size = self._remote_size(b64_path)
-            if b64_size is not None and b64_size != len(b64):
-                print(f"[{self.device_id}] [PUT] base64 บนเครื่องไม่ครบ ({b64_size} != {len(b64)} ตัวอักษร) - ลองใหม่")
-                return False
-            dec = self.adb_shell(dtmpl.format(f=b64_path, o=remote_path), timeout=30)
+            # decode บนเครื่อง (toybox base64 ก่อน ไม่มีค่อย busybox)
+            dec = self.adb_shell(
+                f"base64 -d {b64_path} > {remote_path} 2>/dev/null || "
+                f"busybox base64 -d {b64_path} > {remote_path}", timeout=30)
             got = self._remote_md5(remote_path)
             if got != want_md5:
                 out = (((dec.stdout or b"") + (dec.stderr or b"")).decode("utf-8", "ignore")).strip()
                 print(f"[{self.device_id}] [PUT] decode แล้ว md5 ไม่ตรง ({got} != {want_md5})"
                       + (f" | {out[:120]}" if out else ""))
-                self._b64_tools = None      # เครื่องอาจเปลี่ยนสภาพ - probe ใหม่รอบหน้า
                 return False
             return True
         except Exception as e:
@@ -6868,24 +6711,6 @@ class RangerGearBot(threading.Thread):
         finally:
             try: self.adb_shell(f"rm -f {b64_path}", timeout=15)
             except Exception: pass
-
-    def _reconnect_if_needed(self, tries=2):
-        """เครื่องหลุด/offline -> สั่ง adb connect ให้เอง คืน True ถ้าพร้อมใช้งาน
-
-        เปิดหลายจอพร้อมกันแล้วบางจอ offline คือสาเหตุยอดฮิตของ "จอนี้ไฟล์ไม่เข้า"
-        """
-        for i in range(max(1, tries)):
-            if self.device_is_online(retries=1):
-                return True
-            if ":" in self.device_id:      # emulator แบบ ip:port เท่านั้นที่ connect กลับได้
-                try:
-                    r = self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=15)
-                    msg = ((r.stdout or b"") + (r.stderr or b"")).decode("utf-8", "ignore").strip()
-                    print(f"[{self.device_id}] [ADB] จอหลุด - ต่อกลับ (ยกที่ {i + 1}): {msg[:120]}")
-                except Exception as e:
-                    print(f"[{self.device_id}] [ADB] ต่อกลับไม่สำเร็จ: {e}")
-            sleep(2)
-        return self.device_is_online(retries=1)
 
     def _put_remote_file(self, src, remote_path):
         """เอาไฟล์ local ไปวางที่ remote_path ให้ได้ - คืน (ok, ขนาดไฟล์ต้นทาง)
@@ -6907,18 +6732,11 @@ class RangerGearBot(threading.Thread):
         limit = int(config.get("inject_shell_max_bytes", 262144))
         use_shell = method == "shell" or (method == "auto" and len(data) <= limit)
 
-        # จอที่หลุด adb อยู่ = ส่งอะไรไปก็ไม่เข้า ต่อกลับให้ก่อน
-        if not self._reconnect_if_needed():
-            print(f"[{self.device_id}] [PUT] จอนี้ adb ไม่พร้อม (offline/ต่อไม่ติด) - ข้ามการส่งไฟล์")
-            return False, len(data)
-
-        # ทางหลัก (base64 ผ่าน adb shell) ไม่ต้องเข้าคิว - adb shell เปิดพร้อมกันกี่จอก็ได้
-        # ไม่ได้ใช้ sync service เลยไม่มีอะไรให้แย่งกัน 100 จอก็ยิงพร้อมกันได้
-        if use_shell and self._write_remote_b64(data, remote_path):
-            return True, len(data)
-
-        # สำรอง: adb push แบบเดิม - อันนี้แย่ง sync service กันจริง จึงจำกัดคิวเฉพาะตรงนี้
         with _inject_gate():
+            if use_shell and self._write_remote_b64(data, remote_path):
+                return True, len(data)
+
+            # สำรอง: adb push แบบเดิม (ไฟล์ใหญ่ หรือเครื่องไม่มี base64)
             try:
                 result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, remote_path], timeout=60)
                 if result.returncode != 0:
@@ -6955,7 +6773,6 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] [WARN] killall ข้ามไป (ไม่ critical): {e}")
         sleep(1)
-        self._wait_app_dead()          # ต้องตายจริงก่อน ไม่งั้นมันจะ flush pref ทับของเรา
 
         src = os.path.abspath(local_xml_path)
 
@@ -6983,33 +6800,16 @@ class RangerGearBot(threading.Thread):
                     f"chown $(stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final_dir} && "
                     f"chmod 771 {final_dir}'", timeout=20)
 
-                # 2.5) ล้าง pref ของบัญชีก่อนหน้าให้หมดก่อนฉีดของใหม่
-                #      4 ไฟล์นี้คือชุดที่คุมการสลับบัญชี ถ้าเหลือของไอดีเก่าไว้
-                #      เกมอาจหยิบของเก่าไปใช้ = ฉีดไฟล์ถูกแต่ล็อกอินไม่ผ่าน/ได้ไอดีเดิม
-                # default = ปิด! เปิดแล้วเจอเกมเด้งหน้า fixid/refresh วนไม่จบ
-                # (3 ไฟล์นั้นมีข้อมูลเครื่อง/token ที่เกมต้องใช้ ลบทิ้งแล้วมันถือว่าเป็นเครื่องใหม่)
-                if config.get("inject_clear_siblings", 0):
-                    sib = " ".join(f"{final_dir}/{n}" for n in self.ACCOUNT_PREFS if n != os.path.basename(final))
-                    self.adb_shell(f"su -c 'rm -f {sib} {final_dir}/*.bak'", timeout=20)
-
-                # 3) copy เข้าที่จริง + ตั้งสิทธิ์/เจ้าของ/SELinux ให้เหมือนไฟล์ที่แอปสร้างเอง
-                #    ** chcon สำคัญมาก **: ไฟล์ที่ cp มาจาก /data/local/tmp จะได้ context
-                #    "u:object_r:app_data_file:s0" เฉย ๆ ไม่มี category (:c44,c256,...) ของแอป
-                #    จอไหนที่ SELinux เป็น Enforcing แอปจะอ่านไฟล์นั้นไม่ได้เลย -> เกมสร้างบัญชีใหม่
-                #    = "ไฟล์เข้า (md5 ตรง) แต่ล็อกอินไม่ผ่าน" ส่วนจอที่ Permissive กลับผ่านปกติ
+                # 3) copy เข้าที่จริง + ตั้งสิทธิ์/เจ้าของให้เหมือนไฟล์ที่แอปสร้างเอง
                 shell_cmd = (
                     f"su -c '"
                     f"cp {tmp} {final} && "
                     f"chmod 666 {final} && "
-                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final} && "
-                    f"{{ chcon $(stat -c %C {final_dir} 2>/dev/null) {final} 2>/dev/null || restorecon {final} 2>/dev/null || true; }}"
+                    f"chown $(stat -c %u:%g {final_dir} 2>/dev/null || stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final}"
                     f"'"
                 )
                 res = self.adb_shell(shell_cmd, timeout=20)
                 out = ((res.stdout or b"") + (res.stderr or b"")).decode("utf-8", "ignore").strip()
-
-                # กันแอปเอา .bak ทับไฟล์ที่เพิ่งฉีด ตอนมันโหลด pref รอบหน้า
-                self._purge_prefs_backups(final_dir)
 
                 # 4) ยืนยันว่าไฟล์เข้าจริงและครบ - คำสั่งชุดบนคืน rc=0 ได้ทั้งที่ cp ล้มเหลว
                 #    (su สำเร็จ ไม่ได้แปลว่า cp สำเร็จ) ของเดิมไม่เช็คเลย เลยรายงานว่า
@@ -7036,18 +6836,7 @@ class RangerGearBot(threading.Thread):
                         sleep(2)
                         continue
 
-                # 4.5) context ต้องมี category ของแอป ไม่งั้นจอที่ Enforcing จะอ่านไม่ออก
-                if not self._context_ok(final, final_dir):
-                    print(f"[{self.device_id}] Inject attempt {attempt}: SELinux context ไม่ตรงกับโฟลเดอร์ - ลองใหม่")
-                    sleep(2)
-                    continue
-
                 self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
-                self._injected_md5 = remote_md5        # ไว้เทียบก่อนเปิดเกมว่ายังไม่โดนทับ
-                self._injected_final = final
-                # ให้ไฟล์นิ่งก่อนเปิดเกม (เครื่องโหลดหนัก ๆ การเขียนอาจยังไม่ sync ลงดิสก์)
-                self.adb_shell("sync", timeout=20)
-                sleep(float(config.get("post_inject_wait", 2)))
                 print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
                 return local_xml_path
 
@@ -7671,10 +7460,6 @@ class RangerGearBot(threading.Thread):
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
         
-        # ด่านสุดท้ายก่อนเปิดเกม: ไฟล์บัญชีที่ฉีดไว้ยังอยู่ครบจริงไหม
-        # (โปรเซสเก่าที่เพิ่งตายอาจ flush pref ทับ หรือ .bak โผล่มาแทนที่)
-        self._verify_pref_before_launch(current_filename)
-
         # เปิดแอปด้วย am start (เร็วกว่าและเสถียรกว่าคลิก icon.png)
         self.open_app()
         sleep(3)
