@@ -107,5 +107,7 @@
     "auth_slots": 1,
     "auth_max_hold": 45,
     "auth_backoff_min": 30,
-    "auth_backoff_max": 60
+    "auth_backoff_max": 60,
+    "device_identity_check": 1,
+    "device_identity_block_on_duplicate": 1
 }

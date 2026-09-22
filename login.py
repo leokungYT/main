@@ -1354,7 +1354,9 @@ config = {
     "auth_slots": 1,
     "auth_max_hold": 45,
     "auth_backoff_min": 30,
-    "auth_backoff_max": 60
+    "auth_backoff_max": 60,
+    "device_identity_check": 1,
+    "device_identity_block_on_duplicate": 1
 }
 
 adb_path = "adb"
@@ -1382,6 +1384,102 @@ def get_ocr_reader():
 # จำกัดจำนวนจอที่ส่งไฟล์เข้าเครื่องพร้อมกัน - หลายจอยิงพร้อมกันคือต้นเหตุ "ไฟล์เข้าไม่ได้"
 _inject_sem = None
 _inject_sem_lock = threading.Lock()
+
+# =============================================================
+# Device fingerprint checks for cloned MuMu images
+# =============================================================
+_DEVICE_FINGERPRINT_LOCK = threading.Lock()
+_DEVICE_FINGERPRINTS = {}
+
+
+def _fp_value(value):
+    if value is None:
+        return ""
+    value = str(value).strip().strip('"\'')
+    return value.lower()
+
+
+def _device_identity_snapshot(adb_cmd, device_id):
+    """ดึง Android ID / serial / MAC จากเครื่องจริงแบบเร็ว < 10s เพื่อจับ MuMu clone"""
+    vals = {
+        "android_id": "",
+        "serialno": "",
+        "boot_serialno": "",
+        "product_serial": "",
+        "wifi_mac": "",
+        "eth_mac": "",
+    }
+    checks = [
+        (["settings", "get", "secure", "android_id"], "android_id"),
+        (["getprop", "ro.serialno"], "serialno"),
+        (["getprop", "ro.boot.serialno"], "boot_serialno"),
+        (["getprop", "ro.product.serial"], "product_serial"),
+        (["cat", "/sys/class/net/wlan0/address"], "wifi_mac"),
+        (["cat", "/sys/class/net/eth0/address"], "eth_mac"),
+    ]
+    for cmd, key in checks:
+        try:
+            proc = subprocess.run([adb_cmd, "-s", device_id, "shell", *cmd],
+                                  capture_output=True, text=True, timeout=8)
+            out = _fp_value((proc.stdout or "") + (proc.stderr or ""))
+            if out and not out.startswith("error:") and out != "null":
+                vals[key] = out
+        except Exception:
+            pass
+    return vals
+
+
+def _device_identity_signature(snapshot):
+    non_empty = []
+    for key in ("android_id", "serialno", "boot_serialno", "product_serial", "wifi_mac", "eth_mac"):
+        value = _fp_value(snapshot.get(key))
+        if value:
+            non_empty.append(f"{key}={value}")
+    return "|".join(non_empty)
+
+
+def _device_identity_map(sig):
+    mapping = {}
+    for part in (sig or "").split("|"):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        if key:
+            mapping[key] = value
+    return mapping
+
+
+def _device_identity_duplicate_check(adb_cmd, device_id):
+    """คืน tuple (is_duplicate, reason, self_fingerprint) ถ้าเจอ device clone หรือ shared identity"""
+    fp = _device_identity_snapshot(adb_cmd, device_id)
+    sig = _device_identity_signature(fp)
+    with _DEVICE_FINGERPRINT_LOCK:
+        current = _DEVICE_FINGERPRINTS.get(device_id)
+        if current is None or current.get("fp") != sig:
+            _DEVICE_FINGERPRINTS[device_id] = {"fp": sig, "ts": time.time()}
+        seen = {k: v for k, v in _DEVICE_FINGERPRINTS.items() if k != device_id and v.get("fp")}
+    if not sig:
+        return False, "empty-fingerprint", sig
+    duplicates = []
+    for other_id, other in seen.items():
+        other_sig = other.get("fp") or ""
+        if not other_sig:
+            continue
+        other_map = _device_identity_map(other_sig)
+        # exact same signature = definitely cloned
+        if other_sig == sig:
+            duplicates.append(other_id)
+            continue
+        for key in ("android_id", "serialno", "boot_serialno", "product_serial", "wifi_mac", "eth_mac"):
+            v1 = _fp_value(fp.get(key))
+            v2 = _fp_value(other_map.get(key, ""))
+            if v1 and v1 == v2:
+                duplicates.append(other_id)
+                break
+    if duplicates:
+        reason = ", ".join(sorted(set(duplicates)))
+        return True, reason, sig
+    return False, "ok", sig
 
 
 @contextlib.contextmanager
@@ -3177,9 +3275,34 @@ class RangerGearBot(threading.Thread):
         self._game_activity = "com.linecorp.LGRGS/.LineRangersAdr"
         return self._game_activity
 
+    def _check_device_identity(self):
+        """ตรวจสอบว่าเครื่องนี้มี fingerprint ซ้ำกับอีกรายหรือไม่ (MuMu clone)"""
+        if not config.get("device_identity_check", 1):
+            return True
+        try:
+            is_dup, dup_with, sig = _device_identity_duplicate_check(self.adb_cmd, self.device_id)
+            if not sig:
+                print(f"[{self.device_id}] [DEVICE-FP] ไม่ได้อ่าน fingerprint จากเครื่องได้ - ข้ามตรวจเช็คชั่วคราว")
+                return True
+            if is_dup:
+                print(f"[{self.device_id}] [DEVICE-FP] DUPLICATE! fingerprint ซ้ำกับ {dup_with} -> ไม่ควร login ต่อ")
+                if config.get("device_identity_block_on_duplicate", 1):
+                    self.device_identity_issue = True
+                    return False
+            else:
+                print(f"[{self.device_id}] [DEVICE-FP] OK: android_id/serial/mac unique in this session")
+            return True
+        except Exception as e:
+            print(f"[{self.device_id}] [DEVICE-FP] check failed: {e}")
+            return True
+
     def open_app(self):
         self.last_activity_time = time.time()
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
+        if not self._check_device_identity():
+            print(f"[{self.device_id}] [DEVICE-FP] หยุด login: device identity ซ้ำ/clone -> ข้ามไฟล์นี้ไป")
+            self.app_missing = True
+            return False
         # เช็คว่าเกมติดตั้งอยู่ไหม - retry 3 รอบก่อนตัดสิน
         # (ตอน VM เพิ่งบูต pm อาจตอบว่างเปล่าทั้งที่แอปติดตั้งอยู่ -> อย่าเพิ่งฟันธงจากรอบเดียว)
         try:
@@ -7599,6 +7722,9 @@ class RangerGearBot(threading.Thread):
             return False
 
         slot = _auth_acquire(self.device_id)
+        if slot is None:
+            _auth_cleanup_stale()
+            slot = _auth_acquire(self.device_id)
         if slot is None:
             blocked_retries = int(getattr(self, "_auth_blocked_retries", 0) or 0) + 1
             self._auth_blocked_retries = blocked_retries
