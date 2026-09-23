@@ -6996,16 +6996,30 @@ class RangerGearBot(threading.Thread):
     # ADB & Interaction
     # =========================================================
     def clear_specific_shared_prefs(self):
-        """Delete ALL shared_prefs and clear app cache"""
-        base = "/data/data/com.linecorp.LGRGS/shared_prefs"
-        cache_dir = "/data/data/com.linecorp.LGRGS/cache"
-        
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+        """Delete ALL app state that can carry a stale login/session/IP fingerprint."""
+        app_pkg = "com.linecorp.LGRGS"
+        data_root = f"/data/data/{app_pkg}"
+        app_dirs = [
+            f"{data_root}/shared_prefs",
+            f"{data_root}/cache",
+            f"{data_root}/databases",
+            f"{data_root}/files",
+            f"{data_root}/no_backup",
+        ]
+
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", app_pkg])
+        self._clear_proxy_for_device()
         sleep(1)
-        
-        # Total clear including cache (Restore to Full Clear)
-        self.adb_shell(f"su -c 'rm -rf {base}/* && rm -rf {cache_dir}/*'")
-        print(f"[{self.device_id}] Cleared shared_prefs + cache (Full)")
+
+        # Strong reset: wipe the app's persisted state rather than only a single prefs folder.
+        for d in app_dirs:
+            self.adb_shell(f"su -c 'rm -rf {d} 2>/dev/null || true'")
+        self.adb_shell(f"su -c 'pm clear {app_pkg} 2>/dev/null || true'")
+        self.adb_shell(f"su -c 'killall -9 {app_pkg} 2>/dev/null || true'")
+        self.adb_shell("settings put global http_proxy ''")
+        self.adb_shell("settings put global https_proxy ''")
+        self.adb_shell("settings put global proxy_exclusion_list ''")
+        print(f"[{self.device_id}] Cleared app state + proxy + cache/database/prefs (hard reset)")
 
     def _remote_size(self, remote_path):
         """ขนาดไฟล์บนเครื่อง (ไบต์) หรือ None ถ้าไม่มีไฟล์/อ่านไม่ได้"""
@@ -7589,8 +7603,8 @@ class RangerGearBot(threading.Thread):
         """Clear app and prepare for next file"""
         self._auth_done("clear_and_restart")
         _auth_cleanup_stale()
-        # Reset stale proxy/IP state for the next file so the emulator does not
-        # reuse a previous session's HTTP proxy configuration between jobs.
+        # Full reset before the next file: stale proxy, stale app state, stale login data.
+        self.clear_specific_shared_prefs()
         self._clear_proxy_for_device()
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
