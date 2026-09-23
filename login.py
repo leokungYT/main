@@ -3605,12 +3605,10 @@ class RangerGearBot(threading.Thread):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
         # Reset stale network/proxy state before each file/job. This prevents a
         # reused emulator from keeping a previous IP/proxy binding across files.
+        # Proxy is intentionally not kept enabled for the whole run; it is only
+        # applied during the fixid/refresh stages when needed.
         self._clear_proxy_for_device()
         sleep(0.5)
-        # Best-effort per-device proxy activation before launching the game.
-        # This keeps the feature enabled without breaking standard runs if proxy
-        # config is blank or disabled.
-        self._apply_proxy_for_device()
         if not self._check_device_identity():
             print(f"[{self.device_id}] [DEVICE-FP] หยุด login: device identity ซ้ำ/clone -> ข้ามไฟล์นี้ไป")
             self.app_missing = True
@@ -7618,6 +7616,7 @@ class RangerGearBot(threading.Thread):
 
                         # === เจอ fixid.png -> เริ่ม loop: fixok -> refresh -> check ===
                         if self.exists_in_cache("img/fixid.png", similarity=0.95):
+                            self._apply_proxy_for_device()
                             fixid_count += 1
                             print(f"[{self.device_id}] Found fixid.png ({fixid_count}/{max_fixid_retries})")
                             
@@ -7707,6 +7706,7 @@ class RangerGearBot(threading.Thread):
 
                 finally:
                     self._auth_done("apple-fixid")
+                    self._clear_proxy_for_device()
 
                 continue  # ไปต่อ item ถัดไปใน sequence
 
@@ -8282,6 +8282,7 @@ class RangerGearBot(threading.Thread):
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png", similarity=0.95):
+                self._apply_proxy_for_device()
                 if not self._auth_take_turn("auth"):
                     sleep(1)
                     continue
@@ -8355,9 +8356,11 @@ class RangerGearBot(threading.Thread):
                     continue
                 finally:
                     self._auth_done("fixid")
+                    self._clear_proxy_for_device()
 
             # === เจอ refresh.png (ไม่มี fixid) -> กด refresh -> check ===
             if self.exists_in_cache("img/refresh.png", similarity=0.8):
+                self._apply_proxy_for_device()
                 if not self._auth_take_turn("refresh"):
                     sleep(1)
                     continue
@@ -8398,6 +8401,7 @@ class RangerGearBot(threading.Thread):
                     continue
                 finally:
                     self._auth_done("refresh")
+                    self._clear_proxy_for_device()
             # ====================================================
 
             # Crash Check: ใช้ open_app แทนคลิก icon.png
