@@ -538,6 +538,9 @@ if GUI_AVAILABLE:
             self.screen_check_var = ctk.BooleanVar(value=bool(self.cfg.get("screen_check", 1)))
             ctk.CTkSwitch(scroll_frame, text="เช็คค่าพวกนี้ก่อนเริ่ม (ไม่ตรง = ตั้งให้อัตโนมัติ)", variable=self.screen_check_var).pack(pady=5, padx=20, anchor="w")
 
+            self.screen_auto_apply_all_var = ctk.BooleanVar(value=bool(self.cfg.get("screen_auto_apply_all", 1)))
+            ctk.CTkSwitch(scroll_frame, text="auto apply to all devices (ทุกจอใช้ profile เดียว)", variable=self.screen_auto_apply_all_var).pack(pady=5, padx=20, anchor="w")
+
             self.screen_restart_var = ctk.BooleanVar(value=bool(self.cfg.get("screen_restart_mumu", 1)))
             ctk.CTkSwitch(scroll_frame, text="ตั้งค่าแล้วรี MuMu ให้เอง", variable=self.screen_restart_var).pack(pady=5, padx=20, anchor="w")
 
@@ -679,6 +682,7 @@ if GUI_AVAILABLE:
 
                 # Save screen settings (ตั้งค่าหน้าจออีมูเลเตอร์)
                 self.cfg["screen_check"] = 1 if self.screen_check_var.get() else 0
+                self.cfg["screen_auto_apply_all"] = 1 if self.screen_auto_apply_all_var.get() else 0
                 self.cfg["screen_restart_mumu"] = 1 if self.screen_restart_var.get() else 0
                 self.cfg["screen_auto_relaunch"] = 1 if self.screen_relaunch_var.get() else 0
                 # ช่องตัวเลข: ว่าง = "" (ไม่แตะค่าเดิมของอีมู), ไม่ใช่เลข = คืนค่าเดิมใน config
@@ -1142,6 +1146,7 @@ if GUI_AVAILABLE:
             
             ctk.CTkButton(bottom_bar, text="🔌 Connect Missing", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#4caf50", command=self.connect_missing_devices).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="⚙ Config", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=self.open_config).pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="📡 Apply All", width=80, height=22, font=ctk.CTkFont(size=10), fg_color="#3b8ed0", hover_color="#2f72a8", command=self.apply_display_to_all_devices_gui).pack(side="left", padx=3, pady=4)
             # HeroConfigWindow เคยไม่มีปุ่มเปิดเลย - ตั้งชื่อ Ranger/Gear/Weapon และ Hero_low อยู่ในนี้
             ctk.CTkButton(bottom_bar, text="🏷 ตั้งชื่อ Ranger", width=100, height=22, font=ctk.CTkFont(size=10), fg_color="#7a5cc4", hover_color="#63499f", command=self.open_heroes).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="📁 Backup", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{backup_folder}"')).pack(side="left", padx=3, pady=4)
@@ -1186,6 +1191,23 @@ if GUI_AVAILABLE:
                 self.lbl_status.configure(text=f"   ● ONLINE ({len(self.devices)})")
             else:
                 self.log("INFO", "No new devices found.")
+
+        def apply_display_to_all_devices_gui(self):
+            """Push the current resolution/FPS/renderer profile to every connected MuMu device."""
+            try:
+                self.log("INFO", "Applying display profile to all connected devices...")
+                result = apply_display_to_all_devices(self.devices)
+                changed = len(set(result.get("changed", []))) if result.get("changed") else 0
+                restarted = len(set(result.get("restarted", []))) if result.get("restarted") else 0
+                errors = result.get("errors", [])
+                if changed or restarted:
+                    self.log("SUCCESS", f"Apply all devices: updated {changed} device(s), restarted {restarted} device(s)")
+                else:
+                    self.log("INFO", "Apply all devices: already aligned with configured profile")
+                if errors:
+                    self.log("WARN", "; ".join(errors[:3]))
+            except Exception as e:
+                self.log("ERROR", f"Apply all devices failed: {e}")
 
         def log(self, level, message): 
             ts = datetime.now().strftime("%H:%M:%S")
@@ -1476,6 +1498,7 @@ config = {
     "device_identity_check": 1,
     "device_identity_block_on_duplicate": 1,
     "proxy_enabled": 0,
+    "proxy_auto_fetch": 1,
     "proxy_type": "http",
     "proxy_host": "",
     "proxy_port": 0,
@@ -1483,6 +1506,10 @@ config = {
     "proxy_password": "",
     "proxy_bypass": "localhost,127.0.0.1,10.0.2.2",
     "proxy_timeout_sec": 15,
+    "proxy_fetch_urls": [
+        "https://proxyscrape.com/free-proxy-list",
+        "https://www.free-proxy-list.net/"
+    ],
     "proxy_per_device": {}
 }
 
@@ -1609,6 +1636,56 @@ def _device_identity_duplicate_check(adb_cmd, device_id):
     return False, "ok", sig
 
 
+def _fetch_proxy_candidates_from_url(url):
+    """Fetch public proxy candidates from a free-proxy page and parse host:port pairs."""
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            html = resp.read().decode("utf-8", "ignore")
+    except Exception:
+        return []
+
+    if not html:
+        return []
+    import re
+    matches = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\s*:\s*\d{2,5}\b|\b(?:\d{1,3}\.){3}\d{1,3}\s*\d{2,5}\b", html)
+    seen = set()
+    proxies = []
+    for m in matches:
+        text = m.strip().replace(" ", "")
+        if ":" not in text:
+            continue
+        host, port = text.rsplit(":", 1)
+        if not host or not port.isdigit():
+            continue
+        host = host.strip()
+        port = int(port)
+        if port <= 0 or port > 65535:
+            continue
+        if host.startswith("http://") or host.startswith("https://"):
+            continue
+        if host not in seen:
+            seen.add(host)
+            proxies.append((host, port))
+    return proxies
+
+
+def _auto_fetch_proxy_candidate():
+    """Try proxyscrape first, then other public free-proxy sources, and return the first usable host:port."""
+    urls = config.get("proxy_fetch_urls") or [
+        "https://proxyscrape.com/free-proxy-list",
+        "https://www.free-proxy-list.net/",
+    ]
+    if isinstance(urls, str):
+        urls = [urls]
+    for url in urls:
+        for host, port in _fetch_proxy_candidates_from_url(url):
+            if host and port:
+                return {"host": host, "port": port, "type": "http"}
+    return None
+
+
 def _proxy_config_for_device(device_id, config_map=None):
     """Return proxy settings for this emulator if enabled.
 
@@ -1630,6 +1707,11 @@ def _proxy_config_for_device(device_id, config_map=None):
         port = int(port)
     except (TypeError, ValueError):
         port = 0
+    if (not host or port <= 0) and bool(config.get("proxy_auto_fetch", 0)):
+        auto_proxy = _auto_fetch_proxy_candidate()
+        if auto_proxy:
+            host = str(auto_proxy.get("host") or "").strip()
+            port = int(auto_proxy.get("port") or 0)
     if not host or port <= 0:
         return None
     proxy_type = str((cfg or {}).get("type") or config.get("proxy_type") or "http").lower()
@@ -2602,6 +2684,26 @@ def mumu_set_display(targets=None, restart=True):
     return res
 
 
+def apply_display_to_all_devices(devices=None):
+    """Apply the current display profile to all connected MuMu devices in one batch.
+
+    This is the safe equivalent of 'auto apply to all devices': it uses the existing MuMuManager
+    settings API, then restarts only the devices that actually changed. It does not delete game data.
+    """
+    if devices is None:
+        devices = get_connected_devices()
+    if not devices:
+        return {"changed": [], "restarted": [], "errors": ["No connected devices"]}
+    try:
+        result = mumu_set_display(targets=None, restart=bool(config.get("screen_restart_mumu", 1)))
+        if result.get("changed"):
+            print(f"[SCREEN] auto apply to all devices: {len(set(result['changed']))} device(s) updated")
+        return result
+    except Exception as e:
+        print(f"[SCREEN] apply_display_to_all_devices failed: {e}")
+        return {"changed": [], "restarted": [], "errors": [str(e)]}
+
+
 def ensure_screen_resolution(devices):
     """ตั้งค่าจอ MuMu ให้ตรง config ก่อนเริ่มงาน คืน True ถ้ามีการรีจอ (= ควรรันตัวเองใหม่)
 
@@ -2613,6 +2715,9 @@ def ensure_screen_resolution(devices):
     """
     if not config.get("screen_check", 1):
         return False
+
+    if bool(config.get("screen_auto_apply_all", 1)):
+        apply_display_to_all_devices(devices)
 
     # 0) ล้างร่องรอย wm override ที่รุ่นก่อนเคยสั่งทับไว้
     if config.get("screen_clear_wm_override", 1):
