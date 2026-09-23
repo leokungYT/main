@@ -121,6 +121,8 @@
     "scan_interval": 1.0,
     "loop_delay": null,
     "auto_start": 1,
+    "cloud_fast_start": 1,
+    "cloud_start_delay_sec": 2.0,
     "gear_wait_timeout": 120,
     "nav_timeout": 180,
     "start_batch": 4,

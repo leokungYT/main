@@ -53,6 +53,111 @@ colorama.init(autoreset=True)
 # Fix SSL certificate error for downloading EasyOCR models
 ssl._create_default_https_context = ssl._create_unverified_context
 
+REQUIRED_PY_PACKAGES = [
+    "pure-python-adb",
+    "opencv-python",
+    "numpy",
+    "psutil",
+    "pytesseract",
+    "pyperclip",
+    "customtkinter",
+    "Pillow",
+    "easyocr",
+]
+
+
+def print_startup_banner():
+    print("============================================")
+    print("  Cloudflare WARP + norandom-reid Bot")
+    print("============================================")
+
+
+def ensure_warp_bootstrap():
+    """Match the bot-tiket launcher flow: ensure WARP is installed and connected before bot startup."""
+    print("[WARP] ตรวจสอบ Cloudflare WARP...")
+    warp_root_candidates = [
+        os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Cloudflare", "Cloudflare WARP"),
+        os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Cloudflare", "Cloudflare WARP"),
+    ]
+    warp_cli = None
+    warp_dir = None
+    for candidate in warp_root_candidates:
+        cli = os.path.join(candidate, "warp-cli.exe")
+        if os.path.exists(cli):
+            warp_cli = cli
+            warp_dir = candidate
+            break
+
+    if not warp_cli:
+        print("[WARP] ยังไม่ได้ติดตั้ง - กำลังติดตั้งผ่าน winget...")
+        try:
+            subprocess.run(["winget", "install", "--id", "Cloudflare.Warp", "-e", "--accept-package-agreements", "--accept-source-agreements"], check=False)
+        except Exception as e:
+            print(f"[WARP] winget ล้มเหลว: {e}")
+        for candidate in warp_root_candidates:
+            cli = os.path.join(candidate, "warp-cli.exe")
+            if os.path.exists(cli):
+                warp_cli = cli
+                warp_dir = candidate
+                break
+
+    if not warp_cli:
+        print("[WARP] winget ไม่ได้ผล - พยายามโหลดตัวติดตั้ง...")
+        try:
+            msi_path = os.path.join(tempfile.gettempdir(), "warp_installer.msi")
+            subprocess.run(["curl", "-k", "-L", "-o", msi_path, "https://1111-releases.cloudflareclient.com/win/latest"], check=False)
+            if os.path.exists(msi_path):
+                subprocess.run(["msiexec", "/i", msi_path, "/qn", "/norestart"], check=False)
+                for candidate in warp_root_candidates:
+                    cli = os.path.join(candidate, "warp-cli.exe")
+                    if os.path.exists(cli):
+                        warp_cli = cli
+                        warp_dir = candidate
+                        break
+        except Exception as e:
+            print(f"[WARP] โหลด installer ล้มเหลว: {e}")
+
+    if warp_cli and os.path.exists(warp_cli):
+        warp_exe = os.path.join(warp_dir, "Cloudflare WARP.exe")
+        try:
+            if os.path.exists(warp_exe):
+                print("[WARP] เปิดโปรแกรม Cloudflare WARP...")
+                subprocess.Popen([warp_exe], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False)
+                time.sleep(4)
+            print("[WARP] กำลังเชื่อมต่อ...")
+            subprocess.run([warp_cli, "--accept-tos", "connect"], check=False)
+        except Exception as e:
+            print(f"[WARP] connect ล้มเหลว: {e}")
+
+        for _ in range(15):
+            try:
+                status = subprocess.run([warp_cli, "status"], capture_output=True, text=True, check=False)
+                out = (status.stdout or "") + (status.stderr or "")
+                if "Connected" in out or "connected" in out:
+                    print("[WARP] เชื่อมต่อสำเร็จ!")
+                    return True
+            except Exception:
+                pass
+            time.sleep(4)
+        print("[WARP] ยังไม่ Connected แต่จะรันบอทต่อ...")
+        return False
+
+    print("[WARP] ติดตั้ง WARP ไม่สำเร็จ - รันบอทต่อโดยไม่มี VPN")
+    return False
+
+
+def ensure_python_requirements():
+    print("[PIP] Installing/checking Python packages the bot needs...")
+    cmd = [sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", *REQUIRED_PY_PACKAGES]
+    try:
+        subprocess.run(cmd, check=False)
+    except Exception as e:
+        print(f"[PIP] pip install ล้มเหลว: {e}")
+
+
+# Backward-compatible alias for startup flow compatibility.
+ensure_runtime_bootstrap = lambda: (print_startup_banner(), ensure_warp_bootstrap(), ensure_python_requirements())
+
 # =========================================================
 # Statistics and GUI Tracking
 # =========================================================
@@ -860,9 +965,16 @@ if GUI_AVAILABLE:
             # Scheduled file-move checker (login-success → input-id)
             self.after(5000, self.check_scheduled_move)
             
-            # Ensure window is visible
+            # Ensure window is visible and raised to the front before any auto-start trigger.
             self.deiconify()
+            self.lift()
             self.focus_force()
+            try:
+                self.attributes('-topmost', True)
+                self.update_idletasks()
+                self.after(50, lambda: self.attributes('-topmost', False))
+            except Exception:
+                pass
             print("[GUI] Launched Successfully. Waiting for manual start.")
             
             if getattr(self.args, 'no_start', False):
@@ -870,12 +982,15 @@ if GUI_AVAILABLE:
                 self.lbl_auto_start.configure(text="[ DASHBOARD MODE ]", text_color="#ffae42")
             else:
                 self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
-                # auto_start ใน config = 1 -> กด START ให้เองหลัง GUI ขึ้น 2 วิ
-                # (ตั้งใน ranger-gear_config.json, ค่าเริ่มต้น 0 = รอกดเอง)
-                if config.get("auto_start", 0):
-                    print("[GUI] auto_start=1 - จะเริ่มบอทอัตโนมัติใน 2 วินาที")
-                    self.lbl_auto_start.configure(text="[ AUTO-START IN 2s ]", text_color="#ff9800")
-                    self.after(2000, self.start_bot)
+                # Auto-start is opt-in only. Default is disabled to prevent accidental launches.
+                cloud_fast_enabled = bool(config.get("cloud_fast_start", config.get("auto_start", 0)))
+                delay_sec = float(config.get("cloud_start_delay_sec", 2.0))
+                if cloud_fast_enabled:
+                    print(f"[GUI] cloud_fast_start=1 - จะเริ่มบอทอัตโนมัติใน {delay_sec:.1f} วินาที")
+                    self.lbl_auto_start.configure(text=f"[ AUTO-START IN {delay_sec:.0f}s ]", text_color="#ff9800")
+                    self.after(int(delay_sec * 1000), lambda: (self.lift(), self.focus_force(), self.start_bot()))
+                else:
+                    print("[GUI] Auto-start disabled. Press START to launch the bot.")
 
             # Initialize cached stats and start background thread to offload disk I/O from Main Thread
             self.qsize = 0
@@ -1350,6 +1465,9 @@ config = {
     "pos_cache_margin": 12,  # px of slack around the remembered spot
     "scan_interval": 0.35,   # sec between full popup/error sweeps (0 = every frame, old behaviour)
     "loop_delay": 0.25,       # lower than the previous safe defaults to keep the bot responsive
+    "auto_start": 1,
+    "cloud_fast_start": 1,
+    "cloud_start_delay_sec": 2.0,
     "auth_queue": 1,
     "auth_slots": 2,
     "auth_max_hold": 15,
@@ -6996,30 +7114,24 @@ class RangerGearBot(threading.Thread):
     # ADB & Interaction
     # =========================================================
     def clear_specific_shared_prefs(self):
-        """Delete ALL app state that can carry a stale login/session/IP fingerprint."""
+        """Soft reset only: keep the game's saved data intact while clearing stale runtime state.
+
+        We intentionally avoid deleting /data/data/com.linecorp.LGRGS/* because that is the
+        game's real saved state and user data. We only stop the app, clear proxy settings,
+        and reset the transient runtime state needed to stop stale login/session loops.
+        """
         app_pkg = "com.linecorp.LGRGS"
-        data_root = f"/data/data/{app_pkg}"
-        app_dirs = [
-            f"{data_root}/shared_prefs",
-            f"{data_root}/cache",
-            f"{data_root}/databases",
-            f"{data_root}/files",
-            f"{data_root}/no_backup",
-        ]
 
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", app_pkg])
+        self.adb_shell(f"su -c 'killall -9 {app_pkg} 2>/dev/null || true'")
         self._clear_proxy_for_device()
         sleep(1)
 
-        # Strong reset: wipe the app's persisted state rather than only a single prefs folder.
-        for d in app_dirs:
-            self.adb_shell(f"su -c 'rm -rf {d} 2>/dev/null || true'")
-        self.adb_shell(f"su -c 'pm clear {app_pkg} 2>/dev/null || true'")
-        self.adb_shell(f"su -c 'killall -9 {app_pkg} 2>/dev/null || true'")
+        # Only clear transient Android/global proxy state. Never delete the game's actual data folder.
         self.adb_shell("settings put global http_proxy ''")
         self.adb_shell("settings put global https_proxy ''")
         self.adb_shell("settings put global proxy_exclusion_list ''")
-        print(f"[{self.device_id}] Cleared app state + proxy + cache/database/prefs (hard reset)")
+        print(f"[{self.device_id}] Soft reset only: force-stopped app and cleared proxy/runtime state (no game data deletion)")
 
     def _remote_size(self, remote_path):
         """ขนาดไฟล์บนเครื่อง (ไบต์) หรือ None ถ้าไม่มีไฟล์/อ่านไม่ได้"""
@@ -7600,12 +7712,10 @@ class RangerGearBot(threading.Thread):
         pass
 
     def clear_and_restart(self):
-        """Clear app and prepare for next file"""
+        """Soft restart for the next file without deleting the game's saved data."""
         self._auth_done("clear_and_restart")
         _auth_cleanup_stale()
-        # Full reset before the next file: stale proxy, stale app state, stale login data.
         self.clear_specific_shared_prefs()
-        self._clear_proxy_for_device()
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
 
@@ -8630,7 +8740,15 @@ if __name__ == "__main__":
     parser.add_argument("--no-reset-adb", action="store_true", help="Don't kill/start ADB server")
     parser.add_argument("--cli", action="store_true", help="Launch in Command Line mode (no GUI)")
     parser.add_argument("--minimized", action="store_true", help="Minimize window")
+    parser.add_argument("--skip-warp", action="store_true", help="Skip Cloudflare WARP bootstrap")
+    parser.add_argument("--skip-pip", action="store_true", help="Skip Python dependency check/install")
     args = parser.parse_args()
+
+    print_startup_banner()
+    if not args.skip_warp:
+        ensure_warp_bootstrap()
+    if not args.skip_pip:
+        ensure_python_requirements()
 
     if args.minimized:
         try:

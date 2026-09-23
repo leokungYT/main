@@ -80,6 +80,9 @@
     "pos_cache": 0,
     "scan_interval": 0.35,
     "loop_delay": 0.25,
+    "auto_start": 0,
+    "cloud_fast_start": 0,
+    "cloud_start_delay_sec": 2.0,
     "screen_check": 1,
     "screen_width": 960,
     "screen_height": 540,
@@ -125,5 +128,10 @@
     "auth_backoff_min": 2,
     "auth_backoff_max": 8,
     "device_identity_check": 1,
-    "device_identity_block_on_duplicate": 1
+    "device_identity_block_on_duplicate": 1,
+    "device_profile": {
+        "model": "Asus ROG Phone 9",
+        "gpu_model": "Adreno (TM) 640",
+        "note": "Baseline profile used for all MuMu instances"
+    }
 }
