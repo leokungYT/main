@@ -6166,27 +6166,44 @@ class RangerGearBot(threading.Thread):
 
     def click(self, PSMRL, similarity=0.95):
         self.last_activity_time = time.time()
-        target = None
+        candidate = None
         if isinstance(PSMRL, str):
             candidate = PSMRL
             if not os.path.isabs(candidate):
                 candidate = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), candidate))
-            if os.path.exists(candidate):
-                target = self._find_in_screen(candidate, similarity)
-                if target is None:
-                    try:
-                        self.capture_screen()
-                        target = self._find_in_screen(candidate, similarity)
-                    except Exception:
-                        pass
-                    if target is None:
-                        print(f"[{self.device_id}] Template not found: {PSMRL}")
-        elif isinstance(PSMRL, tuple):
+
+        def _try_find_once(path):
+            if not os.path.exists(path):
+                return None
+            if self._screen is None:
+                try:
+                    self.capture_screen()
+                except Exception:
+                    return None
+            hit = self._find_in_screen(path, similarity)
+            if hit is not None:
+                return hit
+            for _ in range(3):
+                try:
+                    self.capture_screen()
+                except Exception:
+                    continue
+                hit = self._find_in_screen(path, similarity)
+                if hit is not None:
+                    return hit
+            return None
+
+        target = None
+        if isinstance(PSMRL, tuple):
             target = PSMRL
+        elif candidate and os.path.exists(candidate):
+            target = _try_find_once(candidate)
+            if target is None:
+                print(f"[{self.device_id}] Template not found after fresh retries: {PSMRL}")
 
         if target:
             x, y = target
-            self.tap(x, y) # Use the improved tap method
+            self.tap(x, y)  # Use the improved tap method
             return True
         return False
     
@@ -7562,7 +7579,7 @@ class RangerGearBot(threading.Thread):
                     sleep(1)
                     continue
                 fixid_count = 0
-                max_fixid_retries = 8
+                max_fixid_retries = 3
                 apple_start_wait = time.time()
                 try:
                     while True:
@@ -8270,10 +8287,10 @@ class RangerGearBot(threading.Thread):
                     continue
                 try:
                     self._login_fixid_count += 1
-                    print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/8), fixok -> refresh -> check...")
+                    print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/3), fixok -> refresh -> check...")
                     
-                    if self._login_fixid_count >= 8:
-                        print(f"[{self.device_id}] fixid limit reached (8 times)! Failing...")
+                    if self._login_fixid_count >= 3:
+                        print(f"[{self.device_id}] fixid limit reached (3 times)! Failing...")
                         self._login_fixid_count = 0
                         return "failed"
                     

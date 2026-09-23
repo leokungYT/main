@@ -118,7 +118,12 @@
     "proxy_timeout_sec": 15,
     "proxy_fetch_urls": [
         "https://proxyscrape.com/free-proxy-list",
-        "https://www.free-proxy-list.net/"
+        "https://www.free-proxy-list.net/",
+        "https://free-proxy-list.net/th/",
+        "https://www.sslproxies.org/",
+        "https://www.us-proxy.org/",
+        "https://www.proxy-list.download/api/v1/get?type=http",
+        "https://api.proxyscrape.com/?request=getproxies&proxytype=http&timeout=10000&country=ALL"
     ],
     "proxy_per_device": {
         "127.0.0.1:16512": {
