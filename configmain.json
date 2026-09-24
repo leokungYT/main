@@ -108,7 +108,7 @@
     "mumu_app_running": "เปิด",
     "screen_clear_wm_override": 1,
     "proxy_enabled": 0,
-    "proxy_auto_fetch": 1,
+    "proxy_auto_fetch": 0,
     "proxy_type": "http",
     "proxy_host": "",
     "proxy_port": 0,

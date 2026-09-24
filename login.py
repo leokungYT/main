@@ -1498,7 +1498,7 @@ config = {
     "device_identity_check": 1,
     "device_identity_block_on_duplicate": 1,
     "proxy_enabled": 0,
-    "proxy_auto_fetch": 1,
+    "proxy_auto_fetch": 0,
     "proxy_type": "http",
     "proxy_host": "",
     "proxy_port": 0,
@@ -7652,10 +7652,10 @@ class RangerGearBot(threading.Thread):
                                 _shot = self._save_debug_screen("refresh-miss")
                                 print(f"[{self.device_id}] [REFRESH] ไม่เจอ refresh.png (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
                                       + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
-                            # 3) รอ check.png แล้วกด (timeout 60 วิ)
+                            # 3) รอ check.png แล้วกด (timeout 20 วิ)
                             print(f"[{self.device_id}] Step 3: waiting for check.png...")
                             check_wait_start = time.time()
-                            while time.time() - check_wait_start < 60:
+                            while time.time() - check_wait_start < 20:
                                 self.capture_screen()
                                 
                                 err2 = self.check_error_images()
@@ -7698,8 +7698,8 @@ class RangerGearBot(threading.Thread):
                         
                         # === ไม่เจอ fixid และถ้าคลิก apple ไปแล้ว หรือรอสักพักแล้วไม่เจอ fixid -> ผ่านไปได้เลย ===
                         # ตรวจสอบเพิ่มเติมว่าเราข้ามขั้นตอน apple ได้เมื่อไหร่
-                        if time.time() - apple_start_wait > 30:
-                            print(f"[{self.device_id}] Apple step finished (waited 30s or check passed).")
+                        if time.time() - apple_start_wait > 15:
+                            print(f"[{self.device_id}] Apple step finished (waited 15s or check passed).")
                             break
                         
                         sleep(1)
@@ -7714,7 +7714,7 @@ class RangerGearBot(threading.Thread):
             start_wait = time.time()
             
             # Custom timeout for specific images
-            item_timeout = 480
+            item_timeout = 180
             if item in ['box6.png', 'end_box.png']:
                 item_timeout = 5
 
@@ -8325,9 +8325,9 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] [REFRESH] ไม่เจอ refresh.png (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
                               + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
                     # 3) รอ check.png แล้วกด
-                    print(f"[{self.device_id}] Step 3: waiting for check.png (60s timeout)...")
+                    print(f"[{self.device_id}] Step 3: waiting for check.png (20s timeout)...")
                     check_wait_start = time.time()
-                    while time.time() - check_wait_start < 60:
+                    while time.time() - check_wait_start < 20:
                         self.capture_screen()
                         if self.exists_in_cache("img/check.png"):
                             print(f"[{self.device_id}] Found check.png! Clicking...")
