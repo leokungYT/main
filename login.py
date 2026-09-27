@@ -146,11 +146,73 @@ def ensure_warp_bootstrap():
     return False
 
 
+# ชื่อแพ็กเกจบน pip -> ชื่อที่ import จริง (ใช้เช็คว่ามีอยู่แล้วไหม)
+PY_PACKAGE_IMPORTS = {
+    "pure-python-adb": "ppadb",
+    "opencv-python": "cv2",
+    "numpy": "numpy",
+    "psutil": "psutil",
+    "pytesseract": "pytesseract",
+    "pyperclip": "pyperclip",
+    "customtkinter": "customtkinter",
+    "Pillow": "PIL",
+    "easyocr": "easyocr",
+}
+
+
+def _missing_py_packages():
+    """แพ็กเกจที่ยังไม่มีบนเครื่องนี้ (เช็คด้วย find_spec - ไม่ import จริง เลยเร็ว)"""
+    import importlib.util
+    missing = []
+    for pkg in REQUIRED_PY_PACKAGES:
+        mod = PY_PACKAGE_IMPORTS.get(pkg, pkg.replace("-", "_"))
+        try:
+            if importlib.util.find_spec(mod) is None:
+                missing.append(pkg)
+        except Exception:
+            missing.append(pkg)      # เช็คไม่ได้ = ถือว่าขาด ให้ pip ตัดสิน
+    return missing
+
+
 def ensure_python_requirements():
-    print("[PIP] Installing/checking Python packages the bot needs...")
-    cmd = [sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", *REQUIRED_PY_PACKAGES]
+    """ลง Python package ที่ขาด - ต้องไม่ค้างเงียบไม่ว่าจะเน็ตแย่แค่ไหน
+
+    ของเดิมยิง `pip install --quiet <ทุกแพ็กเกจ>` ทุกครั้งที่เปิดโปรแกรม โดยไม่มี timeout
+    ปัญหา: easyocr ลาก torch มาด้วย (หลาย GB) พอต่อ WARP อยู่ pip จะช้า/สะดุด
+    แล้ว --quiet ทำให้ไม่มี output อะไรเลย = เหมือนโปรแกรมค้างตายตรง [PIP] ทั้งที่มันรออยู่
+    ตอนนี้:
+      1. เช็คก่อนว่าขาดอะไรจริง ๆ - ครบแล้วไม่เรียก pip เลย (เครื่องที่ตั้งค่าไว้แล้วผ่านทันที)
+      2. ลงเฉพาะตัวที่ขาด และไม่ใส่ --quiet (เห็นความคืบหน้า ไม่นึกว่าค้าง)
+      3. มี timeout (pip_timeout, default 600 วิ) + --no-input กัน pip รอคำตอบจาก stdin
+         ครบเวลาก็ไปต่อ พร้อมบอกวิธีลงเองด้วยมือ
+    ข้ามทั้งขั้นตอนนี้ได้ด้วย --skip-pip หรือ env LGR_SKIP_PIP=1
+    """
+    if os.environ.get("LGR_SKIP_PIP", "").strip() in ("1", "true", "yes"):
+        print("[PIP] LGR_SKIP_PIP=1 - ข้ามการเช็คแพ็กเกจ")
+        return
+    print("[PIP] เช็คแพ็กเกจที่บอทต้องใช้...")
     try:
-        subprocess.run(cmd, check=False)
+        missing = _missing_py_packages()
+    except Exception as e:
+        print(f"[PIP] เช็คแพ็กเกจไม่ได้ ({e}) - ข้ามไปเลย")
+        return
+    if not missing:
+        print(f"[PIP] ครบทุกตัวแล้ว ({len(REQUIRED_PY_PACKAGES)} แพ็กเกจ) - ไม่ต้องลงอะไร")
+        return
+
+    try:
+        timeout = float(os.environ.get("LGR_PIP_TIMEOUT", "600"))
+    except ValueError:
+        timeout = 600.0
+    print(f"[PIP] ขาด {len(missing)} ตัว: {', '.join(missing)}")
+    print(f"[PIP] กำลังลง (เพดาน {timeout:.0f} วิ) - ตัวใหญ่อย่าง easyocr/torch ใช้เวลาหลายนาที ขึ้นความคืบหน้าให้เห็น")
+    cmd = [sys.executable, "-m", "pip", "install", "--no-input",
+           "--disable-pip-version-check", "--retries", "2", "--timeout", "30", *missing]
+    try:
+        subprocess.run(cmd, check=False, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(f"[PIP] pip ใช้เวลาเกิน {timeout:.0f} วิ - ข้ามไปก่อน (บอทอาจพังถ้าแพ็กเกจยังไม่ครบ)")
+        print(f"[PIP] ลงเองด้วยมือ: {sys.executable} -m pip install {' '.join(missing)}")
     except Exception as e:
         print(f"[PIP] pip install ล้มเหลว: {e}")
 
@@ -345,6 +407,20 @@ if GUI_AVAILABLE:
             self.black_timeout_entry.pack(side="left", padx=10)
 
             self.add_switch(scroll_frame, "7-Day (รับของ 7 วัน)", "7day")
+
+            # เช็คเลเวลบัญชี: อ่านเลขเลเวลหลังล็อกอิน แล้วแยกไฟล์ตามเกณฑ์
+            self.add_switch(scroll_frame, "🔢 เช็คเลเวล (แยก lv5+)", "check_lv")
+            lv_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            lv_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(lv_frame, text="เกณฑ์เลเวล (<= ค่านี้ = ต่ำ):", anchor="w").pack(side="left")
+            self.lv_threshold_entry = ctk.CTkEntry(lv_frame, width=60)
+            self.lv_threshold_entry.insert(0, str(self.cfg.get("lv_threshold", 4)))
+            self.lv_threshold_entry.pack(side="left", padx=10)
+            ctk.CTkLabel(scroll_frame,
+                         text=f"      เลเวล <= เกณฑ์ -> {self.cfg.get('lv_low_dir', 'lv-under5')}/    "
+                              f"เลเวลมากกว่าเกณฑ์ -> {self.cfg.get('lv_high_dir', 'lv5+')}/\n"
+                              "      เปิดโหมดนี้แล้วบอทจะจบที่การคัดเลเวล ไม่ทำกล่อง/สุ่ม/7วันต่อ",
+                         font=ctk.CTkFont(size=10), text_color="gray", justify="left").pack(anchor="w", padx=25)
             self.add_switch(scroll_frame, "แลกแต้มเขียว Leonard", "shopgacha")
             self.add_switch(scroll_frame, "สุ่มตัว (Swap Shop)", "swap_shop")
             self.add_switch(scroll_frame, "สุ่มตัว Event", "swap_shopevent")
@@ -620,6 +696,14 @@ if GUI_AVAILABLE:
                     self.cfg["max-gacha"] = int(self.max_gacha_entry.get())
                 except:
                     self.cfg["max-gacha"] = 0
+
+                # เกณฑ์เลเวล (ใช้คู่กับสวิตช์ "เช็คเลเวล")
+                try:
+                    self.cfg["lv_threshold"] = int(self.lv_threshold_entry.get())
+                except Exception:
+                    self.cfg["lv_threshold"] = 4
+                self.cfg.setdefault("lv_low_dir", "lv-under5")
+                self.cfg.setdefault("lv_high_dir", "lv5+")
                 
                 # Save black_screen_timeout as number
                 try:
@@ -5486,6 +5570,10 @@ class RangerGearBot(threading.Thread):
                             ui_stats.update_hero("❌ ไก่บี้")
                             self.update_gui_status("Kaiby Detected", "error")
                             self.first_loop_done = False
+                        elif status == "lv_sorted":
+                            self.handle_level_sorted(xml_file)
+                            ui_stats.update(processed=ui_stats.processed_files + 1)
+                            self.update_gui_status("Level sorted", "idle")
                         elif status == "random-Fail":
                             self.handle_random_fail(xml_file)
                             ui_stats.update(random_fail=ui_stats.random_fail_count + 1)
@@ -5690,6 +5778,11 @@ class RangerGearBot(threading.Thread):
     # File Handling
     # =========================================================
     def handle_success(self, file_path):
+        # อ่านเลเวลมาได้ในรอบนี้ -> คัดลงโฟลเดอร์ตามเลเวลแทน login-success
+        # (งานตาม config ทั้งหมดทำจบไปก่อนหน้านี้แล้ว)
+        if getattr(self, "_account_level", None) is not None:
+            self.handle_level_sorted(file_path)
+            return
         # ทำ 7 วันมาในรอบนี้ -> ส่งออกไป 7day-check/ ชื่อ "[7=จำนวน check7day]+เดิม" แทน login-success
         # ตรงนี้คือตอนจบไฟล์ งาน box ที่เปิดไว้ทำเสร็จไปก่อนหน้านี้แล้ว
         count7 = getattr(self, "_check7day_count", None)
@@ -6051,7 +6144,9 @@ class RangerGearBot(threading.Thread):
                 try:
                     _hit = self._dismiss_net_popup(self._screen)
                     if _hit:
-                        self._clear_net_popup_loop(_hit)   # กดซ้ำจนกว่าป๊อปอัพจะหาย แล้วค่อยคืนภาพให้ผู้เรียก
+                        # จำกัดรอบตอนเรียกจากการจับจอ - ไม่งั้นค้างยาวได้ถึง 30 วิต่อเฟรม
+                        # (ตัวที่กดซ้ำยาว ๆ จนหายคือ monitor เบื้องหลัง ซึ่งวนทุก 3 วิอยู่แล้ว)
+                        self._clear_net_popup_loop(_hit, max_rounds=int(config.get("net_inline_rounds", 2)))
                 finally:
                     self._in_net_check = False
 
@@ -6276,7 +6371,8 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] {self._pos_mem.summary()}")
 
     # ป๊อปอัพเน็ตหลุดที่ต้องกดปิดให้ได้ ไม่ว่าบอทจะอยู่ลูปไหน
-    NET_POPUPS = ("img/fixnet-tiket.png", "img/fixnet1.png", "img/fixnet.png")   # ตัวแรก = รูปจาก bot-tiket
+    # fixnet-tiket.png ถูกตัดออก: ไฟล์เดียวกับ fixnet.png เป๊ะ (md5 ตรงกัน) สแกนซ้ำเสียเวลาเปล่า
+    NET_POPUPS = ("img/fixnet1.png", "img/fixnet.png")
     NET_POPUP_LIMIT = 10   # กดครบเท่านี้แล้วยังไม่หาย = เด้งแอปใหม่ ดีกว่าค้างรอเฉย ๆ
 
     def _match_score(self, template_path):
@@ -6366,14 +6462,15 @@ class RangerGearBot(threading.Thread):
 
     NET_RETRY_ROUNDS = 25   # กดซ้ำสูงสุดต่อรอบ (ห่างกัน ~1.2 วิ = ราว 30 วิ) ก่อนปล่อยให้รอบถัดไปลองต่อ
 
-    def _clear_net_popup_loop(self, first_hit):
+    def _clear_net_popup_loop(self, first_hit, max_rounds=None):
         """กดป๊อปอัพเน็ตซ้ำ ๆ จนกว่าจะหายไปจากจอ (เน็ตสะดุด RETRY ครั้งเดียวมักไม่พอ)
 
         เรียกหลังจากกดครั้งแรกไปแล้ว: รอ -> จับจอใหม่ -> ยังเห็นอยู่ก็กดอีก วนจนหาย
         หรือครบ NET_RETRY_ROUNDS แล้วปล่อย (monitor เบื้องหลังจะเก็บต่อ / เกิน limit จะเด้งแอป)
         """
         rounds = 1
-        while rounds < self.NET_RETRY_ROUNDS:
+        limit = self.NET_RETRY_ROUNDS if max_rounds is None else max(1, int(max_rounds))
+        while rounds < limit:
             sleep(1.2)
             try:
                 self._raw_capture()
@@ -6385,7 +6482,7 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [NET] {first_hit} หายแล้วหลังกด {rounds} ครั้ง")
                 return True
             rounds += 1
-        print(f"[{self.device_id}] [NET] กด {first_hit} ไป {rounds} ครั้งแล้วยังไม่หาย (เน็ตยังไม่กลับมา) - ปล่อยให้รอบถัดไปลองต่อ")
+        print(f"[{self.device_id}] [NET] กด {first_hit} ไป {rounds} ครั้งแล้วยังไม่หาย - ปล่อยให้รอบถัดไป/monitor เก็บต่อ")
         return False
 
     def _dismiss_net_popup(self, screen, similarity=0.8, scales=None):
@@ -6449,7 +6546,12 @@ class RangerGearBot(threading.Thread):
                 if mon_screen is not None:
                     # fixnet1/fixnet: กดปิดจากตรงนี้ด้วย เพราะลูปรอส่วนใหญ่ไม่ได้
                     # เรียก check_floating_popups() เอง
-                    hit = self._dismiss_net_popup(mon_screen, scales=self.NET_SCALES)   # monitor ไล่ทุกสเกล
+                    # กวาดครบทุกสเกลเฉพาะรอบที่ครบกำหนด (default ทุก 10 รอบ ~30 วิ)
+                    # รอบอื่นใช้สเกลที่เคยเจอ -> ประหยัด CPU ราว 8 เท่า จอไม่หน่วงตาม
+                    self._mon_round = getattr(self, "_mon_round", 0) + 1
+                    _every = max(1, int(config.get("net_full_scan_every", 10)))
+                    _scales = self.NET_SCALES if (self._mon_round % _every == 1) else None
+                    hit = self._dismiss_net_popup(mon_screen, scales=_scales)
                     if hit:
                         self._clear_net_popup_loop(hit)   # กดซ้ำจนหาย
                         self._netpopup_count = getattr(self, "_netpopup_count", 0) + 1
@@ -6745,7 +6847,9 @@ class RangerGearBot(threading.Thread):
                 try:
                     _hit = self._dismiss_net_popup(self._screen)
                     if _hit:
-                        self._clear_net_popup_loop(_hit)   # กดซ้ำจนกว่าป๊อปอัพจะหาย แล้วค่อยคืนภาพให้ผู้เรียก
+                        # จำกัดรอบตอนเรียกจากการจับจอ - ไม่งั้นค้างยาวได้ถึง 30 วิต่อเฟรม
+                        # (ตัวที่กดซ้ำยาว ๆ จนหายคือ monitor เบื้องหลัง ซึ่งวนทุก 3 วิอยู่แล้ว)
+                        self._clear_net_popup_loop(_hit, max_rounds=int(config.get("net_inline_rounds", 2)))
                 finally:
                     self._in_net_check = False
         except Exception as e:
@@ -8120,6 +8224,240 @@ class RangerGearBot(threading.Thread):
         if slot >= 0:
             print(f"[{self.device_id}] [AUTH-Q] ปล่อยคิวให้จอถัดไป" + (f" ({why})" if why else ""))
 
+    # =========================================================
+    # เช็คเลเวลบัญชี (พอร์ตมาจาก checkstage.py ของ play150)
+    # เจอ checkpont-lv.png -> OCR อ่านเลขเลเวล -> แยกไฟล์ตามเลเวล
+    #   เลเวล <= lv_threshold (4)  -> โฟลเดอร์ lv_low_dir
+    #   เลเวล >  lv_threshold      -> โฟลเดอร์ lv_high_dir
+    # อ่านครั้งเดียวต่อบัญชีทันทีหลังล็อกอิน (เล่นไปเลเวลจะขึ้น อ่านทีหลังไม่มีความหมาย)
+    # =========================================================
+    LV_IMAGES = ("img/checkpont-lv.png", "img/checkpoint-lv.png")   # รับทั้ง 2 ชื่อ
+    LV_REGION = (25, 17, 81, 74)     # x, y, w, h ของป้ายเลเวลบนจอ 960x540
+
+    def _lv_image(self):
+        """ชื่อไฟล์รูปป้ายเลเวลที่มีอยู่จริง (None = ไม่มีรูปเลย)"""
+        for p in self.LV_IMAGES:
+            if os.path.exists(p):
+                return p
+        return None
+
+    def _ocr_level_digits(self):
+        """OCR เลขเลเวลจากจอที่จับไว้ - คืน (เลเวล, ความมั่นใจ, วิธีที่อ่านได้) หรือ (None, 0, "")
+
+        ลองหลายวิธีเตรียมภาพ (otsu / otsu-inv / adaptive / gray x3 x5) เพราะป้ายเลเวล
+        บางพื้นหลังสว่าง บางพื้นหลังเข้ม วิธีเดียวอ่านไม่ได้ทุกแบบ
+        """
+        if self._screen_color is None:
+            return None, 0.0, ""
+        rx, ry, rw, rh = self.LV_REGION
+        src_h, src_w = self._screen_color.shape[:2]
+        crops = []
+        for pad in (0, 12):
+            x0, y0 = max(0, rx - pad), max(0, ry - pad)
+            x1, y1 = min(src_w, rx + rw + pad), min(src_h, ry + rh + pad)
+            c = self._screen_color[y0:y1, x0:x1]
+            if c.size > 0:
+                crops.append((pad, c))
+
+        def _variants(img_crop):
+            gray = cv2.cvtColor(img_crop, cv2.COLOR_BGR2GRAY)
+            for scale in (3.0, 5.0):
+                resized = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+                blurred = cv2.GaussianBlur(resized, (3, 3), 0)
+                _, t_inv = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+                yield (f"otsu-inv@{scale:g}x", t_inv)
+                _, t_bin = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                yield (f"otsu@{scale:g}x", t_bin)
+                yield (f"adaptive@{scale:g}x", cv2.adaptiveThreshold(
+                    blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 21, 6))
+                yield (f"gray@{scale:g}x", resized)
+
+        try:
+            reader = get_ocr_reader()
+        except Exception as e:
+            print(f"[{self.device_id}] [CHECK-LV] โหลด OCR ไม่ได้: {e}")
+            return None, 0.0, ""
+
+        found, best_conf, best_tag = None, 0.0, ""
+        for pad, crop in crops:
+            for tag, prepped in _variants(crop):
+                try:
+                    results = reader.readtext(prepped, allowlist="0123456789")
+                except Exception as e:
+                    print(f"[{self.device_id}] [CHECK-LV] OCR error ({tag}): {e}")
+                    continue
+                for (_bbox, text, conf) in results:
+                    digits = re.findall(r"\d+", text or "")
+                    if not digits:
+                        continue
+                    val = int(digits[0])
+                    if not (1 <= val <= 99):      # เลเวลจริงอยู่ในช่วงนี้ - กันอ่านมั่ว
+                        continue
+                    if conf > best_conf:
+                        found, best_conf, best_tag = val, float(conf), f"pad{pad}/{tag}"
+                if best_conf >= 0.50:
+                    break
+            if best_conf >= 0.50:
+                break
+        if best_conf < 0.15:
+            return None, best_conf, best_tag
+        return found, best_conf, best_tag
+
+    def _clear_screen_for_lv(self, max_rounds=None):
+        """เคลียร์จอให้โล่งก่อนอ่านเลเวล - กด BACK รัว ๆ แล้วปิดป๊อปอัพที่ขวางอยู่
+
+        ทำไมต้องมี: หลังล็อกอินมักมีป๊อปอัพ (Received rewards / อีเวนต์) ค้างอยู่ ซึ่ง
+        **หรี่จอทั้งหน้า** ป้ายเลเวลมุมซ้ายบนเลยมืดจน matchTemplate ได้คะแนนต่ำกว่าเกณฑ์
+        (วัดจริงบนเครื่อง: 0.795 ขณะมีป๊อปอัพ) = ไม่เริ่มอ่านเลเวลเลย
+        เคลียร์ก่อนแล้วค่อยสแกน ทั้งแม่นกว่าและเร็วกว่ารอให้ป๊อปอัพหายเอง
+        """
+        if not config.get("lv_clear_popups", 1):
+            return
+        if max_rounds is None:
+            max_rounds = int(config.get("lv_back_rounds", 10))
+        img = self._lv_image()
+        sim = float(config.get("lv_similarity", 0.7))
+        print(f"[{self.device_id}] [CHECK-LV] เคลียร์ป๊อปอัพก่อนอ่านเลเวล (กด BACK/cancel สูงสุด {max_rounds} รอบ)...")
+        for i in range(1, max_rounds + 1):
+            self.capture_screen()
+            self.check_floating_popups()
+
+            # cancel = ปุ่มปิดหน้าต่างอีเวนต์ เจอเมื่อไหร่กดแล้วพอ (ตามที่ใช้ในลูป event/bingo)
+            if self.exists_in_cache("img/cancel.png", similarity=0.8):
+                print(f"[{self.device_id}] [CHECK-LV] เจอ cancel - กดปิดแล้วไปสแกนเลเวล")
+                self.click("img/cancel.png", similarity=0.8)
+                sleep(1.2)
+                self.capture_screen()
+                return
+
+            # ป๊อปอัพรับของ (OK) - กดปิดให้ก่อน
+            for ok_img in ("img/fixok.png", "img/fixokk.png"):
+                if self.exists_in_cache(ok_img, similarity=0.85):
+                    print(f"[{self.device_id}] [CHECK-LV] ปิดป๊อปอัพ {os.path.basename(ok_img)}")
+                    self.click(ok_img, similarity=0.85)
+                    sleep(1.0)
+                    break
+            else:
+                # จอโล่งพอจนเห็นป้ายเลเวลแล้ว -> ไม่ต้องกดอะไรอีก
+                if img and self.exists_in_cache(img, similarity=sim):
+                    print(f"[{self.device_id}] [CHECK-LV] จอโล่งแล้ว (เห็นป้ายเลเวล) - เริ่มสแกน")
+                    return
+                self.adb_shell("input keyevent KEYCODE_BACK")
+                self.adb_shell("input keyevent KEYCODE_BACK")
+                sleep(0.6)
+        print(f"[{self.device_id}] [CHECK-LV] เคลียร์ครบ {max_rounds} รอบแล้ว - ลองสแกนเลเวลเลย")
+
+    def read_account_level(self, timeout=None):
+        """รอป้ายเลเวลโผล่แล้วอ่านให้ได้ครั้งเดียว - คืนเลเวล (int) หรือ None ถ้าอ่านไม่ได้"""
+        img = self._lv_image()
+        if img is None:
+            print(f"[{self.device_id}] [CHECK-LV] [WARN] ไม่มีรูป checkpont-lv.png ใน img/ - ข้ามการเช็คเลเวล")
+            return None
+        self._clear_screen_for_lv()
+        if timeout is None:
+            timeout = float(config.get("lv_timeout", 30))
+        print(f"[{self.device_id}] [CHECK-LV] รอป้ายเลเวล ({os.path.basename(img)}) แล้วอ่านเลข (สูงสุด {timeout:.0f} วิ)...")
+        deadline = time.time() + timeout
+        seen = False
+        while time.time() < deadline:
+            self.capture_screen()
+            self.check_floating_popups()
+            if not self.exists_in_cache(img, similarity=float(config.get("lv_similarity", 0.7))):
+                sleep(1)
+                continue
+            seen = True
+            lv, conf, tag = self._ocr_level_digits()
+            if lv is not None:
+                print(f"[{self.device_id}] [CHECK-LV] อ่านได้เลเวล {lv} (conf {conf:.2f}, {tag})")
+                return lv
+            print(f"[{self.device_id}] [CHECK-LV] เจอป้ายแล้วแต่อ่านเลขไม่ชัด (conf {conf:.2f}) - ลองเฟรมถัดไป")
+            sleep(1)
+        if seen:
+            print(f"[{self.device_id}] [CHECK-LV] อ่านเลเวลไม่สำเร็จใน {timeout:.0f} วิ")
+        else:
+            _sc = self._match_score(img)
+            shot = self._save_debug_screen("checklv-miss")
+            print(f"[{self.device_id}] [CHECK-LV] ไม่เจอป้ายเลเวลใน {timeout:.0f} วิ (คะแนนสูงสุด {_sc:.2f})"
+                  + (f" - เก็บภาพไว้ที่ {shot}" if shot else ""))
+        return None
+
+    def handle_level_sorted(self, file_path):
+        """ย้ายไฟล์เข้าโฟลเดอร์ตามเลเวลที่อ่านได้ (ตั้งชื่อโฟลเดอร์ใน config)
+
+        ชื่อโฟลเดอร์ห้ามมี < > : " / \ | ? *  — Windows สร้างไม่ได้
+        จึง default เป็น lv-under5 / lv5+ (เปลี่ยนได้ที่ lv_low_dir / lv_high_dir)
+        """
+        lv = getattr(self, "_account_level", None)
+        if lv is None:
+            self.handle_success(file_path)           # อ่านไม่ได้ = ทำเหมือนสำเร็จปกติ
+            return
+        self._account_level = None                  # ใช้ครั้งเดียวต่อไฟล์
+        if getattr(self, "app_missing", False):
+            print(f"[{self.device_id}] no app on this device - keep file in queue: {os.path.basename(file_path)}")
+            return
+        if not self.device_is_online():
+            self._keep_file_in_queue(file_path, "adb offline/หลุดการเชื่อมต่อ")
+            return
+        thr = int(config.get("lv_threshold", 4))
+        dst_dir = str(config.get("lv_low_dir", "lv-under5") if lv <= thr
+                      else config.get("lv_high_dir", "lv5+"))
+        try:
+            os.makedirs(dst_dir, exist_ok=True)
+            base = os.path.basename(file_path)
+            stem, ext = os.path.splitext(base)
+            dst = os.path.join(dst_dir, base)
+            seq = 2
+            while os.path.exists(dst):
+                dst = os.path.join(dst_dir, f"{stem}_{seq}{ext}")
+                seq += 1
+            shutil.move(file_path, dst)
+            print(f"[{self.device_id}] [CHECK-LV] เลเวล {lv} -> ย้ายไป {dst}")
+        except Exception as e:
+            print(f"[{self.device_id}] [CHECK-LV] ย้ายไฟล์ไม่สำเร็จ: {e} - ใช้ทางเดิม (login-success)")
+            self.handle_success(file_path)
+
+    # รูปหลักที่ลูป login รอดูอยู่ - ใช้ตอนรายงานว่า "เห็นอะไรบ้าง"
+    LOGIN_WATCH_IMAGES = ("img/event.png", "img/stoplogin.png", "img/fixok.png",
+                          "img/fixokk.png", "img/fixid.png", "img/refresh.png",
+                          "img/check.png", "img/cancel.png", "img/alert2.png")
+
+    def _report_login_screen(self, idle_n):
+        """บอกว่าตอนนี้จอมีอะไร - คะแนนแมตช์ของรูปที่ลูป login รออยู่ เรียงมากไปน้อย
+
+        เอาไว้ตอบคำถาม "ทำไมมันไม่กดอะไรเลย": ถ้าคะแนนสูงแต่ไม่ถึงเกณฑ์ = ต้องลดเกณฑ์
+        ถ้าคะแนนต่ำหมด = บอทมองเห็นคนละจอกับที่เราเห็น (จอค้าง/จับจอไม่ได้)
+        """
+        try:
+            scores = []
+            for path in self.LOGIN_WATCH_IMAGES:
+                if os.path.exists(path):
+                    scores.append((self._match_score(path), os.path.basename(path)))
+            scores.sort(reverse=True)
+            top = "  ".join(f"{n}={sc:.2f}" for sc, n in scores[:5])
+            print(f"[{self.device_id}] [WATCH] วน {idle_n} รอบแล้วไม่มีอะไรให้กด | {top}")
+            if idle_n >= 10 and scores and scores[0][0] < 0.5:
+                shot = self._save_debug_screen("login-idle")
+                if shot:
+                    print(f"[{self.device_id}] [WATCH] เก็บภาพจอที่บอทเห็นไว้ที่ {shot}")
+        except Exception as e:
+            print(f"[{self.device_id}] [WATCH] รายงานจอไม่สำเร็จ: {e}")
+
+    # ไอคอนที่อยู่บนหน้า Lobby (MAIN STAGE) - เจออันใดอันหนึ่ง = เข้าเกมได้แล้ว
+    # วัดจริงบนจอ: stoplogin 0.99 / gacha 0.99 / misson 0.98 / box1 0.95
+    LOBBY_IMAGES = ("img/stoplogin.png", "img/gacha.png", "img/misson.png", "img/box1.png")
+
+    def _at_lobby(self, similarity=0.85):
+        """อยู่หน้า Lobby แล้วหรือยัง - คืนชื่อไอคอนที่เจอ หรือ None
+
+        เดิมลูปกด BACK ดูแค่ stoplogin.png กับ cancel.png ถ้าสองตัวนี้โดนป๊อปอัพบัง
+        (หรือ cancel ไม่มีอยู่จริงบนจอนั้น - วัดได้แค่ 0.43) บอทจะกด BACK ต่อจนครบ 30 ครั้ง
+        = เสียเวลา ~10 วินาทีทุกครั้ง และเสี่ยงกด BACK เกินจนเด้งหน้าออกจากเกม
+        """
+        for path in self.LOBBY_IMAGES:
+            if os.path.exists(path) and self.exists_in_cache(path, similarity=similarity):
+                return os.path.basename(path)
+        return None
+
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
@@ -8183,10 +8521,15 @@ class RangerGearBot(threading.Thread):
                 continue
 
             loop_count += 1
+            _t_loop = time.time()
             if loop_count % 5 == 0:
                 print(f"[{self.device_id}] Login loop iteration {loop_count}")
 
             self.capture_screen()
+            _t_cap = time.time() - _t_loop
+            if _t_cap > 3:
+                print(f"[{self.device_id}] [SLOW] จับจอรอบนี้ใช้ {_t_cap:.1f} วิ (ปกติ < 1 วิ) - "
+                      f"adb/อีมูหน่วง หรือโดนลูปปิดป๊อปอัพกินเวลา")
 
             # === เช็คว่าเกมยังรันอยู่จริงไหม (เช็คทุกๆ 15 รอบ ป้องกันหน่วง) ===
             if loop_count % 15 == 0:
@@ -8205,6 +8548,53 @@ class RangerGearBot(threading.Thread):
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
             self.check_floating_popups()
+
+            # เช็ค event ตรงนี้เลย (ต้นลูป) - ของเดิมอยู่ล่างสุด กว่าจะไล่เช็คมาถึงกินเวลาหลายวิ
+            # ต่อรอบ ทำให้ "เจอ event ช้า" เจอแล้วรัว BACK เหมือนเดิมทุกอย่าง
+            # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png หรือ stoplogin.png (Triple Back Mode)
+            _ev_sim = float(config.get("event_similarity", 0.9))
+            if self.exists_in_cache("img/event.png", similarity=_ev_sim):
+                event_passed = True
+                print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
+                self.click("img/event.png", similarity=_ev_sim)
+                sleep(1)
+
+                back_press_count = 0
+                _max_back = int(config.get("event_max_back", 30))
+                while True:
+                    # กด Back ทีเดียว 3 รอบ (ของเดิม - ปรับจำนวนได้ที่ event_back_per_round)
+                    _per = max(1, int(config.get("event_back_per_round", 3)))
+                    for _b in range(_per):
+                        self.adb_shell("input keyevent KEYCODE_BACK")
+                    back_press_count += _per
+                    print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
+
+                    sleep(0.3) # ให้เวลา UI อัปเดตเล็กน้อย
+                    self.capture_screen()
+
+                    # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด (ของเดิม)
+                    if self.exists_in_cache("img/cancel.png"):
+                        print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
+                        self.click("img/cancel.png")
+                        sleep(1)
+                        break
+
+                    if self.exists_in_cache("img/stoplogin.png"):
+                        print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
+                        break
+
+                    # เพิ่มจากของเดิม: ดูไอคอน Lobby ตัวอื่นด้วย (gacha/misson/box1)
+                    # ตอน stoplogin โดนบังจะได้ไม่กด BACK ต่อจนครบ 30 ครั้งเปล่า ๆ (เสียไป ~10 วิ)
+                    _lob = self._at_lobby()
+                    if _lob:
+                        print(f"[{self.device_id}] [EVENT] ถึง Lobby แล้ว (เห็น {_lob}) - หยุดกด BACK ที่ {back_press_count} ครั้ง")
+                        break
+
+                    if back_press_count >= _max_back: # ป้องกันลูปค้าง
+                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached ({_max_back}), continuing...")
+                        break
+
+                continue
 
             # Hard recovery for the case where the app is alive but the login
             # screen has gone dead (no expected login UI for many cycles).
@@ -8683,6 +9073,30 @@ class RangerGearBot(threading.Thread):
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
 
+                # --- เช็คเลเวลบัญชี (config "check_lv") - อ่านครั้งเดียวตรงนี้ ---
+                #     จำเลเวลไว้เฉย ๆ แล้ว "ทำงานตาม config ต่อตามปกติ" (event/กล่อง/สุ่ม/7วัน)
+                #     ตอนจบไฟล์ handle_success จะเอาเลเวลนี้ไปคัดลงโฟลเดอร์ให้เอง
+                #     อยากให้จบทันทีหลังอ่านเลเวล (ไม่ทำงานอื่นเลย) -> ตั้ง config "lv_only": 1
+                if config.get("check_lv", 0):
+                    _lv = self.read_account_level()
+                    if _lv is not None:
+                        self._account_level = _lv
+                        self.update_gui_status(f"Level {_lv}", "working")
+                        # เปิดเช็คเลเวล = จบที่การคัดไอดี: เคลียร์/ปิดแอปทันที ไม่ทำงานตาม config ต่อ
+                        # (อยากให้ทำ กล่อง/สุ่ม/7วัน ต่อหลังอ่านเลเวล -> ตั้ง "lv_only": 0)
+                        if config.get("lv_only", 1):
+                            print(f"[{self.device_id}] [CHECK-LV] เลเวล {_lv} - เคลียร์แอปแล้วคัดไฟล์เลย ไม่ทำงานอื่นต่อ")
+                            self.clear_and_restart()
+                            return "lv_sorted"
+                        print(f"[{self.device_id}] [CHECK-LV] จดเลเวล {_lv} ไว้แล้ว - ทำงานตาม config ต่อตามปกติ")
+                    elif config.get("lv_only", 1):
+                        # อ่านไม่ได้ก็ไม่ต้องไปทำงานอื่น - ส่งเข้า login-success ตามเดิมแล้วไปไอดีถัดไป
+                        print(f"[{self.device_id}] [CHECK-LV] อ่านเลเวลไม่ได้ - เคลียร์แอปแล้วไปไอดีถัดไป")
+                        self.clear_and_restart()
+                        return "success"
+                    else:
+                        print(f"[{self.device_id}] [CHECK-LV] อ่านเลเวลไม่ได้ - ไปทำงานตามปกติต่อ")
+
                 # --- Mission Sequence (config misson=1) ---
                 if config.get("misson", 0) == 1:
                     print(f"[{self.device_id}] config misson=1: Running mission sequence...")
@@ -8782,43 +9196,12 @@ class RangerGearBot(threading.Thread):
                 sleep(1)
                 continue
 
-            # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png หรือ stoplogin.png (Triple Back Mode)
-            if self.exists_in_cache("img/event.png"):
-                event_passed = True
-                print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
-                self.click("img/event.png")
-                sleep(1)
-                
-                back_press_count = 0
-                while True:
-                    # กด Back ทีเดียว 3 รอบ
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    back_press_count += 3
-                    print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
-                    
-                    sleep(0.3) # ให้เวลา UI อัปเดตเล็กน้อย
-                    self.capture_screen()
-                    
-                    # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด
-                    if self.exists_in_cache("img/cancel.png"):
-                        print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
-                        self.click("img/cancel.png")
-                        sleep(1)
-                        break
-                    
-                    if self.exists_in_cache("img/stoplogin.png"):
-                        print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
-                        break
-                        
-                    if back_press_count >= 30: # ป้องกันลูปค้าง (สูงสุด 30 ครั้ง)
-                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached (30), continuing...")
-                        break
-                
-                continue
             
-            sleep(2)
+            # ไม่เข้าเงื่อนไขไหนเลยในรอบนี้ = "เห็นจอแต่ไม่มีอะไรให้กด"
+            login_idle_loops += 1
+            if login_idle_loops in (3, 10) or login_idle_loops % 30 == 0:
+                self._report_login_screen(login_idle_loops)
+            sleep(float(config.get("login_loop_delay", 0.6)))
             if loop_count > 500:
                 print(f"[{self.device_id}] Login timeout after 500 iterations")
                 status = "timeout"

@@ -2636,3 +2636,587 @@
 [2026-09-23 21:49:34] [GUI] Auto-start disabled. Press START to launch the bot.
 [2026-09-23 21:49:38] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
 [2026-09-23 21:49:38] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 21:58:47] ============================================
+[2026-09-27 21:58:47]   Cloudflare WARP + norandom-reid Bot
+[2026-09-27 21:58:47] ============================================
+[2026-09-27 21:58:47] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-27 21:58:47] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-27 21:58:51] [WARP] กำลังเชื่อมต่อ...
+[2026-09-27 21:58:51] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-27 21:58:51] [PIP] Installing/checking Python packages the bot needs...
+[2026-09-27 21:59:58] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-27 21:59:58] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-25 00:05
+[2026-09-27 21:59:58] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 21:59:58] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 21:59:58] [CLEANUP] Removed old shared_stats.json
+[2026-09-27 21:59:58] [ADB] Found file at C:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-27 21:59:58] [ADB] Verified: C:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-27 21:59:58] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-27 22:00:05] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-27 22:00:10] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): TimeoutExpired
+[2026-09-27 22:00:10] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 22:00:14] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 22:00:14] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 2): already connected to 127.0.0.1:16512
+[2026-09-27 22:00:14] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 22:00:17] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 22:00:17] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 3): already connected to 127.0.0.1:16512
+[2026-09-27 22:00:17] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 22:00:21] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 22:00:24] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 22:00:24] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-27 22:00:24] --- Scan Complete (MuMuManager) ---
+[2026-09-27 22:00:25] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 22:00:25] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-27 22:00:31] [INFO] Pre-loading OCR model...
+[2026-09-27 22:00:45] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-27 22:00:45] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-27 22:00:50] [OK] EasyOCR model loaded!
+[2026-09-27 22:00:50] [OK] OCR model loaded.
+[2026-09-27 22:00:50] [FILE] Found 0 files in C:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-27 22:00:50] [FILE] Found 6 files in C:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-27 22:00:50] [FILE] คิวรวมทั้งหมด 6 ไฟล์ (backup + input-id)
+[2026-09-27 22:00:50] [32m[START] Launching GUI Mode...[0m
+[2026-09-27 22:00:52] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-27 22:00:52] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-27 22:00:56] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:00:56] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:01:09] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:01:09] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:01:26] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:01:26] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:01:56] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:01:56] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:02:26] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:02:26] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:02:56] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:02:56] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:03:26] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:03:26] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:03:56] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:03:56] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:04:26] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:04:26] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:04:56] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:04:56] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:05:26] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:05:26] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:05:56] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:05:56] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:06:26] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:06:26] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:06:56] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:06:56] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:07:26] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:07:26] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:07:51] [CONFIG] Base Loaded: C:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 22:07:51] [CONFIG] UI Settings Loaded: C:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 22:07:54] [GUI] Shutting down... Killing background processes.
+[2026-09-27 23:02:54] ============================================
+[2026-09-27 23:02:54]   Cloudflare WARP + norandom-reid Bot
+[2026-09-27 23:02:54] ============================================
+[2026-09-27 23:02:54] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-27 23:02:54] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-27 23:02:58] [WARP] กำลังเชื่อมต่อ...
+[2026-09-27 23:03:02] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-27 23:03:02] [PIP] Installing/checking Python packages the bot needs...
+[2026-09-27 23:04:19] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-27 23:04:19] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-27 22:21
+[2026-09-27 23:04:19] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:04:19] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:04:19] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-27 23:04:19] [CLEANUP] Removed old shared_stats.json
+[2026-09-27 23:04:19] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-27 23:04:19] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-27 23:04:19] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-27 23:04:28] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-27 23:04:28] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-27 23:04:31] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 23:04:32] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 23:04:32] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-27 23:04:32] --- Scan Complete (MuMuManager) ---
+[2026-09-27 23:04:32] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 23:04:32] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-27 23:04:34] [INFO] Pre-loading OCR model...
+[2026-09-27 23:04:43] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-27 23:04:43] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-27 23:05:06] [OK] EasyOCR model loaded!
+[2026-09-27 23:05:06] [OK] OCR model loaded.
+[2026-09-27 23:05:06] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:05:06] [FILE] Found 6 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:05:06] [FILE] คิวรวมทั้งหมด 6 ไฟล์ (backup + input-id)
+[2026-09-27 23:05:06] [32m[START] Launching GUI Mode...[0m
+[2026-09-27 23:05:12] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-27 23:05:12] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-27 23:05:17] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:05:17] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:08:06] ============================================
+[2026-09-27 23:08:06]   Cloudflare WARP + norandom-reid Bot
+[2026-09-27 23:08:06] ============================================
+[2026-09-27 23:08:06] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-27 23:08:06] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-27 23:08:10] [WARP] กำลังเชื่อมต่อ...
+[2026-09-27 23:08:11] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-27 23:08:11] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-09-27 23:08:11] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-09-27 23:08:11] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-27 23:08:11] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-27 23:07
+[2026-09-27 23:08:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:08:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:08:11] [CLEANUP] Removed old shared_stats.json
+[2026-09-27 23:08:11] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-27 23:08:11] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-27 23:08:11] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-27 23:08:17] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-27 23:08:17] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-27 23:08:20] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-27 23:08:20] --- Scan Complete (MuMuManager) ---
+[2026-09-27 23:08:20] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-27 23:08:21] [INFO] Pre-loading OCR model...
+[2026-09-27 23:08:30] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-27 23:08:30] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-27 23:08:43] [OK] EasyOCR model loaded!
+[2026-09-27 23:08:43] [OK] OCR model loaded.
+[2026-09-27 23:08:43] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:08:43] [FILE] Found 6 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:08:43] [FILE] คิวรวมทั้งหมด 6 ไฟล์ (backup + input-id)
+[2026-09-27 23:08:43] [32m[START] Launching GUI Mode...[0m
+[2026-09-27 23:08:49] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-27 23:08:49] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-27 23:08:53] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:08:53] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:09:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:09:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:09:23] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:09:23] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:09:53] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:09:53] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:10:23] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:10:23] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:10:53] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:10:53] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:11:23] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:11:23] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:11:53] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:11:53] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:12:20] Traceback (most recent call last):
+[2026-09-27 23:12:20]   File "c:\Users\Administrator\Downloads\LGR\login.py", line 9252, in <module>
+[2026-09-27 23:12:20]     gui.mainloop()
+[2026-09-27 23:12:20]   File "C:\Program Files\Python311\Lib\site-packages\customtkinter\windows\ctk_tk.py", line 165, in mainloop
+[2026-09-27 23:12:20]     super().mainloop(*args, **kwargs)
+[2026-09-27 23:12:20]   File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 1485, in mainloop
+[2026-09-27 23:12:20]     self.tk.mainloop(n)
+[2026-09-27 23:12:20] KeyboardInterrupt
+[2026-09-27 23:17:20] ============================================
+[2026-09-27 23:17:20]   Cloudflare WARP + norandom-reid Bot
+[2026-09-27 23:17:20] ============================================
+[2026-09-27 23:17:20] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-27 23:17:20] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-27 23:17:24] [WARP] กำลังเชื่อมต่อ...
+[2026-09-27 23:17:24] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-27 23:17:24] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-09-27 23:17:24] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-09-27 23:17:24] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-27 23:17:24] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-27 23:15
+[2026-09-27 23:17:24] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:17:24] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:17:24] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-27 23:17:24] [CLEANUP] Removed old shared_stats.json
+[2026-09-27 23:17:24] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-27 23:17:24] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-27 23:17:24] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-27 23:17:30] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-27 23:17:30] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-27 23:17:32] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-27 23:17:32] --- Scan Complete (MuMuManager) ---
+[2026-09-27 23:17:33] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-27 23:17:34] [INFO] Pre-loading OCR model...
+[2026-09-27 23:17:39] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-27 23:17:39] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-27 23:17:42] [OK] EasyOCR model loaded!
+[2026-09-27 23:17:42] [OK] OCR model loaded.
+[2026-09-27 23:17:42] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:17:42] [FILE] Found 6 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:17:42] [FILE] คิวรวมทั้งหมด 6 ไฟล์ (backup + input-id)
+[2026-09-27 23:17:42] [32m[START] Launching GUI Mode...[0m
+[2026-09-27 23:17:46] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-27 23:17:46] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-27 23:17:50] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:17:50] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:18:20] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:18:20] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:18:50] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:18:50] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:19:20] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:19:20] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:19:50] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:19:50] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:20:20] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:20:20] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:20:50] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:20:50] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:21:20] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:21:20] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:21:50] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:21:50] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:22:20] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:22:20] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:22:50] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:22:50] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:25:50] ============================================
+[2026-09-27 23:25:50]   Cloudflare WARP + norandom-reid Bot
+[2026-09-27 23:25:50] ============================================
+[2026-09-27 23:25:50] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-27 23:25:50] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-27 23:25:54] [WARP] กำลังเชื่อมต่อ...
+[2026-09-27 23:25:54] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-27 23:25:54] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-09-27 23:25:54] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-09-27 23:25:54] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-27 23:25:54] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-27 23:25
+[2026-09-27 23:25:54] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:25:54] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:25:54] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-27 23:25:54] [CLEANUP] Removed old shared_stats.json
+[2026-09-27 23:25:54] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-27 23:25:54] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-27 23:25:54] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-27 23:26:00] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-27 23:26:00] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-27 23:26:03] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-27 23:26:03] --- Scan Complete (MuMuManager) ---
+[2026-09-27 23:26:03] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-27 23:26:06] [INFO] Pre-loading OCR model...
+[2026-09-27 23:26:24] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-27 23:26:24] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-27 23:26:28] [OK] EasyOCR model loaded!
+[2026-09-27 23:26:28] [OK] OCR model loaded.
+[2026-09-27 23:26:28] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:26:28] [FILE] Found 6 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:26:28] [FILE] คิวรวมทั้งหมด 6 ไฟล์ (backup + input-id)
+[2026-09-27 23:26:28] [32m[START] Launching GUI Mode...[0m
+[2026-09-27 23:26:29] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-27 23:26:29] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-27 23:26:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:26:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:27:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:27:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:27:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:27:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:28:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:28:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:28:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:28:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:29:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:29:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:29:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:29:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:30:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:30:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:30:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:30:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:31:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:31:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:31:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:31:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:32:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:32:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:32:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:32:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:33:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:33:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:33:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:33:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:34:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:34:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:34:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:34:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:35:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:35:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:35:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:35:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:36:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:36:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:36:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:36:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:36:44] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:36:44] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:37:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:37:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:37:36] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:37:36] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:38:06] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:38:06] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:39:26] ============================================
+[2026-09-27 23:39:26]   Cloudflare WARP + norandom-reid Bot
+[2026-09-27 23:39:26] ============================================
+[2026-09-27 23:39:26] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-27 23:39:26] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-27 23:39:30] [WARP] กำลังเชื่อมต่อ...
+[2026-09-27 23:39:30] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-27 23:39:30] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-09-27 23:39:30] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-09-27 23:39:30] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-27 23:39:30] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-27 23:39
+[2026-09-27 23:39:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:39:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:39:30] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-27 23:39:30] [CLEANUP] Removed old shared_stats.json
+[2026-09-27 23:39:30] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-27 23:39:30] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-27 23:39:30] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-27 23:39:37] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-27 23:39:37] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-27 23:39:47] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-27 23:39:47] --- Scan Complete (MuMuManager) ---
+[2026-09-27 23:39:47] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-27 23:39:48] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-27 23:39:51] [INFO] Pre-loading OCR model...
+[2026-09-27 23:39:59] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-27 23:39:59] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-27 23:40:02] [OK] EasyOCR model loaded!
+[2026-09-27 23:40:02] [OK] OCR model loaded.
+[2026-09-27 23:40:02] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:40:02] [FILE] Found 5 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:40:02] [FILE] คิวรวมทั้งหมด 5 ไฟล์ (backup + input-id)
+[2026-09-27 23:40:02] [32m[START] Launching GUI Mode...[0m
+[2026-09-27 23:40:04] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-27 23:40:04] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-27 23:40:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:40:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:40:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:40:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:41:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:41:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:41:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:41:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:42:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:42:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:42:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:42:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:43:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:43:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:43:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:43:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:44:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:44:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:44:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:44:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:45:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:45:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:45:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:45:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:46:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:46:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:46:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:46:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:47:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:47:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:47:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:47:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:48:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:48:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:48:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:48:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:49:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:49:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:49:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:49:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:54:04] ============================================
+[2026-09-27 23:54:04]   Cloudflare WARP + norandom-reid Bot
+[2026-09-27 23:54:04] ============================================
+[2026-09-27 23:54:04] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-27 23:54:04] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-27 23:54:08] [WARP] กำลังเชื่อมต่อ...
+[2026-09-27 23:54:12] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-27 23:54:12] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-09-27 23:54:12] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-09-27 23:54:12] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-27 23:54:12] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-27 23:53
+[2026-09-27 23:54:12] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:54:12] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:54:12] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-27 23:54:12] [CLEANUP] Removed old shared_stats.json
+[2026-09-27 23:54:12] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-27 23:54:12] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-27 23:54:12] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-27 23:54:17] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-27 23:54:17] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-27 23:54:22] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-27 23:54:22] --- Scan Complete (MuMuManager) ---
+[2026-09-27 23:54:22] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-27 23:54:27] [INFO] Pre-loading OCR model...
+[2026-09-27 23:54:32] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-27 23:54:32] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-27 23:54:35] [OK] EasyOCR model loaded!
+[2026-09-27 23:54:35] [OK] OCR model loaded.
+[2026-09-27 23:54:35] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:54:35] [FILE] Found 4 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-27 23:54:35] [FILE] คิวรวมทั้งหมด 4 ไฟล์ (backup + input-id)
+[2026-09-27 23:54:35] [32m[START] Launching GUI Mode...[0m
+[2026-09-27 23:54:36] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-27 23:54:36] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-27 23:54:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:54:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:55:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:55:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:55:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:55:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:56:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:56:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:56:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:56:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:57:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:57:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:57:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:57:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:58:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:58:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:58:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:58:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:59:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:59:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-27 23:59:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-27 23:59:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:00:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:00:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:00:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:00:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:01:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:01:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:01:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:01:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:02:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:02:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:02:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:02:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:03:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:03:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:03:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:03:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:04:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:04:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:04:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:04:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:05:11] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:05:11] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:09:23] ============================================
+[2026-09-28 00:09:23]   Cloudflare WARP + norandom-reid Bot
+[2026-09-28 00:09:23] ============================================
+[2026-09-28 00:09:23] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-28 00:09:23] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-28 00:09:27] [WARP] กำลังเชื่อมต่อ...
+[2026-09-28 00:09:27] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-28 00:09:27] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-09-28 00:09:27] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-09-28 00:09:27] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-28 00:09:27] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-27 23:53
+[2026-09-28 00:09:27] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:09:27] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:09:27] [CLEANUP] Removed old shared_stats.json
+[2026-09-28 00:09:27] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-28 00:09:27] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-28 00:09:27] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-28 00:09:35] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-28 00:09:35] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-28 00:09:42] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-28 00:09:42] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-28 00:09:42] --- Scan Complete (MuMuManager) ---
+[2026-09-28 00:09:42] [ADB] ข้าม emulator-5562 (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)
+[2026-09-28 00:09:43] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-28 00:09:44] [INFO] Pre-loading OCR model...
+[2026-09-28 00:09:49] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-28 00:09:49] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-28 00:09:53] [OK] EasyOCR model loaded!
+[2026-09-28 00:09:53] [OK] OCR model loaded.
+[2026-09-28 00:09:53] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-28 00:09:53] [FILE] Found 2 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-28 00:09:53] [FILE] คิวรวมทั้งหมด 2 ไฟล์ (backup + input-id)
+[2026-09-28 00:09:53] [32m[START] Launching GUI Mode...[0m
+[2026-09-28 00:09:55] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-28 00:09:55] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-28 00:10:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:10:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:10:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:10:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:11:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:11:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:11:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:11:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:12:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:12:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:12:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:12:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:13:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:13:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:13:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:13:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:14:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:14:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:14:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:14:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:15:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:15:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:15:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:15:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:16:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:16:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:16:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:16:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:17:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:17:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:17:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:17:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:18:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:18:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:18:30] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:18:30] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:19:00] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:19:00] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:19:19] ============================================
+[2026-09-28 00:19:19]   Cloudflare WARP + norandom-reid Bot
+[2026-09-28 00:19:19] ============================================
+[2026-09-28 00:19:19] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-28 00:19:19] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-28 00:19:23] [WARP] กำลังเชื่อมต่อ...
+[2026-09-28 00:19:23] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-28 00:19:23] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-09-28 00:19:23] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-09-28 00:19:23] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-28 00:19:23] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-28 00:17
+[2026-09-28 00:19:23] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:19:23] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:19:23] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-28 00:19:23] [CLEANUP] Removed old shared_stats.json
+[2026-09-28 00:19:23] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-09-28 00:19:23] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-09-28 00:19:23] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-28 00:19:29] --- [ADB] MuMuManager รายงาน 1 instance ที่เปิดอยู่ ---
+[2026-09-28 00:19:29] [ADB] เชื่อม 127.0.0.1:16512 (ยกที่ 1): connected to 127.0.0.1:16512
+[2026-09-28 00:19:31] [ADB] เชื่อมครบ 1/1 ตัว
+[2026-09-28 00:19:31] --- Scan Complete (MuMuManager) ---
+[2026-09-28 00:19:31] [INFO] Connected Devices (1): 127.0.0.1:16512
+[2026-09-28 00:19:33] [INFO] Pre-loading OCR model...
+[2026-09-28 00:19:39] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-28 00:19:39] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-28 00:19:42] [OK] EasyOCR model loaded!
+[2026-09-28 00:19:42] [OK] OCR model loaded.
+[2026-09-28 00:19:42] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-09-28 00:19:42] [FILE] Found 1 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-28 00:19:42] [FILE] คิวรวมทั้งหมด 1 ไฟล์ (backup + input-id)
+[2026-09-28 00:19:42] [32m[START] Launching GUI Mode...[0m
+[2026-09-28 00:19:44] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-28 00:19:44] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-28 00:19:49] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:19:49] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:20:19] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:20:19] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:20:49] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:20:49] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:21:19] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:21:19] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:21:49] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:21:49] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:22:19] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:22:19] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-28 00:22:49] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-09-28 00:22:49] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json

@@ -1,5 +1,5 @@
 {
-    "7day": 1,
+    "7day": 0,
     "shopgacha": 0,
     "swap_shop": 0,
     "swap_shopevent": 0,
@@ -61,13 +61,13 @@
     "check-gear": 0,
     "use_ocr": 0,
     "box_settings": {
-        "first_round": 1,
+        "first_round": 0,
         "second_round": 0
     },
     "black_screen_timeout": 8,
     "loop1": 0,
     "first_loop": 0,
-    "kaibyskip": 0,
+    "kaibyskip": 1,
     "kaibycheck": 0,
     "misson": 0,
     "move_success": {
@@ -78,9 +78,9 @@
     },
     "minitouch": 1,
     "pos_cache": 0,
-    "scan_interval": 0.35,
-    "loop_delay": 0.25,
-    "auto_start": 0,
+    "scan_interval": 1.0,
+    "loop_delay": null,
+    "auto_start": 1,
     "cloud_fast_start": 0,
     "cloud_start_delay_sec": 2.0,
     "screen_check": 1,
@@ -144,5 +144,20 @@
         "model": "Asus ROG Phone 9",
         "gpu_model": "Adreno (TM) 640",
         "note": "Baseline profile used for all MuMu instances"
-    }
+    },
+    "check_lv": 1,
+    "lv_threshold": 4,
+    "lv_low_dir": "lv-3-4",
+    "lv_high_dir": "lv5+",
+    "lv_timeout": 30,
+    "lv_similarity": 0.7,
+    "lv_only": 1,
+    "lv_clear_popups": 1,
+    "lv_back_rounds": 10,
+    "net_inline_rounds": 1,
+    "event_similarity": 0.9,
+    "login_loop_delay": 0.6,
+    "net_full_scan_every": 10,
+    "event_max_back": 30,
+    "event_back_per_round": 3
 }
