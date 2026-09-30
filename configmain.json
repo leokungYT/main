@@ -1,4 +1,5 @@
 {
+    "warp_autostart": 0,
     "7day": 0,
     "shopgacha": 0,
     "swap_shop": 0,
@@ -159,5 +160,6 @@
     "login_loop_delay": 0.6,
     "net_full_scan_every": 10,
     "event_max_back": 30,
-    "event_back_per_round": 3
+    "event_back_per_round": 3,
+    "check_ruby_ticket": 1
 }

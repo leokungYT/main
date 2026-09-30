@@ -74,6 +74,15 @@ def print_startup_banner():
 
 def ensure_warp_bootstrap():
     """Match the bot-tiket launcher flow: ensure WARP is installed and connected before bot startup."""
+    # เปิด/ปิดได้ที่ configmain.json -> "warp_autostart": 1 = เปิด VPN 1.1.1.1 อัตโนมัติ, 0 = ไม่ยุ่งกับ WARP
+    try:
+        with open("configmain.json", "r", encoding="utf-8-sig") as f:
+            _warp_on = int(json.load(f).get("warp_autostart", 0))
+    except Exception:
+        _warp_on = 0
+    if not _warp_on:
+        print("[WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม")
+        return
     print("[WARP] ตรวจสอบ Cloudflare WARP...")
     warp_root_candidates = [
         os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Cloudflare", "Cloudflare WARP"),
@@ -421,6 +430,9 @@ if GUI_AVAILABLE:
                               f"เลเวลมากกว่าเกณฑ์ -> {self.cfg.get('lv_high_dir', 'lv5+')}/\n"
                               "      เปิดโหมดนี้แล้วบอทจะจบที่การคัดเลเวล ไม่ทำกล่อง/สุ่ม/7วันต่อ",
                          font=ctk.CTkFont(size=10), text_color="gray", justify="left").pack(anchor="w", padx=25)
+            # เช็ค Ruby/ตั๋ว (พอร์ตจาก ranger-gear.py): เข้าหน้ากาชาแล้ว OCR อ่านเลข
+            # เปิดคู่กับเช็คเลเวล = อ่านเลเวลก่อน แล้วค่อยอ่าน ruby/ตั๋ว -> ชื่อไฟล์ ruby[x]+ticket[y]+ชื่อเดิม
+            self.add_switch(scroll_frame, "💎 เช็ค Ruby/ตั๋ว (ใส่ในชื่อไฟล์)", "check_ruby_ticket")
             self.add_switch(scroll_frame, "แลกแต้มเขียว Leonard", "shopgacha")
             self.add_switch(scroll_frame, "สุ่มตัว (Swap Shop)", "swap_shop")
             self.add_switch(scroll_frame, "สุ่มตัว Event", "swap_shopevent")
@@ -1617,6 +1629,8 @@ def get_ocr_reader():
                 _ocr_reader = easyocr.Reader(['en'], gpu=False)
                 print("[OK] EasyOCR model loaded!")
     return _ocr_reader
+
+_ocr_run_lock = threading.Lock()  # Serialize readtext กัน CPU ตันตอนรันหลายเครื่องพร้อมกัน
 
 
 # จำกัดจำนวนจอที่ส่งไฟล์เข้าเครื่องพร้อมกัน - หลายจอยิงพร้อมกันคือต้นเหตุ "ไฟล์เข้าไม่ได้"
@@ -3782,7 +3796,8 @@ class RangerGearBot(threading.Thread):
             
             original_name = getattr(self, "current_original_filename", "unknown.xml")
             if not original_name.endswith(".xml"): original_name += ".xml"
-            
+            original_name = self._ruby_ticket_filename(original_name)
+
             # Use hero_prefix if provided, else use config/default
             prefix = hero_prefix or config.get('filename_prefix', 'conyfly')
             dest_filename = f"{prefix}-{original_name}"
@@ -3990,7 +4005,7 @@ class RangerGearBot(threading.Thread):
         try:
             dst_dir = self.CHECK7DAY_DIR
             os.makedirs(dst_dir, exist_ok=True)
-            base = os.path.basename(file_path)
+            base = self._ruby_ticket_filename(os.path.basename(file_path))
             stem, ext = os.path.splitext(base)
             # [7=จำนวน] ไว้ "ข้างหน้า" ชื่อเดิม - เรียงในโฟลเดอร์แล้วบัญชีที่ได้เท่ากันอยู่ติดกัน
             dst = os.path.join(dst_dir, f"[7={count}]+{base}")
@@ -5794,13 +5809,33 @@ class RangerGearBot(threading.Thread):
         dst_dir = "login-success"
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
-        base = os.path.basename(file_path)
+        base = self._ruby_ticket_filename(os.path.basename(file_path))
         dst = os.path.join(dst_dir, base)
         try:
             shutil.move(file_path, dst)
             print(f"[{self.device_id}] Moved to {dst_dir}: {base}")
         except Exception as e:
             print(f"[{self.device_id}] Move error: {e}")
+
+    def _ruby_ticket_filename(self, filename):
+        """ใส่ tag ruby/ตั๋วที่อ่านได้รอบนี้ไว้หน้าชื่อไฟล์ แบบเดียวกับ ranger-gear.py
+
+        ruby[x]+ticket[y]+ชื่อเดิม.xml  (tag เดิมที่ติดมาถูกลอกออกก่อน กันซ้อน)
+        ไม่ได้เช็ครอบนี้ = คืนชื่อเดิม ; เช็คแล้วอ่านไม่ได้ทั้งคู่ = ลอก tag เก่าออก (กันค่าเก่าค้าง)
+        (ค่าถูกล้างทุกไอดีใหม่ใน main_login)
+        """
+        rt = getattr(self, "_ruby_ticket", None)
+        if not rt:
+            return filename
+        ruby, ticket = rt
+        stem, ext = os.path.splitext(filename)
+        stem = re.sub(r'\+?ruby\[[^\]]*\]', '', stem)
+        stem = re.sub(r'\+?ticket\[[^\]]*\]', '', stem)
+        stem = re.sub(r'\+{2,}', '+', stem).strip('+')
+        ext = ext or '.xml'
+        if ruby is None and ticket is None:
+            return f"{stem}{ext}"
+        return f"ruby[{ruby or '0'}]+ticket[{ticket or '0'}]+{stem}{ext}"
 
     def _recover_failed_id(self, xml_file):
         """id ติด failed -> ล้าง shared_prefs หมด -> เข้าเกม 1 รอบ (state สะอาด) -> ล้างอีก -> ฉีดใหม่ -> login"""
@@ -7256,7 +7291,8 @@ class RangerGearBot(threading.Thread):
 
     def backup_ranger_results(self, results, gear_results=None):
         """Save backup based on results"""
-        filename = self.current_original_filename or "unknown.xml"
+        # ชื่อเดียวกับที่ handle_success จะย้ายไป (มี tag ruby/ticket) - กันไฟล์ซ้ำ 2 ชื่อ
+        filename = self._ruby_ticket_filename(self.current_original_filename or "unknown.xml")
         source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
         safe_dev = self.device_id.replace(":", "_")
         temp_remote = f"/data/local/tmp/backup_{safe_dev}.xml"
@@ -8403,7 +8439,7 @@ class RangerGearBot(threading.Thread):
                       else config.get("lv_high_dir", "lv5+"))
         try:
             os.makedirs(dst_dir, exist_ok=True)
-            base = os.path.basename(file_path)
+            base = self._ruby_ticket_filename(os.path.basename(file_path))
             stem, ext = os.path.splitext(base)
             dst = os.path.join(dst_dir, base)
             seq = 2
@@ -8415,6 +8451,159 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] [CHECK-LV] ย้ายไฟล์ไม่สำเร็จ: {e} - ใช้ทางเดิม (login-success)")
             self.handle_success(file_path)
+
+    # =========================================================
+    # เช็ค Ruby / ตั๋ว (พอร์ตจาก ranger-gear.py - check-rubyandtiket.py)
+    # เข้าหน้ากาชา -> รอ waitgacha.png -> OCR อ่านเลข ruby / ตั๋ว มุมบน
+    # ผลเก็บไว้ที่ self._ruby_ticket แล้วตอนส่งไฟล์ออกจะใส่ ruby[x]+ticket[y]+ หน้าชื่อ
+    # =========================================================
+    def find_template_ocr(self, img, template_path, threshold=0.7):
+        """Find template in image and return position (for OCR regions)"""
+        try:
+            template = cv2.imread(template_path)
+            if template is None:
+                return None
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            result = cv2.matchTemplate(img_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            if max_val >= threshold:
+                h, w = template_gray.shape
+                return {'x': max_loc[0], 'y': max_loc[1], 'width': w, 'height': h, 'confidence': max_val}
+            return None
+        except Exception:
+            return None
+
+    def read_number_from_region(self, img, x, y, width, height, label="OCR"):
+        """Read number from specified region using EasyOCR"""
+        try:
+            h, w = img.shape[:2]
+            # RUBY/TICKET ใช้ pad น้อย กันขยายกรอบไปจับไอคอนข้างๆ (ไอคอนทำ OCR สับสน)
+            PAD = 2 if ("RUBY" in label or "TICKET" in label) else 10
+            x1 = max(0, int(x) - PAD)
+            y1 = max(0, int(y) - PAD)
+            x2 = min(w, int(x + width) + PAD)
+            y2 = min(h, int(y + height) + PAD)
+            cropped = img[y1:y2, x1:x2]
+            if cropped is None or cropped.size == 0:
+                return None
+
+            # --- Visual Debug Save (Red Rectangle) ---
+            if config.get("debug_ocr", 0) == 1:
+                debug_dir = "debug_ocr"
+                os.makedirs(debug_dir, exist_ok=True)
+                debug_img = img.copy()
+                cv2.rectangle(debug_img, (int(x), int(y)), (int(x + width), int(y + height)), (0, 0, 255), 2)
+                cv2.putText(debug_img, label, (int(x), int(y) - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                safe_dev = self.device_id.replace(":", "_")
+                cv2.imwrite(os.path.join(debug_dir, f"debug_ocr_{safe_dev}_{label}.png"), debug_img)
+
+            gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+            scale = 6 if height < 30 else 3
+            v_scaled = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            # manual_180 แม่นกับตัวหนังสือขาวบนพื้นเข้ม
+            _, v_bin = cv2.threshold(v_scaled, 180, 255, cv2.THRESH_BINARY_INV)
+            # เติมขอบขาวรอบภาพ ช่วยให้ EasyOCR ตรวจเลขหลักเดียวโดดๆ (เช่น "4") ได้
+            v_bin = cv2.copyMakeBorder(v_bin, 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=255)
+
+            reader = get_ocr_reader()
+            with _ocr_run_lock:  # OCR ทีละเครื่อง กัน CPU ตัน
+                results = reader.readtext(v_bin, allowlist='0123456789,', detail=0,
+                                          text_threshold=0.5, low_text=0.3)
+            if results:
+                print(f"[{self.device_id}] [STRICT-OCR] {label} raw={results}")
+                final_digits = "".join(c for c in "".join(results) if c.isdigit())
+                if final_digits:
+                    print(f"[{self.device_id}] [STRICT-OCR] {label} Final: {final_digits}")
+                    return final_digits
+            return None
+        except Exception as e:
+            print(f"[{self.device_id}] [STRICT-OCR ERROR] {label} failed: {e}")
+            return None
+
+    def read_ticket_and_ruby(self):
+        """Read Ticket and Ruby counts from screen using OCR - คืน (ticket, ruby)"""
+        img = self.get_screen_color()
+        if img is None:
+            return None, None
+
+        # --- HYBRID PRECISION ROI (จอ 960x540) ---
+        ruby_value = self.read_number_from_region(img, 427, 20, 51, 16, label="RUBY")
+        ticket_value = self.read_number_from_region(img, 558, 20, 56, 16, label="TICKET")
+
+        # Backup: Template search แยกอิสระต่อค่า (เจอตัวไหน None ก็ backup ตัวนั้น)
+        if ruby_value is None:
+            print(f"[{self.device_id}] [RESOURCE] RUBY fixed ROI failed, trying Template backup...")
+            m = self.find_template_ocr(img, 'img/checkruby.png', threshold=0.7)
+            if m:
+                ruby_value = self.read_number_from_region(
+                    img, m['x'] + int(m['width'] * 0.45), m['y'] + 2,
+                    int(m['width'] * 0.50), m['height'] - 4, label="RUBY_B")
+        if ticket_value is None:
+            print(f"[{self.device_id}] [RESOURCE] TICKET fixed ROI failed, trying Template backup...")
+            m = self.find_template_ocr(img, 'img/checktiket.png', threshold=0.65)
+            if m:
+                ticket_value = self.read_number_from_region(
+                    img, m['x'] + int(m['width'] * 0.45), m['y'] + 2,
+                    int(m['width'] * 0.50), m['height'] - 4, label="TICKET_B")
+        return ticket_value, ruby_value
+
+    def process_check_ruby_ticket(self, from_lobby=True):
+        """เข้าหน้ากาชาแล้วอ่าน ruby/ตั๋ว - คืน (ruby, ticket) (อ่านไม่ได้ = None)
+
+        from_lobby=True  : เพิ่งล็อกอิน อยู่ Lobby -> กด gacha.png (ranger-gear โหมด resource อย่างเดียว)
+        from_lobby=False : หลังสแกน/ทำงานอื่น -> gotogacha1 -> gotogacha2 (ranger-gear โหมด mixed)
+        ทางแรกไม่เจอจะลองอีกทางให้
+        """
+        print(f"[{self.device_id}] [RUBY-TICKET] Starting Ruby and Ticket check...")
+
+        def _via_gacha():
+            return self.wait_and_click_image("gacha.png", timeout=15)
+
+        def _via_goto():
+            if not self.wait_and_click_image("gotogacha1.png", timeout=15):
+                return False
+            sleep(0.5)
+            return self.wait_and_click_image("gotogacha2.png", timeout=15)
+
+        first, second = (_via_gacha, _via_goto) if from_lobby else (_via_goto, _via_gacha)
+        if not first():
+            print(f"[{self.device_id}] [RUBY-TICKET] ทางแรกเข้าหน้ากาชาไม่ได้ - ลองอีกทาง")
+            second()
+
+        # รอ waitgacha.png (จอนิ่ง) ก่อนสแกน ระหว่างรอเจอ fixgems กดปิด ; เพดาน 90 วิ กันค้างตอนเน็ตหลุด
+        WAITGACHA_SIM = 0.95
+        FIXGEMS_SIM = 0.85
+        print(f"[{self.device_id}] [RESOURCE-WAIT] Waiting for waitgacha.png (stable screen)...")
+        wait_deadline = time.time() + 90
+        while True:
+            if time.time() > wait_deadline:
+                print(f"[{self.device_id}] [RESOURCE-WAIT] waitgacha ไม่มาใน 90 วิ (เน็ตหลุด/จอไม่มา) - ข้ามการเช็ค Ruby/Ticket")
+                return None, None
+            self.capture_screen()
+            if self.exists_in_cache("img/fixgems.png", similarity=FIXGEMS_SIM):
+                print(f"[{self.device_id}] [RESOURCE-WAIT] fixgems found -> clicking fixgems1.")
+                self.click("img/fixgems1.png", similarity=FIXGEMS_SIM)
+                sleep(1.0)
+                continue
+            if self.exists_in_cache("img/waitgacha.png", similarity=WAITGACHA_SIM):
+                print(f"[{self.device_id}] [RESOURCE-WAIT] Screen confirmed stable (waitgacha found). Scanning now.")
+                break
+            self.check_floating_popups()
+            sleep(0.5)
+
+        sleep(1.0)   # settle
+        ruby = ticket = None
+        for attempt in range(3):
+            if attempt > 0:
+                print(f"[{self.device_id}] OCR returned None, retrying in 1s (Attempt {attempt+1}/3)...")
+                sleep(1.0)
+            self.capture_screen()
+            ticket, ruby = self.read_ticket_and_ruby()
+            if ruby is not None and ticket is not None:
+                break
+        print(f"[{self.device_id}] [RUBY-TICKET] Result -> Ruby: {ruby}, Ticket: {ticket}")
+        return ruby, ticket
 
     # รูปหลักที่ลูป login รอดูอยู่ - ใช้ตอนรายงานว่า "เห็นอะไรบ้าง"
     LOGIN_WATCH_IMAGES = ("img/event.png", "img/stoplogin.png", "img/fixok.png",
@@ -8461,7 +8650,9 @@ class RangerGearBot(threading.Thread):
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
-        
+        self._ruby_ticket = None     # ค่า ruby/ตั๋วของไอดีก่อน ห้ามติดมาไอดีนี้
+        self._account_level = None   # เลเวลของไอดีก่อน (ถ้าไอดีก่อนจบแบบ fail/timeout) ห้ามใช้คัดไอดีนี้
+
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
@@ -9077,11 +9268,32 @@ class RangerGearBot(threading.Thread):
                 #     จำเลเวลไว้เฉย ๆ แล้ว "ทำงานตาม config ต่อตามปกติ" (event/กล่อง/สุ่ม/7วัน)
                 #     ตอนจบไฟล์ handle_success จะเอาเลเวลนี้ไปคัดลงโฟลเดอร์ให้เอง
                 #     อยากให้จบทันทีหลังอ่านเลเวล (ไม่ทำงานอื่นเลย) -> ตั้ง config "lv_only": 1
+                _lv = None
                 if config.get("check_lv", 0):
                     _lv = self.read_account_level()
                     if _lv is not None:
                         self._account_level = _lv
                         self.update_gui_status(f"Level {_lv}", "working")
+
+                # --- เช็ค Ruby/ตั๋ว (config "check_ruby_ticket") - ทำหลังอ่านเลเวลเสมอ ---
+                #     ผลไปอยู่หน้าชื่อไฟล์ตอนส่งออก: ruby[x]+ticket[y]+ชื่อเดิม (แบบ ranger-gear.py)
+                #     โหมดคัดเลเวลอย่างเดียว (lv_only) = อ่านตรงนี้เลยแล้วจบ
+                #     โหมดทำงานต่อ = ไปอ่านตอนท้ายหลังกล่อง/สุ่ม/สแกน (ค่าจะได้เป็นยอดสุดท้าย เหมือน ranger-gear)
+                #     เลเวลเกินเกณฑ์ (กลุ่ม lv5+) = ไม่ต้องเช็ค ruby/ตั๋ว เคลียร์แล้วคัดไฟล์เลย
+                _rt_done = False
+                if _lv is not None and _lv > int(config.get("lv_threshold", 4)):
+                    if config.get("check_ruby_ticket", 0):
+                        print(f"[{self.device_id}] [CHECK-LV] เลเวล {_lv} เกินเกณฑ์ - ข้ามเช็ค Ruby/ตั๋ว เคลียร์แล้วคัดไฟล์เลย")
+                    self.clear_and_restart()
+                    return "lv_sorted"
+                if config.get("check_ruby_ticket", 0) and config.get("check_lv", 0) and config.get("lv_only", 1):
+                    self.update_gui_status("Ruby/Ticket Check", "working")
+                    _ruby, _ticket = self.process_check_ruby_ticket()
+                    self._ruby_ticket = (_ruby, _ticket)
+                    _rt_done = True
+
+                if config.get("check_lv", 0):
+                    if _lv is not None:
                         # เปิดเช็คเลเวล = จบที่การคัดไอดี: เคลียร์/ปิดแอปทันที ไม่ทำงานตาม config ต่อ
                         # (อยากให้ทำ กล่อง/สุ่ม/7วัน ต่อหลังอ่านเลเวล -> ตั้ง "lv_only": 0)
                         if config.get("lv_only", 1):
@@ -9135,6 +9347,11 @@ class RangerGearBot(threading.Thread):
                     self.cfg.get("random-gear") == 1):
                     self.update_gui_status("Gear Scan")
                     gear_results = self.process_check_gear(current_filename, ranger_results)
+
+                # 3.5 เช็ค Ruby/ตั๋ว ตอนท้าย (หลังงานที่ใช้/ได้ ruby-ตั๋ว จบหมดแล้ว)
+                if config.get("check_ruby_ticket", 0) and not _rt_done:
+                    self.update_gui_status("Ruby/Ticket Check", "working")
+                    self._ruby_ticket = self.process_check_ruby_ticket(from_lobby=False)
 
                 # 4. Backup Results
                 self.update_gui_status("Backing up")

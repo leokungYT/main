@@ -3220,3 +3220,259 @@
 [2026-09-28 00:22:19] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
 [2026-09-28 00:22:49] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
 [2026-09-28 00:22:49] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-09-30 23:16:11] ============================================
+[2026-09-30 23:16:11]   Cloudflare WARP + norandom-reid Bot
+[2026-09-30 23:16:11] ============================================
+[2026-09-30 23:16:11] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-09-30 23:16:11] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-09-30 23:16:15] [WARP] กำลังเชื่อมต่อ...
+[2026-09-30 23:16:16] [WARP] เชื่อมต่อสำเร็จ!
+[2026-09-30 23:16:16] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-09-30 23:16:16] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-09-30 23:16:16] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-09-30 23:16:16] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-30 23:09
+[2026-09-30 23:16:16] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-09-30 23:16:16] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-09-30 23:16:16] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-09-30 23:16:16] [CLEANUP] Removed old shared_stats.json
+[2026-09-30 23:16:16] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-09-30 23:16:16] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-09-30 23:16:16] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-09-30 23:16:22] --- [ADB] Auto-scanning 151 ports (5555-5755 odd + 16384+32n) ---
+[2026-09-30 23:16:31] [ADB] Port scan found no devices.
+[2026-09-30 23:16:53] [ADB] adb devices เห็นทั้งหมด 1 เครื่องหลังรอให้นิ่ง
+[2026-09-30 23:16:53] --- Scan Complete ---
+[2026-09-30 23:16:57] [INFO] Connected Devices (1): emulator-5556
+[2026-09-30 23:17:10] [INFO] Pre-loading OCR model...
+[2026-09-30 23:17:20] [INFO] Loading EasyOCR model (first time only)...
+[2026-09-30 23:17:20] Using CPU. Note: This module is much faster with a GPU.
+[2026-09-30 23:17:26] C:\Users\leoku\AppData\Roaming\Python\Python311\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+[2026-09-30 23:17:26]   w_ih = torch.quantize_per_tensor(
+[2026-09-30 23:17:27] [OK] EasyOCR model loaded!
+[2026-09-30 23:17:27] [OK] OCR model loaded.
+[2026-09-30 23:17:27] [FILE] Found 31 files in c:\Users\leoku\Downloads\LGR\main\input-id (รวมโฟลเดอร์ย่อย)
+[2026-09-30 23:17:27] [FILE] คิวรวมทั้งหมด 31 ไฟล์ (backup + input-id)
+[2026-09-30 23:17:27] [32m[START] Launching GUI Mode...[0m
+[2026-09-30 23:17:29] [GUI] Launched Successfully. Waiting for manual start.
+[2026-09-30 23:17:29] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-09-30 23:17:34] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-09-30 23:17:34] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-09-30 23:17:51] [GUI] Shutting down... Killing background processes.
+[2026-10-01 00:10:02] ============================================
+[2026-10-01 00:10:02]   Cloudflare WARP + norandom-reid Bot
+[2026-10-01 00:10:02] ============================================
+[2026-10-01 00:10:02] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-10-01 00:10:02] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-10-01 00:10:06] [WARP] กำลังเชื่อมต่อ...
+[2026-10-01 00:10:10] [WARP] เชื่อมต่อสำเร็จ!
+[2026-10-01 00:10:10] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-01 00:10:10] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-01 00:10:10] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-10-01 00:10:10] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-30 23:09
+[2026-10-01 00:10:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:10:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:10:10] [CLEANUP] Removed old shared_stats.json
+[2026-10-01 00:10:10] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-10-01 00:10:11] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-10-01 00:10:11] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-01 00:10:18] --- [ADB] Auto-scanning 151 ports (5555-5755 odd + 16384+32n) ---
+[2026-10-01 00:10:26] [ADB] Port scan found no devices.
+[2026-10-01 00:10:30] [ADB] adb devices เห็นทั้งหมด 0 เครื่องหลังรอให้นิ่ง
+[2026-10-01 00:10:30] --- Scan Complete ---
+[2026-10-01 00:10:30] [DEV] Attempt 1: No devices found yet, waiting 3s...
+[2026-10-01 00:10:33] [DEV] Attempt 2: No devices found yet, waiting 3s...
+[2026-10-01 00:10:36] [ERROR] No devices connected. Make sure your emulator is running.
+[2026-10-01 00:11:01] ============================================
+[2026-10-01 00:11:01]   Cloudflare WARP + norandom-reid Bot
+[2026-10-01 00:11:01] ============================================
+[2026-10-01 00:11:01] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-10-01 00:11:01] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-10-01 00:11:05] [WARP] กำลังเชื่อมต่อ...
+[2026-10-01 00:11:14] [WARP] เชื่อมต่อสำเร็จ!
+[2026-10-01 00:11:14] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-01 00:11:14] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-01 00:11:14] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-10-01 00:11:14] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-09-30 23:09
+[2026-10-01 00:11:14] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:11:14] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:11:14] [CLEANUP] Removed old shared_stats.json
+[2026-10-01 00:11:14] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-10-01 00:11:14] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-10-01 00:11:14] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-01 00:11:19] --- [ADB] Auto-scanning 151 ports (5555-5755 odd + 16384+32n) ---
+[2026-10-01 00:11:27] [ADB] Port scan found 1 device(s): 127.0.0.1:16416
+[2026-10-01 00:11:30] [ADB] ข้าม 127.0.0.1:5557 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-01 00:11:33] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-01 00:11:33] [ADB] adb devices เห็นทั้งหมด 1 เครื่องหลังรอให้นิ่ง
+[2026-10-01 00:11:33] --- Scan Complete ---
+[2026-10-01 00:11:33] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-01 00:11:33] [INFO] Connected Devices (1): 127.0.0.1:16416
+[2026-10-01 00:11:37] [INFO] Pre-loading OCR model...
+[2026-10-01 00:11:43] [INFO] Loading EasyOCR model (first time only)...
+[2026-10-01 00:11:43] Using CPU. Note: This module is much faster with a GPU.
+[2026-10-01 00:11:46] C:\Users\leoku\AppData\Roaming\Python\Python311\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+[2026-10-01 00:11:46]   w_ih = torch.quantize_per_tensor(
+[2026-10-01 00:11:46] [OK] EasyOCR model loaded!
+[2026-10-01 00:11:46] [OK] OCR model loaded.
+[2026-10-01 00:11:46] [FILE] Found 31 files in c:\Users\leoku\Downloads\LGR\main\input-id (รวมโฟลเดอร์ย่อย)
+[2026-10-01 00:11:46] [FILE] คิวรวมทั้งหมด 31 ไฟล์ (backup + input-id)
+[2026-10-01 00:11:46] [32m[START] Launching GUI Mode...[0m
+[2026-10-01 00:11:47] [GUI] Launched Successfully. Waiting for manual start.
+[2026-10-01 00:11:47] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-10-01 00:11:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:11:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:12:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:12:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:12:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:12:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:13:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:13:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:13:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:13:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:14:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:14:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:14:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:14:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:15:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:15:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:15:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:15:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:16:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:16:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:16:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:16:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:17:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:17:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:17:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:17:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:18:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:18:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:18:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:18:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:19:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:19:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:19:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:19:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:20:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:20:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:20:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:20:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:21:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:21:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:21:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:21:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:22:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:22:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:22:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:22:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:23:22] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:23:22] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:23:52] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:23:52] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:24:06] [GUI] Shutting down... Killing background processes.
+[2026-10-01 00:24:37] ============================================
+[2026-10-01 00:24:37]   Cloudflare WARP + norandom-reid Bot
+[2026-10-01 00:24:37] ============================================
+[2026-10-01 00:24:37] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-10-01 00:24:37] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-10-01 00:24:42] [WARP] กำลังเชื่อมต่อ...
+[2026-10-01 00:25:03] ============================================
+[2026-10-01 00:25:03]   Cloudflare WARP + norandom-reid Bot
+[2026-10-01 00:25:03] ============================================
+[2026-10-01 00:25:03] [WARP] ตรวจสอบ Cloudflare WARP...
+[2026-10-01 00:25:03] [WARP] เปิดโปรแกรม Cloudflare WARP...
+[2026-10-01 00:25:07] [WARP] กำลังเชื่อมต่อ...
+[2026-10-01 00:25:07] [WARP] เชื่อมต่อสำเร็จ!
+[2026-10-01 00:25:07] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-01 00:25:07] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-01 00:25:07] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-10-01 00:25:07] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-10-01 00:24
+[2026-10-01 00:25:07] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:25:07] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:25:07] [CLEANUP] Removed old shared_stats.json
+[2026-10-01 00:25:07] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-10-01 00:25:08] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-10-01 00:25:08] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-01 00:27:17] ============================================
+[2026-10-01 00:27:17]   Cloudflare WARP + norandom-reid Bot
+[2026-10-01 00:27:17] ============================================
+[2026-10-01 00:27:17] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-10-01 00:27:17] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-01 00:27:17] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-01 00:27:17] === Auto Ranger+Gear Script v3.2.0 ===
+[2026-10-01 00:27:17] [VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด 2026-10-01 00:26
+[2026-10-01 00:27:17] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:27:17] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:27:17] [CLEANUP] Removed old shared_stats.json
+[2026-10-01 00:27:17] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-10-01 00:27:17] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-10-01 00:27:17] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-01 00:27:24] --- [ADB] Auto-scanning 151 ports (5555-5755 odd + 16384+32n) ---
+[2026-10-01 00:27:32] [ADB] Port scan found no devices.
+[2026-10-01 00:27:49] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-01 00:27:51] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-01 00:27:53] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-01 00:27:53] [ADB] adb devices เห็นทั้งหมด 1 เครื่องหลังรอให้นิ่ง
+[2026-10-01 00:27:53] --- Scan Complete ---
+[2026-10-01 00:27:53] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-01 00:27:53] [INFO] Connected Devices (1): 127.0.0.1:16416
+[2026-10-01 00:27:56] [INFO] Pre-loading OCR model...
+[2026-10-01 00:28:01] [INFO] Loading EasyOCR model (first time only)...
+[2026-10-01 00:28:01] Using CPU. Note: This module is much faster with a GPU.
+[2026-10-01 00:28:04] C:\Users\leoku\AppData\Roaming\Python\Python311\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+[2026-10-01 00:28:04]   w_ih = torch.quantize_per_tensor(
+[2026-10-01 00:28:04] [OK] EasyOCR model loaded!
+[2026-10-01 00:28:04] [OK] OCR model loaded.
+[2026-10-01 00:28:04] [FILE] Found 31 files in c:\Users\leoku\Downloads\LGR\main\input-id (รวมโฟลเดอร์ย่อย)
+[2026-10-01 00:28:04] [FILE] คิวรวมทั้งหมด 31 ไฟล์ (backup + input-id)
+[2026-10-01 00:28:04] [32m[START] Launching GUI Mode...[0m
+[2026-10-01 00:28:05] [GUI] Launched Successfully. Waiting for manual start.
+[2026-10-01 00:28:05] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-10-01 00:28:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:28:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:28:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:28:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:28:53] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:28:53] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:29:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:29:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:29:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:29:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:30:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:30:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:30:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:30:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:31:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:31:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:31:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:31:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:32:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:32:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:32:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:32:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:33:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:33:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:33:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:33:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:34:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:34:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:34:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:34:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:35:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:35:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:35:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:35:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:36:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:36:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:36:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:36:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:37:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:37:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:37:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:37:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:38:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:38:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:38:40] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:38:40] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-01 00:39:10] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-01 00:39:10] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json

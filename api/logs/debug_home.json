@@ -1,0 +1,8 @@
+{
+  "status": 401,
+  "data": {
+    "errorCode": 401,
+    "timestamp": 1790784797584,
+    "version": "12.3.0"
+  }
+}
