@@ -8583,6 +8583,7 @@ class RangerGearBot(threading.Thread):
         if not first():
             print(f"[{self.device_id}] [RUBY-TICKET] ทางแรกเข้าหน้ากาชาไม่ได้ - ลองอีกทาง")
             second()
+        retried = False
 
         # รอ waitgacha.png (จอนิ่ง) ก่อนสแกน ระหว่างรอเจอ fixgems กดปิด ; เพดาน 90 วิ กันค้างตอนเน็ตหลุด
         WAITGACHA_SIM = 0.95
@@ -8591,7 +8592,15 @@ class RangerGearBot(threading.Thread):
         wait_deadline = time.time() + 90
         while True:
             if time.time() > wait_deadline:
-                print(f"[{self.device_id}] [RESOURCE-WAIT] waitgacha ไม่มาใน 90 วิ (เน็ตหลุด/จอไม่มา) - ข้ามการเช็ค Ruby/Ticket")
+                if not retried:
+                    # ยังไม่เข้าหน้ากาชา (ป๊อปอัพ/จอค้างหน้าอื่น) -> ลองกดเข้าใหม่อีกรอบทั้งสองทาง
+                    retried = True
+                    print(f"[{self.device_id}] [RESOURCE-WAIT] waitgacha ไม่มา - ลองกดเข้าหน้ากาชาใหม่อีกรอบ")
+                    if not _via_gacha():
+                        _via_goto()
+                    wait_deadline = time.time() + 45
+                    continue
+                print(f"[{self.device_id}] [RESOURCE-WAIT] waitgacha ไม่มา (เน็ตหลุด/จอไม่มา) - ข้ามการเช็ค Ruby/Ticket")
                 return None, None
             self.capture_screen()
             if self.exists_in_cache("img/fixgems.png", similarity=FIXGEMS_SIM):
@@ -9292,11 +9301,13 @@ class RangerGearBot(threading.Thread):
                 #     ผลไปอยู่หน้าชื่อไฟล์ตอนส่งออก: ruby[x]+ticket[y]+ชื่อเดิม (แบบ ranger-gear.py)
                 #     โหมดคัดเลเวลอย่างเดียว (lv_only) = อ่านตรงนี้เลยแล้วจบ
                 #     โหมดทำงานต่อ = ไปอ่านตอนท้ายหลังกล่อง/สุ่ม/สแกน (ค่าจะได้เป็นยอดสุดท้าย เหมือน ranger-gear)
-                #     เลเวลเกินเกณฑ์ (กลุ่ม lv5+) = ไม่ต้องเช็ค ruby/ตั๋ว เคลียร์แล้วคัดไฟล์เลย
+                #     เลเวลเกินเกณฑ์ (กลุ่ม lv5+) = อ่าน ruby/ตั๋วด้วย แล้วเคลียร์คัดไฟล์เลย
                 _rt_done = False
                 if _lv is not None and _lv > int(config.get("lv_threshold", 4)):
+                    # เลเวลเกินเกณฑ์ก็ยังอ่าน Ruby/ตั๋วใส่ชื่อไฟล์ด้วย (เดิมข้าม = ไฟล์ lv5+ ไม่มี tag)
                     if config.get("check_ruby_ticket", 0):
-                        print(f"[{self.device_id}] [CHECK-LV] เลเวล {_lv} เกินเกณฑ์ - ข้ามเช็ค Ruby/ตั๋ว เคลียร์แล้วคัดไฟล์เลย")
+                        self.update_gui_status("Ruby/Ticket Check", "working")
+                        self._ruby_ticket = self.process_check_ruby_ticket()
                     self.clear_and_restart()
                     return "lv_sorted"
                 if config.get("check_ruby_ticket", 0) and config.get("check_lv", 0) and config.get("lv_only", 1):
