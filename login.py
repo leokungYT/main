@@ -8900,15 +8900,15 @@ class RangerGearBot(threading.Thread):
                     
                     # 1) กด fikcheck
                     print(f"[{self.device_id}] Step 1: waiting for fikcheck.png (10s timeout)...")
-                    sleep(1.5) # ให้หน้าจอเสถียรหลัง re-route
+                    sleep(0.8) # ให้หน้าจอเสถียรหลัง re-route
                     for _ in range(10): # Timeout 10s
                         self.capture_screen()
                         if self.exists_in_cache("img/fikcheck.png", similarity=0.8):
                             self.click("img/fikcheck.png", similarity=0.8)
                             print(f"[{self.device_id}] Clicked fikcheck.png")
-                            sleep(2)
+                            sleep(1)
                             break
-                        sleep(1)
+                        sleep(0.4)
                     
                     # 2) กด refresh
                     print(f"[{self.device_id}] Step 2: clicking refresh.png (10s timeout)...")
@@ -8917,9 +8917,9 @@ class RangerGearBot(threading.Thread):
                         if self.exists_in_cache("img/refresh.png", similarity=0.8):
                             self.click("img/refresh.png", similarity=0.8)
                             print(f"[{self.device_id}] Clicked refresh.png")
-                            sleep(3)
+                            sleep(1.5)
                             break
-                        sleep(1)
+                        sleep(0.4)
                     
                     else:
                         # ครบเวลาแล้วไม่เจอ refresh.png - เดิมเงียบไปเฉย ๆ ไล่ไม่ได้ว่ารูปไม่แมตช์หรือจอไม่มา
@@ -8935,7 +8935,7 @@ class RangerGearBot(threading.Thread):
                         if self.exists_in_cache("img/check.png"):
                             print(f"[{self.device_id}] Found check.png! Clicking...")
                             self.click("img/check.png")
-                            sleep(2)
+                            sleep(1)
                             # หลังกด check -> รอดู fixid ก่อน 2 วิ
                             found_fixid_after_check = False
                             for _ in range(2):
@@ -8944,7 +8944,7 @@ class RangerGearBot(threading.Thread):
                                     print(f"[{self.device_id}] Found fixid.png right after check! Re-routing...")
                                     found_fixid_after_check = True
                                     break
-                                sleep(1)
+                                sleep(0.4)
                             
                             if found_fixid_after_check:
                                 break
@@ -8952,9 +8952,9 @@ class RangerGearBot(threading.Thread):
                             if self.exists_in_cache("img/fikcheck.png", similarity=0.8):
                                 print(f"[{self.device_id}] Found fikcheck.png after check! Clicking...")
                                 self.click("img/fikcheck.png", similarity=0.8)
-                                sleep(1)
+                                sleep(0.4)
                             break
-                        sleep(1)
+                        sleep(0.4)
                     
                     continue
                 finally:
@@ -8965,12 +8965,12 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/refresh.png", similarity=0.8):
                 self._apply_proxy_for_device()
                 if not self._auth_take_turn("refresh"):
-                    sleep(1)
+                    sleep(0.4)
                     continue
                 try:
                     print(f"[{self.device_id}] Found refresh.png (no fixid), clicking refresh -> check...")
                     self.click("img/refresh.png", similarity=0.8)
-                    sleep(3)
+                    sleep(1.5)
                     
                     check_wait_start = time.time()
                     while time.time() - check_wait_start < 60:
@@ -8978,7 +8978,7 @@ class RangerGearBot(threading.Thread):
                         if self.exists_in_cache("img/check.png"):
                             print(f"[{self.device_id}] Found check.png! Clicking...")
                             self.click("img/check.png")
-                            sleep(2)
+                            sleep(1)
                             # หลังกด check -> รอดู fixid ก่อน 2 วิ
                             found_fixid_after_check = False
                             for _ in range(2):
@@ -8987,7 +8987,7 @@ class RangerGearBot(threading.Thread):
                                     print(f"[{self.device_id}] Found fixid.png right after check! Re-routing...")
                                     found_fixid_after_check = True
                                     break
-                                sleep(1)
+                                sleep(0.4)
                             
                             if found_fixid_after_check:
                                 break
@@ -8997,9 +8997,9 @@ class RangerGearBot(threading.Thread):
                             if self.exists_in_cache("img/fixok.png"):
                                 print(f"[{self.device_id}] Found fixok.png after check! Clicking...")
                                 self.click("img/fixok.png")
-                                sleep(1)
+                                sleep(0.4)
                             break
-                        sleep(1)
+                        sleep(0.4)
                     
                     continue
                 finally:
@@ -9029,7 +9029,7 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/fixalerterror1.png"):
                 print(f"[{self.device_id}] Alert error detected. Dimissing...")
                 self.click("img/fixalerterror1.png")
-                sleep(2)
+                sleep(1)
                 loop_count = 0
                 continue
 
@@ -9037,7 +9037,7 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/fixcak.png"):
                 print(f"[{self.device_id}] Fixcak detected (fix bug login). Dismissing...")
                 self.click("img/fixcak.png")
-                sleep(2)
+                sleep(1)
                 loop_count = 0
                 continue
                 
@@ -9047,7 +9047,7 @@ class RangerGearBot(threading.Thread):
                 if kaiby_hit:
                     print(f"[{self.device_id}] ⚠️ พบ {kaiby_hit}! (ไก่บี้เด้งระหว่าง Login) เคลียร์แอพและส่งเข้าโฟลเดอร์ kaiby...")
                     self.clear_and_restart()
-                    sleep(2)
+                    sleep(1)
                     return "kaiby"
                 
             # *** SUCCESS -> Just Login and Backup ***
@@ -9064,7 +9064,7 @@ class RangerGearBot(threading.Thread):
                             self.click("img/bingo1.bmp", similarity=0.8)
                         else:
                             print(f"[{self.device_id}] [BINGO] [WARN] ไม่เจอปุ่ม bingo1.bmp - ข้ามไปรัว ESC เลย")
-                        sleep(1.5)
+                        sleep(0.8)
 
                         # รัว ESC ไปเรื่อย ๆ ไม่มีเพดาน จนกว่าจะเจอ cancel
                         # (ตาข่ายกันค้างถาวรคือ 500s inactivity ใน capture_screen
@@ -9078,7 +9078,7 @@ class RangerGearBot(threading.Thread):
                             if self.exists_in_cache("img/cancel.png"):
                                 print(f"[{self.device_id}] [BINGO] ESC ครั้งที่ {esc_i} เจอ cancel - กด cancel แล้วหยุด")
                                 self.click("img/cancel.png")
-                                sleep(1)
+                                sleep(0.4)
                                 break
                             if esc_i % 10 == 0:
                                 print(f"[{self.device_id}] [BINGO] รัว ESC ไปแล้ว {esc_i} ครั้ง - ยังไม่เจอ cancel รัวต่อ")
@@ -9113,37 +9113,37 @@ class RangerGearBot(threading.Thread):
                 if found_distskip_early:
                     print(f"[{self.device_id}] [DIST] distskip.png found early! Handling sequence...")
                     self.click("img/distskip.png", similarity=0.8)
-                    sleep(1)
+                    sleep(0.4)
                     
                     print(f"[{self.device_id}] [DIST] Waiting for stagespecal.png...")
                     while not self.exists("img/stagespecal.png", similarity=0.8):
-                        sleep(1)
+                        sleep(0.4)
                     self.click("img/stagespecal.png", similarity=0.8)
-                    sleep(1)
+                    sleep(0.4)
 
                     print(f"[{self.device_id}] [DIST] Waiting and clicking backdist.png until gone...")
                     # Wait for it to appear first
                     while not self.exists("img/backdist.png", similarity=0.8):
-                        sleep(1)
+                        sleep(0.4)
                     # Click until it disappears
                     while True:
                         self.capture_screen()
                         if self.exists_in_cache("img/backdist.png", similarity=0.8):
                             self.click("img/backdist.png", similarity=0.8)
-                            sleep(1.2)
+                            sleep(0.6)
                         else:
                             break
 
                     print(f"[{self.device_id}] [DIST] Waiting and clicking backdist1.png until gone...")
                     # Wait for it to appear first
                     while not self.exists("img/backdist1.png", similarity=0.8):
-                        sleep(1)
+                        sleep(0.4)
                     # Click until it disappears
                     while True:
                         self.capture_screen()
                         if self.exists_in_cache("img/backdist1.png", similarity=0.8):
                             self.click("img/backdist1.png", similarity=0.8)
-                            sleep(1.2)
+                            sleep(0.6)
                         else:
                             break
                     
@@ -9167,7 +9167,7 @@ class RangerGearBot(threading.Thread):
                             if self.exists_in_cache("img/kaibyswap_shop.png"):
                                 kaibyswap_found = True
                                 break
-                            sleep(0.5)
+                            sleep(0.3)
                         
                         if kaibyswap_found:
                             print(f"[{self.device_id}] ⚠️ Found kaibyswap_shop.png before DIST! Returning kaiby...")
@@ -9194,7 +9194,7 @@ class RangerGearBot(threading.Thread):
                         if self.exists_in_cache("img/dist1.png", similarity=0.8):
                             self.click("img/dist1.png", similarity=0.8)
                             print(f"[{self.device_id}] [DIST] Clicked dist1.png")
-                        sleep(1)
+                        sleep(0.4)
 
                     # 2. หลังเจอ waitdist -> กด BACK รัวๆ จนเจอ cancel.png แล้วกด cancel -> ไปขั้นตอน distskip เลย
                     if dist_pos:
@@ -9206,12 +9206,12 @@ class RangerGearBot(threading.Thread):
                             self.adb_shell("input keyevent KEYCODE_BACK")
                             back_press_count += 3
                             print(f"[{self.device_id}] [DIST] Triple Back spam! (Total: {back_press_count})")
-                            sleep(0.3)
+                            sleep(0.1)
                             self.capture_screen()
                             if self.exists_in_cache("img/cancel.png", similarity=0.8):
                                 print(f"[{self.device_id}] [DIST] cancel.png appeared - clicking cancel, stop back spam")
                                 self.click("img/cancel.png", similarity=0.8)
-                                sleep(1)
+                                sleep(0.4)
                                 break
                             if back_press_count >= 30:
                                 print(f"[{self.device_id}] [DIST] BACK spam reached 30 - proceeding to distskip step")
@@ -9226,7 +9226,7 @@ class RangerGearBot(threading.Thread):
                         if self.exists_in_cache("img/fixbylv1.bmp", similarity=0.7):
                             fixbylv_found_mid = True
                             break
-                        sleep(0.5)
+                        sleep(0.3)
                     if fixbylv_found_mid:
                         print(f"[{self.device_id}] [DIST] fixbylv1 found! Running fixbylv sequence...")
                         self.run_fixbylv_sequence()
@@ -9238,30 +9238,30 @@ class RangerGearBot(threading.Thread):
                     skip_start = time.time()
                     while not self.exists("img/distskip.png", similarity=0.8):
                         if time.time() - skip_start > 60: break
-                        sleep(1)
+                        sleep(0.4)
                     self.click("img/distskip.png", similarity=0.8)
-                    sleep(1)
+                    sleep(0.4)
 
                     print(f"[{self.device_id}] [DIST] Waiting for stagespecal.png...")
                     spec_start = time.time()
                     while not self.exists("img/stagespecal.png", similarity=0.8):
                         if time.time() - spec_start > 60: break
-                        sleep(1)
+                        sleep(0.4)
                     self.click("img/stagespecal.png", similarity=0.8)
-                    sleep(1)
+                    sleep(0.4)
 
                     print(f"[{self.device_id}] [DIST] Waiting and clicking backdist.png until gone...")
                     # Wait for it to appear first
                     backdist_wait_start = time.time()
                     while not self.exists("img/backdist.png", similarity=0.8):
                         if time.time() - backdist_wait_start > 60: break
-                        sleep(1)
+                        sleep(0.4)
                     # Click until it disappears
                     while True:
                         self.capture_screen()
                         if self.exists_in_cache("img/backdist.png", similarity=0.8):
                             self.click("img/backdist.png", similarity=0.8)
-                            sleep(1.2)
+                            sleep(0.6)
                         else:
                             break
 
@@ -9270,13 +9270,13 @@ class RangerGearBot(threading.Thread):
                     back1_wait_start = time.time()
                     while not self.exists("img/backdist1.png", similarity=0.8):
                         if time.time() - back1_wait_start > 60: break
-                        sleep(1)
+                        sleep(0.4)
                     # Click until it disappears
                     while True:
                         self.capture_screen()
                         if self.exists_in_cache("img/backdist1.png", similarity=0.8):
                             self.click("img/backdist1.png", similarity=0.8)
-                            sleep(1.2)
+                            sleep(0.6)
                         else:
                             break
                     
