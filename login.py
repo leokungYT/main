@@ -8412,7 +8412,7 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
             self.check_floating_popups()
             if not self.exists_in_cache(img, similarity=float(config.get("lv_similarity", 0.7))):
-                sleep(1)
+                sleep(0.3)
                 continue
             seen = True
             lv, conf, tag = self._ocr_level_digits()
@@ -8420,7 +8420,7 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [CHECK-LV] อ่านได้เลเวล {lv} (conf {conf:.2f}, {tag})")
                 return lv
             print(f"[{self.device_id}] [CHECK-LV] เจอป้ายแล้วแต่อ่านเลขไม่ชัด (conf {conf:.2f}) - ลองเฟรมถัดไป")
-            sleep(1)
+            sleep(0.3)
         if seen:
             print(f"[{self.device_id}] [CHECK-LV] อ่านเลเวลไม่สำเร็จใน {timeout:.0f} วิ")
         else:
@@ -8576,7 +8576,7 @@ class RangerGearBot(threading.Thread):
         def _via_goto():
             if not self.wait_and_click_image("gotogacha1.png", timeout=15):
                 return False
-            sleep(0.5)
+            sleep(0.3)
             return self.wait_and_click_image("gotogacha2.png", timeout=15)
 
         first, second = (_via_gacha, _via_goto) if from_lobby else (_via_goto, _via_gacha)
@@ -8606,20 +8606,20 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/fixgems.png", similarity=FIXGEMS_SIM):
                 print(f"[{self.device_id}] [RESOURCE-WAIT] fixgems found -> clicking fixgems1.")
                 self.click("img/fixgems1.png", similarity=FIXGEMS_SIM)
-                sleep(1.0)
+                sleep(0.5)
                 continue
             if self.exists_in_cache("img/waitgacha.png", similarity=WAITGACHA_SIM):
                 print(f"[{self.device_id}] [RESOURCE-WAIT] Screen confirmed stable (waitgacha found). Scanning now.")
                 break
             self.check_floating_popups()
-            sleep(0.5)
+            sleep(0.2)
 
-        sleep(1.0)   # settle
+        sleep(0.3)   # settle
         ruby = ticket = None
         for attempt in range(3):
             if attempt > 0:
-                print(f"[{self.device_id}] OCR returned None, retrying in 1s (Attempt {attempt+1}/3)...")
-                sleep(1.0)
+                print(f"[{self.device_id}] OCR returned None, retrying (Attempt {attempt+1}/3)...")
+                sleep(0.4)
             self.capture_screen()
             ticket, ruby = self.read_ticket_and_ruby()
             if ruby is not None and ticket is not None:
@@ -9056,7 +9056,7 @@ class RangerGearBot(threading.Thread):
                 # เจอ bingo.bmp -> กด bingo1.bmp -> รัว ESC จนเจอ cancel -> กด cancel
                 # แล้วหยุด (จากนั้นไปทำงานตาม config ตามปกติ)
                 # หา 3 วิ เผื่อป๊อปอัพยังเด้งไม่ทันตอนเจอ stoplogin พอดี
-                bingo_deadline = time.time() + 2
+                bingo_deadline = time.time() + float(config.get("bingo_check_sec", 0.6))
                 while time.time() < bingo_deadline:
                     if self.exists_in_cache("img/bingo.bmp", similarity=0.8):
                         print(f"[{self.device_id}] [BINGO] เจอ bingo.bmp - กด bingo1.bmp")
@@ -9092,7 +9092,7 @@ class RangerGearBot(threading.Thread):
                 found_distcheck = False
                 found_distskip_early = False
                 found_fixbylv = False
-                _dist_deadline = time.time() + 5
+                _dist_deadline = time.time() + float(config.get("stoplogin_check_sec", 2.5))
                 while time.time() < _dist_deadline:
                     # เช็ค fixbylv ก่อน โดยใช้ fixbylv1.bmp ("for you") เป็นตัวจับสัญญาณ (anchor) เท่านั้น
                     # -> จะเข้าขั้นตอน fixbylv ก็ต่อเมื่อเจอ fixbylv1.bmp เท่านั้น (กัน fixbylv2-9 ปุ่มต่างๆ ทำงานเองโดยผิด)
