@@ -8777,8 +8777,8 @@ class RangerGearBot(threading.Thread):
                 while True:
                     # กด Back ทีเดียว 3 รอบ (ของเดิม - ปรับจำนวนได้ที่ event_back_per_round)
                     _per = max(1, int(config.get("event_back_per_round", 5)))
-                    for _b in range(_per):
-                        self.adb_shell("input keyevent KEYCODE_BACK")
+                    # ยิง BACK ทั้งชุดใน adb shell เดียว (เดิมแยกทีละครั้ง = รอ adb ทีละ ~0.3 วิ ไม่รัวจริง)
+                    self.adb_shell("input keyevent" + " 4" * _per)
                     back_press_count += _per
                     print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
 
@@ -9201,9 +9201,7 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] [DIST] waitdist found - spamming BACK until cancel.png appears...")
                         back_press_count = 0
                         while True:
-                            self.adb_shell("input keyevent KEYCODE_BACK")
-                            self.adb_shell("input keyevent KEYCODE_BACK")
-                            self.adb_shell("input keyevent KEYCODE_BACK")
+                            self.adb_shell("input keyevent 4 4 4")
                             back_press_count += 3
                             print(f"[{self.device_id}] [DIST] Triple Back spam! (Total: {back_press_count})")
                             sleep(0.1)
