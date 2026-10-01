@@ -3796,6 +3796,9 @@ class RangerGearBot(threading.Thread):
             
             original_name = getattr(self, "current_original_filename", "unknown.xml")
             if not original_name.endswith(".xml"): original_name += ".xml"
+            # เก็บไฟล์กลางทาง (เจอฮีโร่ตอนสุ่ม -> backup_complete) จบก่อนถึงขั้นเช็ค Ruby/ตั๋วตอนท้าย
+            # ถ้ายังไม่ได้อ่านรอบนี้ -> อ่านก่อนเก็บ ชื่อไฟล์จะได้มี ruby[x]+ticket[y] ครบ
+            self._ensure_ruby_ticket()
             original_name = self._ruby_ticket_filename(original_name)
 
             # Use hero_prefix if provided, else use config/default
@@ -5816,6 +5819,16 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Moved to {dst_dir}: {base}")
         except Exception as e:
             print(f"[{self.device_id}] Move error: {e}")
+
+    def _ensure_ruby_ticket(self):
+        """เปิด check_ruby_ticket แต่ไอดีนี้ยังไม่ได้อ่าน -> อ่านตอนนี้ (ใช้ก่อนส่งไฟล์ออกกลางทาง)"""
+        if not config.get("check_ruby_ticket", 0) or getattr(self, "_ruby_ticket", None):
+            return
+        try:
+            self.update_gui_status("Ruby/Ticket Check", "working")
+            self._ruby_ticket = self.process_check_ruby_ticket(from_lobby=False)
+        except Exception as e:
+            print(f"[{self.device_id}] [RUBY-TICKET] อ่านก่อนเก็บไฟล์ไม่สำเร็จ: {e}")
 
     def _ruby_ticket_filename(self, filename):
         """ใส่ tag ruby/ตั๋วที่อ่านได้รอบนี้ไว้หน้าชื่อไฟล์ แบบเดียวกับ ranger-gear.py
