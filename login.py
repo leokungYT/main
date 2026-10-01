@@ -9301,13 +9301,11 @@ class RangerGearBot(threading.Thread):
                 #     ผลไปอยู่หน้าชื่อไฟล์ตอนส่งออก: ruby[x]+ticket[y]+ชื่อเดิม (แบบ ranger-gear.py)
                 #     โหมดคัดเลเวลอย่างเดียว (lv_only) = อ่านตรงนี้เลยแล้วจบ
                 #     โหมดทำงานต่อ = ไปอ่านตอนท้ายหลังกล่อง/สุ่ม/สแกน (ค่าจะได้เป็นยอดสุดท้าย เหมือน ranger-gear)
-                #     เลเวลเกินเกณฑ์ (กลุ่ม lv5+) = อ่าน ruby/ตั๋วด้วย แล้วเคลียร์คัดไฟล์เลย
+                #     เลเวลเกินเกณฑ์ (กลุ่ม lv5+) = ไม่ต้องเช็ค ruby/ตั๋ว เคลียร์แล้วคัดไฟล์เลย
                 _rt_done = False
                 if _lv is not None and _lv > int(config.get("lv_threshold", 4)):
-                    # เลเวลเกินเกณฑ์ก็ยังอ่าน Ruby/ตั๋วใส่ชื่อไฟล์ด้วย (เดิมข้าม = ไฟล์ lv5+ ไม่มี tag)
                     if config.get("check_ruby_ticket", 0):
-                        self.update_gui_status("Ruby/Ticket Check", "working")
-                        self._ruby_ticket = self.process_check_ruby_ticket()
+                        print(f"[{self.device_id}] [CHECK-LV] เลเวล {_lv} เกินเกณฑ์ - ข้ามเช็ค Ruby/ตั๋ว เคลียร์แล้วคัดไฟล์เลย")
                     self.clear_and_restart()
                     return "lv_sorted"
                 if config.get("check_ruby_ticket", 0) and config.get("check_lv", 0) and config.get("lv_only", 1):
