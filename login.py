@@ -8677,11 +8677,11 @@ class RangerGearBot(threading.Thread):
 
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-        sleep(2)
+        sleep(0.8)
         
         # เปิดแอปด้วย am start (เร็วกว่าและเสถียรกว่าคลิก icon.png)
         self.open_app()
-        sleep(3)
+        sleep(1.5)
         
         # === Black Screen Check หลังเปิดแอพ (8 วิ ถ้ายังดำ/เทา > 75% → clear + restart) ===
         for black_attempt in range(3):  # ลองได้ 3 ครั้ง
@@ -8706,7 +8706,7 @@ class RangerGearBot(threading.Thread):
                         is_stuck = True
                 else:
                     is_stuck = True
-                sleep(1)
+                sleep(0.5)
             
             if is_stuck:
                 print(f"[{self.device_id}] [BLACK] Dark screen 8s after launch! (attempt {black_attempt+1}/3) Clearing...")
@@ -8770,19 +8770,19 @@ class RangerGearBot(threading.Thread):
                 event_passed = True
                 print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
                 self.click("img/event.png", similarity=_ev_sim)
-                sleep(1)
+                sleep(0.4)
 
                 back_press_count = 0
                 _max_back = int(config.get("event_max_back", 30))
                 while True:
                     # กด Back ทีเดียว 3 รอบ (ของเดิม - ปรับจำนวนได้ที่ event_back_per_round)
-                    _per = max(1, int(config.get("event_back_per_round", 3)))
+                    _per = max(1, int(config.get("event_back_per_round", 5)))
                     for _b in range(_per):
                         self.adb_shell("input keyevent KEYCODE_BACK")
                     back_press_count += _per
                     print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
 
-                    sleep(0.3) # ให้เวลา UI อัปเดตเล็กน้อย
+                    sleep(float(config.get("event_back_delay", 0.1)))  # รัวขึ้น (เดิม 0.3)
                     self.capture_screen()
 
                     # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด (ของเดิม)
@@ -9008,7 +9008,10 @@ class RangerGearBot(threading.Thread):
             # ====================================================
 
             # Crash Check: ใช้ open_app แทนคลิก icon.png
-            try:
+            # ข้ามเมื่อเห็น stoplogin แล้ว (ไม่ต้องรอ pidof ~0.5 วิ ทุกรอบ) และเช็คแค่ทุก 3 รอบ
+            _see_stop = self.exists_in_cache("img/stoplogin.png", similarity=0.8)
+            if not _see_stop and loop_count % 3 == 0:
+              try:
                 pid_result = subprocess.run(
                     [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
                     capture_output=True, text=True, timeout=5
@@ -9019,7 +9022,7 @@ class RangerGearBot(threading.Thread):
                     sleep(5)
                     loop_count = 0
                     continue
-            except:
+              except:
                 pass
             
             # fixalerterror1 Check
@@ -9053,7 +9056,7 @@ class RangerGearBot(threading.Thread):
                 # เจอ bingo.bmp -> กด bingo1.bmp -> รัว ESC จนเจอ cancel -> กด cancel
                 # แล้วหยุด (จากนั้นไปทำงานตาม config ตามปกติ)
                 # หา 3 วิ เผื่อป๊อปอัพยังเด้งไม่ทันตอนเจอ stoplogin พอดี
-                bingo_deadline = time.time() + 3
+                bingo_deadline = time.time() + 2
                 while time.time() < bingo_deadline:
                     if self.exists_in_cache("img/bingo.bmp", similarity=0.8):
                         print(f"[{self.device_id}] [BINGO] เจอ bingo.bmp - กด bingo1.bmp")
@@ -9081,7 +9084,7 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{self.device_id}] [BINGO] รัว ESC ไปแล้ว {esc_i} ครั้ง - ยังไม่เจอ cancel รัวต่อ")
                         self.capture_screen()
                         break
-                    sleep(0.5)
+                    sleep(0.25)
                     self.capture_screen()
 
                 # [DIST CHECK] แวะเช็คหา fixbylv / distcheck / distskip 5วิ (ตามลำดับนี้)
@@ -9089,7 +9092,8 @@ class RangerGearBot(threading.Thread):
                 found_distcheck = False
                 found_distskip_early = False
                 found_fixbylv = False
-                for _ in range(5):
+                _dist_deadline = time.time() + 5
+                while time.time() < _dist_deadline:
                     # เช็ค fixbylv ก่อน โดยใช้ fixbylv1.bmp ("for you") เป็นตัวจับสัญญาณ (anchor) เท่านั้น
                     # -> จะเข้าขั้นตอน fixbylv ก็ต่อเมื่อเจอ fixbylv1.bmp เท่านั้น (กัน fixbylv2-9 ปุ่มต่างๆ ทำงานเองโดยผิด)
                     # -> similarity 0.7: fixbylv1 เป็นข้อความ ค่าจริงมักได้ ~0.75 (0.8 สูงไปเลยจับไม่ติด)
@@ -9103,7 +9107,7 @@ class RangerGearBot(threading.Thread):
                     if self.exists_in_cache("img/distskip.png"):
                         found_distskip_early = True
                         break
-                    sleep(1)
+                    sleep(0.2)  # เช็คถี่ขึ้น เจอแล้วไปขั้น dist ทันที
                     self.capture_screen()
                 
                 if found_distskip_early:
