@@ -108,8 +108,8 @@
     "mumu_renderer": "DirectX",
     "mumu_app_running": "เปิด",
     "screen_clear_wm_override": 1,
-    "proxy_enabled": 0,
-    "proxy_auto_fetch": 0,
+    "proxy_enabled": 1,
+    "proxy_auto_fetch": 1,
     "proxy_type": "http",
     "proxy_host": "",
     "proxy_port": 0,
@@ -126,14 +126,7 @@
         "https://www.proxy-list.download/api/v1/get?type=http",
         "https://api.proxyscrape.com/?request=getproxies&proxytype=http&timeout=10000&country=ALL"
     ],
-    "proxy_per_device": {
-        "127.0.0.1:16512": {
-            "enabled": 0,
-            "host": "1.1.1.1",
-            "port": 443,
-            "type": "http"
-        }
-    },
+    "proxy_per_device": {},
     "auth_queue": 1,
     "auth_slots": 2,
     "auth_max_hold": 15,
