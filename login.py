@@ -9799,7 +9799,8 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
 
                     sleep(0.3) # ให้เวลา UI อัปเดตเล็กน้อย
-                    self.capture_screen()
+                    # จับจอแบบเบา (ไม่แทรกเช็คป๊อปอัพลอยหลายสิบรูปทุก 3 เฟรม) - ลูปนี้ดูแค่ cancel/stoplogin
+                    self._raw_capture()
 
                     # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด
                     if self.exists_in_cache("img/cancel.png"):
