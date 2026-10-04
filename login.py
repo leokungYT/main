@@ -290,6 +290,15 @@ def ensure_windscribe_bootstrap():
     cfg = _read_main_config()
     if not int(cfg.get("windscribe_autostart", 0) or 0):
         return
+    if int(cfg.get("wg_enabled", 0) or 0):
+        try:
+            _has_conf = any(f.lower().endswith(".conf") for f in os.listdir(str(cfg.get("wg_dir", "wg"))))
+        except Exception:
+            _has_conf = False
+        if _has_conf:
+            print("[WINDSCRIBE] ใช้ WireGuard แยกจอ (wg/) อยู่ - ไม่ต่อ VPN ทั้งเครื่อง กันซ้อน 2 ชั้น")
+            return
+        print("[WINDSCRIBE] wg_enabled แต่ยังไม่มีไฟล์ .conf ใน wg/ - ต่อ VPN ทั้งเครื่องไปก่อน")
     if not _windscribe_cli_path():
         print("[WINDSCRIBE] ไม่เจอโปรแกรม Windscribe - ข้าม (ติดตั้งจาก windscribe.com แล้วล็อกอินในแอปก่อน)")
         return
@@ -320,6 +329,30 @@ def ensure_windscribe_bootstrap():
         print(f"[WINDSCRIBE] ต่อสำเร็จ - IP {(st.get('vpn ip') or st.get('public ip', '?'))}")
     else:
         print(f"[WINDSCRIBE] ต่อไม่สำเร็จ ({out[-200:] or 'ไม่มีข้อความ'}) - รันบอทต่อโดยไม่มี VPN")
+
+
+WG_APK_URL = "https://download.wireguard.com/android-client/com.wireguard.android-1.0.20260315.apk"
+_wg_apk_lock = threading.Lock()
+
+
+def _wg_apk_path():
+    """ไฟล์ติดตั้งแอป WireGuard (Android) - ไม่มีจะโหลดมาเก็บที่ wg/wireguard.apk ครั้งเดียว (ทุกจอใช้ร่วม)"""
+    wg_dir = str(config.get("wg_dir", "wg"))
+    path = os.path.join(wg_dir, "wireguard.apk")
+    with _wg_apk_lock:
+        if os.path.exists(path) and os.path.getsize(path) > 1_000_000:
+            return path
+        try:
+            import urllib.request
+            os.makedirs(wg_dir, exist_ok=True)
+            print("[WG] กำลังโหลดแอป WireGuard (ครั้งแรกครั้งเดียว)...")
+            tmp = path + ".part"
+            urllib.request.urlretrieve(str(config.get("wg_apk_url", WG_APK_URL)), tmp)
+            os.replace(tmp, path)
+            return path
+        except Exception as e:
+            print(f"[WG] โหลดแอป WireGuard ไม่ได้: {e}")
+            return None
 
 
 def windscribe_count_account():
@@ -3626,6 +3659,108 @@ class RangerGearBot(threading.Thread):
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
+    # =========================================================
+    # WireGuard ต่อจอ (IP ไม่ซ้ำกันแต่ละอีมูฯ) - ใช้ไฟล์ .conf จาก Windscribe Config Generator
+    # วางไฟล์ไว้ในโฟลเดอร์ wg/ (ไม่ขึ้น git) จอที่ i ได้ไฟล์ที่ i ตามลำดับชื่อ
+    # หรือกำหนดเองใน config "wg_per_device": {"127.0.0.1:16384": "Tokyo.conf", ...}
+    # ขั้นตอน (ต้อง root): ลงแอป WireGuard -> เขียนไฟล์ tunnel ลง data ของแอป ->
+    #   เปิด "allow remote control" + อนุญาต VPN ล่วงหน้า -> ยิง intent SET_TUNNEL_UP
+    # =========================================================
+    WG_PKG = "com.wireguard.android"
+    WG_TUNNEL = "lgr"
+
+    def _wg_conf_for_device(self):
+        """ไฟล์ .conf ของจอนี้ (None = ไม่มีไฟล์/ไม่เปิดใช้)"""
+        wg_dir = str(config.get("wg_dir", "wg"))
+        mapped = (config.get("wg_per_device") or {}).get(self.device_id)
+        if mapped:
+            p = mapped if os.path.isabs(mapped) else os.path.join(wg_dir, mapped)
+            return p if os.path.exists(p) else None
+        try:
+            confs = sorted(f for f in os.listdir(wg_dir) if f.lower().endswith(".conf"))
+        except Exception:
+            return None
+        if not confs:
+            return None
+        # ลำดับจอจากพอร์ต MuMu (16384 + 32*i) ; พอร์ตแปลก ๆ ใช้ลำดับจาก hash ของชื่อ
+        try:
+            port = int(self.device_id.rsplit(":", 1)[1])
+            idx = (port - 16384) // 32 if port >= 16384 else port
+        except Exception:
+            idx = sum(map(ord, self.device_id))
+        return os.path.join(wg_dir, confs[idx % len(confs)])
+
+    def _wg_is_up(self):
+        r = self.adb_shell("ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true", timeout=10)
+        return bool((r.stdout or b"").strip())
+
+    def _ensure_wireguard(self):
+        """ต่อ WireGuard ในอีมูฯ จอนี้ (เรียกก่อนเปิดเกมทุกครั้ง - ต่ออยู่แล้วจะข้ามเร็ว)"""
+        if not int(config.get("wg_enabled", 0) or 0):
+            return
+        conf = self._wg_conf_for_device()
+        if not conf:
+            if not getattr(self, "_wg_warned", False):
+                self._wg_warned = True
+                print(f"[{self.device_id}] [WG] ไม่มีไฟล์ .conf ในโฟลเดอร์ {config.get('wg_dir', 'wg')}/ - ข้าม (ใช้เน็ตปกติ)")
+            return
+        if getattr(self, "_wg_conf_applied", None) == conf and self._wg_is_up():
+            return
+        try:
+            self._wg_setup(conf)
+        except Exception as e:
+            print(f"[{self.device_id}] [WG] ต่อไม่สำเร็จ: {e} - เล่นต่อด้วยเน็ตปกติ")
+
+    def _wg_setup(self, conf):
+        pkg, name = self.WG_PKG, self.WG_TUNNEL
+        # 1) ลงแอป WireGuard ถ้ายังไม่มี
+        r = self.adb_shell(f"pm path {pkg}", timeout=15)
+        if b"package:" not in (r.stdout or b""):
+            apk = _wg_apk_path()
+            if not apk:
+                print(f"[{self.device_id}] [WG] ไม่มีไฟล์แอป WireGuard (โหลดไม่ได้) - ข้าม")
+                return
+            print(f"[{self.device_id}] [WG] ติดตั้งแอป WireGuard...")
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "install", "-r", apk], timeout=180)
+
+        # 2) เขียนไฟล์ tunnel + ตั้งค่าแอป (ต้องปิดแอปก่อน ไม่งั้นมันเขียนทับ)
+        self.adb_shell(f"am force-stop {pkg}")
+        safe_dev = self.device_id.replace(":", "_")
+        tmp_conf = f"/data/local/tmp/wg_{safe_dev}.conf"
+        tmp_pb = f"/data/local/tmp/wg_{safe_dev}.pb"
+        local_pb = os.path.join(tempfile.gettempdir(), f"wg_{safe_dev}.pb")
+        # DataStore (protobuf) ของแอป: allow_remote_control_intents = true
+        key = b"allow_remote_control_intents"
+        entry = b"\x0a" + bytes([len(key)]) + key + b"\x12\x02\x08\x01"
+        with open(local_pb, "wb") as f:
+            f.write(b"\x0a" + bytes([len(entry)]) + entry)
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "push", conf, tmp_conf], timeout=30)
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "push", local_pb, tmp_pb], timeout=30)
+        d = f"/data/data/{pkg}"
+        self.adb_shell(
+            "su -c '"
+            f"mkdir -p {d}/files/datastore && "
+            f"cp {tmp_conf} {d}/files/{name}.conf && "
+            f"cp {tmp_pb} {d}/files/datastore/settings.preferences_pb && "
+            f"U=$(stat -c %u {d}) && chown -R $U:$U {d}/files && chmod -R 700 {d}/files && "
+            f"restorecon -R {d}/files 2>/dev/null; rm -f {tmp_conf} {tmp_pb}; "
+            # อนุญาตสร้าง VPN ล่วงหน้า (ไม่ต้องกดยืนยันบนจอ)
+            f"appops set {pkg} ACTIVATE_VPN allow'",
+            timeout=20)
+
+        # 3) สั่งเปิด tunnel (ยิงเป็น root = ผ่านสิทธิ์ CONTROL_TUNNELS ; -f 0x20 = ส่งถึงแอปที่ถูก force-stop)
+        self.adb_shell(
+            f"su -c 'am broadcast -f 0x20 -a {pkg}.action.SET_TUNNEL_UP "
+            f"-n {pkg}/.model.TunnelManager\\$IntentReceiver --es tunnel {name}'",
+            timeout=20)
+        for _ in range(10):
+            sleep(1)
+            if self._wg_is_up():
+                self._wg_conf_applied = conf
+                print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
+                return
+        print(f"[{self.device_id}] [WG] สั่งต่อแล้วแต่ยังไม่เห็น tunnel ภายใน 10 วิ ({os.path.basename(conf)})")
+
     def _clear_proxy_for_device(self):
         """Best-effort clean-up for proxy settings when disabled or restarting."""
         try:
@@ -3690,6 +3825,7 @@ class RangerGearBot(threading.Thread):
         # reused emulator from keeping a previous IP/proxy binding across files.
         # (proxy ฟรีถูกถอดออกแล้ว - เหลือแค่ล้างของที่ค้างในอีมูฯ)
         self._clear_proxy_for_device()
+        self._ensure_wireguard()     # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น)
         sleep(0.5)
         if not self._check_device_identity():
             print(f"[{self.device_id}] [DEVICE-FP] หยุด login: device identity ซ้ำ/clone -> ข้ามไฟล์นี้ไป")
