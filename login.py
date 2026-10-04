@@ -369,11 +369,36 @@ def _wg_list_configs(wg_dir=None):
         out += [os.path.join(wg_dir, f) for f in sorted(os.listdir(wg_dir)) if f.lower().endswith(".conf")]
     except Exception:
         pass
-    return out
+    # ตัดไฟล์ที่ข้างในซ้ำกัน: กุญแจ (PrivateKey) เดียวกัน + เซิร์ฟเวอร์ (Endpoint) เดียวกัน
+    # ต่อพร้อมกันหลายจอ = แย่งกันเน็ตหลุดทุกจอ (เช่นโหลด Singapore ซ้ำ ๆ ด้วย Key Pair เดิม) -> ใช้ได้แค่ไฟล์เดียว
+    seen, uniq, dup = {}, [], []
+    for p in out:
+        try:
+            with open(p, encoding="utf-8-sig", errors="replace") as f:
+                kv = {}
+                for ln in f:
+                    if "=" in ln:
+                        k, v = ln.split("=", 1)
+                        kv[k.strip().lower()] = v.strip()
+            ident = (kv.get("privatekey", ""), kv.get("endpoint", "").rsplit(":", 1)[0].lower())
+        except Exception:
+            ident = (p, "")
+        if ident in seen:
+            dup.append((os.path.basename(p), os.path.basename(seen[ident])))
+            continue
+        seen[ident] = p
+        uniq.append(p)
+    if dup and not _wg_dup_warned:
+        _wg_dup_warned.append(1)
+        print(f"[WG] เตือน: มี {len(dup)} ไฟล์ซ้ำ (กุญแจ+เซิร์ฟเวอร์เดียวกัน ใช้พร้อมกันไม่ได้) - ไม่ใช้ไฟล์พวกนี้:")
+        for a, b in dup:
+            print(f"[WG]   {a}  ซ้ำกับ  {b}")
+        print("[WG]   แก้: โหลดใหม่เป็น 'คนละเมือง' หรือเมืองเดิมแต่เลือก New Key Pair")
+    return uniq
 
 
-_wg_claims = {}                  # device_id -> ไฟล์ config ที่จอนั้นจองไว้ (กันซ้ำ)
-_wg_claim_lock = threading.Lock()
+_wg_dup_warned = []   # เตือนไฟล์ซ้ำครั้งเดียวต่อ process
+
 
 WG_APK_URL = "https://download.wireguard.com/android-client/com.wireguard.android-1.0.20260315.apk"
 _wg_apk_lock = threading.Lock()
@@ -3730,16 +3755,32 @@ class RangerGearBot(threading.Thread):
             idx = (port - 16384) // 32 if port >= 16384 else port
         except Exception:
             idx = sum(map(ord, self.device_id))
-        with _wg_claim_lock:
-            mine = _wg_claims.get(self.device_id)
-            if mine in confs:
-                return mine
-            taken = {p for dev, p in _wg_claims.items() if dev != self.device_id}
-            order = confs[idx % len(confs):] + confs[:idx % len(confs)]
-            for p in order:
-                if p not in taken:
-                    _wg_claims[self.device_id] = p
-                    return p
+        # แต่ละจอเป็นคนละ process -> จองด้วยไฟล์ล็อก wg/.claims/<ชื่อไฟล์>.lock (สร้างแบบ O_EXCL = ได้คนเดียว)
+        claim_dir = os.path.join(wg_dir, ".claims")
+        os.makedirs(claim_dir, exist_ok=True)
+
+        def _owner(p):
+            try:
+                with open(os.path.join(claim_dir, os.path.basename(p) + ".lock"), encoding="utf-8") as f:
+                    return f.read().strip()
+            except Exception:
+                return None
+
+        for p in confs:                      # จองไว้แล้วจากรอบก่อน -> ใช้อันเดิม
+            if _owner(p) == self.device_id:
+                return p
+        order = confs[idx % len(confs):] + confs[:idx % len(confs)]
+        for p in order:
+            lock = os.path.join(claim_dir, os.path.basename(p) + ".lock")
+            try:
+                fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                continue
+            except Exception:
+                continue
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(self.device_id)
+            return p
         if not getattr(self, "_wg_short_warned", False):
             self._wg_short_warned = True
             print(f"[{self.device_id}] [WG] ไฟล์ config ไม่พอ ({len(confs)} ไฟล์ ถูกจออื่นจองหมดแล้ว) - จอนี้ไม่ต่อ VPN "
@@ -3755,6 +3796,13 @@ class RangerGearBot(threading.Thread):
         if not int(config.get("wg_enabled", 0) or 0):
             return
         conf = self._wg_conf_for_device()
+        if not conf and not getattr(self, "_wg_down_done", False):
+            # ไม่ได้ไฟล์รอบนี้ แต่ tunnel เก่าจากรอบก่อนยังค้าง (อาจใช้กุญแจชนกับจออื่น) -> ปิดทิ้ง
+            self._wg_down_done = True
+            if self._wg_is_up():
+                self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
+                               f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {self.WG_TUNNEL}'", timeout=20)
+                print(f"[{self.device_id}] [WG] ปิด tunnel เก่าที่ค้างอยู่ (จอนี้ไม่มีไฟล์ config ของตัวเอง)")
         if not conf:
             if not getattr(self, "_wg_warned", False):
                 self._wg_warned = True
@@ -9708,6 +9756,10 @@ if __name__ == "__main__":
         for lf in glob.glob(os.path.join(temp_lock_dir, "*.lock")):
             try: os.remove(lf); cleanup_count += 1
             except: pass
+    # 3. ล้างการจองไฟล์ WireGuard ของรอบก่อน (แต่ละจอจะจองใหม่ไม่ซ้ำกัน)
+    for lf in glob.glob(os.path.join(str(config.get("wg_dir", "wg")), ".claims", "*.lock")):
+        try: os.remove(lf); cleanup_count += 1
+        except: pass
     if cleanup_count > 0:
         print(f"[CLEANUP] Removed {cleanup_count} stale .lock file(s)")
 
