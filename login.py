@@ -9147,7 +9147,7 @@ class RangerGearBot(threading.Thread):
                 sleep(0.4)
 
                 back_press_count = 0
-                _max_back = int(config.get("event_max_back", 30))
+                _max_back = int(config.get("event_max_back", 300))   # กันค้างถาวรเท่านั้น (ปกติจบที่กด cancel)
                 while True:
                     # กด Back ทีเดียว 3 รอบ (ของเดิม - ปรับจำนวนได้ที่ event_back_per_round)
                     _per = max(1, int(config.get("event_back_per_round", 5)))
@@ -9174,16 +9174,7 @@ class RangerGearBot(threading.Thread):
                         sleep(1)
                         break
 
-                    if self.exists_in_cache("img/stoplogin.png"):
-                        print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
-                        break
-
-                    # เพิ่มจากของเดิม: ดูไอคอน Lobby ตัวอื่นด้วย (gacha/misson/box1)
-                    # ตอน stoplogin โดนบังจะได้ไม่กด BACK ต่อจนครบ 30 ครั้งเปล่า ๆ (เสียไป ~10 วิ)
-                    _lob = self._at_lobby()
-                    if _lob:
-                        print(f"[{self.device_id}] [EVENT] ถึง Lobby แล้ว (เห็น {_lob}) - หยุดกด BACK ที่ {back_press_count} ครั้ง")
-                        break
+                    # หยุดรัว ESC ได้ทางเดียวคือกด cancel (ข้างบน) - ไม่หยุดตอนเห็น stoplogin/Lobby แล้ว
 
                     if back_press_count >= _max_back: # ป้องกันลูปค้าง
                         print(f"[{self.device_id}] [EVENT] Max BACK presses reached ({_max_back}), continuing...")
