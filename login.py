@@ -8734,6 +8734,15 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
             self.check_floating_popups()
 
+            # หน้าอีเวนต์ (เช่น ATTENDANCE EVENT) เด้งทับ Lobby -> กดปุ่ม X (event.png) ปิดก่อน
+            # ต้องเช็คก่อน _at_lobby: ไอคอน Lobby ที่อยู่หลังป๊อปอัพ (จอหรี่) ยังแมตช์ผ่าน บอทจะนึกว่าจอโล่ง
+            _ev_sim = float(config.get("event_similarity", 0.9))
+            if self.exists_in_cache("img/event.png", similarity=_ev_sim):
+                print(f"[{self.device_id}] [CHECK-LV] เจอหน้าอีเวนต์ทับ - กด X (event.png) ปิด")
+                self.click("img/event.png", similarity=_ev_sim)
+                sleep(1.0)
+                continue
+
             # อยู่หน้า Lobby เต็มจอแล้ว (ไม่มีป๊อปอัพหรี่จอ) -> ไม่ต้องกด BACK (BACK ที่ Lobby = เด้งถามออกเกม เสียเวลาเปล่า)
             if self._at_lobby():
                 print(f"[{self.device_id}] [CHECK-LV] อยู่ Lobby แล้ว - ไม่ต้องกด BACK อ่านเลเวลเลย")
