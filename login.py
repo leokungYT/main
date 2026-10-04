@@ -8704,6 +8704,29 @@ class RangerGearBot(threading.Thread):
             return None, best_conf, best_tag
         return found, best_conf, best_tag
 
+    def _close_lobby_popups(self, max_rounds=8):
+        """ปิดป๊อปอัพที่ซ้อนอยู่บน Lobby (ATTENDANCE / Bug Compensation / Login Event ...)
+        กดปุ่ม X (event.png) หรือ OK (fixok/fixokk) ทีละอัน จนไม่เหลือ - ใช้ตอนเพิ่งเข้า Lobby ก่อนทำงานตาม config"""
+        _ev_sim = float(config.get("event_similarity", 0.9))
+        closed = 0
+        for _ in range(max_rounds):
+            self.capture_screen()
+            if self.exists_in_cache("img/event.png", similarity=_ev_sim):
+                self.click("img/event.png", similarity=_ev_sim)
+            elif self.exists_in_cache("img/fixok.png", similarity=0.85):
+                self.click("img/fixok.png", similarity=0.85)
+            elif self.exists_in_cache("img/fixokk.png", similarity=0.85):
+                self.click("img/fixokk.png", similarity=0.85)
+            elif self.exists_in_cache("img/cancel.png", similarity=0.8):
+                self.click("img/cancel.png", similarity=0.8)
+            else:
+                break
+            closed += 1
+            sleep(1.0)
+        if closed:
+            print(f"[{self.device_id}] [LOBBY] ปิดป๊อปอัพบน Lobby ไป {closed} อัน")
+        return closed
+
     def _clear_screen_for_lv(self, max_rounds=None):
         """เคลียร์จอให้โล่งก่อนอ่านเลเวล - กด BACK รัว ๆ แล้วปิดป๊อปอัพที่ขวางอยู่
 
@@ -8932,6 +8955,7 @@ class RangerGearBot(threading.Thread):
         ทางแรกไม่เจอจะลองอีกทางให้
         """
         print(f"[{self.device_id}] [RUBY-TICKET] Starting Ruby and Ticket check...")
+        self._close_lobby_popups()   # ป๊อปอัพทับ Lobby = หาปุ่มกาชาไม่เจอ -> ปิดก่อน
 
         def _via_gacha():
             return self.wait_and_click_image("gacha.png", timeout=15)
@@ -9134,10 +9158,14 @@ class RangerGearBot(threading.Thread):
                 self.click("img/event.png", similarity=_ev_sim)
                 sleep(0.4)
 
+                # รัว BACK ไปเรื่อย ๆ จนกว่า "ไม่เจอ event ติดกัน 3 วิ" แล้วค่อยไป step ต่อไป
+                #  - เจอ event.png ระหว่างรัว -> กดด้วย (นับเวลา 3 วิใหม่)
+                #  - เจอ cancel (หน้าต่างถามออกเกมที่ BACK เปิด) -> กด cancel เสมอ กันออกเกม
                 back_press_count = 0
-                _max_back = int(config.get("event_max_back", 30))
+                _clear_sec = float(config.get("event_clear_sec", 3))
+                _max_back = int(config.get("event_spam_max", 300))       # กันค้างถาวรเท่านั้น
+                _last_ev = time.time()
                 while True:
-                    # กด Back รอบละ 10 ครั้ง - แยกทีละคำสั่งแบบเดิม (ยิงรวดเดียวในคำสั่งเดียว เกมรับไม่ทัน กดไม่ติด)
                     _per = max(1, int(config.get("event_back_per_round", 10)))   # กดทีละ 10 (แยกคำสั่ง)
                     for _ in range(_per):
                         self.adb_shell("input keyevent KEYCODE_BACK")
@@ -9147,30 +9175,27 @@ class RangerGearBot(threading.Thread):
                     sleep(0.3)  # ให้เวลา UI อัปเดต (แบบเดิม)
                     self.capture_screen()
 
-                    # กด event ไปพร้อมกับรัว BACK: เห็น event.png ในเฟรมนี้ก็กดเลย แล้วรอบหน้ารัว BACK ต่อ
                     _evp = self._find_in_screen("img/event.png", _ev_sim)
                     if _evp:
                         print(f"[{self.device_id}] [EVENT] เจอ event.png ระหว่างรัว BACK - กดไปด้วย")
                         self.click(_evp)
+                        _last_ev = time.time()
 
-                    # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด (ของเดิม)
                     if self.exists_in_cache("img/cancel.png"):
                         print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
                         self.click("img/cancel.png")
-                        sleep(1)
-                        break
+                        sleep(0.5)
 
-                    if self.exists_in_cache("img/stoplogin.png"):
-                        print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
-                        self._lobby_reached = True    # ถึง Lobby แล้ว -> รอบหน้าไม่วนกด event ซ้ำ ไปทำงานต่อเลย
-                        break
-
-                    # เพิ่มจากของเดิม: ดูไอคอน Lobby ตัวอื่นด้วย (gacha/misson/box1)
-                    # ตอน stoplogin โดนบังจะได้ไม่กด BACK ต่อจนครบ 30 ครั้งเปล่า ๆ (เสียไป ~10 วิ)
-                    _lob = self._at_lobby()
-                    if _lob:
-                        print(f"[{self.device_id}] [EVENT] ถึง Lobby แล้ว (เห็น {_lob}) - หยุดกด BACK ที่ {back_press_count} ครั้ง")
-                        self._lobby_reached = True    # ถึง Lobby แล้ว -> รอบหน้าไม่วนกด event ซ้ำ ไปทำงานต่อเลย
+                    if time.time() - _last_ev >= _clear_sec:
+                        # ไม่เจอ event มา 3 วิแล้ว -> เก็บ cancel ที่อาจค้างจาก BACK รอบสุดท้าย แล้วไปต่อ
+                        sleep(0.5)
+                        self.capture_screen()
+                        if self.exists_in_cache("img/cancel.png"):
+                            self.click("img/cancel.png")
+                            sleep(0.5)
+                        print(f"[{self.device_id}] [EVENT] ไม่เจอ event ติดกัน {_clear_sec:.0f} วิ - หยุดรัว BACK ที่ {back_press_count} ครั้ง ไป step ต่อไป")
+                        if self._at_lobby() or self.exists_in_cache("img/stoplogin.png"):
+                            self._lobby_reached = True    # ถึง Lobby แล้ว -> ไปทำงานตาม config เลย
                         break
 
                     if back_press_count >= _max_back: # ป้องกันลูปค้าง
@@ -9663,6 +9688,7 @@ class RangerGearBot(threading.Thread):
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
+                self._close_lobby_popups()    # ปิดป๊อปอัพอีเวนต์ที่ทับ Lobby ก่อนทำงานตาม config (check-lv / ruby / ฯลฯ)
                 if int(config.get("wg_after_login", 0) or 0):
                     self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
 
