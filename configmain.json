@@ -132,7 +132,7 @@
     "lv_threshold": 4,
     "lv_low_dir": "lv-3-4",
     "lv_high_dir": "lv5+",
-    "lv_timeout": 30,
+    "lv_timeout": 8,
     "lv_similarity": 0.7,
     "lv_only": 1,
     "lv_clear_popups": 1,

@@ -8745,6 +8745,11 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
             self.check_floating_popups()
 
+            # อยู่หน้า Lobby เต็มจอแล้ว (ไม่มีป๊อปอัพหรี่จอ) -> ไม่ต้องกด BACK (BACK ที่ Lobby = เด้งถามออกเกม เสียเวลาเปล่า)
+            if self._at_lobby():
+                print(f"[{self.device_id}] [CHECK-LV] อยู่ Lobby แล้ว - ไม่ต้องกด BACK อ่านเลเวลเลย")
+                return
+
             # cancel = ปุ่มปิดหน้าต่างอีเวนต์ เจอเมื่อไหร่กดแล้วพอ (ตามที่ใช้ในลูป event/bingo)
             if self.exists_in_cache("img/cancel.png", similarity=0.8):
                 print(f"[{self.device_id}] [CHECK-LV] เจอ cancel - กดปิดแล้วไปสแกนเลเวล")
@@ -8778,7 +8783,13 @@ class RangerGearBot(threading.Thread):
             return None
         self._clear_screen_for_lv()
         if timeout is None:
-            timeout = float(config.get("lv_timeout", 30))
+            timeout = float(config.get("lv_timeout", 8))
+        # อ่านตรงตำแหน่งป้ายทันทีก่อน (ไม่ต้องรอรูปป้ายแมตช์) - อยู่ Lobby แล้วป้ายอยู่ที่เดิมเสมอ ได้เลขเลยไม่ต้องรอ
+        self.capture_screen()
+        lv, conf, tag = self._ocr_level_digits()
+        if lv is not None and conf >= float(config.get("lv_fast_conf", 0.5)):
+            print(f"[{self.device_id}] [CHECK-LV] อ่านได้เลเวล {lv} ทันที (conf {conf:.2f}, {tag})")
+            return lv
         print(f"[{self.device_id}] [CHECK-LV] รอป้ายเลเวล ({os.path.basename(img)}) แล้วอ่านเลข (สูงสุด {timeout:.0f} วิ)...")
         deadline = time.time() + timeout
         seen = False
