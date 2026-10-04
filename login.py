@@ -3787,6 +3787,22 @@ class RangerGearBot(threading.Thread):
                   f"(โหลด .conf เพิ่มมาใส่ {wg_dir}/)")
         return None
 
+    def _wg_down(self):
+        """ปิด tunnel ของจอนี้ (ถ้าเปิดอยู่) - ใช้ก่อนส่งไฟล์/ล็อกอิน ให้ออกเน็ตด้วย IP ปกติ"""
+        if not int(config.get("wg_enabled", 0) or 0):
+            return
+        try:
+            if self._wg_is_up():
+                self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
+                               f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {self.WG_TUNNEL}'", timeout=20)
+                for _ in range(5):
+                    sleep(1)
+                    if not self._wg_is_up():
+                        break
+                print(f"[{self.device_id}] [WG] ปิด VPN ก่อนล็อกอิน (จะเปิดอีกทีหลังเข้าเกม)")
+        except Exception as e:
+            print(f"[{self.device_id}] [WG] ปิด VPN ไม่สำเร็จ: {e}")
+
     def _wg_is_up(self):
         r = self.adb_shell("ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true", timeout=10)
         return bool((r.stdout or b"").strip())
@@ -3937,7 +3953,10 @@ class RangerGearBot(threading.Thread):
         # reused emulator from keeping a previous IP/proxy binding across files.
         # (proxy ฟรีถูกถอดออกแล้ว - เหลือแค่ล้างของที่ค้างในอีมูฯ)
         self._clear_proxy_for_device()
-        self._ensure_wireguard()     # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น)
+        if int(config.get("wg_after_login", 1) or 0):
+            self._wg_down()          # wg_after_login: ส่งไฟล์+ล็อกอินด้วยเน็ตปกติ แล้วค่อยต่อ VPN หลังเข้าเกม
+        else:
+            self._ensure_wireguard() # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น)
         sleep(0.5)
         if not self._check_device_identity():
             print(f"[{self.device_id}] [DEVICE-FP] หยุด login: device identity ซ้ำ/clone -> ข้ามไฟล์นี้ไป")
@@ -9513,6 +9532,8 @@ class RangerGearBot(threading.Thread):
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
+                if int(config.get("wg_after_login", 1) or 0):
+                    self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
 
                 # --- เช็คเลเวลบัญชี (config "check_lv") - อ่านครั้งเดียวตรงนี้ ---
                 #     จำเลเวลไว้เฉย ๆ แล้ว "ทำงานตาม config ต่อตามปกติ" (event/กล่อง/สุ่ม/7วัน)
