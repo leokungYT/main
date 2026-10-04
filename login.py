@@ -7205,18 +7205,6 @@ class RangerGearBot(threading.Thread):
             self.click("img/fixaccep.png")
             sleep(1)
 
-        # fixpop.png: เช็คตลอดเจอก็กดรัวๆ เหมือน fixnet (ลอยๆ เจอก็กด)
-        fixpop_clicks = 0
-        while self.exists_in_cache("img/fixpop.png", similarity=0.8):
-            fixpop_clicks += 1
-            print(f"[{self.device_id}] [POPUP] fixpop.png detected (click #{fixpop_clicks}), clicking...")
-            self.click("img/fixpop.png", similarity=0.8)
-            sleep(1.5)
-            self._raw_capture()
-            if fixpop_clicks >= 10:
-                print(f"[{self.device_id}] [POPUP] fixpop.png clicked 10 times, breaking to avoid infinite loop")
-                break
-
         # Mark this frame popup-free ONLY if the pass did nothing at all: no new
         # frame AND no input sent. Every popup branch above taps or clicks, so a
         # tap counter is a reliable "something fired" signal - checking the frame
@@ -8734,15 +8722,6 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
             self.check_floating_popups()
 
-            # หน้าอีเวนต์ (เช่น ATTENDANCE EVENT) เด้งทับ Lobby -> กดปุ่ม X (event.png) ปิดก่อน
-            # ต้องเช็คก่อน _at_lobby: ไอคอน Lobby ที่อยู่หลังป๊อปอัพ (จอหรี่) ยังแมตช์ผ่าน บอทจะนึกว่าจอโล่ง
-            _ev_sim = float(config.get("event_similarity", 0.9))
-            if self.exists_in_cache("img/event.png", similarity=_ev_sim):
-                print(f"[{self.device_id}] [CHECK-LV] เจอหน้าอีเวนต์ทับ - กด X (event.png) ปิด")
-                self.click("img/event.png", similarity=_ev_sim)
-                sleep(1.0)
-                continue
-
             # อยู่หน้า Lobby เต็มจอแล้ว (ไม่มีป๊อปอัพหรี่จอ) -> ไม่ต้องกด BACK (BACK ที่ Lobby = เด้งถามออกเกม เสียเวลาเปล่า)
             if self._at_lobby():
                 print(f"[{self.device_id}] [CHECK-LV] อยู่ Lobby แล้ว - ไม่ต้องกด BACK อ่านเลเวลเลย")
@@ -9151,21 +9130,19 @@ class RangerGearBot(threading.Thread):
             _ev_sim = float(config.get("event_similarity", 0.9))
             if self.exists_in_cache("img/event.png", similarity=_ev_sim):
                 event_passed = True
-                print(f"[{self.device_id}] [EVENT] Detected event.png - กด event 1 ครั้ง แล้วรัว ESC จนเจอ cancel...")
+                print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
                 self.click("img/event.png", similarity=_ev_sim)
                 sleep(0.4)
 
                 back_press_count = 0
-                _max_back = int(config.get("event_max_back", 300))   # กันค้างถาวรเท่านั้น (ปกติจบที่กด cancel)
+                _max_back = int(config.get("event_max_back", 30))
                 while True:
                     # กด Back ทีเดียว 3 รอบ (ของเดิม - ปรับจำนวนได้ที่ event_back_per_round)
                     _per = max(1, int(config.get("event_back_per_round", 5)))
                     # ยิง BACK ทั้งชุดใน adb shell เดียว (เดิมแยกทีละครั้ง = รอ adb ทีละ ~0.3 วิ ไม่รัวจริง)
-                    # ปุ่มที่รัว: ESC (111) แทน BACK (4) - เปลี่ยนได้ที่ config "event_spam_key"
-                    _key = int(config.get("event_spam_key", 111))
-                    self.adb_shell("input keyevent" + f" {_key}" * _per)
+                    self.adb_shell("input keyevent" + " 4" * _per)
                     back_press_count += _per
-                    print(f"[{self.device_id}] [EVENT] รัว ESC (รวม {back_press_count} ครั้ง)")
+                    print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
 
                     sleep(float(config.get("event_back_delay", 0.1)))  # รัวขึ้น (เดิม 0.3)
                     self.capture_screen()
@@ -9177,10 +9154,19 @@ class RangerGearBot(threading.Thread):
                         sleep(1)
                         break
 
-                    # หยุดรัว ESC ได้ทางเดียวคือกด cancel (ข้างบน) - ไม่หยุดตอนเห็น stoplogin/Lobby แล้ว
+                    if self.exists_in_cache("img/stoplogin.png"):
+                        print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
+                        break
+
+                    # เพิ่มจากของเดิม: ดูไอคอน Lobby ตัวอื่นด้วย (gacha/misson/box1)
+                    # ตอน stoplogin โดนบังจะได้ไม่กด BACK ต่อจนครบ 30 ครั้งเปล่า ๆ (เสียไป ~10 วิ)
+                    _lob = self._at_lobby()
+                    if _lob:
+                        print(f"[{self.device_id}] [EVENT] ถึง Lobby แล้ว (เห็น {_lob}) - หยุดกด BACK ที่ {back_press_count} ครั้ง")
+                        break
 
                     if back_press_count >= _max_back: # ป้องกันลูปค้าง
-                        print(f"[{self.device_id}] [EVENT] รัว ESC ครบ {_max_back} ครั้งแล้วยังไม่เจอ cancel - ไปต่อ")
+                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached ({_max_back}), continuing...")
                         break
 
                 continue
