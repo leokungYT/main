@@ -9133,6 +9133,13 @@ class RangerGearBot(threading.Thread):
                     sleep(float(config.get("event_back_delay", 0.1)))  # รัวขึ้น (เดิม 0.3)
                     self.capture_screen()
 
+                    # ระหว่างรัว BACK เจอ event.png โผล่อีก -> กดด้วย แล้วรัว BACK ต่อ
+                    if self.exists_in_cache("img/event.png", similarity=_ev_sim):
+                        print(f"[{self.device_id}] [EVENT] เจอ event.png ระหว่างกด BACK - กด event แล้วรัวต่อ")
+                        self.click("img/event.png", similarity=_ev_sim)
+                        sleep(0.4)
+                        continue
+
                     # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด (ของเดิม)
                     if self.exists_in_cache("img/cancel.png"):
                         print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
