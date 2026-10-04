@@ -3734,25 +3734,33 @@ class RangerGearBot(threading.Thread):
         entry = b"\x0a" + bytes([len(key)]) + key + b"\x12\x02\x08\x01"
         with open(local_pb, "wb") as f:
             f.write(b"\x0a" + bytes([len(entry)]) + entry)
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "push", conf, tmp_conf], timeout=30)
-        self.adb_run([self.adb_cmd, "-s", self.device_id, "push", local_pb, tmp_pb], timeout=30)
+        # คำสั่ง root เขียนเป็นสคริปต์แล้วรันทีเดียว - su ของ MuMu กิน $ / quote ถ้าส่งเป็นสตริงตรง ๆ
         d = f"/data/data/{pkg}"
-        self.adb_shell(
-            "su -c '"
-            f"mkdir -p {d}/files/datastore && "
-            f"cp {tmp_conf} {d}/files/{name}.conf && "
-            f"cp {tmp_pb} {d}/files/datastore/settings.preferences_pb && "
-            f"U=$(stat -c %u {d}) && chown -R $U:$U {d}/files && chmod -R 700 {d}/files && "
-            f"restorecon -R {d}/files 2>/dev/null; rm -f {tmp_conf} {tmp_pb}; "
+        tmp_sh = f"/data/local/tmp/wg_{safe_dev}.sh"
+        local_sh = os.path.join(tempfile.gettempdir(), f"wg_{safe_dev}.sh")
+        script = chr(10).join([
+            f"mkdir -p {d}/files/datastore",
+            f"cp {tmp_conf} {d}/files/{name}.conf",
+            f"cp {tmp_pb} {d}/files/datastore/settings.preferences_pb",
+            f"U=$(stat -c %u {d})",
+            f"chown -R $U:$U {d}/files",
+            f"chmod -R 700 {d}/files",
+            f"restorecon -R {d}/files 2>/dev/null",
+            f"rm -f {tmp_conf} {tmp_pb}",
             # อนุญาตสร้าง VPN ล่วงหน้า (ไม่ต้องกดยืนยันบนจอ)
-            f"appops set {pkg} ACTIVATE_VPN allow'",
-            timeout=20)
-
-        # 3) สั่งเปิด tunnel (ยิงเป็น root = ผ่านสิทธิ์ CONTROL_TUNNELS ; -f 0x20 = ส่งถึงแอปที่ถูก force-stop)
-        self.adb_shell(
-            f"su -c 'am broadcast -f 0x20 -a {pkg}.action.SET_TUNNEL_UP "
-            f"-n {pkg}/.model.TunnelManager\\$IntentReceiver --es tunnel {name}'",
-            timeout=20)
+            f"cmd appops set {pkg} ACTIVATE_VPN allow",
+            # Android 12 ห้ามแอปเปิด VpnService จากเบื้องหลัง -> ใส่ไว้ในรายการยกเว้นประหยัดแบต (ทดสอบบน MuMu แล้วผ่าน)
+            f"cmd deviceidle whitelist +{pkg}",
+            # สั่งเปิด tunnel เป็น root (ผ่านสิทธิ์ CONTROL_TUNNELS) ; -f 0x20 = ส่งถึงแอปที่ถูก force-stop
+            f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}",
+            f"rm -f {tmp_sh}",
+            "",
+        ])
+        with open(local_sh, "w", newline=chr(10)) as f:   # ไฟล์ sh ต้องเป็น LF
+            f.write(script)
+        for src, dst in ((conf, tmp_conf), (local_pb, tmp_pb), (local_sh, tmp_sh)):
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, dst], timeout=30)
+        self.adb_shell(f"su -c 'sh {tmp_sh}'", timeout=30)   # ต้องครอบ quote: su ของ MuMu รับแค่คำถัดไปคำเดียว
         for _ in range(10):
             sleep(1)
             if self._wg_is_up():
