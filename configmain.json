@@ -6,7 +6,6 @@
     "windscribe_rotate_every": 0,
     "wg_enabled": 1,
     "wg_after_login": 1,
-    "wg_connect_on": "refresh",
     "wg_dir": "wg",
     "wg_per_device": {},
     "7day": 0,

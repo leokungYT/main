@@ -3381,15 +3381,10 @@ def check_critical_errors(bot, adb_img, context=""):
             return "apple"
             
         # ตรวจสอบ fixnet1.png / fixnet.png (ปัญหาเน็ตหลุดเด้งป๊อปอัพ)
-        fixnet1_pos = ImgSearchADB(adb_img, 'img/fixnet1.png')
-        fixnet_pos = fixnet1_pos or ImgSearchADB(adb_img, 'img/fixnet.png')
+        fixnet_pos = ImgSearchADB(adb_img, 'img/fixnet1.png') or ImgSearchADB(adb_img, 'img/fixnet.png')
         if fixnet_pos:
             print(f"[{bot.device_id}] 📶 พบปัญหาการเชื่อมต่อ (fixnet1/fixnet) ใน {context} - กำลังกด OK...")
-            _tap = lambda: bot.tap(fixnet_pos[0][0], fixnet_pos[0][1])
-            if fixnet1_pos and hasattr(bot, "_wg_fixnet1_tap"):
-                bot._wg_fixnet1_tap(_tap)     # VPN เปิดอยู่ -> ปิดก่อนกด แล้วเปิดใหม่ใน 5 วิ
-            else:
-                _tap()
+            bot.tap(fixnet_pos[0][0], fixnet_pos[0][1])
             time.sleep(1)
             # return None เพื่อให้ลูปทำงานปกติต่อไป (แค่กดป๊อปอัพทิ้ง)
         
@@ -3792,21 +3787,12 @@ class RangerGearBot(threading.Thread):
                   f"(โหลด .conf เพิ่มมาใส่ {wg_dir}/)")
         return None
 
-    def _wg_connect_at(self, stage):
-        """ต่อ VPN ตามจังหวะที่ตั้งใน config "wg_connect_on" (ใช้คู่ wg_after_login=1)
-        "refresh" = หลังกด refresh  (ค่าเริ่มต้น)
-        "login"   = หลังล็อกอินผ่าน (stoplogin)
-        ไม่ว่าเลือกแบบไหน ถึง stoplogin แล้วยังไม่ต่อ จะต่อให้ตรงนั้นเสมอ"""
-        if not int(config.get("wg_after_login", 1) or 0):
-            return
-        if stage == "login" or str(config.get("wg_connect_on", "refresh")).lower() == stage:
+    def _wg_after_refresh(self):
+        """wg_after_login: กด refresh แล้ว -> ต่อ VPN ตรงนี้เลย (ส่งไฟล์/เปิดเกมไปด้วยเน็ตปกติแล้ว)"""
+        if int(config.get("wg_after_login", 1) or 0):
             self._ensure_wireguard()
 
-    def _wg_after_refresh(self):
-        """กด refresh แล้ว -> ต่อ VPN ถ้าตั้ง wg_connect_on เป็น refresh"""
-        self._wg_connect_at("refresh")
-
-    def _wg_down(self, reason="ปิด VPN ก่อนล็อกอิน (จะเปิดอีกทีหลังเข้าเกม)"):
+    def _wg_down(self):
         """ปิด tunnel ของจอนี้ (ถ้าเปิดอยู่) - ใช้ก่อนส่งไฟล์/ล็อกอิน ให้ออกเน็ตด้วย IP ปกติ"""
         if not int(config.get("wg_enabled", 0) or 0):
             return
@@ -3818,40 +3804,9 @@ class RangerGearBot(threading.Thread):
                     sleep(1)
                     if not self._wg_is_up():
                         break
-                print(f"[{self.device_id}] [WG] {reason}")
+                print(f"[{self.device_id}] [WG] ปิด VPN ก่อนล็อกอิน (จะเปิดอีกทีหลังเข้าเกม)")
         except Exception as e:
             print(f"[{self.device_id}] [WG] ปิด VPN ไม่สำเร็จ: {e}")
-
-    def _wg_fixnet1_tap(self, tap):
-        """เจอ fixnet1: ปิด VPN ก่อน -> กดปิดป๊อปอัพ (tap) -> รอ 5 วิ แล้วเปิด VPN ใหม่ (เบื้องหลัง ไม่ขวางลูปหลัก)
-
-        VPN ไม่ได้เปิดอยู่ / อีกเธรดกำลังทำรอบนี้อยู่ = กดเฉย ๆ เหมือนเดิม
-        """
-        if not int(config.get("wg_enabled", 0) or 0):
-            return tap()
-        lock = self.__dict__.setdefault("_wg_cycle_lock", threading.Lock())
-        if not lock.acquire(blocking=False):
-            return tap()
-        try:
-            if not self._wg_is_up():
-                lock.release()
-                return tap()
-            self._wg_down("เจอ fixnet1 - ปิด VPN ก่อนกด (เปิดใหม่ใน 5 วิ)")
-            result = tap()
-        except Exception:
-            lock.release()
-            raise
-
-        def _reup():
-            try:
-                sleep(float(config.get("wg_fixnet_reup_delay", 5)))
-                self._ensure_wireguard()
-            except Exception as e:
-                print(f"[{self.device_id}] [WG] เปิด VPN ใหม่หลัง fixnet1 ไม่สำเร็จ: {e}")
-            finally:
-                lock.release()
-        threading.Thread(target=_reup, daemon=True).start()
-        return result
 
     def _wg_is_up(self):
         r = self.adb_shell("ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true", timeout=10)
@@ -6873,10 +6828,7 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
         # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
         # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
-        if os.path.basename(path) == "fixnet1.png":
-            self._wg_fixnet1_tap(lambda: self._adb_tap(cx, cy))
-        else:
-            self._adb_tap(cx, cy)
+        self._adb_tap(cx, cy)
         print(f"[{self.device_id}] [NET] พบ {os.path.basename(path)} (score {score:.2f}, x{sc:.2f}) -> adb tap ทันที ({cx}, {cy})")
         return os.path.basename(path)
 
@@ -7111,7 +7063,7 @@ class RangerGearBot(threading.Thread):
         while self.exists_in_cache("img/fixnet1.png", similarity=0.8):
             fixnet1_clicks += 1
             print(f"[{self.device_id}] [POPUP] fixnet1.png detected (click #{fixnet1_clicks}), clicking...")
-            self._wg_fixnet1_tap(lambda: self.click("img/fixnet1.png", similarity=0.8))
+            self.click("img/fixnet1.png", similarity=0.8)
             sleep(1.5)
             self._raw_capture()  # จับภาพใหม่เพื่อเช็คซ้ำ (ไม่วนกลับ popup check)
             if fixnet1_clicks >= 10:
@@ -7813,9 +7765,6 @@ class RangerGearBot(threading.Thread):
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
-        # ส่งไฟล์/เปิดเกมต้องไม่มี VPN (tunnel ของไฟล์ก่อนอาจยังเปิดค้าง) - เปิดใหม่หลังกด refresh
-        if int(config.get("wg_after_login", 1) or 0):
-            self._wg_down("ปิด VPN ก่อนส่งไฟล์ (เปิดใหม่หลังเจอ refresh)")
 
         # ขั้นเตรียมทั้งหมดเป็น best-effort: timeout/พัง = เตือนแล้วไปต่อ ไม่ให้ล้มทั้ง inject
         # (เดิมคำสั่ง mount ค้างเกิน 10 วิ -> TimeoutExpired เด้งออกเป็น Critical Error ทั้งที่เป็นแค่ขั้นเตรียม)
@@ -9168,11 +9117,8 @@ class RangerGearBot(threading.Thread):
             # === alert2.png Persistence Check (รอค้างครบ 8 วิ ให้ clear app แล้วเปิดใหม่) ===
             if self.exists_in_cache("img/alert2.png", similarity=0.8):
                 if not hasattr(self, '_alert2_start_time') or self._alert2_start_time is None:
+                    self._alert2_start_time = time.time()
                     print(f"[{self.device_id}] Detected alert2.png... waiting 8s to clear app")
-                    # หน้า LINE GAME (alert2) = ช่วงเปิดเกม -> ต้องไม่มี VPN (เปิดอีกทีหลังกด refresh)
-                    if int(config.get("wg_after_login", 1) or 0):
-                        self._wg_down("เจอหน้า LINE GAME (alert2) - ปิด VPN ไว้ก่อน (เปิดใหม่หลัง refresh)")
-                    self._alert2_start_time = time.time()   # เริ่มนับ 8 วิ หลังปิด VPN เสร็จ
                 elif time.time() - self._alert2_start_time >= 8:
                     print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ 8 วินาที! เคลียร์แอพและเข้าใหม่...")
                     self.clear_and_restart()
@@ -9594,7 +9540,8 @@ class RangerGearBot(threading.Thread):
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
-                self._wg_connect_at("login")   # ล็อกอินผ่านแล้ว -> ต่อ VPN (ถ้ายังไม่ได้ต่อจากจังหวะก่อนหน้า)
+                if int(config.get("wg_after_login", 1) or 0):
+                    self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
 
                 # --- เช็คเลเวลบัญชี (config "check_lv") - อ่านครั้งเดียวตรงนี้ ---
                 #     จำเลเวลไว้เฉย ๆ แล้ว "ทำงานตาม config ต่อตามปกติ" (event/กล่อง/สุ่ม/7วัน)
