@@ -9137,14 +9137,14 @@ class RangerGearBot(threading.Thread):
                 back_press_count = 0
                 _max_back = int(config.get("event_max_back", 30))
                 while True:
-                    # กด Back ทีเดียว 3 รอบ (ของเดิม - ปรับจำนวนได้ที่ event_back_per_round)
-                    _per = max(1, int(config.get("event_back_per_round", 5)))
-                    # ยิง BACK ทั้งชุดใน adb shell เดียว (เดิมแยกทีละครั้ง = รอ adb ทีละ ~0.3 วิ ไม่รัวจริง)
-                    self.adb_shell("input keyevent" + " 4" * _per)
-                    back_press_count += _per
+                    # กด Back ทีเดียว 3 รอบ - แบบเดิม: แยกทีละคำสั่ง (ยิงรวดเดียวในคำสั่งเดียว เกมรับไม่ทัน กดไม่ติด)
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    back_press_count += 3
                     print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
 
-                    sleep(float(config.get("event_back_delay", 0.1)))  # รัวขึ้น (เดิม 0.3)
+                    sleep(0.3)  # ให้เวลา UI อัปเดต (แบบเดิม)
                     self.capture_screen()
 
                     # กด event ไปพร้อมกับรัว BACK: เห็น event.png ในเฟรมนี้ก็กดเลย แล้วรอบหน้ารัว BACK ต่อ
