@@ -1707,21 +1707,7 @@ config = {
     "auth_backoff_min": 2,
     "auth_backoff_max": 8,
     "device_identity_check": 1,
-    "device_identity_block_on_duplicate": 1,
-    "proxy_enabled": 0,
-    "proxy_auto_fetch": 0,
-    "proxy_type": "http",
-    "proxy_host": "",
-    "proxy_port": 0,
-    "proxy_username": "",
-    "proxy_password": "",
-    "proxy_bypass": "localhost,127.0.0.1,10.0.2.2",
-    "proxy_timeout_sec": 15,
-    "proxy_fetch_urls": [
-        "https://proxyscrape.com/free-proxy-list",
-        "https://www.free-proxy-list.net/"
-    ],
-    "proxy_per_device": {}
+    "device_identity_block_on_duplicate": 1
 }
 
 adb_path = "adb"
@@ -1847,98 +1833,6 @@ def _device_identity_duplicate_check(adb_cmd, device_id):
         reason = ", ".join(sorted(set(duplicates)))
         return True, reason, sig
     return False, "ok", sig
-
-
-def _fetch_proxy_candidates_from_url(url):
-    """Fetch public proxy candidates from a free-proxy page and parse host:port pairs."""
-    try:
-        import urllib.request
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            html = resp.read().decode("utf-8", "ignore")
-    except Exception:
-        return []
-
-    if not html:
-        return []
-    import re
-    matches = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\s*:\s*\d{2,5}\b|\b(?:\d{1,3}\.){3}\d{1,3}\s*\d{2,5}\b", html)
-    seen = set()
-    proxies = []
-    for m in matches:
-        text = m.strip().replace(" ", "")
-        if ":" not in text:
-            continue
-        host, port = text.rsplit(":", 1)
-        if not host or not port.isdigit():
-            continue
-        host = host.strip()
-        port = int(port)
-        if port <= 0 or port > 65535:
-            continue
-        if host.startswith("http://") or host.startswith("https://"):
-            continue
-        if host not in seen:
-            seen.add(host)
-            proxies.append((host, port))
-    return proxies
-
-
-def _auto_fetch_proxy_candidate():
-    """Try proxyscrape first, then other public free-proxy sources, and return the first usable host:port."""
-    urls = config.get("proxy_fetch_urls") or [
-        "https://proxyscrape.com/free-proxy-list",
-        "https://www.free-proxy-list.net/",
-    ]
-    if isinstance(urls, str):
-        urls = [urls]
-    for url in urls:
-        for host, port in _fetch_proxy_candidates_from_url(url):
-            if host and port:
-                return {"host": host, "port": port, "type": "http"}
-    return None
-
-
-def _proxy_config_for_device(device_id, config_map=None):
-    """Return proxy settings for this emulator if enabled.
-
-    This is a best-effort, safe feature: if proxy disabled or host/port empty,
-    returns None and the bot keeps its normal behavior.
-    """
-    if config_map is None:
-        config_map = config.get("proxy_per_device", {}) or {}
-    if isinstance(config_map, dict):
-        cfg = config_map.get(device_id) or config_map.get(device_id.replace(":", "_"))
-    else:
-        cfg = {}
-    enabled = bool((cfg or {}).get("enabled", bool(config.get("proxy_enabled", 0))))
-    if not enabled:
-        return None
-    host = str((cfg or {}).get("host") or config.get("proxy_host") or "").strip()
-    port = (cfg or {}).get("port", config.get("proxy_port", 0))
-    try:
-        port = int(port)
-    except (TypeError, ValueError):
-        port = 0
-    if (not host or port <= 0) and bool(config.get("proxy_auto_fetch", 0)):
-        auto_proxy = _auto_fetch_proxy_candidate()
-        if auto_proxy:
-            host = str(auto_proxy.get("host") or "").strip()
-            port = int(auto_proxy.get("port") or 0)
-    if not host or port <= 0:
-        return None
-    proxy_type = str((cfg or {}).get("type") or config.get("proxy_type") or "http").lower()
-    username = str((cfg or {}).get("username") or config.get("proxy_username") or "").strip()
-    password = str((cfg or {}).get("password") or config.get("proxy_password") or "").strip()
-    return {
-        "enabled": True,
-        "host": host,
-        "port": port,
-        "type": proxy_type,
-        "username": username,
-        "password": password,
-        "bypass": str(config.get("proxy_bypass", "localhost,127.0.0.1,10.0.2.2")).strip(),
-    }
 
 
 @contextlib.contextmanager
@@ -3732,37 +3626,13 @@ class RangerGearBot(threading.Thread):
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
-    def _proxy_config_for_device(self):
-        """Best-effort proxy setup for this emulator. Returns None when disabled."""
-        return _proxy_config_for_device(self.device_id)
-
-    def _apply_proxy_for_device(self):
-        """Set Android global HTTP proxy for this emulator if proxy config is present."""
-        proxy = self._proxy_config_for_device()
-        if not proxy:
-            return False
-        host = proxy["host"]
-        port = int(proxy["port"])
-        proxy_value = f"{host}:{port}"
-        username = proxy.get("username")
-        password = proxy.get("password")
-        if username:
-            proxy_value = f"{username}:{password}@{host}:{port}" if password else f"{username}@{host}:{port}"
-        bypass = proxy.get("bypass", "localhost,127.0.0.1,10.0.2.2")
-        print(f"[{self.device_id}] [PROXY] Trying {proxy['type']} proxy {host}:{port} for emulator")
-        try:
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "put", "global", "http_proxy", proxy_value], timeout=12)
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "put", "global", "proxy_exclusion_list", bypass], timeout=12)
-            return True
-        except Exception as e:
-            print(f"[{self.device_id}] [PROXY] proxy apply failed: {e}")
-            return False
-
     def _clear_proxy_for_device(self):
         """Best-effort clean-up for proxy settings when disabled or restarting."""
         try:
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "put", "global", "http_proxy", ""], timeout=12)
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "put", "global", "proxy_exclusion_list", ""], timeout=12)
+            # ":0" = ล้าง proxy แบบที่ Android ยอมรับแน่นอน (ใส่ "" บางเวอร์ชันไม่ถือว่าล้าง) แล้วลบคีย์ทิ้ง
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "put", "global", "http_proxy", ":0"], timeout=12)
+            for key in ("http_proxy", "global_http_proxy_host", "global_http_proxy_port", "proxy_exclusion_list"):
+                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "settings", "delete", "global", key], timeout=12)
             return True
         except Exception:
             return False
@@ -3818,8 +3688,7 @@ class RangerGearBot(threading.Thread):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
         # Reset stale network/proxy state before each file/job. This prevents a
         # reused emulator from keeping a previous IP/proxy binding across files.
-        # Proxy is intentionally not kept enabled for the whole run; it is only
-        # applied during the fixid/refresh stages when needed.
+        # (proxy ฟรีถูกถอดออกแล้ว - เหลือแค่ล้างของที่ค้างในอีมูฯ)
         self._clear_proxy_for_device()
         sleep(0.5)
         if not self._check_device_identity():
@@ -7515,10 +7384,6 @@ class RangerGearBot(threading.Thread):
         self._clear_proxy_for_device()
         sleep(1)
 
-        # Only clear transient Android/global proxy state. Never delete the game's actual data folder.
-        self.adb_shell("settings put global http_proxy ''")
-        self.adb_shell("settings put global https_proxy ''")
-        self.adb_shell("settings put global proxy_exclusion_list ''")
         print(f"[{self.device_id}] Soft reset only: force-stopped app and cleared proxy/runtime state (no game data deletion)")
 
     def _remote_size(self, remote_path):
@@ -7884,7 +7749,6 @@ class RangerGearBot(threading.Thread):
 
                         # === เจอ fixid.png -> เริ่ม loop: fixok -> refresh -> check ===
                         if self.exists_in_cache("img/fixid.png", similarity=0.95):
-                            self._apply_proxy_for_device()
                             fixid_count += 1
                             print(f"[{self.device_id}] Found fixid.png ({fixid_count}/{max_fixid_retries})")
                             
@@ -9001,7 +8865,6 @@ class RangerGearBot(threading.Thread):
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png", similarity=0.95):
-                self._apply_proxy_for_device()
                 if not self._auth_take_turn("auth"):
                     sleep(1)
                     continue
@@ -9079,7 +8942,6 @@ class RangerGearBot(threading.Thread):
 
             # === เจอ refresh.png (ไม่มี fixid) -> กด refresh -> check ===
             if self.exists_in_cache("img/refresh.png", similarity=0.8):
-                self._apply_proxy_for_device()
                 if not self._auth_take_turn("refresh"):
                     sleep(0.4)
                     continue
