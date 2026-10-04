@@ -3794,13 +3794,12 @@ class RangerGearBot(threading.Thread):
 
     def _wg_connect_at(self, stage):
         """ต่อ VPN ตามจังหวะที่ตั้งใน config "wg_connect_on" (ใช้คู่ wg_after_login=1)
-        "alert2"  = เจอหน้า LINE GAME (alert2.png) หลังส่งไฟล์/เปิดเกม  (ค่าเริ่มต้น)
-        "refresh" = หลังกด refresh
+        "refresh" = หลังกด refresh  (ค่าเริ่มต้น)
         "login"   = หลังล็อกอินผ่าน (stoplogin)
         ไม่ว่าเลือกแบบไหน ถึง stoplogin แล้วยังไม่ต่อ จะต่อให้ตรงนั้นเสมอ"""
         if not int(config.get("wg_after_login", 1) or 0):
             return
-        if stage == "login" or str(config.get("wg_connect_on", "alert2")).lower() == stage:
+        if stage == "login" or str(config.get("wg_connect_on", "refresh")).lower() == stage:
             self._ensure_wireguard()
 
     def _wg_after_refresh(self):
@@ -7814,6 +7813,9 @@ class RangerGearBot(threading.Thread):
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
+        # ส่งไฟล์/เปิดเกมต้องไม่มี VPN (tunnel ของไฟล์ก่อนอาจยังเปิดค้าง) - เปิดใหม่หลังกด refresh
+        if int(config.get("wg_after_login", 1) or 0):
+            self._wg_down("ปิด VPN ก่อนส่งไฟล์ (เปิดใหม่หลังเจอ refresh)")
 
         # ขั้นเตรียมทั้งหมดเป็น best-effort: timeout/พัง = เตือนแล้วไปต่อ ไม่ให้ล้มทั้ง inject
         # (เดิมคำสั่ง mount ค้างเกิน 10 วิ -> TimeoutExpired เด้งออกเป็น Critical Error ทั้งที่เป็นแค่ขั้นเตรียม)
@@ -9167,9 +9169,10 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/alert2.png", similarity=0.8):
                 if not hasattr(self, '_alert2_start_time') or self._alert2_start_time is None:
                     print(f"[{self.device_id}] Detected alert2.png... waiting 8s to clear app")
-                    # wg_connect_on = "alert2": ส่งไฟล์เสร็จ เกมขึ้นหน้า LINE GAME แล้ว -> ต่อ VPN ตรงนี้
-                    self._wg_connect_at("alert2")
-                    self._alert2_start_time = time.time()   # เริ่มนับ 8 วิ หลังต่อ VPN เสร็จ (ติดตั้งแอปครั้งแรกอาจนาน)
+                    # หน้า LINE GAME (alert2) = ช่วงเปิดเกม -> ต้องไม่มี VPN (เปิดอีกทีหลังกด refresh)
+                    if int(config.get("wg_after_login", 1) or 0):
+                        self._wg_down("เจอหน้า LINE GAME (alert2) - ปิด VPN ไว้ก่อน (เปิดใหม่หลัง refresh)")
+                    self._alert2_start_time = time.time()   # เริ่มนับ 8 วิ หลังปิด VPN เสร็จ
                 elif time.time() - self._alert2_start_time >= 8:
                     print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ 8 วินาที! เคลียร์แอพและเข้าใหม่...")
                     self.clear_and_restart()
