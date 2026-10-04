@@ -7193,6 +7193,17 @@ class RangerGearBot(threading.Thread):
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
                 self._fixnetv3_count = 0
 
+        # event.png (ปุ่ม X เหลืองของหน้าอีเวนต์ เช่น ATTENDANCE EVENT): เดิมเช็คแค่ในลูปล็อกอิน
+        # แต่หน้านี้มักเด้งหลังเห็น Lobby (บอทออกจากลูปล็อกอินไปแล้ว) -> กดปิดจากตรงนี้ด้วย ทุกลูป
+        _ev_sim = float(config.get("event_similarity", 0.9))
+        _ev_n = 0
+        while _ev_n < 5 and self.exists_in_cache("img/event.png", similarity=_ev_sim):
+            _ev_n += 1
+            print(f"[{self.device_id}] [POPUP] event.png (ปุ่ม X อีเวนต์) - กดปิด #{_ev_n}")
+            self.click("img/event.png", similarity=_ev_sim)
+            sleep(1.0)
+            self._raw_capture()
+
         # fixface.bmp: จอสแกนหน้า/ยืนยันตัวตน - กด BACK 1 ครั้งถอยออก (ห้ามกดบนจอ)
         if self.exists_in_cache("img/fixface.bmp", similarity=0.8):
             print(f"[{self.device_id}] [POPUP] fixface.bmp detected, pressing BACK once...")
@@ -7874,6 +7885,8 @@ class RangerGearBot(threading.Thread):
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
+        # ส่งไฟล์ตอนไม่มี VPN (tunnel ของไอดีก่อนยังเปิดค้าง) - open_app จะเปิด VPN กลับก่อนเข้าเกม
+        self._wg_down()
 
         # ขั้นเตรียมทั้งหมดเป็น best-effort: timeout/พัง = เตือนแล้วไปต่อ ไม่ให้ล้มทั้ง inject
         # (เดิมคำสั่ง mount ค้างเกิน 10 วิ -> TimeoutExpired เด้งออกเป็น Critical Error ทั้งที่เป็นแค่ขั้นเตรียม)
