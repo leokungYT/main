@@ -2289,6 +2289,10 @@ def reset_network_all(devices):
         t.start()
     for t in ts:
         t.join(60)
+    wait = float(config.get("net_reset_wait", 30) or 0)
+    if wait > 0:
+        print(f"[NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง {wait:.0f} วิ ก่อนเริ่มทำงาน...")
+        time.sleep(wait)
 
 
 def find_adb_executable():
@@ -3829,19 +3833,48 @@ class RangerGearBot(threading.Thread):
         if int(config.get("wg_after_login", 1) or 0):
             self._ensure_wireguard()
 
+    def _wg_vpn_active(self):
+        """Android ยังมี VPN ต่ออยู่ไหม (ดูทั้ง tun interface และ VPN network ใน connectivity)"""
+        if self._wg_is_up():
+            return True
+        r = self.adb_shell("dumpsys connectivity 2>/dev/null | grep -c 'VPN CONNECTED' || true", timeout=15)
+        try:
+            return int((r.stdout or b"0").strip().splitlines()[0] or 0) > 0
+        except Exception:
+            return False
+
     def _wg_down(self):
-        """ปิด tunnel ของจอนี้ (ถ้าเปิดอยู่) - ใช้ก่อนส่งไฟล์/ล็อกอิน ให้ออกเน็ตด้วย IP ปกติ"""
+        """ปิด VPN ของจอนี้ "สนิท" ก่อนส่งไฟล์/เปิดเกม ให้ออกเน็ตด้วย IP ปกติ
+
+        ทำทุกครั้ง (ไม่ใช่เฉพาะตอนเห็น tun): สั่งปิด tunnel -> ฆ่าแอป WireGuard ->
+        รอจน Android ไม่มี VPN ค้าง -> รอจนออกเน็ตได้จริง (ping) -> พักให้เน็ตนิ่ง แล้วค่อยไปต่อ
+        """
         if not int(config.get("wg_enabled", 0) or 0):
             return
         try:
-            if self._wg_is_up():
-                self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
-                               f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {self.WG_TUNNEL}'", timeout=20)
-                for _ in range(5):
-                    sleep(1)
-                    if not self._wg_is_up():
-                        break
-                print(f"[{self.device_id}] [WG] ปิด VPN ก่อนล็อกอิน (จะเปิดอีกทีหลังเข้าเกม)")
+            was = self._wg_vpn_active()
+            self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
+                           f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {self.WG_TUNNEL}'", timeout=20)
+            sleep(1)
+            self.adb_shell(f"su -c 'am force-stop {self.WG_PKG}'", timeout=15)
+            self._wg_conf_applied = None
+            gone = False
+            for _ in range(10):
+                if not self._wg_vpn_active():
+                    gone = True
+                    break
+                sleep(1)
+            net = False
+            for _ in range(10):
+                r = self.adb_shell("ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1 && echo OK || echo FAIL", timeout=8)
+                if b"OK" in (r.stdout or b""):
+                    net = True
+                    break
+                sleep(1)
+            if was or not gone or not net:
+                sleep(float(config.get("wg_down_settle", 2)))   # เน็ตเพิ่งสลับ - พักให้นิ่งก่อนเปิดเกม
+                print(f"[{self.device_id}] [WG] ปิด VPN ก่อนเปิดเกม: "
+                      f"{'ปิดสนิทแล้ว' if gone else 'ยังเห็น VPN ค้าง!'} | เน็ต: {'ใช้ได้' if net else 'ยังออกไม่ได้!'}")
         except Exception as e:
             print(f"[{self.device_id}] [WG] ปิด VPN ไม่สำเร็จ: {e}")
 
