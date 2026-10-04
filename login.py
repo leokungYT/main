@@ -4058,7 +4058,6 @@ class RangerGearBot(threading.Thread):
 
     def open_app(self):
         self.last_activity_time = time.time()
-        self._lobby_reached = False   # เปิดเกมใหม่ = ยังไม่ถึง Lobby
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
         # Reset stale network/proxy state before each file/job. This prevents a
         # reused emulator from keeping a previous IP/proxy binding across files.
@@ -9060,7 +9059,6 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Starting Main Login...")
         windscribe_count_account()   # ครบ N ไอดี -> สลับ IP Windscribe (windscribe_rotate_every)
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
-        self._lobby_reached = False  # ยังไม่ถึง Lobby (ตั้งเป็น True ในลูป event ตอนเห็น Lobby/stoplogin)
         self._wg_recover_n = 0       # โควตาเคลียร์แอป+ปิด/เปิด VPN เมื่อเจอ Unstable network (ต่อไอดี)
         self._ruby_ticket = None     # ค่า ruby/ตั๋วของไอดีก่อน ห้ามติดมาไอดีนี้
         self._account_level = None   # เลเวลของไอดีก่อน (ถ้าไอดีก่อนจบแบบ fail/timeout) ห้ามใช้คัดไอดีนี้
@@ -9147,64 +9145,7 @@ class RangerGearBot(threading.Thread):
                 except:
                     pass
 
-            # เช็ค event ตรงนี้เลย (ต้นลูป) - ก่อน check_floating_popups (ตัวนั้นไล่เช็คหลายสิบรูป+พักหลายวิ ทำให้เจอ event ช้า)
-            # (เดิม) - ของเดิมอยู่ล่างสุด กว่าจะไล่เช็คมาถึงกินเวลาหลายวิ
-            # ต่อรอบ ทำให้ "เจอ event ช้า" เจอแล้วรัว BACK เหมือนเดิมทุกอย่าง
-            # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png หรือ stoplogin.png (Triple Back Mode)
-            _ev_sim = float(config.get("event_similarity", 0.9))
-            if not getattr(self, "_lobby_reached", False) and self.exists_in_cache("img/event.png", similarity=_ev_sim):
-                event_passed = True
-                print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
-                self.click("img/event.png", similarity=_ev_sim)
-                sleep(0.4)
-
-                # รัว BACK ไปเรื่อย ๆ จนกว่า "ไม่เจอ event ติดกัน 3 วิ" แล้วค่อยไป step ต่อไป
-                #  - เจอ event.png ระหว่างรัว -> กดด้วย (นับเวลา 3 วิใหม่)
-                #  - เจอ cancel (หน้าต่างถามออกเกมที่ BACK เปิด) -> กด cancel เสมอ กันออกเกม
-                back_press_count = 0
-                _clear_sec = float(config.get("event_clear_sec", 3))
-                _max_back = int(config.get("event_spam_max", 300))       # กันค้างถาวรเท่านั้น
-                _last_ev = time.time()
-                while True:
-                    _per = max(1, int(config.get("event_back_per_round", 10)))   # กดทีละ 10 (แยกคำสั่ง)
-                    for _ in range(_per):
-                        self.adb_shell("input keyevent KEYCODE_BACK")
-                    back_press_count += _per
-                    print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
-
-                    sleep(0.3)  # ให้เวลา UI อัปเดต (แบบเดิม)
-                    self.capture_screen()
-
-                    _evp = self._find_in_screen("img/event.png", _ev_sim)
-                    if _evp:
-                        print(f"[{self.device_id}] [EVENT] เจอ event.png ระหว่างรัว BACK - กดไปด้วย")
-                        self.click(_evp)
-                        _last_ev = time.time()
-
-                    if self.exists_in_cache("img/cancel.png"):
-                        print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
-                        self.click("img/cancel.png")
-                        sleep(0.5)
-
-                    if time.time() - _last_ev >= _clear_sec:
-                        # ไม่เจอ event มา 3 วิแล้ว -> เก็บ cancel ที่อาจค้างจาก BACK รอบสุดท้าย แล้วไปต่อ
-                        sleep(0.5)
-                        self.capture_screen()
-                        if self.exists_in_cache("img/cancel.png"):
-                            self.click("img/cancel.png")
-                            sleep(0.5)
-                        print(f"[{self.device_id}] [EVENT] ไม่เจอ event ติดกัน {_clear_sec:.0f} วิ - หยุดรัว BACK ที่ {back_press_count} ครั้ง ไป step ต่อไป")
-                        if self._at_lobby() or self.exists_in_cache("img/stoplogin.png"):
-                            self._lobby_reached = True    # ถึง Lobby แล้ว -> ไปทำงานตาม config เลย
-                        break
-
-                    if back_press_count >= _max_back: # ป้องกันลูปค้าง
-                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached ({_max_back}), continuing...")
-                        break
-
-                continue
-
-            # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) - ย้ายมาหลังเช็ค event =====
+            # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
             self.check_floating_popups()
 
             # Hard recovery for the case where the app is alive but the login
@@ -9451,8 +9392,7 @@ class RangerGearBot(threading.Thread):
                     return "kaiby"
                 
             # *** SUCCESS -> Just Login and Backup ***
-            # เห็น stoplogin หรือเคยยืนยันว่าถึง Lobby แล้วจากลูป event (stoplogin มักโดนป๊อปอัพอีเวนต์บัง)
-            if getattr(self, "_lobby_reached", False) or self.exists_in_cache("img/stoplogin.png", similarity=0.8):
+            if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
                 # [BINGO] ป๊อปอัพบิงโกที่เด้งหลัง login - เคลียร์ก่อนขั้นอื่นทั้งหมด
                 # เจอ bingo.bmp -> กด bingo1.bmp -> รัว ESC จนเจอ cancel -> กด cancel
                 # แล้วหยุด (จากนั้นไปทำงานตาม config ตามปกติ)
@@ -9839,6 +9779,43 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] Found fixok.png! Clicking...")
                 self.click("img/fixok.png", similarity=0.8)
                 sleep(1)
+                continue
+
+            # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png หรือ stoplogin.png (Triple Back Mode)
+            # แบบ main-lg: เช็คท้ายลูป (หลังเช็ค stoplogin) - ถึง Lobby แล้วจะไปทำงานตาม config ก่อนเสมอ
+            if self.exists_in_cache("img/event.png"):
+                event_passed = True
+                print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
+                self.click("img/event.png")
+                sleep(1)
+
+                back_press_count = 0
+                while True:
+                    # กด Back ทีเดียว 3 รอบ
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    self.adb_shell("input keyevent KEYCODE_BACK")
+                    back_press_count += 3
+                    print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
+
+                    sleep(0.3) # ให้เวลา UI อัปเดตเล็กน้อย
+                    self.capture_screen()
+
+                    # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด
+                    if self.exists_in_cache("img/cancel.png"):
+                        print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
+                        self.click("img/cancel.png")
+                        sleep(1)
+                        break
+
+                    if self.exists_in_cache("img/stoplogin.png"):
+                        print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
+                        break
+
+                    if back_press_count >= 30: # ป้องกันลูปค้าง (สูงสุด 30 ครั้ง)
+                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached (30), continuing...")
+                        break
+
                 continue
 
             
