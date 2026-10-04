@@ -3787,6 +3787,11 @@ class RangerGearBot(threading.Thread):
                   f"(โหลด .conf เพิ่มมาใส่ {wg_dir}/)")
         return None
 
+    def _wg_after_refresh(self):
+        """wg_after_login: กด refresh แล้ว -> ต่อ VPN ตรงนี้เลย (ส่งไฟล์/เปิดเกมไปด้วยเน็ตปกติแล้ว)"""
+        if int(config.get("wg_after_login", 1) or 0):
+            self._ensure_wireguard()
+
     def _wg_down(self):
         """ปิด tunnel ของจอนี้ (ถ้าเปิดอยู่) - ใช้ก่อนส่งไฟล์/ล็อกอิน ให้ออกเน็ตด้วย IP ปกติ"""
         if not int(config.get("wg_enabled", 0) or 0):
@@ -8041,6 +8046,7 @@ class RangerGearBot(threading.Thread):
                                 if self.exists_in_cache("img/refresh.png", similarity=0.8):
                                     self.click("img/refresh.png", similarity=0.8)
                                     print(f"[{self.device_id}] Clicked refresh.png")
+                                    self._wg_after_refresh()
                                     sleep(3)
                                     break
                                 sleep(1)
@@ -9163,6 +9169,7 @@ class RangerGearBot(threading.Thread):
                         if self.exists_in_cache("img/refresh.png", similarity=0.8):
                             self.click("img/refresh.png", similarity=0.8)
                             print(f"[{self.device_id}] Clicked refresh.png")
+                            self._wg_after_refresh()
                             sleep(1.5)
                             break
                         sleep(0.4)
@@ -9215,6 +9222,7 @@ class RangerGearBot(threading.Thread):
                 try:
                     print(f"[{self.device_id}] Found refresh.png (no fixid), clicking refresh -> check...")
                     self.click("img/refresh.png", similarity=0.8)
+                    self._wg_after_refresh()
                     sleep(1.5)
                     
                     check_wait_start = time.time()
