@@ -3878,6 +3878,23 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] [WG] ปิด VPN ไม่สำเร็จ: {e}")
 
+    def _wg_request_net_recover(self, where):
+        """เจอ Unstable network (fixnetv3) ตอนใช้ VPN -> ขอให้ลูปหลัก: เคลียร์แอป + ปิด/เปิด VPN ใหม่ + เข้าเกมใหม่
+        คืน True = รับเรื่องแล้ว (ไม่ต้องกด RETRY) ; จำกัด wg_net_recover_max ครั้งต่อไอดี (default 3) กันวนไม่จบ"""
+        if not int(config.get("wg_enabled", 0) or 0) or not _wg_list_configs():
+            return False
+        if getattr(self, "_need_restart", False) and getattr(self, "_need_vpn_cycle", False):
+            return True                       # ขอไปแล้ว รอลูปหลักจัดการ
+        n = getattr(self, "_wg_recover_n", 0)
+        if n >= int(config.get("wg_net_recover_max", 3)):
+            return False                      # ครบโควตาแล้ว -> กลับไปกด RETRY แบบเดิม
+        self._wg_recover_n = n + 1
+        print(f"[{self.device_id}] [WG] เจอ Unstable network ({where}) - เคลียร์แอป + ปิด/เปิด VPN ใหม่ + เข้าเกมใหม่ "
+              f"(ครั้งที่ {n + 1})")
+        self._need_vpn_cycle = True
+        self._need_restart = True
+        return True
+
     def _wg_is_up(self):
         r = self.adb_shell("ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true", timeout=10)
         return bool((r.stdout or b"").strip())
@@ -6944,7 +6961,9 @@ class RangerGearBot(threading.Thread):
                         res = cv2.matchTemplate(mon_screen, tmpl, cv2.TM_CCOEFF_NORMED)
                         _, max_val, _, _ = cv2.minMaxLoc(res)
                         
-                        if max_val >= 0.8:
+                        if max_val >= 0.8 and self._wg_request_net_recover("monitor"):
+                            pass
+                        elif max_val >= 0.8:
                             self._fixnetv3_count += 1
                             print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
                             self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
@@ -7141,7 +7160,9 @@ class RangerGearBot(threading.Thread):
                 break
 
         # fixnetv3.png: Network error popup - tap (472, 361) to dismiss
-        if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
+        if self.exists_in_cache("img/fixnetv3.png", similarity=0.8) and self._wg_request_net_recover("popup"):
+            pass
+        elif self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
             self._fixnetv3_count += 1
             print(f"[{self.device_id}] [POPUP] fixnetv3.png detected (#{self._fixnetv3_count}), tapping (472, 361)...")
             self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
@@ -8995,6 +9016,7 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Starting Main Login...")
         windscribe_count_account()   # ครบ N ไอดี -> สลับ IP Windscribe (windscribe_rotate_every)
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
+        self._wg_recover_n = 0       # โควตาเคลียร์แอป+ปิด/เปิด VPN เมื่อเจอ Unstable network (ต่อไอดี)
         self._ruby_ticket = None     # ค่า ruby/ตั๋วของไอดีก่อน ห้ามติดมาไอดีนี้
         self._account_level = None   # เลเวลของไอดีก่อน (ถ้าไอดีก่อนจบแบบ fail/timeout) ห้ามใช้คัดไอดีนี้
 
@@ -9052,6 +9074,9 @@ class RangerGearBot(threading.Thread):
                 self._need_restart = False
                 # On restart, we continue the loop which will naturally restart the login flow
                 self.clear_and_restart()
+                if getattr(self, "_need_vpn_cycle", False):
+                    self._need_vpn_cycle = False
+                    self._wg_down()               # ปิด VPN สนิท -> open_app จะเปิด VPN ใหม่ก่อนเข้าเกม
                 self.open_app()
                 sleep(5)
                 continue
@@ -9165,6 +9190,8 @@ class RangerGearBot(threading.Thread):
                         continue
 
             # fixnetv3.png Check in login loop
+            if self.exists_in_cache("img/fixnetv3.png", similarity=0.8) and self._wg_request_net_recover("login loop"):
+                continue                      # ด้านบนของลูป (_need_restart) จะเคลียร์แอป + ปิด/เปิด VPN ให้
             if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
                 print(f"[{self.device_id}] [POPUP] fixnetv3.png detected in login loop! Tapping (472, 361)...")
                 self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
