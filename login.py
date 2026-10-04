@@ -3879,21 +3879,39 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [WG] ปิด VPN ไม่สำเร็จ: {e}")
 
     def _wg_request_net_recover(self, where):
-        """เจอ Unstable network (fixnetv3) ตอนใช้ VPN -> ขอให้ลูปหลัก: เคลียร์แอป + ปิด/เปิด VPN ใหม่ + เข้าเกมใหม่
-        คืน True = รับเรื่องแล้ว (ไม่ต้องกด RETRY) ; จำกัด wg_net_recover_max ครั้งต่อไอดี (default 3) กันวนไม่จบ"""
-        if not int(config.get("wg_enabled", 0) or 0) or not _wg_list_configs():
+        """เจอ Unstable network (fixnetv3) บนจอที่ต่อ VPN อยู่ -> ทำทันทีตรงนี้ (ไม่ต้องรอลูปล็อกอิน):
+        ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
+        ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
+        คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
+        if not int(config.get("wg_enabled", 0) or 0):
             return False
-        if getattr(self, "_need_restart", False) and getattr(self, "_need_vpn_cycle", False):
-            return True                       # ขอไปแล้ว รอลูปหลักจัดการ
-        n = getattr(self, "_wg_recover_n", 0)
-        if n >= int(config.get("wg_net_recover_max", 3)):
-            return False                      # ครบโควตาแล้ว -> กลับไปกด RETRY แบบเดิม
-        self._wg_recover_n = n + 1
-        print(f"[{self.device_id}] [WG] เจอ Unstable network ({where}) - เคลียร์แอป + ปิด/เปิด VPN ใหม่ + เข้าเกมใหม่ "
-              f"(ครั้งที่ {n + 1})")
-        self._need_vpn_cycle = True
-        self._need_restart = True
-        return True
+        if not getattr(self, "_wg_conf_applied", None):
+            return False                      # จอนี้ไม่ได้ต่อ VPN -> ไม่ใช่เรื่อง VPN
+        lock = self.__dict__.setdefault("_wg_recover_lock", threading.Lock())
+        if not lock.acquire(blocking=False):
+            return True                       # อีกเธรดกำลังกู้อยู่ -> ไม่ต้องกดอะไร
+        try:
+            n = getattr(self, "_wg_recover_n", 0)
+            if n >= int(config.get("wg_net_recover_max", 3)):
+                return False                  # ครบโควตาแล้ว -> กลับไปกด RETRY แบบเดิม
+            self._wg_recover_n = n + 1
+            print(f"[{self.device_id}] [WG] เจอ Unstable network ({where}) - ปิดเกม + ปิด/เปิด VPN ใหม่ + เปิดเกมใหม่ "
+                  f"(ครั้งที่ {n + 1})")
+            self.last_activity_time = time.time()
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+            self._wg_down()
+            self._ensure_wireguard()
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "start", "-n",
+                          self._resolve_game_activity()], timeout=15)
+            self.last_activity_time = time.time()
+            print(f"[{self.device_id}] [WG] เปิดเกมใหม่แล้ว (VPN: {os.path.basename(str(getattr(self, '_wg_conf_applied', '') or '-'))})")
+            sleep(3)
+            return True
+        except Exception as e:
+            print(f"[{self.device_id}] [WG] กู้เน็ตไม่สำเร็จ: {e}")
+            return False
+        finally:
+            lock.release()
 
     def _wg_is_up(self):
         r = self.adb_shell("ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true", timeout=10)
