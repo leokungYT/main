@@ -2254,6 +2254,43 @@ def load_config():
             print(f"[WARN] Error loading UI config: {e}")
 
 
+def reset_network_all(devices):
+    """ก่อนเริ่มบอท: ล้างของค้างทุกจอ (พร้อมกัน) - tunnel WireGuard, แอป WireGuard, proxy
+    แล้ว ping 1.1.1.1 จากในอีมูฯ บอกใน log ว่าจอไหนเน็ตใช้ได้/ไม่ได้
+    ปิดได้ด้วย config "reset_network_on_start": 0
+    """
+    if not int(config.get("reset_network_on_start", 1) or 0):
+        return
+    pkg = "com.wireguard.android"
+    kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+
+    def sh(dev, cmd, timeout=20):
+        try:
+            return subprocess.run([adb_path, "-s", dev, "shell", cmd], capture_output=True,
+                                  text=True, errors="replace", timeout=timeout, **kw).stdout or ""
+        except Exception:
+            return ""
+
+    def one(dev):
+        had = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
+        sh(dev, f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr'")
+        time.sleep(1.5)
+        sh(dev, f"su -c 'am force-stop {pkg}'")
+        sh(dev, "settings put global http_proxy :0; settings delete global http_proxy; "
+                "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
+        still = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
+        ping = sh(dev, "ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1 && echo OK || echo FAIL", timeout=10).strip()
+        state = ("ปิด VPN ค้างแล้ว" if had else "ไม่มี VPN ค้าง") + (" (แต่ tunnel ยังอยู่!)" if still else "")
+        print(f"[NET-RESET] {dev}: {state} | เน็ต: {'ใช้ได้' if ping == 'OK' else 'ออกเน็ตไม่ได้!'}")
+
+    print(f"[NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม ({len(devices)} จอ)...")
+    ts = [threading.Thread(target=one, args=(d,), daemon=True) for d in devices]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(60)
+
+
 def find_adb_executable():
     global adb_path
     
@@ -9835,6 +9872,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     print(f"[INFO] Connected Devices ({len(devices)}): {', '.join(devices)}")
+
+    # === ล้างเน็ตทุกจอก่อนเริ่ม: ปิด VPN (WireGuard) ที่ค้าง + ล้าง proxy ค้าง แล้วเช็คว่าออกเน็ตได้ ===
+    reset_network_all(devices)
 
     # === ตั้งค่าจอ MuMu ให้ตรง config ก่อนเริ่ม (ความละเอียด/FPS/CPU/RAM/root/renderer/App running) ===
     # ค่าไม่ตรง -> ตั้งผ่าน MuMuManager -> รีเฉพาะจอที่เปิดอยู่ -> รอบูต -> รันโปรแกรมใหม่
