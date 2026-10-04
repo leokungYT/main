@@ -9802,19 +9802,33 @@ class RangerGearBot(threading.Thread):
                     # จับจอแบบเบา (ไม่แทรกเช็คป๊อปอัพลอยหลายสิบรูปทุก 3 เฟรม) - ลูปนี้ดูแค่ cancel/stoplogin
                     self._raw_capture()
 
-                    # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด
-                    if self.exists_in_cache("img/cancel.png"):
-                        print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
-                        self.click("img/cancel.png")
+                    # เจอ event อีกระหว่างรัว -> กดแล้วรัวต่อ
+                    if self.exists_in_cache("img/event.png"):
+                        print(f"[{self.device_id}] [EVENT] เจอ event อีก - กดแล้วรัว BACK ต่อ")
+                        self.click("img/event.png")
                         sleep(1)
+                        continue
+
+                    # เจอ cancel.png หรือ stoplogin.png -> เช็ค event ซ้ำก่อน ยังเจอ = กดแล้วรัวต่อ, ไม่เจอแล้วค่อยหยุด
+                    _cancel = self.exists_in_cache("img/cancel.png")
+                    if _cancel or self.exists_in_cache("img/stoplogin.png"):
+                        if _cancel:
+                            print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
+                            self.click("img/cancel.png")
+                            sleep(1)
+                        else:
+                            print(f"[{self.device_id}] [EVENT] Found stoplogin.png")
+                        self._raw_capture()
+                        if self.exists_in_cache("img/event.png"):
+                            print(f"[{self.device_id}] [EVENT] ยังเจอ event - กดแล้วรัว BACK ต่อ")
+                            self.click("img/event.png")
+                            sleep(1)
+                            continue
+                        print(f"[{self.device_id}] [EVENT] ไม่เจอ event แล้ว - หยุดรัว BACK ({back_press_count} ครั้ง)")
                         break
 
-                    if self.exists_in_cache("img/stoplogin.png"):
-                        print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
-                        break
-
-                    if back_press_count >= 30: # ป้องกันลูปค้าง (สูงสุด 30 ครั้ง)
-                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached (30), continuing...")
+                    if back_press_count >= int(config.get("event_spam_max", 150)): # ป้องกันลูปค้างถาวรเท่านั้น
+                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached ({back_press_count}), continuing...")
                         break
 
                 continue
