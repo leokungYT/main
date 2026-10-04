@@ -291,11 +291,7 @@ def ensure_windscribe_bootstrap():
     if not int(cfg.get("windscribe_autostart", 0) or 0):
         return
     if int(cfg.get("wg_enabled", 0) or 0):
-        try:
-            _has_conf = any(f.lower().endswith(".conf") for f in os.listdir(str(cfg.get("wg_dir", "wg"))))
-        except Exception:
-            _has_conf = False
-        if _has_conf:
+        if _wg_list_configs(str(cfg.get("wg_dir", "wg"))):
             print("[WINDSCRIBE] ใช้ WireGuard แยกจอ (wg/) อยู่ - ไม่ต่อ VPN ทั้งเครื่อง กันซ้อน 2 ชั้น")
             return
         print("[WINDSCRIBE] wg_enabled แต่ยังไม่มีไฟล์ .conf ใน wg/ - ต่อ VPN ทั้งเครื่องไปก่อน")
@@ -330,6 +326,54 @@ def ensure_windscribe_bootstrap():
     else:
         print(f"[WINDSCRIBE] ต่อไม่สำเร็จ ({out[-200:] or 'ไม่มีข้อความ'}) - รันบอทต่อโดยไม่มี VPN")
 
+
+def _wg_list_configs(wg_dir=None):
+    """รายการไฟล์ config WireGuard ตามลำดับจอ (path ในเครื่อง)
+
+    1) wg/wg.txt (Notepad ไฟล์เดียว) - วาง config ต่อกันได้หลายอัน แต่ละอันเริ่มด้วย [Interface]
+       อันแรก = จอ 1, อันที่สอง = จอ 2 ... บรรทัดที่ขึ้นต้นด้วย # คือหมายเหตุ ไม่สนใจ
+       (แยกเก็บเป็นไฟล์ไว้ใน wg/.split/ ให้บอทส่งเข้าเครื่อง)
+    2) ตามด้วยไฟล์ *.conf ในโฟลเดอร์ wg/ เรียงตามชื่อ
+    """
+    if wg_dir is None:
+        wg_dir = str(config.get("wg_dir", "wg"))
+    out = []
+    txt = os.path.join(wg_dir, "wg.txt")
+    if os.path.exists(txt):
+        try:
+            with open(txt, "r", encoding="utf-8-sig", errors="replace") as f:
+                lines = [ln.rstrip() for ln in f if not ln.lstrip().startswith(("#", "//"))]
+            blocks, cur = [], []
+            for ln in lines:
+                if ln.strip().lower() == "[interface]" and cur:
+                    blocks.append(cur)
+                    cur = []
+                cur.append(ln)
+            if cur:
+                blocks.append(cur)
+            split_dir = os.path.join(wg_dir, ".split")
+            os.makedirs(split_dir, exist_ok=True)
+            for i, blk in enumerate(blocks, 1):
+                text = "\n".join(blk).strip()
+                if "privatekey" not in text.lower() or "endpoint" not in text.lower():
+                    continue
+                p = os.path.join(split_dir, f"wg{i:02d}.conf")
+                old = open(p, encoding="utf-8").read() if os.path.exists(p) else None
+                if old != text + "\n":
+                    with open(p, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(text + "\n")
+                out.append(p)
+        except Exception as e:
+            print(f"[WG] อ่าน wg.txt ไม่ได้: {e}")
+    try:
+        out += [os.path.join(wg_dir, f) for f in sorted(os.listdir(wg_dir)) if f.lower().endswith(".conf")]
+    except Exception:
+        pass
+    return out
+
+
+_wg_claims = {}                  # device_id -> ไฟล์ config ที่จอนั้นจองไว้ (กันซ้ำ)
+_wg_claim_lock = threading.Lock()
 
 WG_APK_URL = "https://download.wireguard.com/android-client/com.wireguard.android-1.0.20260315.apk"
 _wg_apk_lock = threading.Lock()
@@ -3676,19 +3720,31 @@ class RangerGearBot(threading.Thread):
         if mapped:
             p = mapped if os.path.isabs(mapped) else os.path.join(wg_dir, mapped)
             return p if os.path.exists(p) else None
-        try:
-            confs = sorted(f for f in os.listdir(wg_dir) if f.lower().endswith(".conf"))
-        except Exception:
-            return None
+        confs = _wg_list_configs(wg_dir)
         if not confs:
             return None
-        # ลำดับจอจากพอร์ต MuMu (16384 + 32*i) ; พอร์ตแปลก ๆ ใช้ลำดับจาก hash ของชื่อ
+        # แต่ละจอ "จอง" ไฟล์ของตัวเอง ไม่ใช้ซ้ำกับจออื่น (กุญแจเดียวกันต่อพร้อมกัน = ตีกันเน็ตหลุด)
+        # ลองไฟล์ตามลำดับจอ MuMu ก่อน (พอร์ต 16384 + 32*i) จะได้ไฟล์เดิมทุกครั้งที่เปิดบอต
         try:
             port = int(self.device_id.rsplit(":", 1)[1])
             idx = (port - 16384) // 32 if port >= 16384 else port
         except Exception:
             idx = sum(map(ord, self.device_id))
-        return os.path.join(wg_dir, confs[idx % len(confs)])
+        with _wg_claim_lock:
+            mine = _wg_claims.get(self.device_id)
+            if mine in confs:
+                return mine
+            taken = {p for dev, p in _wg_claims.items() if dev != self.device_id}
+            order = confs[idx % len(confs):] + confs[:idx % len(confs)]
+            for p in order:
+                if p not in taken:
+                    _wg_claims[self.device_id] = p
+                    return p
+        if not getattr(self, "_wg_short_warned", False):
+            self._wg_short_warned = True
+            print(f"[{self.device_id}] [WG] ไฟล์ config ไม่พอ ({len(confs)} ไฟล์ ถูกจออื่นจองหมดแล้ว) - จอนี้ไม่ต่อ VPN "
+                  f"(โหลด .conf เพิ่มมาใส่ {wg_dir}/)")
+        return None
 
     def _wg_is_up(self):
         r = self.adb_shell("ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true", timeout=10)
