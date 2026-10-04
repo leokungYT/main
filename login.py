@@ -226,8 +226,123 @@ def ensure_python_requirements():
         print(f"[PIP] pip install ล้มเหลว: {e}")
 
 
+# =========================================================
+# Windscribe VPN (Pro) - ต่อทั้งเครื่องแทน WARP 1.1.1.1
+# adb คุยกับอีมูฯ ผ่าน 127.0.0.1 ไม่โดน VPN กระทบ ; เกมในอีมูฯ ออกเน็ตผ่าน VPN ของเครื่อง
+# config (configmain.json):
+#   windscribe_autostart  1 = ต่อ Windscribe ตอนเปิดบอต (0 = ไม่ยุ่ง)
+#   windscribe_location   "best" / รหัสประเทศ "SG" / ชื่อเมือง "Tokyo" (ดูได้จาก windscribe-cli locations)
+#   windscribe_protocol   "wireguard" (เร็วสุด) / "ikev2" / "udp" / "tcp" / "stealth" / "wstunnel"
+#   windscribe_rotate_every  สลับ IP ทุก N ไอดี (0 = ไม่สลับ) - ใช้ "ip rotate" ของ Pro
+#     ระวัง: ตอนสลับเน็ตทุกจอสะดุด 2-5 วิ (บอทมีระบบกดป๊อปอัพเน็ตอยู่แล้ว)
+# =========================================================
+WINDSCRIBE_CLI_CANDIDATES = [
+    os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Windscribe", "windscribe-cli.exe"),
+    os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Windscribe", "windscribe-cli.exe"),
+]
+_windscribe_lock = threading.Lock()
+_windscribe_account_count = 0
+
+
+def _read_main_config():
+    """อ่าน configmain.json ตรง ๆ (ใช้ตอนบูต ก่อนตัวแปร config หลักจะโหลด)"""
+    try:
+        with open("configmain.json", "r", encoding="utf-8-sig") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _windscribe_cli_path():
+    for p in WINDSCRIBE_CLI_CANDIDATES:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _windscribe(args, timeout=90):
+    """เรียก windscribe-cli - คืน (สำเร็จไหม, ข้อความ stdout)"""
+    cli = _windscribe_cli_path()
+    if not cli:
+        return False, "ไม่เจอ windscribe-cli.exe (ยังไม่ได้ติดตั้ง Windscribe)"
+    try:
+        r = subprocess.run([cli, *args], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+        return r.returncode == 0, (r.stdout or "").strip()
+    except subprocess.TimeoutExpired:
+        return False, f"timeout {timeout} วิ"
+    except Exception as e:
+        return False, str(e)
+
+
+def _windscribe_status():
+    ok, out = _windscribe(["status"], timeout=30)
+    info = {}
+    for line in out.splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            info[k.strip().lower()] = v.strip()
+    return info
+
+
+def ensure_windscribe_bootstrap():
+    """ต่อ Windscribe ตอนเปิดบอต (ถ้าเปิด windscribe_autostart) - ไม่สำเร็จก็ยังรันบอทต่อ"""
+    cfg = _read_main_config()
+    if not int(cfg.get("windscribe_autostart", 0) or 0):
+        return
+    if not _windscribe_cli_path():
+        print("[WINDSCRIBE] ไม่เจอโปรแกรม Windscribe - ข้าม (ติดตั้งจาก windscribe.com แล้วล็อกอินในแอปก่อน)")
+        return
+    st = _windscribe_status()
+    if "logged in" not in st.get("login state", "").lower():
+        print("[WINDSCRIBE] ยังไม่ได้ล็อกอิน - เปิดแอป Windscribe แล้วล็อกอินก่อน (ข้ามไปก่อน)")
+        return
+    # WARP กับ Windscribe ต่อพร้อมกันจะตีกัน -> ตัด WARP ทิ้งถ้ามี
+    for base in (os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")):
+        warp_cli = os.path.join(base, "Cloudflare", "Cloudflare WARP", "warp-cli.exe")
+        if os.path.exists(warp_cli):
+            try:
+                subprocess.run([warp_cli, "disconnect"], capture_output=True, timeout=20, check=False)
+                print("[WINDSCRIBE] ตัด WARP ออกก่อน (กันตีกัน)")
+            except Exception:
+                pass
+            break
+    if st.get("connect state", "").lower().startswith("connected"):
+        print(f"[WINDSCRIBE] ต่ออยู่แล้ว - IP {(st.get('vpn ip') or st.get('public ip', '?'))}")
+        return
+    loc = str(cfg.get("windscribe_location", "best") or "best").strip()
+    proto = str(cfg.get("windscribe_protocol", "wireguard") or "").strip()
+    args = ["connect", loc] + ([proto] if proto else [])
+    print(f"[WINDSCRIBE] กำลังต่อ {loc} ({proto or 'auto'})...")
+    ok, out = _windscribe(args, timeout=90)
+    st = _windscribe_status()
+    if st.get("connect state", "").lower().startswith("connected"):
+        print(f"[WINDSCRIBE] ต่อสำเร็จ - IP {(st.get('vpn ip') or st.get('public ip', '?'))}")
+    else:
+        print(f"[WINDSCRIBE] ต่อไม่สำเร็จ ({out[-200:] or 'ไม่มีข้อความ'}) - รันบอทต่อโดยไม่มี VPN")
+
+
+def windscribe_count_account():
+    """เรียกทุกครั้งที่เริ่มไอดีใหม่ - ครบ windscribe_rotate_every ไอดี สลับ IP ให้ 1 ครั้ง"""
+    global _windscribe_account_count
+    try:
+        every = int(config.get("windscribe_rotate_every", 0) or 0)
+    except Exception:
+        every = 0
+    if every <= 0 or not int(config.get("windscribe_autostart", 0) or 0):
+        return
+    with _windscribe_lock:
+        _windscribe_account_count += 1
+        if _windscribe_account_count % every:
+            return
+        ok, out = _windscribe(["ip", "rotate"], timeout=60)
+        _st = _windscribe_status()
+        ip = _st.get("vpn ip") or _st.get("public ip", "?")
+        print(f"[WINDSCRIBE] ครบ {every} ไอดี - สลับ IP {'สำเร็จ' if ok else 'ไม่สำเร็จ'} -> {ip}")
+
+
 # Backward-compatible alias for startup flow compatibility.
-ensure_runtime_bootstrap = lambda: (print_startup_banner(), ensure_warp_bootstrap(), ensure_python_requirements())
+ensure_runtime_bootstrap = lambda: (print_startup_banner(), ensure_warp_bootstrap(), ensure_windscribe_bootstrap(), ensure_python_requirements())
 
 # =========================================================
 # Statistics and GUI Tracking
@@ -8671,6 +8786,7 @@ class RangerGearBot(threading.Thread):
 
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
+        windscribe_count_account()   # ครบ N ไอดี -> สลับ IP Windscribe (windscribe_rotate_every)
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
         self._ruby_ticket = None     # ค่า ruby/ตั๋วของไอดีก่อน ห้ามติดมาไอดีนี้
         self._account_level = None   # เลเวลของไอดีก่อน (ถ้าไอดีก่อนจบแบบ fail/timeout) ห้ามใช้คัดไอดีนี้

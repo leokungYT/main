@@ -1,5 +1,9 @@
 {
     "warp_autostart": 0,
+    "windscribe_autostart": 1,
+    "windscribe_location": "best",
+    "windscribe_protocol": "wireguard",
+    "windscribe_rotate_every": 0,
     "7day": 0,
     "shopgacha": 0,
     "swap_shop": 0,
