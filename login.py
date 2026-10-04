@@ -4058,6 +4058,7 @@ class RangerGearBot(threading.Thread):
 
     def open_app(self):
         self.last_activity_time = time.time()
+        self._lobby_reached = False   # เปิดเกมใหม่ = ยังไม่ถึง Lobby
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
         # Reset stale network/proxy state before each file/job. This prevents a
         # reused emulator from keeping a previous IP/proxy binding across files.
@@ -9035,6 +9036,7 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Starting Main Login...")
         windscribe_count_account()   # ครบ N ไอดี -> สลับ IP Windscribe (windscribe_rotate_every)
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
+        self._lobby_reached = False  # ยังไม่ถึง Lobby (ตั้งเป็น True ในลูป event ตอนเห็น Lobby/stoplogin)
         self._wg_recover_n = 0       # โควตาเคลียร์แอป+ปิด/เปิด VPN เมื่อเจอ Unstable network (ต่อไอดี)
         self._ruby_ticket = None     # ค่า ruby/ตั๋วของไอดีก่อน ห้ามติดมาไอดีนี้
         self._account_level = None   # เลเวลของไอดีก่อน (ถ้าไอดีก่อนจบแบบ fail/timeout) ห้ามใช้คัดไอดีนี้
@@ -9126,7 +9128,7 @@ class RangerGearBot(threading.Thread):
             # ต่อรอบ ทำให้ "เจอ event ช้า" เจอแล้วรัว BACK เหมือนเดิมทุกอย่าง
             # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png หรือ stoplogin.png (Triple Back Mode)
             _ev_sim = float(config.get("event_similarity", 0.9))
-            if self.exists_in_cache("img/event.png", similarity=_ev_sim):
+            if not getattr(self, "_lobby_reached", False) and self.exists_in_cache("img/event.png", similarity=_ev_sim):
                 event_passed = True
                 print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
                 self.click("img/event.png", similarity=_ev_sim)
@@ -9160,6 +9162,7 @@ class RangerGearBot(threading.Thread):
 
                     if self.exists_in_cache("img/stoplogin.png"):
                         print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
+                        self._lobby_reached = True    # ถึง Lobby แล้ว -> รอบหน้าไม่วนกด event ซ้ำ ไปทำงานต่อเลย
                         break
 
                     # เพิ่มจากของเดิม: ดูไอคอน Lobby ตัวอื่นด้วย (gacha/misson/box1)
@@ -9167,6 +9170,7 @@ class RangerGearBot(threading.Thread):
                     _lob = self._at_lobby()
                     if _lob:
                         print(f"[{self.device_id}] [EVENT] ถึง Lobby แล้ว (เห็น {_lob}) - หยุดกด BACK ที่ {back_press_count} ครั้ง")
+                        self._lobby_reached = True    # ถึง Lobby แล้ว -> รอบหน้าไม่วนกด event ซ้ำ ไปทำงานต่อเลย
                         break
 
                     if back_press_count >= _max_back: # ป้องกันลูปค้าง
@@ -9422,7 +9426,8 @@ class RangerGearBot(threading.Thread):
                     return "kaiby"
                 
             # *** SUCCESS -> Just Login and Backup ***
-            if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
+            # เห็น stoplogin หรือเคยยืนยันว่าถึง Lobby แล้วจากลูป event (stoplogin มักโดนป๊อปอัพอีเวนต์บัง)
+            if getattr(self, "_lobby_reached", False) or self.exists_in_cache("img/stoplogin.png", similarity=0.8):
                 # [BINGO] ป๊อปอัพบิงโกที่เด้งหลัง login - เคลียร์ก่อนขั้นอื่นทั้งหมด
                 # เจอ bingo.bmp -> กด bingo1.bmp -> รัว ESC จนเจอ cancel -> กด cancel
                 # แล้วหยุด (จากนั้นไปทำงานตาม config ตามปกติ)
