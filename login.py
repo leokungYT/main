@@ -7197,7 +7197,8 @@ class RangerGearBot(threading.Thread):
         # แต่หน้านี้มักเด้งหลังเห็น Lobby (บอทออกจากลูปล็อกอินไปแล้ว) -> กดปิดจากตรงนี้ด้วย ทุกลูป
         _ev_sim = float(config.get("event_similarity", 0.9))
         _ev_n = 0
-        while _ev_n < 5 and self.exists_in_cache("img/event.png", similarity=_ev_sim):
+        # เฉพาะหลังล็อกอินผ่าน (เจอ stoplogin) - ช่วงหน้าล็อกอิน event.png แมตช์ผิดของบนจอ แล้วกดวนจนไม่ได้กด refresh
+        while getattr(self, "_past_login", False) and _ev_n < 5 and self.exists_in_cache("img/event.png", similarity=_ev_sim):
             _ev_n += 1
             print(f"[{self.device_id}] [POPUP] event.png (ปุ่ม X อีเวนต์) - กดปิด #{_ev_n}")
             self.click("img/event.png", similarity=_ev_sim)
@@ -9059,6 +9060,7 @@ class RangerGearBot(threading.Thread):
         windscribe_count_account()   # ครบ N ไอดี -> สลับ IP Windscribe (windscribe_rotate_every)
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
         self._wg_recover_n = 0       # โควตาเคลียร์แอป+ปิด/เปิด VPN เมื่อเจอ Unstable network (ต่อไอดี)
+        self._past_login = False     # ยังไม่ผ่านล็อกอิน -> ตัวเช็คป๊อปอัพลอยยังไม่กด event (X)
         self._ruby_ticket = None     # ค่า ruby/ตั๋วของไอดีก่อน ห้ามติดมาไอดีนี้
         self._account_level = None   # เลเวลของไอดีก่อน (ถ้าไอดีก่อนจบแบบ fail/timeout) ห้ามใช้คัดไอดีนี้
 
@@ -9482,6 +9484,7 @@ class RangerGearBot(threading.Thread):
                     self.capture_screen()
 
                 # [DIST CHECK] แวะเช็คหา fixbylv / distcheck / distskip 5วิ (ตามลำดับนี้)
+                self._past_login = True       # ตั้งแต่นี้ตัวเช็คป๊อปอัพลอยกดปิด event (X) ได้
                 print(f"[{self.device_id}] stoplogin found, checking for fixbylv/distcheck/distskip (5s)...")
                 found_distcheck = False
                 found_distskip_early = False
