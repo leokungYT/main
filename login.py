@@ -3830,7 +3830,7 @@ class RangerGearBot(threading.Thread):
 
     def _wg_after_refresh(self):
         """wg_after_login: กด refresh แล้ว -> ต่อ VPN ตรงนี้เลย (ส่งไฟล์/เปิดเกมไปด้วยเน็ตปกติแล้ว)"""
-        if int(config.get("wg_after_login", 1) or 0):
+        if int(config.get("wg_after_login", 0) or 0):
             self._ensure_wireguard()
 
     def _wg_vpn_active(self):
@@ -4028,7 +4028,7 @@ class RangerGearBot(threading.Thread):
         # reused emulator from keeping a previous IP/proxy binding across files.
         # (proxy ฟรีถูกถอดออกแล้ว - เหลือแค่ล้างของที่ค้างในอีมูฯ)
         self._clear_proxy_for_device()
-        if int(config.get("wg_after_login", 1) or 0):
+        if int(config.get("wg_after_login", 0) or 0):
             self._wg_down()          # wg_after_login: ส่งไฟล์+ล็อกอินด้วยเน็ตปกติ แล้วค่อยต่อ VPN หลังเข้าเกม
         else:
             self._ensure_wireguard() # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น)
@@ -9610,7 +9610,7 @@ class RangerGearBot(threading.Thread):
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
-                if int(config.get("wg_after_login", 1) or 0):
+                if int(config.get("wg_after_login", 0) or 0):
                     self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
 
                 # --- เช็คเลเวลบัญชี (config "check_lv") - อ่านครั้งเดียวตรงนี้ ---
