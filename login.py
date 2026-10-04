@@ -9152,7 +9152,9 @@ class RangerGearBot(threading.Thread):
                     # กด Back ทีเดียว 3 รอบ (ของเดิม - ปรับจำนวนได้ที่ event_back_per_round)
                     _per = max(1, int(config.get("event_back_per_round", 5)))
                     # ยิง BACK ทั้งชุดใน adb shell เดียว (เดิมแยกทีละครั้ง = รอ adb ทีละ ~0.3 วิ ไม่รัวจริง)
-                    self.adb_shell("input keyevent" + " 4" * _per)
+                    # ปุ่มที่รัว: ESC (111) แทน BACK (4) - เปลี่ยนได้ที่ config "event_spam_key"
+                    _key = int(config.get("event_spam_key", 111))
+                    self.adb_shell("input keyevent" + f" {_key}" * _per)
                     back_press_count += _per
                     print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
 
