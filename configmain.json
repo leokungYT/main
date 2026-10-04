@@ -142,6 +142,6 @@
     "login_loop_delay": 0.6,
     "net_full_scan_every": 10,
     "event_max_back": 30,
-    "event_back_per_round": 6,
+    "event_back_per_round": 10,
     "check_ruby_ticket": 1
 }

@@ -9121,10 +9121,8 @@ class RangerGearBot(threading.Thread):
                 except:
                     pass
 
-            # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
-            self.check_floating_popups()
-
-            # เช็ค event ตรงนี้เลย (ต้นลูป) - ของเดิมอยู่ล่างสุด กว่าจะไล่เช็คมาถึงกินเวลาหลายวิ
+            # เช็ค event ตรงนี้เลย (ต้นลูป) - ก่อน check_floating_popups (ตัวนั้นไล่เช็คหลายสิบรูป+พักหลายวิ ทำให้เจอ event ช้า)
+            # (เดิม) - ของเดิมอยู่ล่างสุด กว่าจะไล่เช็คมาถึงกินเวลาหลายวิ
             # ต่อรอบ ทำให้ "เจอ event ช้า" เจอแล้วรัว BACK เหมือนเดิมทุกอย่าง
             # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png หรือ stoplogin.png (Triple Back Mode)
             _ev_sim = float(config.get("event_similarity", 0.9))
@@ -9137,11 +9135,11 @@ class RangerGearBot(threading.Thread):
                 back_press_count = 0
                 _max_back = int(config.get("event_max_back", 30))
                 while True:
-                    # กด Back ทีเดียว 3 รอบ - แบบเดิม: แยกทีละคำสั่ง (ยิงรวดเดียวในคำสั่งเดียว เกมรับไม่ทัน กดไม่ติด)
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    back_press_count += 3
+                    # กด Back รอบละ 10 ครั้ง - แยกทีละคำสั่งแบบเดิม (ยิงรวดเดียวในคำสั่งเดียว เกมรับไม่ทัน กดไม่ติด)
+                    _per = max(1, int(config.get("event_back_per_round", 10)))   # กดทีละ 10 (แยกคำสั่ง)
+                    for _ in range(_per):
+                        self.adb_shell("input keyevent KEYCODE_BACK")
+                    back_press_count += _per
                     print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
 
                     sleep(0.3)  # ให้เวลา UI อัปเดต (แบบเดิม)
@@ -9176,6 +9174,9 @@ class RangerGearBot(threading.Thread):
                         break
 
                 continue
+
+            # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) - ย้ายมาหลังเช็ค event =====
+            self.check_floating_popups()
 
             # Hard recovery for the case where the app is alive but the login
             # screen has gone dead (no expected login UI for many cycles).
