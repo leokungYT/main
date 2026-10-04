@@ -116,7 +116,7 @@
     "mumu_renderer": "DirectX",
     "mumu_app_running": "เปิด",
     "screen_clear_wm_override": 1,
-    "auth_queue": 1,
+    "auth_queue": 0,
     "auth_slots": 2,
     "auth_max_hold": 15,
     "auth_backoff_min": 2,

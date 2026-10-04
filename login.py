@@ -1803,7 +1803,7 @@ config = {
     "auto_start": 1,
     "cloud_fast_start": 1,
     "cloud_start_delay_sec": 2.0,
-    "auth_queue": 1,
+    "auth_queue": 0,
     "auth_slots": 2,
     "auth_max_hold": 15,
     "auth_backoff_min": 2,
@@ -1973,7 +1973,7 @@ _AUTH_DIR = os.path.join(tempfile.gettempdir(), "ranger-locks")
 
 def _auth_cfg():
     """(เปิดใช้ไหม, จำนวนสล็อต, วินาทีที่ถือคิวได้ก่อนโดนยึด, backoff min/max)"""
-    enabled = bool(config.get("auth_queue", 1))
+    enabled = bool(config.get("auth_queue", 0))
     slots = max(1, min(3, int(config.get("auth_slots", 1) or 1)))
     hold = float(config.get("auth_max_hold", 45))
     backoff_min = max(0.0, float(config.get("auth_backoff_min", 30)))
