@@ -9113,15 +9113,10 @@ class RangerGearBot(threading.Thread):
                 continue
 
             loop_count += 1
-            _t_loop = time.time()
             if loop_count % 5 == 0:
                 print(f"[{self.device_id}] Login loop iteration {loop_count}")
 
             self.capture_screen()
-            _t_cap = time.time() - _t_loop
-            if _t_cap > 3:
-                print(f"[{self.device_id}] [SLOW] จับจอรอบนี้ใช้ {_t_cap:.1f} วิ (ปกติ < 1 วิ) - "
-                      f"adb/อีมูหน่วง หรือโดนลูปปิดป๊อปอัพกินเวลา")
 
             # === เช็คว่าเกมยังรันอยู่จริงไหม (เช็คทุกๆ 15 รอบ ป้องกันหน่วง) ===
             if loop_count % 15 == 0:
