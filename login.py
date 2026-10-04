@@ -3792,10 +3792,20 @@ class RangerGearBot(threading.Thread):
                   f"(โหลด .conf เพิ่มมาใส่ {wg_dir}/)")
         return None
 
-    def _wg_after_refresh(self):
-        """wg_after_login: กด refresh แล้ว -> ต่อ VPN ตรงนี้เลย (ส่งไฟล์/เปิดเกมไปด้วยเน็ตปกติแล้ว)"""
-        if int(config.get("wg_after_login", 1) or 0):
+    def _wg_connect_at(self, stage):
+        """ต่อ VPN ตามจังหวะที่ตั้งใน config "wg_connect_on" (ใช้คู่ wg_after_login=1)
+        "alert2"  = เจอหน้า LINE GAME (alert2.png) หลังส่งไฟล์/เปิดเกม  (ค่าเริ่มต้น)
+        "refresh" = หลังกด refresh
+        "login"   = หลังล็อกอินผ่าน (stoplogin)
+        ไม่ว่าเลือกแบบไหน ถึง stoplogin แล้วยังไม่ต่อ จะต่อให้ตรงนั้นเสมอ"""
+        if not int(config.get("wg_after_login", 1) or 0):
+            return
+        if stage == "login" or str(config.get("wg_connect_on", "alert2")).lower() == stage:
             self._ensure_wireguard()
+
+    def _wg_after_refresh(self):
+        """กด refresh แล้ว -> ต่อ VPN ถ้าตั้ง wg_connect_on เป็น refresh"""
+        self._wg_connect_at("refresh")
 
     def _wg_down(self, reason="ปิด VPN ก่อนล็อกอิน (จะเปิดอีกทีหลังเข้าเกม)"):
         """ปิด tunnel ของจอนี้ (ถ้าเปิดอยู่) - ใช้ก่อนส่งไฟล์/ล็อกอิน ให้ออกเน็ตด้วย IP ปกติ"""
@@ -9156,8 +9166,10 @@ class RangerGearBot(threading.Thread):
             # === alert2.png Persistence Check (รอค้างครบ 8 วิ ให้ clear app แล้วเปิดใหม่) ===
             if self.exists_in_cache("img/alert2.png", similarity=0.8):
                 if not hasattr(self, '_alert2_start_time') or self._alert2_start_time is None:
-                    self._alert2_start_time = time.time()
                     print(f"[{self.device_id}] Detected alert2.png... waiting 8s to clear app")
+                    # wg_connect_on = "alert2": ส่งไฟล์เสร็จ เกมขึ้นหน้า LINE GAME แล้ว -> ต่อ VPN ตรงนี้
+                    self._wg_connect_at("alert2")
+                    self._alert2_start_time = time.time()   # เริ่มนับ 8 วิ หลังต่อ VPN เสร็จ (ติดตั้งแอปครั้งแรกอาจนาน)
                 elif time.time() - self._alert2_start_time >= 8:
                     print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ 8 วินาที! เคลียร์แอพและเข้าใหม่...")
                     self.clear_and_restart()
@@ -9579,8 +9591,7 @@ class RangerGearBot(threading.Thread):
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
-                if int(config.get("wg_after_login", 1) or 0):
-                    self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
+                self._wg_connect_at("login")   # ล็อกอินผ่านแล้ว -> ต่อ VPN (ถ้ายังไม่ได้ต่อจากจังหวะก่อนหน้า)
 
                 # --- เช็คเลเวลบัญชี (config "check_lv") - อ่านครั้งเดียวตรงนี้ ---
                 #     จำเลเวลไว้เฉย ๆ แล้ว "ทำงานตาม config ต่อตามปกติ" (event/กล่อง/สุ่ม/7วัน)
