@@ -9142,7 +9142,7 @@ class RangerGearBot(threading.Thread):
             _ev_sim = float(config.get("event_similarity", 0.9))
             if self.exists_in_cache("img/event.png", similarity=_ev_sim):
                 event_passed = True
-                print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
+                print(f"[{self.device_id}] [EVENT] Detected event.png - กด event 1 ครั้ง แล้วรัว ESC จนเจอ cancel...")
                 self.click("img/event.png", similarity=_ev_sim)
                 sleep(0.4)
 
@@ -9156,16 +9156,10 @@ class RangerGearBot(threading.Thread):
                     _key = int(config.get("event_spam_key", 111))
                     self.adb_shell("input keyevent" + f" {_key}" * _per)
                     back_press_count += _per
-                    print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
+                    print(f"[{self.device_id}] [EVENT] รัว ESC (รวม {back_press_count} ครั้ง)")
 
                     sleep(float(config.get("event_back_delay", 0.1)))  # รัวขึ้น (เดิม 0.3)
                     self.capture_screen()
-
-                    # กด event ไปพร้อมกับรัว BACK: เห็น event.png ในเฟรมนี้ก็กดเลย แล้วรอบหน้ารัว BACK ต่อ
-                    _evp = self._find_in_screen("img/event.png", _ev_sim)
-                    if _evp:
-                        print(f"[{self.device_id}] [EVENT] เจอ event.png ระหว่างรัว BACK - กดไปด้วย")
-                        self.click(_evp)
 
                     # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด (ของเดิม)
                     if self.exists_in_cache("img/cancel.png"):
@@ -9177,7 +9171,7 @@ class RangerGearBot(threading.Thread):
                     # หยุดรัว ESC ได้ทางเดียวคือกด cancel (ข้างบน) - ไม่หยุดตอนเห็น stoplogin/Lobby แล้ว
 
                     if back_press_count >= _max_back: # ป้องกันลูปค้าง
-                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached ({_max_back}), continuing...")
+                        print(f"[{self.device_id}] [EVENT] รัว ESC ครบ {_max_back} ครั้งแล้วยังไม่เจอ cancel - ไปต่อ")
                         break
 
                 continue
