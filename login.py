@@ -8731,7 +8731,7 @@ class RangerGearBot(threading.Thread):
         _ev_sim = float(config.get("event_similarity", 0.9))
         closed = 0
         for _ in range(max_rounds):
-            self.capture_screen()
+            self._raw_capture()   # จับจอแบบเบา (ไม่แทรกเช็คป๊อปอัพลอยทั้งชุด)
             if self.exists_in_cache("img/event.png", similarity=_ev_sim):
                 self.click("img/event.png", similarity=_ev_sim)
             elif self.exists_in_cache("img/fixok.png", similarity=0.85):
@@ -8764,13 +8764,14 @@ class RangerGearBot(threading.Thread):
         sim = float(config.get("lv_similarity", 0.7))
         print(f"[{self.device_id}] [CHECK-LV] เคลียร์ป๊อปอัพก่อนอ่านเลเวล (กด BACK/cancel สูงสุด {max_rounds} รอบ)...")
         for i in range(1, max_rounds + 1):
-            self.capture_screen()
-            self.check_floating_popups()
+            # จับจอแบบเบาก่อน แล้วเช็ค Lobby ทันที - เห็น Lobby = จบเลย ไม่ต้องไล่เช็คป๊อปอัพหลายสิบรูป (เดิมกิน ~3 วิ)
+            self._raw_capture()
 
             # อยู่หน้า Lobby เต็มจอแล้ว (ไม่มีป๊อปอัพหรี่จอ) -> ไม่ต้องกด BACK (BACK ที่ Lobby = เด้งถามออกเกม เสียเวลาเปล่า)
             if self._at_lobby():
                 print(f"[{self.device_id}] [CHECK-LV] อยู่ Lobby แล้ว - ไม่ต้องกด BACK อ่านเลเวลเลย")
                 return
+            self.check_floating_popups()      # ไม่ใช่ Lobby -> ค่อยเคลียร์ป๊อปอัพลอย
 
             # cancel = ปุ่มปิดหน้าต่างอีเวนต์ เจอเมื่อไหร่กดแล้วพอ (ตามที่ใช้ในลูป event/bingo)
             if self.exists_in_cache("img/cancel.png", similarity=0.8):
