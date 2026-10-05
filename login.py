@@ -3837,6 +3837,11 @@ class RangerGearBot(threading.Thread):
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(self.device_id)
             return p
+        if bad and len(bad) >= len(confs):
+            # ลองครบทุกไฟล์แล้ว -> ให้โอกาสใหม่ทั้งหมด (วนรอบใหม่) แทนที่จะไม่มี VPN
+            print(f"[{self.device_id}] [WG] ลองครบทุกเซิร์ฟเวอร์แล้ว - เริ่มวนใหม่")
+            self._wg_bad = set()
+            return self._wg_conf_for_device()
         if not getattr(self, "_wg_short_warned", False):
             self._wg_short_warned = True
             print(f"[{self.device_id}] [WG] ไฟล์ config ไม่พอ ({len(confs)} ไฟล์ ถูกจออื่นจองหมดแล้ว) - จอนี้ไม่ต่อ VPN "
@@ -3916,12 +3921,7 @@ class RangerGearBot(threading.Thread):
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
             self._wg_down()
             # เน็ตหลุดซ้ำบนเซิร์ฟเวอร์เดิม -> สลับไปเซิร์ฟเวอร์สำรองที่ว่างอยู่ (auto failover)
-            cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
-            strikes = self.__dict__.setdefault("_wg_strikes", {})
-            if cur:
-                strikes[cur] = strikes.get(cur, 0) + 1
-                if strikes[cur] >= int(config.get("wg_failover_after", 2)):
-                    self._wg_failover(cur)
+            self._wg_strike("Unstable network")
             self._ensure_wireguard()
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "start", "-n",
                           self._resolve_game_activity()], timeout=15)
@@ -3935,6 +3935,31 @@ class RangerGearBot(threading.Thread):
         finally:
             lock.release()
 
+    def _wg_strike(self, reason, now_switch=False):
+        """จอนี้เข้าเกมไม่ได้บนเซิร์ฟเวอร์ VPN ปัจจุบัน 1 ครั้ง (Unstable network / fixid ครบ / LINE GAME ค้าง /
+        จอดำ / login failed) - ครบ wg_failover_after (2) ครั้งบนเซิร์ฟเวอร์เดิม -> เลิกใช้ แล้วจองเซิร์ฟเวอร์อื่น
+        (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว"""
+        if not int(config.get("wg_enabled", 0) or 0):
+            return False
+        cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
+        if not cur:
+            return False
+        strikes = self.__dict__.setdefault("_wg_strikes", {})
+        strikes[cur] = strikes.get(cur, 0) + 1
+        lim = int(config.get("wg_failover_after", 2))
+        print(f"[{self.device_id}] [WG] เข้าเกมไม่ได้ ({reason}) บน {os.path.basename(cur)} - ครั้งที่ {strikes[cur]}/{lim}")
+        if strikes[cur] >= lim:
+            self._wg_down()
+            self._wg_failover(cur)
+            return True
+        return False
+
+    def _wg_ok(self):
+        """ล็อกอินผ่านบนเซิร์ฟเวอร์นี้ -> ล้างตัวนับ (นับเฉพาะครั้งที่ล้มติดกัน)"""
+        cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
+        if cur:
+            self.__dict__.setdefault("_wg_strikes", {})[cur] = 0
+
     def _wg_failover(self, conf):
         """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
         self.__dict__.setdefault("_wg_bad", set()).add(conf)
@@ -3944,7 +3969,7 @@ class RangerGearBot(threading.Thread):
             pass
         self._wg_conf_applied = None
         self._wg_conf_written = None
-        print(f"[{self.device_id}] [WG] เน็ตหลุดซ้ำบน {os.path.basename(conf)} - สลับไปเซิร์ฟเวอร์สำรอง")
+        print(f"[{self.device_id}] [WG] เข้าเกมไม่ได้ซ้ำบน {os.path.basename(conf)} - สลับไปเซิร์ฟเวอร์/ประเทศอื่น")
 
     def _wg_tuned_conf(self, conf):
         """ปรับไฟล์ก่อนส่งเข้าเครื่อง (ไม่แก้ไฟล์ต้นฉบับ):
@@ -8160,6 +8185,7 @@ class RangerGearBot(threading.Thread):
                             
                             if fixid_count >= max_fixid_retries:
                                 print(f"[{self.device_id}] fixid limit reached ({max_fixid_retries} times)! Sending to login-failed...")
+                                self._wg_strike("fixid ครบ")
                                 return "failed"
                             
                             # 1) กด fikcheck
@@ -9141,6 +9167,7 @@ class RangerGearBot(threading.Thread):
             
             if is_stuck:
                 print(f"[{self.device_id}] [BLACK] Dark screen 8s after launch! (attempt {black_attempt+1}/3) Clearing...")
+                self._wg_strike("จอดำหลังเปิดเกม")
                 self.clear_and_restart()
                 self.open_app()
                 sleep(3)
@@ -9224,6 +9251,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Detected alert2.png... waiting {config.get('alert2_timeout_sec', 15)}s to clear app")
                 elif time.time() - self._alert2_start_time >= float(config.get("alert2_timeout_sec", 15)):
                     print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ {config.get('alert2_timeout_sec', 15)} วินาที! เคลียร์แอพและเข้าใหม่...")
+                    self._wg_strike("LINE GAME ค้าง")
                     self.clear_and_restart()
                     self.open_app()
                     self._alert2_start_time = None
@@ -9250,6 +9278,7 @@ class RangerGearBot(threading.Thread):
                     
                     if self._login_fixid_count >= 3:
                         print(f"[{self.device_id}] fixid limit reached (3 times)! Failing...")
+                        self._wg_strike("fixid ครบ 3")
                         self._login_fixid_count = 0
                         return "failed"
                     
@@ -9643,6 +9672,7 @@ class RangerGearBot(threading.Thread):
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
+                self._wg_ok()
                 self._close_lobby_popups()    # ปิดป๊อปอัพอีเวนต์ที่ทับ Lobby ก่อนทำงานตาม config (check-lv / ruby / ฯลฯ)
                 if int(config.get("wg_after_login", 0) or 0):
                     self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
@@ -9770,6 +9800,7 @@ class RangerGearBot(threading.Thread):
             # Failed
             if self.exists_in_cache("img/login-failed.png"):
                 print(f"[{self.device_id}] Login failed (login-failed.png detected)")
+                self._wg_strike("login failed")
                 self._login_fixid_count = 0
                 return "failed"
                 
