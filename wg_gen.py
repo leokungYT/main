@@ -40,9 +40,37 @@ def main():
             i = args.index(k)
             opt[k] = args[i + 1]
             del args[i:i + 2]
+    save = "--save-config" in args
+    if save:
+        args.remove("--save-config")
     want = int(args[0]) if args and args[0].isdigit() else 30
     countries = [c.upper() for c in args[1:]] or None
+    if save:
+        save_config(opt.get("--account"), opt.get("--machine"))
     return generate(want, countries, None, int(opt.get("--machine", 0)), opt.get("--account"), int(opt.get("--total", 0)))
+
+
+def save_config(account=None, machine=None, path="configmain.json"):
+    """เขียน wg_enabled=1 / wg_account / wg_machine ลง configmain.json (แก้เฉพาะค่านั้น ไม่จัดรูปไฟล์ใหม่)"""
+    import re
+    raw = open(path, "rb").read()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    t = raw.decode("utf-8-sig")
+    nl = "\r\n" if "\r\n" in t else "\n"
+    vals = {"wg_enabled": "1"}
+    if account:
+        vals["wg_account"] = json.dumps(account)
+    if machine:
+        vals["wg_machine"] = str(int(machine))
+    for k, v in vals.items():
+        pat = r'("' + k + r'"\s*:\s*)("[^"]*"|[^,\r\n}]+)'
+        if re.search(pat, t):
+            t = re.sub(pat, lambda m, v=v: m.group(1) + v, t, count=1)
+        else:
+            t = t.replace("{", "{" + nl + '    "' + k + '": ' + v + ",", 1)
+    json.loads(t)                       # กันไฟล์พัง: JSON ไม่ถูกจะ error ก่อนเขียน
+    open(path, "wb").write((b"\xef\xbb\xbf" if bom else b"") + t.encode("utf-8"))
+    print("[WG-GEN] configmain.json: " + ", ".join(f"{k}={v}" for k, v in vals.items()))
 
 
 def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0):
