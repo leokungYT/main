@@ -49,6 +49,9 @@ def generate(want, countries=None, wg_dir=None, machine=0):
     countries = countries or DEFAULT_COUNTRIES
     machine = int(machine or 0)
     key_txt = os.path.join(WG_DIR, "keypair.txt")
+    if os.path.exists(os.path.join(WG_DIR, ".managed")):
+        print("[WG-GEN] ไฟล์ VPN มาจาก server (RemoteFileManager) - ไม่สร้างเพิ่มเอง")
+        return 0
 
     confs = sorted(f for f in os.listdir(WG_DIR) if f.lower().endswith(".conf")) if os.path.isdir(WG_DIR) else []
     if os.path.exists(key_txt):

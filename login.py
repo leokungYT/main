@@ -3953,7 +3953,8 @@ class RangerGearBot(threading.Thread):
     def _wg_setup(self, conf):
         pkg, name = self.WG_PKG, self.WG_TUNNEL
         # ทางลัด: ไฟล์ config นี้เคยเขียนลงเครื่องแล้ว (แค่ปิดไปตอนส่งไฟล์) -> สั่งเปิด tunnel อย่างเดียว ไม่ต้องส่งไฟล์ใหม่
-        if getattr(self, "_wg_conf_written", None) == conf:
+        # (เทียบเวลาแก้ไฟล์ด้วย - server ส่งไฟล์ชื่อเดิมแต่เนื้อหาใหม่มา ต้องเขียนลงเครื่องใหม่)
+        if getattr(self, "_wg_conf_written", None) == (conf, os.path.getmtime(conf)):
             self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}'",
                            timeout=20)
             for _ in range(8):
@@ -4015,7 +4016,7 @@ class RangerGearBot(threading.Thread):
             sleep(1)
             if self._wg_is_up():
                 self._wg_conf_applied = conf
-                self._wg_conf_written = conf
+                self._wg_conf_written = (conf, os.path.getmtime(conf))
                 print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
                 return
         print(f"[{self.device_id}] [WG] สั่งต่อแล้วแต่ยังไม่เห็น tunnel ภายใน 10 วิ ({os.path.basename(conf)})")
