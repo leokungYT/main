@@ -6554,9 +6554,10 @@ class RangerGearBot(threading.Thread):
             # cvtColor, not np.dot: np.dot builds a float64 intermediate and
             # measured 25x slower for an identical result.
             self._screen = cv2.cvtColor(rgba, cv2.COLOR_RGBA2GRAY)
-            self._screen_rgba = rgba      # colour stays lazy - see get_screen_color()
+            self._screen_rgba = rgba
             self._screen_raw_png = None
-            self._screen_color = None
+            # ถอดสีทันที (login.py หลายจุดอ่าน self._screen_color ตรง ๆ เช่นขั้นกาชา/swap - แบบ lazy จะได้ None)
+            self._screen_color = cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGR)
             return True
         except Exception:
             return False
@@ -6599,9 +6600,9 @@ class RangerGearBot(threading.Thread):
                     # Fallback: some emulators hand back PNG regardless
                     img_array = np.frombuffer(result.stdout, np.uint8)
                     self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-                    self._screen_raw_png = result.stdout  # for lazy color decode
+                    self._screen_raw_png = result.stdout
                     self._screen_rgba = None
-                    self._screen_color = None
+                    self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             else:
                 with open(self.filename, "wb") as f:
                     f.write(result.stdout)
@@ -7264,7 +7265,7 @@ class RangerGearBot(threading.Thread):
                     self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
                     self._screen_raw_png = result.stdout
                     self._screen_rgba = None
-                    self._screen_color = None  # lazy decode
+                    self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             else:
                 with open(self.filename, "wb") as f:
                     f.write(result.stdout)
