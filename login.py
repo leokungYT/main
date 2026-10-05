@@ -4052,15 +4052,25 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
                     return
             self._wg_conf_written = None    # ไม่ขึ้น -> รอบนี้ทำแบบเต็มต่อเลย
-        # 1) ลงแอป WireGuard ถ้ายังไม่มี
-        r = self.adb_shell(f"pm path {pkg}", timeout=15)
-        if b"package:" not in (r.stdout or b""):
-            apk = _wg_apk_path()
-            if not apk:
-                print(f"[{self.device_id}] [WG] ไม่มีไฟล์แอป WireGuard (โหลดไม่ได้) - ข้าม")
+        # 1) ลงแอป WireGuard ถ้ายังไม่มี - เช็คจากโฟลเดอร์แอปในเครื่อง (ไม่พึ่ง pm ที่ตอบช้าตอนเครื่องโหลดหนัก)
+        #    เคยเจอ: pm ตอบไม่ทัน -> นึกว่ายังไม่ลง -> ติดตั้ง 17 MB ซ้ำทุกจอทุกรอบ -> pm ยิ่งช้า หาแม้แต่ตัวเกมไม่เจอ
+        if not getattr(self, "_wg_installed", False):
+            r = self.adb_shell(f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=15)
+            if b"YES" in (r.stdout or b""):
+                self._wg_installed = True
+            elif getattr(self, "_wg_install_tried", False):
+                print(f"[{self.device_id}] [WG] ติดตั้ง WireGuard ไปแล้วรอบนี้แต่ยังไม่เห็นแอป - ไม่ติดตั้งซ้ำ (ข้าม VPN ของจอนี้ไปก่อน)")
                 return
-            print(f"[{self.device_id}] [WG] ติดตั้งแอป WireGuard...")
-            self.adb_run([self.adb_cmd, "-s", self.device_id, "install", "-r", apk], timeout=180)
+            else:
+                apk = _wg_apk_path()
+                if not apk:
+                    print(f"[{self.device_id}] [WG] ไม่มีไฟล์แอป WireGuard (โหลดไม่ได้) - ข้าม")
+                    return
+                self._wg_install_tried = True
+                print(f"[{self.device_id}] [WG] ติดตั้งแอป WireGuard (ครั้งเดียว)...")
+                self.adb_run([self.adb_cmd, "-s", self.device_id, "install", "-r", apk], timeout=180)
+                r = self.adb_shell(f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=15)
+                self._wg_installed = b"YES" in (r.stdout or b"")
 
         # 2) เขียนไฟล์ tunnel + ตั้งค่าแอป (ต้องปิดแอปก่อน ไม่งั้นมันเขียนทับ)
         self.adb_shell(f"am force-stop {pkg}")
