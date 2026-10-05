@@ -37,24 +37,41 @@ def main():
     return generate(want, countries)
 
 
-def generate(want, countries=None, wg_dir=None):
-    """ให้มีไฟล์ใน wg/ อย่างน้อย want ไฟล์ - คืน 0 = สำเร็จ/ครบแล้ว, 1 = สร้างไม่ได้"""
+def generate(want, countries=None, wg_dir=None, machine=0):
+    """ให้มีไฟล์ใน wg/ อย่างน้อย want ไฟล์ - คืน 0 = สำเร็จ/ครบแล้ว, 1 = สร้างไม่ได้
+
+    machine (1, 2, 3 ...) = โหมดหลายเครื่องใช้ Key Pair เดียวกัน: เครื่องที่ N ได้เซิร์ฟเวอร์ช่วงของตัวเอง
+    (ลำดับ (N-1)*want ... ) ไม่มีวันชนกับเครื่องอื่นที่ใช้กุญแจเดียวกัน - ไฟล์ต้นแบบถูกย้ายไปเป็น wg/keypair.txt
+    """
     global WG_DIR
     if wg_dir:
         WG_DIR = wg_dir
     countries = countries or DEFAULT_COUNTRIES
+    machine = int(machine or 0)
+    key_txt = os.path.join(WG_DIR, "keypair.txt")
 
     confs = sorted(f for f in os.listdir(WG_DIR) if f.lower().endswith(".conf")) if os.path.isdir(WG_DIR) else []
-    if not confs:
+    if os.path.exists(key_txt):
+        tpl = read_conf(key_txt)
+        tpl_name = "keypair.txt"
+    elif confs:
+        tpl = read_conf(os.path.join(WG_DIR, confs[0]))
+        tpl_name = confs[0]
+    else:
         print(f"[WG-GEN] ไม่มีไฟล์ .conf ใน {WG_DIR}/ เลย - โหลดจากเว็บ Windscribe มา 1 ไฟล์ก่อน (ใช้เป็น Key Pair)")
         return 1
+    if machine and tpl_name != "keypair.txt":
+        # ไฟล์ต้นแบบ = เซิร์ฟเวอร์เดียวกันทุกเครื่องในกลุ่มกุญแจ -> ห้ามใช้ต่อจริง เก็บไว้เป็นกุญแจอย่างเดียว
+        os.replace(os.path.join(WG_DIR, tpl_name), key_txt)
+        print(f"[WG-GEN] โหมดหลายเครื่อง: ย้าย {tpl_name} -> keypair.txt (ใช้อ่านกุญแจ ไม่ใช้ต่อ VPN)")
+        confs = [c for c in confs if c != tpl_name]
     have = [read_conf(os.path.join(WG_DIR, f)) for f in confs]
-    tpl = have[0]
     for k in ("PrivateKey", "Address", "DNS", "PresharedKey"):
         if not tpl.get(k):
             print(f"[WG-GEN] ไฟล์ต้นแบบ {confs[0]} ไม่มี {k} - ใช้ไฟล์จากหน้า Config Generator ของ Windscribe")
             return 1
-    print(f"[WG-GEN] ใช้ Key Pair จาก {confs[0]} | มีอยู่แล้ว {len(confs)} ไฟล์ ต้องการ {want}")
+    print(f"[WG-GEN] ใช้ Key Pair จาก {tpl_name} | มีอยู่แล้ว {len(confs)} ไฟล์ ต้องการ {want}"
+          + (f" | เครื่องที่ {machine}" if machine else ""))
     if len(confs) >= want:
         print("[WG-GEN] ครบแล้ว ไม่ต้องสร้างเพิ่ม")
         return 0
@@ -69,15 +86,21 @@ def generate(want, countries=None, wg_dir=None):
     groups = []
     for loc in data:
         cc = loc.get("country_code", "")
-        if cc not in order or not loc.get("status", 1):
+        if not loc.get("status", 1):
             continue
+        if cc not in order and not machine:
+            continue                        # โหมดเครื่องเดียว: เอาเฉพาะประเทศที่เลือก
         for g in loc.get("groups") or []:
-            if not g.get("wg_pubkey") or not g.get("wg_endpoint") or g["wg_pubkey"] in used:
+            if not g.get("wg_pubkey") or not g.get("wg_endpoint") or not g.get("nodes"):
                 continue
-            if not g.get("nodes"):
-                continue
-            groups.append((order[cc], cc, g))
-    groups.sort(key=lambda x: x[0])
+            groups.append((order.get(cc, len(order)), cc, g))
+    # เรียงแบบตายตัว (ทุกเครื่องได้ลำดับเดียวกัน) -> แบ่งช่วงต่อเครื่องได้ไม่ชน
+    groups.sort(key=lambda x: (x[0], x[1], int(x[2].get("id") or 0)))
+    if machine:
+        start = ((machine - 1) * want) % max(1, len(groups))
+        groups = (groups[start:] + groups[:start])[:want]
+        print(f"[WG-GEN] เครื่องที่ {machine}: ใช้เซิร์ฟเวอร์ลำดับ {start + 1}-{start + len(groups)} จาก {len(groups) and len(groups)}")
+    groups = [x for x in groups if x[2]["wg_pubkey"] not in used]
 
     made = 0
     port = tpl.get("Endpoint", ":443").rsplit(":", 1)[-1] or "443"

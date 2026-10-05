@@ -10005,8 +10005,9 @@ if __name__ == "__main__":
     if int(config.get("wg_enabled", 0) or 0) and int(config.get("wg_auto_gen", 1) or 0):
         try:
             import wg_gen
-            wg_gen.generate(len(devices) + int(config.get("wg_gen_spare", 2)),
-                            config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")))
+            _mach = int(config.get("wg_machine", 0) or 0)   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
+            _per = int(config.get("wg_per_machine", 0) or 0) or (len(devices) + int(config.get("wg_gen_spare", 2)))
+            wg_gen.generate(_per, config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")), _mach)
         except Exception as e:
             print(f"[WG-GEN] สร้างไฟล์อัตโนมัติไม่สำเร็จ: {e}")
 
