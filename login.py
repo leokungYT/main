@@ -3872,7 +3872,7 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(1)
             if was or not gone or not net:
-                sleep(float(config.get("wg_down_settle", 2)))   # เน็ตเพิ่งสลับ - พักให้นิ่งก่อนเปิดเกม
+                sleep(float(config.get("wg_down_settle", 0.5)))   # เน็ตเพิ่งสลับ - พักให้นิ่งก่อนเปิดเกม
                 print(f"[{self.device_id}] [WG] ปิด VPN ก่อนเปิดเกม: "
                       f"{'ปิดสนิทแล้ว' if gone else 'ยังเห็น VPN ค้าง!'} | เน็ต: {'ใช้ได้' if net else 'ยังออกไม่ได้!'}")
         except Exception as e:
@@ -3936,13 +3936,33 @@ class RangerGearBot(threading.Thread):
             return
         if getattr(self, "_wg_conf_applied", None) == conf and self._wg_is_up():
             return
+        if getattr(self, "_wg_fail", 0) >= 2:
+            return                          # จอนี้ต่อ VPN ไม่ขึ้นมา 2 รอบแล้ว - เลิกลอง (ไม่เสียเวลาทุกไอดี)
         try:
             self._wg_setup(conf)
+            if getattr(self, "_wg_conf_applied", None) == conf:
+                self._wg_fail = 0
+            else:
+                self._wg_fail = getattr(self, "_wg_fail", 0) + 1
+                if self._wg_fail >= 2:
+                    print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น 2 รอบติด - ปิด VPN ของจอนี้ไปจนกว่าจะเปิดบอทใหม่ "
+                          f"(ถ้าเจอ 'pm ยังไม่เจอแอป' ด้วย = MuMu จอนี้ค้าง ให้รีสตาร์ทจอ)")
         except Exception as e:
             print(f"[{self.device_id}] [WG] ต่อไม่สำเร็จ: {e} - เล่นต่อด้วยเน็ตปกติ")
 
     def _wg_setup(self, conf):
         pkg, name = self.WG_PKG, self.WG_TUNNEL
+        # ทางลัด: ไฟล์ config นี้เคยเขียนลงเครื่องแล้ว (แค่ปิดไปตอนส่งไฟล์) -> สั่งเปิด tunnel อย่างเดียว ไม่ต้องส่งไฟล์ใหม่
+        if getattr(self, "_wg_conf_written", None) == conf:
+            self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}'",
+                           timeout=20)
+            for _ in range(8):
+                sleep(0.5)
+                if self._wg_is_up():
+                    self._wg_conf_applied = conf
+                    print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
+                    return
+            self._wg_conf_written = None    # ไม่ขึ้น -> รอบนี้ทำแบบเต็มต่อเลย
         # 1) ลงแอป WireGuard ถ้ายังไม่มี
         r = self.adb_shell(f"pm path {pkg}", timeout=15)
         if b"package:" not in (r.stdout or b""):
@@ -3995,6 +4015,7 @@ class RangerGearBot(threading.Thread):
             sleep(1)
             if self._wg_is_up():
                 self._wg_conf_applied = conf
+                self._wg_conf_written = conf
                 print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
                 return
         print(f"[{self.device_id}] [WG] สั่งต่อแล้วแต่ยังไม่เห็น tunnel ภายใน 10 วิ ({os.path.basename(conf)})")
@@ -8957,7 +8978,7 @@ class RangerGearBot(threading.Thread):
         self._close_lobby_popups()   # ป๊อปอัพทับ Lobby = หาปุ่มกาชาไม่เจอ -> ปิดก่อน
 
         def _via_gacha():
-            return self.wait_and_click_image("gacha.png", timeout=15)
+            return self.wait_and_click_image("gacha.png", timeout=6)
 
         def _via_goto():
             if not self.wait_and_click_image("gotogacha1.png", timeout=15):
@@ -9806,7 +9827,7 @@ class RangerGearBot(threading.Thread):
                     if self.exists_in_cache("img/event.png"):
                         print(f"[{self.device_id}] [EVENT] เจอ event อีก - กดแล้วรัว BACK ต่อ")
                         self.click("img/event.png")
-                        sleep(1)
+                        sleep(0.4)
                         continue
 
                     # เจอ cancel.png หรือ stoplogin.png -> เช็ค event ซ้ำก่อน ยังเจอ = กดแล้วรัวต่อ, ไม่เจอแล้วค่อยหยุด
@@ -9822,7 +9843,7 @@ class RangerGearBot(threading.Thread):
                         if self.exists_in_cache("img/event.png"):
                             print(f"[{self.device_id}] [EVENT] ยังเจอ event - กดแล้วรัว BACK ต่อ")
                             self.click("img/event.png")
-                            sleep(1)
+                            sleep(0.4)
                             continue
                         print(f"[{self.device_id}] [EVENT] ไม่เจอ event แล้ว - หยุดรัว BACK ({back_press_count} ครั้ง)")
                         break
