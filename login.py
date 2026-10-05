@@ -6524,47 +6524,39 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] ⛔ {reason} — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
 
     def _decode_raw_screencap(self, raw_data):
-        """Decode raw screencap data (ไม่ต้อง encode/decode PNG = เร็วกว่า 50-100x)
-        Raw format: 4 bytes width + 4 bytes height + 4 bytes pixel_format + RGBA pixel data
+        """Decode a raw (un-encoded) screencap frame.
+
+        `screencap` without -p returns width(4) + height(4) + pixel_format(4)
+        followed by RGBA bytes. Skipping -p avoids a PNG encode on the device
+        AND a decode here. Returns False if the data is not in that layout, so
+        the caller can fall back to treating it as PNG.
         """
         try:
             if len(raw_data) < 16:
                 return False
-            # Header is width(4) + height(4) + format(4), and on Android 9+ a
-            # 4-byte colorSpace field as well. Pick the offset from the actual
-            # payload size instead of assuming - MuMu (Android 12) sends 16, and
-            # assuming 12 there shifts the whole image by one pixel.
-            w, h, fmt = struct.unpack('<III', raw_data[:12])
-
-            # Validate dimensions (ป้องกัน corrupt data)
+            w, h, _fmt = struct.unpack('<III', raw_data[:12])
             if w <= 0 or h <= 0 or w > 4096 or h > 4096:
                 return False
 
+            # Android 9+ appends a 4-byte colorSpace to the header. Pick the
+            # offset from the payload size rather than assuming - MuMu (Android
+            # 12) sends 16, and assuming 12 shifts the image by one pixel.
             body = w * h * 4
-            if len(raw_data) == 16 + body:
-                offset = 16
-            elif len(raw_data) == 12 + body:
-                offset = 12
-            elif len(raw_data) >= 16 + body:
+            if len(raw_data) >= 16 + body:
                 offset = 16
             elif len(raw_data) >= 12 + body:
                 offset = 12
             else:
                 return False
 
-            # Create numpy array from raw RGBA data (ข้ามการ encode/decode PNG ทั้งหมด)
-            pixel_data = raw_data[offset:offset + body]
-            rgba = np.frombuffer(pixel_data, dtype=np.uint8).reshape((h, w, 4))
-
-            # cv2.cvtColor แทน np.dot: np.dot สร้าง float64 กลางทาง (540x960x3 = 12MB
-            # ต่อเฟรม) วัดแล้วช้ากว่า 25 เท่า (22ms -> 0.9ms) ผลลัพธ์สีเหมือนกันเป๊ะ
-            # ส่วน grayscale ต่างกันไม่เกิน 1 ระดับ (ปัดเศษ, BT.601 ทั้งคู่)
-            self._screen_color = cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGR)
-            self._screen = cv2.cvtColor(self._screen_color, cv2.COLOR_BGR2GRAY)
-            self._screen_raw_rgba = None  # ไม่ต้องเก็บแล้ว ประหยัด memory
+            rgba = np.frombuffer(raw_data[offset:offset + body],
+                                 dtype=np.uint8).reshape((h, w, 4))
+            # cvtColor, not np.dot: np.dot builds a float64 intermediate and
+            # measured 25x slower for an identical result.
+            self._screen = cv2.cvtColor(rgba, cv2.COLOR_RGBA2GRAY)
+            self._screen_rgba = rgba      # colour stays lazy - see get_screen_color()
             self._screen_raw_png = None
-            self._screen_width = w
-            self._screen_height = h
+            self._screen_color = None
             return True
         except Exception:
             return False
@@ -6590,48 +6582,39 @@ class RangerGearBot(threading.Thread):
             return None
 
     def capture_screen(self):
-        """Capture screen and load into RAM (optimized: raw screencap = 50-100x เร็วกว่า PNG)"""
-        if getattr(self, "last_activity_time", 0) and (time.time() - self.last_activity_time) > 500:
-            # ค้างที่จอไหนไม่มีใครรู้ถ้าไม่เก็บภาพไว้ - บันทึกก่อนเด้งออก
-            shot = self._save_debug_screen("timeout")
-            being = getattr(self, "current_original_filename", None) or "?"
-            print(f"[{self.device_id}] TIMEOUT: ไม่ได้กดอะไรเลย 500 วิ (ไฟล์: {being})"
-                  + (f" - เก็บภาพจอที่ค้างไว้ที่ {shot}" if shot else " - ไม่มีภาพจอให้เก็บ"))
-            self.last_activity_time = time.time()
-            raise RestartTimeoutError("500s Timeout")
+        """Capture screen and load into RAM (raw screencap + lazy color decode)"""
         try:
             kwargs = {}
             if os.name == 'nt':
                 kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-            
-            # ใช้ raw screencap (ไม่มี -p = ไม่ encode PNG = เร็วกว่ามาก)
+
+            # ไม่มี -p = ไม่ encode PNG บนเครื่อง Android และไม่ต้อง decode ฝั่งนี้
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap"],
                 capture_output=True, timeout=10, **kwargs
             )
+
             if result.returncode == 0 and len(result.stdout) > 100:
-                # ลอง decode raw format ก่อน (เร็วที่สุด)
                 if not self._decode_raw_screencap(result.stdout):
-                    # Fallback: ลองเป็น PNG (บาง emulator อาจส่ง PNG มาเสมอ)
+                    # Fallback: some emulators hand back PNG regardless
                     img_array = np.frombuffer(result.stdout, np.uint8)
                     self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-                    self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-                    self._screen_raw_png = None
-                    self._screen_raw_rgba = None
+                    self._screen_raw_png = result.stdout  # for lazy color decode
+                    self._screen_rgba = None
+                    self._screen_color = None
             else:
-                # Final fallback: save to file
                 with open(self.filename, "wb") as f:
                     f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
                 self._screen_raw_png = None
-                self._screen_raw_rgba = None
+                self._screen_rgba = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
 
             # New frame -> any popup-free verdict from the previous frame is stale.
             self._normalize_frame()   # ให้เฟรมเป็น 960x540 เสมอ (template ทุกรูปตัดจากขนาดนี้)
             self._screen_gen += 1
             self._cap_fail = 0
-            # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
+            # === fixnet1/fixnet/fixplay (NET_POPUPS): เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
             # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
             # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
             if not getattr(self, "_in_net_check", False):
@@ -6639,13 +6622,11 @@ class RangerGearBot(threading.Thread):
                 try:
                     _hit = self._dismiss_net_popup(self._screen)
                     if _hit:
-                        # จำกัดรอบตอนเรียกจากการจับจอ - ไม่งั้นค้างยาวได้ถึง 30 วิต่อเฟรม
-                        # (ตัวที่กดซ้ำยาว ๆ จนหายคือ monitor เบื้องหลัง ซึ่งวนทุก 3 วิอยู่แล้ว)
-                        self._clear_net_popup_loop(_hit, max_rounds=int(config.get("net_inline_rounds", 2)))
+                        self._clear_net_popup_loop(_hit)   # กดซ้ำจนกว่าป๊อปอัพจะหาย แล้วค่อยคืนภาพให้ผู้เรียก
                 finally:
                     self._in_net_check = False
 
-            # Popup check every 3rd capture to reduce CPU (background thread also monitors)
+            # Popup check every 3rd capture to reduce CPU load (background thread also monitors)
             self._capture_count += 1
             if self._capture_count % 3 == 0:
                 if not getattr(self, "_in_popup_check", False):
@@ -6656,8 +6637,6 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] Popup check error: {e}")
                     self._in_popup_check = False
                 
-        except RestartTimeoutError:
-            raise
         except Exception as e:
             print(f"[{self.device_id}] Capture error: {e}")
             # นับ screencap ที่ล้มติดกัน - ล้มแล้ว _screen ยังเป็นภาพเก่า บอทจะ 'มองไม่เห็น' ป๊อปอัพ/ปุ่มใด ๆ
@@ -6717,20 +6696,7 @@ class RangerGearBot(threading.Thread):
         return self.find(template_path, similarity) is not None
 
     def exists_in_cache(self, template_path, similarity=0.95):
-        """Check if template exists in already-captured screen.
-
-        If the screen has not been captured yet or the last frame looks stale,
-        grab a fresh one first so the login loop does not keep acting on an old
-        screenshot that can never match the current UI.
-        """
-        if self._screen is None:
-            try:
-                self.capture_screen()
-            except Exception:
-                return False
-        # เช็คจากภาพที่จับไว้แล้วเท่านั้น (แบบ main-lg ~18 ms)
-        # เดิม: ไม่เจอ -> จับจอใหม่ทุกครั้ง (~300 ms) ทำให้เช็คป๊อปอัพ 30 รูป = จับจอ 30 ครั้ง (~9 วิ)
-        # ผู้เรียกทุกลูปจับจอใหม่เองอยู่แล้วทุกรอบ ภาพจึงไม่เก่า
+        """Check if template exists in already-captured screen"""
         return self._find_in_screen(template_path, similarity) is not None
 
     def _get_similarity_score(self, template_path):
@@ -6747,45 +6713,18 @@ class RangerGearBot(threading.Thread):
             return 0.0
 
     def click(self, PSMRL, similarity=0.95):
-        self.last_activity_time = time.time()
-        candidate = None
-        if isinstance(PSMRL, str):
-            candidate = PSMRL
-            if not os.path.isabs(candidate):
-                candidate = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), candidate))
-
-        def _try_find_once(path):
-            if not os.path.exists(path):
-                return None
-            if self._screen is None:
-                try:
-                    self.capture_screen()
-                except Exception:
-                    return None
-            hit = self._find_in_screen(path, similarity)
-            if hit is not None:
-                return hit
-            for _ in range(3):
-                try:
-                    self.capture_screen()
-                except Exception:
-                    continue
-                hit = self._find_in_screen(path, similarity)
-                if hit is not None:
-                    return hit
-            return None
-
         target = None
-        if isinstance(PSMRL, tuple):
+        if isinstance(PSMRL, str):
+            if os.path.exists(PSMRL):
+                target = self._find_in_screen(PSMRL, similarity)
+                if target is None:
+                    print(f"[{self.device_id}] Template not found: {PSMRL}")
+        elif isinstance(PSMRL, tuple):
             target = PSMRL
-        elif candidate and os.path.exists(candidate):
-            target = _try_find_once(candidate)
-            if target is None:
-                print(f"[{self.device_id}] Template not found after fresh retries: {PSMRL}")
-
+            
         if target:
             x, y = target
-            self.tap(x, y)  # Use the improved tap method
+            self.tap(x, y) # Use the improved tap method
             return True
         return False
     
@@ -6975,21 +6914,30 @@ class RangerGearBot(threading.Thread):
         return False
 
     def _dismiss_net_popup(self, screen, similarity=0.8, scales=None):
-        """หาป๊อปอัพเน็ต (RETRY / network-OK) บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
+        """หาป๊อปอัพเน็ต (RETRY / PLAY / network-OK) บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
 
         กดด้วย adb input tap ตรง ๆ เสมอ (ไม่ผ่าน minitouch) เหมือน bot-tiket
         scales=None       -> ใช้สเกลที่เคยเจอ (เริ่ม 1.0) ราคาถูก เรียกได้ทุกครั้งที่จับจอ
         scales=NET_SCALES -> ไล่ทุกสเกล (monitor เบื้องหลังใช้) เจอสเกลไหนจำไว้ให้รอบต่อไป
+        คะแนนไม่ถึง similarity แต่ >= NET_SIM_GREEN และกรอบนั้นเป็นปุ่มเขียวจริง -> นับว่าเจอ (ทนรูปเพี้ยนเล็กน้อย)
+        ไม่ถึงทั้งคู่แต่ >= NET_NEAR_MISS ตอนไล่หลายสเกล -> log "เกือบเจอ" + เก็บภาพ ให้ไล่สาเหตุจาก log ได้
         """
         if screen is None:
             return None
         if scales is None:
             scales = (getattr(self, "_net_scale", 1.0),)
-        hit = None   # (score, path_to_report, cx, cy, scale)
-        for path in self.NET_POPUPS:
-            b = self._best_match(screen, path, similarity, scales)
-            if b and (hit is None or b[0] > hit[0]):
-                hit = (b[0], path, b[1], b[2], b[3])
+        hit = None    # (score, path_to_report, cx, cy, scale)
+        near = None   # (score, path, scale) ดีสุดที่ยังไม่ถึงเกณฑ์
+        for path in self._net_popup_paths():
+            b = self._best_match_any(screen, path, scales)
+            if not b:
+                continue
+            score, cx, cy, sc, tw, th = b
+            if score >= similarity or (score >= self.NET_SIM_GREEN and self._is_green_button(cx, cy, tw, th)):
+                if hit is None or score > hit[0]:
+                    hit = (score, path, cx, cy, sc)
+            elif score >= self.NET_NEAR_MISS and (near is None or score > near[0]):
+                near = (score, path, sc)
         if hit is None:
             for detect, target in self.NET_DETECT_THEN_TAP:
                 d = self._best_match(screen, detect, similarity, scales)
@@ -7002,15 +6950,18 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [NET] เจอ {os.path.basename(detect)} แต่ยังไม่เห็นปุ่ม {os.path.basename(target)} - รอเฟรมถัดไป")
                 break
         if hit is None:
+            if near is not None and len(scales) > 1:   # log เฉพาะตอนกวาดหลายสเกล (monitor) ไม่ให้ท่วมทุกเฟรม
+                self._log_net_near_miss(*near)
             return None
         score, path, cx, cy, sc = hit
         now = time.time()
         if now - getattr(self, "_netpopup_last_click", 0) < 1.0:
             return None          # เพิ่งกดไป รอป๊อปอัพหายก่อน ไม่กดรัว (cooldown 1 วิ)
         self._netpopup_last_click = now
-        if sc != getattr(self, "_net_scale", 1.0):
-            self._net_scale = sc
-            print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
+        if sc != getattr(self, "_net_scale", None):
+            if getattr(self, "_net_scale", None) is not None or sc != 1.0:
+                print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
+            self._net_scale = sc   # จำเสมอ (รวม 1.0) monitor จะได้เลิกกวาดทุกสเกลทุกรอบ
         # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
         # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
         self._adb_tap(cx, cy)
@@ -7022,6 +6973,7 @@ class RangerGearBot(threading.Thread):
         while self._running:
             self._log_pos_cache()
             try:
+                # Reuse the main thread's last captured screen instead of doing a separate screencap
                 # thread หลักตาย/ค้างในคำสั่งยาว -> เฟรมไม่ขยับ monitor จับจอเองจะได้ยังเห็นป๊อปอัพ
                 if time.time() - getattr(self, "_screen_ts", 0) > 5 and not getattr(self, "_in_net_check", False):
                     self._in_net_check = True
@@ -7033,16 +6985,26 @@ class RangerGearBot(threading.Thread):
                         self._in_net_check = False
                 mon_screen = self._screen
                 if mon_screen is not None:
-                    # fixnet1/fixnet: กดปิดจากตรงนี้ด้วย เพราะลูปรอส่วนใหญ่ไม่ได้
+                    # fixnet1/fixnet/fixplay (NET_POPUPS): กดปิดจากตรงนี้ด้วย เพราะลูปรอส่วนใหญ่ไม่ได้
                     # เรียก check_floating_popups() เอง
-                    # กวาดครบทุกสเกลเฉพาะรอบที่ครบกำหนด (default ทุก 10 รอบ ~30 วิ)
-                    # รอบอื่นใช้สเกลที่เคยเจอ -> ประหยัด CPU ราว 8 เท่า จอไม่หน่วงตาม
-                    self._mon_round = getattr(self, "_mon_round", 0) + 1
-                    _every = max(1, int(config.get("net_full_scan_every", 10)))
-                    _scales = self.NET_SCALES if (self._mon_round % _every == 1) else None
-                    hit = self._dismiss_net_popup(mon_screen, scales=_scales)
+                    # ถือ _in_net_check ไว้ระหว่างทำ - thread หลักกำลังเคลียร์อยู่ก็ข้ามรอบนี้
+                    # (ไม่งั้นสองฝั่งกดซ้ำ/รอปุ่มต่อท้ายซ้อนกัน)
+                    hit = None
+                    skipped = getattr(self, "_in_net_check", False)
+                    if not skipped:
+                        self._in_net_check = True
+                        try:
+                            # ยังไม่เคยเจอ = กวาดทุกสเกลทุกรอบ / รู้สเกลของเครื่องแล้ว = เช็คสเกลนั้น
+                            # และกวาดทุกสเกลซ้ำทุกรอบที่ 5 (~15 วิ) เผื่อเกมเปลี่ยนขนาด UI
+                            self._mon_round = getattr(self, "_mon_round", 0) + 1
+                            learned = getattr(self, "_net_scale", None)
+                            sweep = self.NET_SCALES if (learned is None or self._mon_round % 5 == 0) else (learned,)
+                            hit = self._dismiss_net_popup(mon_screen, scales=sweep)
+                            if hit:
+                                self._clear_net_popup_loop(hit)   # กดซ้ำจนหาย (แล้วรอกดปุ่มต่อท้ายถ้ามี)
+                        finally:
+                            self._in_net_check = False
                     if hit:
-                        self._clear_net_popup_loop(hit)   # กดซ้ำจนหาย
                         self._netpopup_count = getattr(self, "_netpopup_count", 0) + 1
                         print(f"[{self.device_id}] [MONITOR] {hit} เด้ง (#{self._netpopup_count}) - กดปิดให้แล้ว")
                         if self._netpopup_count >= self.NET_POPUP_LIMIT:
@@ -7051,7 +7013,7 @@ class RangerGearBot(threading.Thread):
                             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell",
                                           "am", "force-stop", "com.linecorp.LGRGS"])
                             self._netpopup_count = 0
-                    elif getattr(self, "_netpopup_count", 0):
+                    elif not skipped and getattr(self, "_netpopup_count", 0):
                         self._netpopup_count = 0
 
                     tmpl = self._get_template("img/fixnetv3.png")
@@ -7059,9 +7021,7 @@ class RangerGearBot(threading.Thread):
                         res = cv2.matchTemplate(mon_screen, tmpl, cv2.TM_CCOEFF_NORMED)
                         _, max_val, _, _ = cv2.minMaxLoc(res)
                         
-                        if max_val >= 0.8 and self._wg_request_net_recover("monitor"):
-                            pass
-                        elif max_val >= 0.8:
+                        if max_val >= 0.8:
                             self._fixnetv3_count += 1
                             print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
                             self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
@@ -7077,7 +7037,7 @@ class RangerGearBot(threading.Thread):
                 
             except Exception:
                 pass
-            time.sleep(3)
+            time.sleep(3)  # Check every 3 seconds (lighter than 2.5)
 
     def swipe(self, x1, y1, x2, y2, duration=300):
         self.last_activity_time = time.time()
@@ -7126,7 +7086,7 @@ class RangerGearBot(threading.Thread):
         ทำงานทุกรอบ capture_screen() คลุมทั้งไฟล์
 
         เช็คซ้ำบนภาพเดิมไม่ได้อะไรเพิ่ม (matchTemplate ให้ผลเดิมเป๊ะ) — ปกติรอบนึง
-        โดนเรียก 2 ครั้ง (ในลูป 1 + ใน check_error_images อีก 1) = สแกนทิ้ง 8 รูป
+        โดนเรียก 2 ครั้ง (ในลูป 1 + ใน check_error_images อีก 1) = สแกนทิ้งฟรี
         เลยจำไว้ว่าเฟรมไหนเช็คจนจบแล้วไม่เจออะไร แล้วข้ามรอบซ้ำของเฟรมนั้น
         """
         gen_at_entry = self._screen_gen
@@ -7147,7 +7107,7 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/checkline.png", similarity=0.8):
             print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
             self.click("img/checkline.png", similarity=0.8)
-            sleep(2)
+            sleep(0.5)
             
             # 1. Wait for @check-l1.png
             start_l1 = time.time()
@@ -7156,7 +7116,7 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache("img/check-l1.png", similarity=0.85):
                     print(f"[{self.device_id}] [POPUP] Found check-l1.png")
                     break
-                sleep(1)
+                sleep(0.3)
             
             else:
                 _sc = self._match_score("img/check-l1.png")
@@ -7166,11 +7126,11 @@ class RangerGearBot(threading.Thread):
             # 2. Coordinates
             print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
             self.tap(932, 133)
-            sleep(5)
+            sleep(0.2)
             self.tap(930, 253)
-            sleep(5)
+            sleep(0.2)
             self.tap(926, 327)
-            sleep(5)
+            sleep(0.3)
             
             # 3. Wait for check-l4.png
             start_l4 = time.time()
@@ -7180,7 +7140,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [POPUP] Found and clicking check-l4.png")
                     self.click("img/check-l4.png", similarity=0.8)
                     break
-                sleep(1)
+                sleep(0.3)
                 
             else:
                 _sc = self._match_score("img/check-l4.png")
@@ -7194,10 +7154,9 @@ class RangerGearBot(threading.Thread):
                 if self.exists_in_cache("img/check-ok1.png", similarity=0.8):
                     self.click("img/check-ok1.png", similarity=0.8)
                     print(f"[{self.device_id}] [POPUP] Checkline sequence complete!")
-                    sleep(1)
-                    self._raw_capture() # Update cache for caller
+                    sleep(0.3)
                     break
-                sleep(1)
+                sleep(0.3)
             else:
                 _sc = self._match_score("img/check-ok1.png")
                 _shot = self._save_debug_screen("checkline-miss")
@@ -7209,29 +7168,26 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/fixnetv2.png", similarity=0.8):
             print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
             self.click("img/fixnetv2.png", similarity=0.8)
-            sleep(2)
+            sleep(0.5)
             self._raw_capture()
             if self.exists_in_cache("img/fixnetv2ok.png", similarity=0.8):
                 self.click("img/fixnetv2ok.png", similarity=0.8)
-                sleep(1)
-                self._raw_capture() # Update cache for caller
+                sleep(0.3)
             return
 
-        if self.exists_in_cache("img/fixplay.png"):
-            print(f"[{self.device_id}] [POPUP] fixplay.png detected, clicking...")
-            self.click("img/fixplay.png")
-            sleep(2)
-            # After fixplay, FORCE wait and click check-ok1.png
-            print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png after fixplay...")
-            for _ in range(120):  # Wait up to 120 seconds
-                self._raw_capture()
-                if self.exists_in_cache("img/check-ok1.png"):
-                    print(f"[{self.device_id}] [POPUP] check-ok1.png found after fixplay, clicking...")
-                    self.click("img/check-ok1.png")
-                    sleep(1)
-                    self._raw_capture() # Update cache for caller
-                    break
-                sleep(1)
+        # fixplay.png (PLAY): เช็คตลอดเหมือน fixnet - อยู่ใน NET_POPUPS แล้ว (ทุกครั้งที่จับจอ + monitor
+        # เบื้องหลัง กดผ่าน adb ซ้ำจนหาย แล้วรอกด check-ok1.png ต่อ ตาม NET_FOLLOWUP)
+        # ตรงนี้เผื่อหลุดมาถึง (ติด cooldown / เช็คซ้อน): ส่งเข้าทางเดียวกัน ไม่กด/รอ OK ซ้ำสองชั้น
+        if self.exists_in_cache("img/fixplay.png", similarity=0.8) and not getattr(self, "_in_net_check", False):
+            print(f"[{self.device_id}] [POPUP] fixplay.png detected, clearing via net-popup path...")
+            self._in_net_check = True
+            try:
+                self._netpopup_last_click = 0
+                _hit = self._dismiss_net_popup(self._screen)
+                if _hit:
+                    self._clear_net_popup_loop(_hit)
+            finally:
+                self._in_net_check = False
 
         # fixnet.png: เช็คตลอดเจอก็กดรัวๆ ไม่มีหยุดจนกว่าจะหายไป
         fixnet_clicks = 0
@@ -7239,7 +7195,7 @@ class RangerGearBot(threading.Thread):
             fixnet_clicks += 1
             print(f"[{self.device_id}] [POPUP] fixnet.png detected (click #{fixnet_clicks}), clicking...")
             self.click("img/fixnet.png", similarity=0.8)
-            sleep(1.5)
+            sleep(0.5)
             self._raw_capture()
             if fixnet_clicks >= 10:
                 print(f"[{self.device_id}] [POPUP] fixnet.png clicked 10 times, breaking to avoid infinite loop")
@@ -7251,49 +7207,49 @@ class RangerGearBot(threading.Thread):
             fixnet1_clicks += 1
             print(f"[{self.device_id}] [POPUP] fixnet1.png detected (click #{fixnet1_clicks}), clicking...")
             self.click("img/fixnet1.png", similarity=0.8)
-            sleep(1.5)
+            sleep(0.5)
             self._raw_capture()  # จับภาพใหม่เพื่อเช็คซ้ำ (ไม่วนกลับ popup check)
             if fixnet1_clicks >= 10:
                 print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
                 break
 
-        # fixnetv3.png: Network error popup - tap (472, 361) to dismiss
-        if self.exists_in_cache("img/fixnetv3.png", similarity=0.8) and self._wg_request_net_recover("popup"):
-            pass
-        elif self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
-            self._fixnetv3_count += 1
-            print(f"[{self.device_id}] [POPUP] fixnetv3.png detected (#{self._fixnetv3_count}), tapping (472, 361)...")
-            self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
-            sleep(1.5)
+        # fixface.bmp: จอสแกนหน้า/ยืนยันตัวตน - กด BACK 1 ครั้งถอยออก (ห้ามกดบนจอ)
+        if self.exists_in_cache("img/fixface.bmp", similarity=0.8):
+            print(f"[{self.device_id}] [POPUP] fixface.bmp detected, pressing BACK once...")
+            self.adb_shell("input keyevent 4")
+            sleep(1.0)
             self._raw_capture()
+
+        if self.exists_in_cache("img/fixaccep.png"):
+            print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
+            self.click("img/fixaccep.png")
+            sleep(0.3)
+
+        # fixnetv3.png: Global Network Popup Check (Special coordinates 472, 361)
+        if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
+            self._fixnetv3_count += 1
+            print(f"[{self.device_id}] [POPUP] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
+            self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
+            sleep(0.5)
             
             if self._fixnetv3_count >= 8:
                 print(f"[{self.device_id}] [POPUP] fixnetv3.png persists after 8 clicks! Force-stopping app...")
                 self._need_restart = True
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
                 self._fixnetv3_count = 0
-
-        # fixface.bmp: จอสแกนหน้า/ยืนยันตัวตน - กด BACK 1 ครั้งถอยออก (ห้ามกดบนจอ)
-        if self.exists_in_cache("img/fixface.bmp", similarity=0.8):
-            print(f"[{self.device_id}] [POPUP] fixface.bmp detected, pressing BACK once...")
-            self.adb_shell("input keyevent 4")
-            sleep(1.5)
-            self._raw_capture()
-
-        if self.exists_in_cache("img/fixaccep.png"):
-            print(f"[{self.device_id}] [POPUP] fixaccep.png detected, clicking...")
-            self.click("img/fixaccep.png")
-            sleep(1)
+        else:
+            # We don't reset here necessarily because multiple popups might be checked
+            pass
 
         # Mark this frame popup-free ONLY if the pass did nothing at all: no new
         # frame AND no input sent. Every popup branch above taps or clicks, so a
         # tap counter is a reliable "something fired" signal - checking the frame
-        # generation alone is not (fixaccep clicks without re-capturing).
+        # generation alone is not (some branches click without re-capturing).
         if self._screen_gen == gen_at_entry and self._tap_count == taps_at_entry:
             self._popups_clean_gen = gen_at_entry
 
     def _raw_capture(self):
-        """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน) - ใช้ raw screencap เร็วขึ้น"""
+        """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน)"""
         try:
             kwargs = {}
             if os.name == 'nt':
@@ -7303,24 +7259,22 @@ class RangerGearBot(threading.Thread):
                 capture_output=True, timeout=10, **kwargs
             )
             if result.returncode == 0 and len(result.stdout) > 100:
-                # ลอง raw format ก่อน (เร็วที่สุด)
                 if not self._decode_raw_screencap(result.stdout):
-                    # Fallback PNG
                     img_array = np.frombuffer(result.stdout, np.uint8)
                     self._screen = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-                    self._screen_color = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-                    self._screen_raw_png = None
-                    self._screen_raw_rgba = None
+                    self._screen_raw_png = result.stdout
+                    self._screen_rgba = None
+                    self._screen_color = None  # lazy decode
             else:
                 with open(self.filename, "wb") as f:
                     f.write(result.stdout)
                 self._screen = cv2.imread(self.filename, 0)
                 self._screen_raw_png = None
-                self._screen_raw_rgba = None
+                self._screen_rgba = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
             self._normalize_frame()   # ให้เฟรมเป็น 960x540 เสมอ (template ทุกรูปตัดจากขนาดนี้)
             self._screen_gen += 1
-            # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
+            # === fixnet1/fixnet/fixplay (NET_POPUPS): เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
             # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
             # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
             if not getattr(self, "_in_net_check", False):
@@ -7328,9 +7282,7 @@ class RangerGearBot(threading.Thread):
                 try:
                     _hit = self._dismiss_net_popup(self._screen)
                     if _hit:
-                        # จำกัดรอบตอนเรียกจากการจับจอ - ไม่งั้นค้างยาวได้ถึง 30 วิต่อเฟรม
-                        # (ตัวที่กดซ้ำยาว ๆ จนหายคือ monitor เบื้องหลัง ซึ่งวนทุก 3 วิอยู่แล้ว)
-                        self._clear_net_popup_loop(_hit, max_rounds=int(config.get("net_inline_rounds", 2)))
+                        self._clear_net_popup_loop(_hit)   # กดซ้ำจนกว่าป๊อปอัพจะหาย แล้วค่อยคืนภาพให้ผู้เรียก
                 finally:
                     self._in_net_check = False
         except Exception as e:
@@ -7367,27 +7319,29 @@ class RangerGearBot(threading.Thread):
         # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ ไม่ return error) =====
         self.check_floating_popups()
 
-        # Same throttle as the popup pass: none of the errors below are transient
-        # (they are dialogs that stay up), so scanning for them a few times a second
-        # is enough. Returning None just means "nothing wrong right now", which is
-        # what the callers already handle every iteration.
+        # Same throttle as the popup pass. check_critical_errors() below is the most
+        # expensive thing in the whole loop (5 colour matches, ~250ms) and none of
+        # these errors are transient, so a few sweeps a second is enough. Returning
+        # None just means "nothing wrong right now" - what callers already expect.
         #
-        # The app-alive check runs BEFORE this throttle: if the app died, every
-        # template scan below is pointless anyway, and delaying the relaunch is
-        # the one thing here that actually costs a lot of wall-clock. It has its
-        # own PIDOF_INTERVAL throttle so it still is not one adb call per frame.
-        if not skip_icon:
-            crashed = self._app_is_gone()
-            if crashed:
-                return "icon"
+        # The app-alive check runs BEFORE the throttle: if the app died, every
+        # scan below is pointless anyway, and delaying the relaunch is the one
+        # thing here that really costs wall-clock. It has its own PIDOF_INTERVAL.
+        if not skip_icon and self._app_is_gone():
+            return "icon"
 
         now = time.time()
         if self.SCAN_INTERVAL > 0 and (now - self._last_error_scan) < self.SCAN_INTERVAL:
             return None
         self._last_error_scan = now
 
+        # ===== CRITICAL ERROR CHECKS (ย้ายไฟล์กลับ/สำรองล้ว restart) =====
+        critical = check_critical_errors(self, self.get_screen_color(), "check_error_images")
+        if critical: return critical
+        
         # Check for Black/Stuck screen
-        # [REMOVED] User requested to only check black screen upon startup.
+        if self.check_black_screen():
+            return "fixcak"
 
         # fixcak.png: restart process if found
         if not skip_fixcak:
@@ -7400,16 +7354,15 @@ class RangerGearBot(threading.Thread):
         # ต่างแค่ค่าที่เอาไปเทียบ ซึ่งเทียบเท่ากับเช็คที่ค่าหลวมสุดครั้งเดียวเป๊ะ ๆ
         if self.exists_in_cache("img/stopcheck.png", similarity=0.8):
             return "stopcheck"
-        
+
         # Common login errors
         if self.exists_in_cache("img/fixbuglogin.png"):
             return "fixbug"
-            
+
         if self.exists_in_cache("img/unkhow.png"):
             return "unkhow"
-            
-        # ตรวจ kaiby เฉพาะเมื่อเปิด kaibyskip (ปิด = ไม่ต้องหลบ, login ปกติ)
-        if config.get("kaibyskip", 0) == 1 and self.find_kaiby():
+
+        if self.find_kaiby():
             return "kaiby"
 
         error_images = ["img/failed1.png", "img/fixalerterror1.png"]
@@ -8398,23 +8351,22 @@ class RangerGearBot(threading.Thread):
             img_path = img_name
         
         start = time.time()
-        _round = 0
         while time.time() - start < timeout:
             try:
                 self.capture_screen()
-                _round += 1
-                # หาปุ่มที่ต้องการก่อน เจอแล้วกดทันที (เร็วแบบ fixnet1) - เดิมไล่เช็คป๊อปอัพลอยหลายสิบรูปก่อนทุกรอบ
+                # ---- Check floating popups on every iteration ----
+                self.check_floating_popups()
+                # --------------------------------------------------
+                # Match once and click the position we just got (the old code
+                # searched, then made click() search the very same screen again).
                 pos = self._find_in_screen(img_path, similarity)
                 if pos:
                     print(f"[{self.device_id}] Found {img_name} (sim={similarity})! Clicking...")
                     self.click(pos)
                     return True
-                # ยังไม่เจอ -> ค่อยเคลียร์ป๊อปอัพลอย (ทุก 3 รอบ) เผื่อมีอะไรบังปุ่มอยู่
-                if _round % 3 == 1:
-                    self.check_floating_popups()
             except Exception as e:
                 print(f"[{self.device_id}] Error while waiting for {img_name}: {e}")
-            sleep(self.loop_delay(0.2))   # was 0.2
+            sleep(self.loop_delay(0.2))
 
         print(f"[{self.device_id}] Timeout waiting for {img_name} ({timeout}s)")
         return False
@@ -9240,39 +9192,7 @@ class RangerGearBot(threading.Thread):
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
             self.check_floating_popups()
 
-            # Hard recovery for the case where the app is alive but the login
-            # screen has gone dead (no expected login UI for many cycles).
-            # (เดิมนับรอบ: "3 รอบ" -> ตอนนี้บอทเร็วขึ้น 1 รอบไม่ถึงวิ เกมยังโหลดไม่เสร็จก็โดนเคลียร์ -> เปลี่ยนเป็นนับวินาทีจริง)
-            if True:
-                login_idle_hits = False
-                for p in [
-                    "img/fixid.png",
-                    "img/fixid1.png",
-                    "img/refresh.png",
-                    "img/check.png",
-                    "img/fixok.png",
-                    "img/stoplogin.png",
-                    "img/fixnetv3.png",
-                    "img/fikcheck.png",
-                ]:
-                    try:
-                        if self.exists_in_cache(p, similarity=0.8):
-                            login_idle_hits = True
-                            break
-                    except Exception:
-                        pass
-                _now = time.time()
-                if login_idle_hits or not getattr(self, "_login_ui_seen_ts", None):
-                    self._login_ui_seen_ts = _now
-                else:
-                    _lim = float(config.get("login_ui_timeout_sec", 60))
-                    if _now - self._login_ui_seen_ts >= _lim:
-                        print(f"[{self.device_id}] [LOGIN-RECOVER] ไม่มี UI login ที่จับได้ {_lim:.0f} วิ -> รีสตาร์ทแอปและเริ่มใหม่")
-                        self.clear_and_restart()
-                        self.open_app()
-                        _real_sleep(3)
-                        self._login_ui_seen_ts = time.time()
-                        continue
+            # (ลบ LOGIN-RECOVER ออก - ให้เหมือน ranger-gear.py ที่ไม่เคลียร์แอปเองตอนไม่เห็นหน้าล็อกอิน)
 
             # fixnetv3.png Check in login loop
             if self.exists_in_cache("img/fixnetv3.png", similarity=0.8) and self._wg_request_net_recover("login loop"):
@@ -9923,6 +9843,88 @@ class RangerGearBot(threading.Thread):
                 return status
         
         return status
+
+    # ===== ported from ranger-gear.py (core screen/click/popup helpers) =====
+
+    def _log_net_near_miss(self, score, path, sc):
+        """เห็นป๊อปอัพเน็ตแบบ "เกือบเจอ" (คะแนนไม่ถึงเกณฑ์) - บอกใน log ทุก 30 วิ + เก็บภาพทุก 5 นาที
+
+        ไว้ไล่จาก log ได้เลยว่ารูปตัดไม่ตรง/สเกลไม่ตรงกับเครื่องนั้น โดยไม่ต้องไปนั่งเฝ้าหน้าจอ
+        """
+        now = time.time()
+        if now - getattr(self, "_net_near_logged", 0) < 30:
+            return
+        self._net_near_logged = now
+        shot = None
+        if now - getattr(self, "_net_near_shot", 0) > 300:
+            self._net_near_shot = now
+            shot = self._save_debug_screen("net-nearmiss")
+        print(f"[{self.device_id}] [NET] เกือบเจอ {os.path.basename(path)} (score {score:.2f} ที่สเกล x{sc:.2f} / "
+              f"ต้องการ 0.80 หรือ {self.NET_SIM_GREEN:.2f}+ปุ่มเขียว) ไม่กด - รูปอาจตัดไม่ตรงกับเครื่องนี้"
+              + (f" เก็บภาพไว้ที่ {shot}" if shot else ""))
+
+    NET_SIM_GREEN = 0.65   # ปุ่มใน NET_POPUPS เป็นปุ่มเขียวสดทั้งหมด: จุดที่เจอเป็นสีเขียวจริง (เช็คจากภาพสี) ยอมรับคะแนนต่ำลงได้
+
+    def _is_green_button(self, cx, cy, tw, th):
+        """กรอบที่ match เป็นปุ่มสีเขียวจริงไหม - ดูจากภาพสีล่าสุดตรงขอบซ้าย/ขวา/บน/ล่าง (เลี่ยงตัวหนังสือขาวตรงกลาง)
+
+        ปุ่ม RETRY / PLAY / OK ของเกมพื้นเขียวสด (B,G,R ราว 49,194,8) ต้องเขียวอย่างน้อย 3 ใน 4 จุด
+        ไม่มีภาพสี (เฟรมเก่า/decode ไม่ได้) -> False = ใช้เกณฑ์ปกติ
+        """
+        color = getattr(self, "_screen_color", None)
+        if color is None or getattr(color, "ndim", 0) != 3:
+            return False
+        H, W = color.shape[:2]
+        x0, y0 = cx - tw // 2, cy - th // 2
+        mx, my = max(1, int(tw * 0.05)), max(1, int(th * 0.12))
+        pts = ((x0 + mx, cy), (x0 + tw - 1 - mx, cy), (cx, y0 + my), (cx, y0 + th - 1 - my))
+        ok = 0
+        for x, y in pts:
+            if 0 <= x < W and 0 <= y < H:
+                b, g, r = (int(v) for v in color[y, x])
+                if g >= 120 and g > r + 60 and g > b + 60:
+                    ok += 1
+        return ok >= 3
+
+    def _net_popup_paths(self):
+        """NET_POPUPS ที่ตัดรูปซ้ำออก (เนื้อหาเหมือนกันเป๊ะ เช่น fixnet.png กับ fixnet-tiket.png) - ประหยัด matchTemplate"""
+        cached = getattr(self, "_net_paths_cache", None)
+        if cached is not None:
+            return cached
+        out, seen = [], []
+        for p in self.NET_POPUPS:
+            t = self._get_template(p)
+            if t is None:
+                continue
+            if any(t.shape == s.shape and np.array_equal(t, s) for s in seen):
+                continue
+            seen.append(t)
+            out.append(p)
+        self._net_paths_cache = tuple(out)
+        return self._net_paths_cache
+
+    NET_NEAR_MISS = 0.55   # คะแนนตั้งแต่นี้แต่ไม่ถึงเกณฑ์ = "เกือบเจอ" -> log + เก็บภาพไว้ให้ดู (ไม่กด)
+
+    def _best_match_any(self, screen, path, scales):
+        """เหมือน _best_match แต่คืนตัวที่ดีที่สุดเสมอไม่มีเกณฑ์: (score, cx, cy, scale, tw, th) หรือ None"""
+        tmpl0 = self._get_template(path)
+        if tmpl0 is None:
+            return None
+        best = None
+        for sc in scales:
+            if sc == 1.0:
+                tmpl = tmpl0
+            else:
+                tmpl = cv2.resize(tmpl0, None, fx=sc, fy=sc,
+                                  interpolation=cv2.INTER_AREA if sc < 1 else cv2.INTER_CUBIC)
+            th, tw = tmpl.shape[:2]
+            if screen.shape[0] < th or screen.shape[1] < tw:
+                continue
+            res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+            if best is None or max_val > best[0]:
+                best = (float(max_val), max_loc[0] + tw // 2, max_loc[1] + th // 2, sc, tw, th)
+        return best
 
 def run_bot_process(device_id, cli_args_dict, ready_q=None):
     """แต่ละ process จะรัน bot สำหรับ 1 device (แยก CPU core กัน)
