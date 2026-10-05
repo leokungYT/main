@@ -32,12 +32,20 @@ def read_conf(path):
 
 
 def main():
-    want = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 30
-    countries = [c.upper() for c in sys.argv[2:]] or None
-    return generate(want, countries)
+    # python wg_gen.py 15 [--account account2] [--machine 3] [--total 30] [TH SG ...]
+    args = sys.argv[1:]
+    opt = {}
+    for k in ("--account", "--machine", "--total"):
+        if k in args:
+            i = args.index(k)
+            opt[k] = args[i + 1]
+            del args[i:i + 2]
+    want = int(args[0]) if args and args[0].isdigit() else 30
+    countries = [c.upper() for c in args[1:]] or None
+    return generate(want, countries, None, int(opt.get("--machine", 0)), opt.get("--account"), int(opt.get("--total", 0)))
 
 
-def generate(want, countries=None, wg_dir=None, machine=0):
+def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0):
     """ให้มีไฟล์ใน wg/ อย่างน้อย want ไฟล์ - คืน 0 = สำเร็จ/ครบแล้ว, 1 = สร้างไม่ได้
 
     machine (1, 2, 3 ...) = โหมดหลายเครื่องใช้ Key Pair เดียวกัน: เครื่องที่ N ได้เซิร์ฟเวอร์ช่วงของตัวเอง
@@ -54,7 +62,42 @@ def generate(want, countries=None, wg_dir=None, machine=0):
         return 0
 
     confs = sorted(f for f in os.listdir(WG_DIR) if f.lower().endswith(".conf")) if os.path.isdir(WG_DIR) else []
-    if os.path.exists(key_txt):
+    if account:
+        # ===== โหมดเลือกบัญชี: กุญแจอยู่ที่ wg_accounts/<account>/ (1-5 ไฟล์ จากหน้า Config Generator ของบัญชีนั้น) =====
+        acc_dir = os.path.join(os.path.dirname(os.path.abspath(WG_DIR)), "wg_accounts", account)
+        keys, seen = [], set()
+        for f in sorted(os.listdir(acc_dir)) if os.path.isdir(acc_dir) else []:
+            if f.lower().endswith((".conf", ".txt")):
+                kv = read_conf(os.path.join(acc_dir, f))
+                if all(kv.get(k) for k in ("PrivateKey", "Address", "DNS", "PresharedKey")) and kv["PrivateKey"] not in seen:
+                    seen.add(kv["PrivateKey"])
+                    keys.append(kv)
+        if not keys:
+            print(f"[WG-GEN] บัญชี '{account}': ไม่มีไฟล์ Key Pair ใน {acc_dir} - วางไฟล์ .conf ของบัญชีนั้นไว้ก่อน")
+            return 1
+        os.makedirs(WG_DIR, exist_ok=True)
+        marker = os.path.join(WG_DIR, ".account")
+        prev = open(marker, encoding="utf-8").read().strip() if os.path.exists(marker) else ""
+        if prev != account:
+            # เปลี่ยนบัญชี -> ลบไฟล์ของบัญชีเก่า (+ การจองของจอ) แล้วสร้างใหม่ทั้งหมด
+            for f in os.listdir(WG_DIR):
+                if f.lower().endswith(".conf") or f in ("keypair.txt", ".managed"):
+                    os.remove(os.path.join(WG_DIR, f))
+            cl = os.path.join(WG_DIR, ".claims")
+            if os.path.isdir(cl):
+                for f in os.listdir(cl):
+                    os.remove(os.path.join(cl, f))
+            with open(marker, "w", encoding="utf-8") as fh:
+                fh.write(account)
+            confs = []
+            print(f"[WG-GEN] เปลี่ยนเป็นบัญชี '{account}'" + (f" (จาก '{prev}')" if prev else "") + " - ลบไฟล์เก่าแล้วสร้างใหม่")
+        # เครื่องที่ใช้บัญชีเดียวกันแบ่งกุญแจตามเลขเครื่อง: เครื่อง 1..G = กุญแจ 1, G+1..2G = กุญแจ 2 ...
+        machine = machine or 1
+        total = max(int(total or 0), machine)
+        group = -(-total // len(keys))
+        kidx = min((machine - 1) // group, len(keys) - 1)
+        tpl, tpl_name = keys[kidx], f"{account} กุญแจที่ {kidx + 1}/{len(keys)}"
+    elif os.path.exists(key_txt):
         tpl = read_conf(key_txt)
         tpl_name = "keypair.txt"
     elif confs:
@@ -63,7 +106,7 @@ def generate(want, countries=None, wg_dir=None, machine=0):
     else:
         print(f"[WG-GEN] ไม่มีไฟล์ .conf ใน {WG_DIR}/ เลย - โหลดจากเว็บ Windscribe มา 1 ไฟล์ก่อน (ใช้เป็น Key Pair)")
         return 1
-    if machine and tpl_name != "keypair.txt":
+    if machine and not account and tpl_name != "keypair.txt":
         # ไฟล์ต้นแบบ = เซิร์ฟเวอร์เดียวกันทุกเครื่องในกลุ่มกุญแจ -> ห้ามใช้ต่อจริง เก็บไว้เป็นกุญแจอย่างเดียว
         os.replace(os.path.join(WG_DIR, tpl_name), key_txt)
         print(f"[WG-GEN] โหมดหลายเครื่อง: ย้าย {tpl_name} -> keypair.txt (ใช้อ่านกุญแจ ไม่ใช้ต่อ VPN)")

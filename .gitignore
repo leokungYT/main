@@ -59,3 +59,4 @@ _processing/
 # WireGuard config ต่อจอ (มีกุญแจบัญชี Windscribe) + ไฟล์แอป - ห้ามขึ้น git
 wg/*
 !wg/README.txt
+wg_accounts/

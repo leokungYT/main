@@ -10098,7 +10098,9 @@ if __name__ == "__main__":
             import wg_gen
             _mach = int(config.get("wg_machine", 0) or 0)   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
             _per = int(config.get("wg_per_machine", 0) or 0) or (len(devices) + int(config.get("wg_gen_spare", 2)))
-            wg_gen.generate(_per, config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")), _mach)
+            wg_gen.generate(_per, config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")), _mach,
+                            str(config.get("wg_account", "") or "").strip() or None,   # เลือกบัญชี: wg_accounts/<ชื่อ>/
+                            int(config.get("wg_total_machines", 30) or 30))
         except Exception as e:
             print(f"[WG-GEN] สร้างไฟล์อัตโนมัติไม่สำเร็จ: {e}")
 
