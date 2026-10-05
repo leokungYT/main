@@ -9980,6 +9980,15 @@ if __name__ == "__main__":
     # === ล้างเน็ตทุกจอก่อนเริ่ม: ปิด VPN (WireGuard) ที่ค้าง + ล้าง proxy ค้าง แล้วเช็คว่าออกเน็ตได้ ===
     reset_network_all(devices)
 
+    # === ไฟล์ WireGuard ไม่พอจำนวนจอ -> สร้างเพิ่มอัตโนมัติจาก Key Pair ที่มี (wg_gen.py) ===
+    if int(config.get("wg_enabled", 0) or 0) and int(config.get("wg_auto_gen", 1) or 0):
+        try:
+            import wg_gen
+            wg_gen.generate(len(devices) + int(config.get("wg_gen_spare", 2)),
+                            config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")))
+        except Exception as e:
+            print(f"[WG-GEN] สร้างไฟล์อัตโนมัติไม่สำเร็จ: {e}")
+
     # === ตั้งค่าจอ MuMu ให้ตรง config ก่อนเริ่ม (ความละเอียด/FPS/CPU/RAM/root/renderer/App running) ===
     # ค่าไม่ตรง -> ตั้งผ่าน MuMuManager -> รีเฉพาะจอที่เปิดอยู่ -> รอบูต -> รันโปรแกรมใหม่
     try:
