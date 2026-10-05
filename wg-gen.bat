@@ -5,5 +5,5 @@ set /p N=How many screens on this PC? (default 15):
 if "%N%"=="" set N=15
 set /p M=Machine number 1-30 (blank = single PC): 
 if "%M%"=="" set M=0
-python -c "import wg_gen; wg_gen.generate(int(%N%), None, 'wg', int(%M%))"
+python wg_gen.py %N% --machine %M%
 pause

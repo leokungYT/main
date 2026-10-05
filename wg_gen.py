@@ -56,6 +56,17 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
         WG_DIR = wg_dir
     countries = countries or DEFAULT_COUNTRIES
     machine = int(machine or 0)
+    # ไม่ได้ระบุบัญชี/จำนวนเครื่อง -> อ่านจาก configmain.json ข้างโฟลเดอร์ wg (ใช้ได้ทั้งตอนบอทเรียกและตอนกด wg-gen.bat)
+    if account is None or not total:
+        try:
+            _cfg = json.load(open(os.path.join(os.path.dirname(os.path.abspath(WG_DIR)), "configmain.json"),
+                                  encoding="utf-8-sig"))
+        except Exception:
+            _cfg = {}
+        if account is None:
+            account = str(_cfg.get("wg_account", "") or "").strip() or None
+        if not total:
+            total = int(_cfg.get("wg_total_machines", 30) or 30)
     key_txt = os.path.join(WG_DIR, "keypair.txt")
     if os.path.exists(os.path.join(WG_DIR, ".managed")):
         print("[WG-GEN] ไฟล์ VPN มาจาก server (RemoteFileManager) - ไม่สร้างเพิ่มเอง")
