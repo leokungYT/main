@@ -6622,7 +6622,9 @@ class RangerGearBot(threading.Thread):
             # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
             # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
             # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
-            if not getattr(self, "_in_net_check", False):
+            # เช็คป๊อปอัพเน็ตทุก N เฟรม (ค่าเริ่ม 3) - monitor เบื้องหลังเช็คซ้ำทุก 3 วิอยู่แล้ว ไม่ต้องทำทุกเฟรมให้ช้า
+            self._net_frame = getattr(self, "_net_frame", 0) + 1
+            if not getattr(self, "_in_net_check", False) and self._net_frame % max(1, int(config.get("net_check_every", 3))) == 0:
                 self._in_net_check = True
                 try:
                     _hit = self._dismiss_net_popup(self._screen)
@@ -7317,7 +7319,9 @@ class RangerGearBot(threading.Thread):
             # === fixnet1/fixnet: เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
             # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
             # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
-            if not getattr(self, "_in_net_check", False):
+            # เช็คป๊อปอัพเน็ตทุก N เฟรม (ค่าเริ่ม 3) - monitor เบื้องหลังเช็คซ้ำทุก 3 วิอยู่แล้ว ไม่ต้องทำทุกเฟรมให้ช้า
+            self._net_frame = getattr(self, "_net_frame", 0) + 1
+            if not getattr(self, "_in_net_check", False) and self._net_frame % max(1, int(config.get("net_check_every", 3))) == 0:
                 self._in_net_check = True
                 try:
                     _hit = self._dismiss_net_popup(self._screen)
