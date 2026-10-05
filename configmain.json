@@ -4,6 +4,7 @@
     "windscribe_location": "best",
     "windscribe_protocol": "wireguard",
     "windscribe_rotate_every": 0,
+    "delay_scale": 0.5,
     "wg_enabled": 1,
     "wg_after_login": 0,
     "wg_dir": "wg",

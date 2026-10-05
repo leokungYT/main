@@ -9,6 +9,18 @@ import re
 cv2.setNumThreads(1)
 import time
 from time import sleep
+_real_sleep = time.sleep
+
+
+def sleep(sec):
+    """พักแบบปรับความเร็วได้ทั้งบอท: configmain.json "delay_scale" (1 = เท่าเดิม, 0.5 = พักครึ่งเดียว)
+    ใช้แทน sleep()/time.sleep() ในงานกดเกม - ส่วน VPN ใช้ _real_sleep (ต้องรอเวลาจริง)"""
+    try:
+        k = float(globals().get("config", {}).get("delay_scale", 1.0))
+    except Exception:
+        k = 1.0
+    if sec and sec > 0:
+        _real_sleep(max(0.05, sec * k) if k < 1 else sec * k)
 import sys
 import shutil
 import glob
@@ -3581,7 +3593,7 @@ def search_gachaslot_image(bot):
                 score = 0.0
             print(f"[{bot.device_id}] ไม่พบ gachaslot.png (match สี {score:.2f}) - เลื่อนหน้าจอครั้งที่ {swipe_count + 1}")
             bot.adb_shell("input swipe 824 240 808 109 5000")
-            time.sleep(1)
+            sleep(1)
             swipe_count += 1
         else: return None
     return None
@@ -3858,7 +3870,7 @@ class RangerGearBot(threading.Thread):
             was = self._wg_vpn_active()
             self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
                            f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {self.WG_TUNNEL}'", timeout=20)
-            sleep(1)
+            _real_sleep(1)
             self.adb_shell(f"su -c 'am force-stop {self.WG_PKG}'", timeout=15)
             self._wg_conf_applied = None
             gone = False
@@ -3866,16 +3878,16 @@ class RangerGearBot(threading.Thread):
                 if not self._wg_vpn_active():
                     gone = True
                     break
-                sleep(1)
+                _real_sleep(1)
             net = False
             for _ in range(10):
                 r = self.adb_shell("ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1 && echo OK || echo FAIL", timeout=8)
                 if b"OK" in (r.stdout or b""):
                     net = True
                     break
-                sleep(1)
+                _real_sleep(1)
             if was or not gone or not net:
-                sleep(float(config.get("wg_down_settle", 0.5)))   # เน็ตเพิ่งสลับ - พักให้นิ่งก่อนเปิดเกม
+                _real_sleep(float(config.get("wg_down_settle", 0.5)))   # เน็ตเพิ่งสลับ - พักให้นิ่งก่อนเปิดเกม
                 print(f"[{self.device_id}] [WG] ปิด VPN ก่อนเปิดเกม: "
                       f"{'ปิดสนิทแล้ว' if gone else 'ยังเห็น VPN ค้าง!'} | เน็ต: {'ใช้ได้' if net else 'ยังออกไม่ได้!'}")
         except Exception as e:
@@ -3915,7 +3927,7 @@ class RangerGearBot(threading.Thread):
                           self._resolve_game_activity()], timeout=15)
             self.last_activity_time = time.time()
             print(f"[{self.device_id}] [WG] เปิดเกมใหม่แล้ว (VPN: {os.path.basename(str(getattr(self, '_wg_conf_applied', '') or '-'))})")
-            sleep(3)
+            _real_sleep(3)
             return True
         except Exception as e:
             print(f"[{self.device_id}] [WG] กู้เน็ตไม่สำเร็จ: {e}")
@@ -4009,7 +4021,7 @@ class RangerGearBot(threading.Thread):
             self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}'",
                            timeout=20)
             for _ in range(8):
-                sleep(0.5)
+                _real_sleep(0.5)
                 if self._wg_is_up():
                     self._wg_conf_applied = conf
                     print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
@@ -4065,7 +4077,7 @@ class RangerGearBot(threading.Thread):
             self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, dst], timeout=30)
         self.adb_shell(f"su -c 'sh {tmp_sh}'", timeout=30)   # ต้องครอบ quote: su ของ MuMu รับแค่คำถัดไปคำเดียว
         for _ in range(10):
-            sleep(1)
+            _real_sleep(1)
             if self._wg_is_up():
                 self._wg_conf_applied = conf
                 self._wg_conf_written = (conf, os.path.getmtime(conf))
@@ -4697,7 +4709,7 @@ class RangerGearBot(threading.Thread):
             gems_state["clears"] += 1
             print(f"[{device.device_id}] เจอป๊อปอัพเพชร (fixgems) - กด OK ที่ ({tap_x},{tap_y}) (ครั้งที่ {gems_state['clears']})")
             device.tap(tap_x, tap_y)
-            time.sleep(1)
+            sleep(1)
             device.capture_screen()
             if gems_state["clears"] >= gems_state["max"]:
                 print(f"[{device.device_id}] [WARN] เคลียร์ fixgems ครบ {gems_state['max']} ครั้งแล้วยังไม่หาย - เลิกสนใจ")
@@ -4738,7 +4750,7 @@ class RangerGearBot(threading.Thread):
                     if device.exists_in_cache("img/cancel.png"):
                         print(f"[{device.device_id}] เจอ cancel - กด cancel แล้วหยุด")
                         device.click("img/cancel.png")
-                        time.sleep(1)
+                        sleep(1)
                         break
 
                     if back_press_count >= 30:  # ป้องกันลูปค้าง (สูงสุด 30 ครั้ง)
@@ -4752,11 +4764,11 @@ class RangerGearBot(threading.Thread):
                     back_press_count += 3
                     print(f"[{device.device_id}] [SHOPGACHA] Triple Back spam! (Total: {back_press_count})")
 
-                    time.sleep(0.3)  # ให้เวลา UI อัปเดตเล็กน้อย
+                    sleep(0.3)  # ให้เวลา UI อัปเดตเล็กน้อย
                     device.capture_screen()
                 return "complete"
             device.clear_and_restart()
-            time.sleep(6)
+            sleep(6)
             return "complete"
 
         # ขั้นตอนที่ 1: เข้าหน้าร้านให้ได้ก่อน
@@ -4814,7 +4826,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{device.device_id}] พบ shopgachastop.png ระหว่างรอจอสุ่ม - backup ไป not-found")
                     device.backup_failed_game_data()
                     device.clear_and_restart()
-                    time.sleep(6)
+                    sleep(6)
                     return "random-Fail"
                 if stop_hit('shopgachastop1.png'):
                     print(f"[{device.device_id}] พบ shopgachastop1.png ระหว่างรอจอสุ่ม - จบ shop gacha")
@@ -4824,7 +4836,7 @@ class RangerGearBot(threading.Thread):
                     s0 = device._get_similarity_score('img/waitgacha.png')
                     s1 = device._get_similarity_score('img/waitgacha1.png')
                     print(f"[{device.device_id}] ยังรอจอสุ่มอยู่ ({rounds} รอบ, match ขาวดำ {s0:.2f}/{s1:.2f}) - รอต่อ")
-                time.sleep(0.5)
+                sleep(0.5)
 
             print(f"[{device.device_id}] เจอ {seen} - หา fixgems.png ภายใน 8 วิ")
             gems_deadline = time.time() + 8
@@ -4832,7 +4844,7 @@ class RangerGearBot(threading.Thread):
                 device.capture_screen()
                 if clear_fixgems():
                     return None
-                time.sleep(0.5)
+                sleep(0.5)
 
             print(f"[{device.device_id}] ไม่พบ fixgems ใน 8 วิ - ข้ามไป shopgacha2")
             return None
@@ -4867,10 +4879,10 @@ class RangerGearBot(threading.Thread):
                 entered = True
                 break
 
-            time.sleep(0.5)
+            sleep(0.5)
 
         if entered:
-            time.sleep(2)
+            sleep(2)
         else:
             print(f"[{device.device_id}] ไม่พบทั้ง event.png และ gacha.png ใน 8 วิ - ลองหาปุ่มในร้านต่อ")
 
@@ -4943,7 +4955,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{device.device_id}] พบ shopgachastop.png (SOLD OUT) - backup ไป not-found")
                     device.backup_failed_game_data()
                     device.clear_and_restart()
-                    time.sleep(6)
+                    sleep(6)
                     return "random-Fail"
 
                 # ตรวจสอบ shopgachastop1.png - หาลอย ๆ ทุกรอบ เจอปุ๊บรัว BACK ออกเลย
@@ -4961,14 +4973,14 @@ class RangerGearBot(threading.Thread):
                             print(f"[{device.device_id}] พบและกด {current_img}")
                             if current_img == 'shopgacha2.png':
                                 print(f"[{device.device_id}] รอ 5 วินาทีก่อนกด shopgacha2.png...")
-                                time.sleep(5)
+                                sleep(5)
                             device.tap(pt[0], pt[1])
                             current_initial_step += 1
                             last_clicked_img = current_img
                             if current_img == 'shopgacha2.png':
-                                time.sleep(3)
+                                sleep(3)
                             else:
-                                time.sleep(1)
+                                sleep(1)
 
                             # ตรวจสอบ shopgachastop หลังจากกด
                             device.capture_screen()
@@ -4980,7 +4992,7 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{device.device_id}] พบ shopgachastop.png (SOLD OUT) หลังกด {current_img} - backup ไป not-found")
                                 device.backup_failed_game_data()
                                 device.clear_and_restart()
-                                time.sleep(6)
+                                sleep(6)
                                 return "random-Fail"
                             if stop_hit('shopgachastop1.png'):
                                 print(f"[{device.device_id}] พบ shopgachastop1.png หลังกด {current_img} - จบ shop gacha")
@@ -5016,7 +5028,7 @@ class RangerGearBot(threading.Thread):
                                 if not_found_count % 5 == 0:
                                     score = device._get_similarity_score(f'img/{current_img}')
                                     print(f"[{device.device_id}] ยังไม่พบ {current_img} - ครั้งที่ {not_found_count}/{max_not_found} (match ขาวดำ {score:.2f})")
-                            time.sleep(0.5)
+                            sleep(0.5)
                         continue
                     else:
                         in_loop = True
@@ -5036,9 +5048,9 @@ class RangerGearBot(threading.Thread):
                         pt = find_btn('shopgacha2.png')
                         if pt:
                             print(f"[{device.device_id}] พบและกด shopgacha2.png อีกครั้ง (รอ 5 วินาที)")
-                            time.sleep(5)
+                            sleep(5)
                             device.tap(pt[0], pt[1])
-                            time.sleep(3)
+                            sleep(3)
                             shopgacha5_clicked = False
                             check_shopgacha2_count = 0
                             found_any = True
@@ -5051,7 +5063,7 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{device.device_id}] ไม่พบ shopgacha2.png หลังเช็ค {max_check_shopgacha2} รอบ - รัว BACK จนเจอ cancel แล้วไป swap_shop")
                                 return finish_shopgacha()
                         if found_any:
-                            time.sleep(0.5)
+                            sleep(0.5)
                             continue
 
                     # วนลูปตามปกติ
@@ -5079,10 +5091,10 @@ class RangerGearBot(threading.Thread):
                                             print(f"[{device.device_id}] พบ gachaout.png ก่อนกด shopgacha4 - จบการทำงาน shopgacha")
                                             gachaout_found = True
                                             break
-                                        time.sleep(0.5)
+                                        sleep(0.5)
                                     except Exception as e:
                                         print(f"[{device.device_id}] Error เช็ค gachaout ก่อน shopgacha4: {e}")
-                                        time.sleep(0.5)
+                                        sleep(0.5)
                                 if gachaout_found:
                                     return finish_shopgacha()
                                 print(f"[{device.device_id}] ไม่พบ gachaout.png - กด shopgacha4.png ต่อ")
@@ -5098,7 +5110,7 @@ class RangerGearBot(threading.Thread):
                                 shopgacha5_clicked = True
                                 check_shopgacha2_count = 0
 
-                            time.sleep(2)
+                            sleep(2)
 
                             # ตรวจสอบ shopgachastop หลังจากกดแต่ละปุ่ม
                             device.capture_screen()
@@ -5110,7 +5122,7 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{device.device_id}] พบ shopgachastop.png (SOLD OUT) หลังกด {img} - backup ไป not-found")
                                 device.backup_failed_game_data()
                                 device.clear_and_restart()
-                                time.sleep(6)
+                                sleep(6)
                                 return "random-Fail"
                             if stop_hit('shopgachastop1.png'):
                                 print(f"[{device.device_id}] พบ shopgachastop1.png หลังกด {img} - จบ shop gacha")
@@ -5126,13 +5138,13 @@ class RangerGearBot(threading.Thread):
                             print(f"[{device.device_id}] ไม่พบปุ่มใดในลำดับการวนลูป - ครั้งที่ {not_found_count}/{max_not_found}")
                         last_clicked_img = None
                         repeat_counter.clear()
-                        time.sleep(1)
+                        sleep(1)
 
-                time.sleep(0.5)
+                sleep(0.5)
 
             except Exception as e:
                 print(f"[{device.device_id}] เกิดข้อผิดพลาดในกระบวนการ shop gacha: {e}")
-                time.sleep(1)
+                sleep(1)
 
 
 
@@ -5150,7 +5162,7 @@ class RangerGearBot(threading.Thread):
                 pos = self._find_img_in_any_screen(self._screen_color, f"img/{img}")
                 if pos:
                     self.tap(pos[0], pos[1])
-                    time.sleep(1)
+                    sleep(1)
                     if self.exists("img/stopstep2.png"):
                         self.clear_and_restart()
                         return "stopped_by_stopstep2"
@@ -5160,7 +5172,7 @@ class RangerGearBot(threading.Thread):
             if pos4:
                 for _ in range(20):
                     self.tap(pos4[0], pos4[1])
-                    time.sleep(0.3)
+                    sleep(0.3)
             
             # Hero event scan
             if check_hero_images(self, self._screen_color):
@@ -5183,13 +5195,13 @@ class RangerGearBot(threading.Thread):
                     pos_ev = self._find_img_in_any_screen(img, f"img/{ev_img}")
                     if pos_ev:
                         self.tap(pos_ev[0], pos_ev[1])
-                        time.sleep(1)
+                        sleep(1)
             
             # Stage 3
             print(f"[{self.device_id}] Stage 3 swap_shopevent")
             for step_img in ['step3ok.png', 'step3skip.png']:
                 self.click(f"img/{step_img}")
-                time.sleep(1)
+                sleep(1)
             
             # Step 3 Loop
             all_tiket = config.get('all_tiket', 0)
@@ -5200,7 +5212,7 @@ class RangerGearBot(threading.Thread):
                 for loop_img in ['step3loop1.png', 'step3loop2.png']:
                     if self.exists_in_cache(f"img/{loop_img}"):
                         self.click(f"img/{loop_img}")
-                        time.sleep(1)
+                        sleep(1)
             
             if all_tiket == 0:
                 self.clear_and_restart()
@@ -5301,7 +5313,7 @@ class RangerGearBot(threading.Thread):
             device.backup_game_data(low_prefix)
             ui_stats.update_hero(low_prefix)
             device.clear_and_restart()
-            time.sleep(2)
+            sleep(2)
             return "backup_complete"
         
         last_click_position = None
@@ -5365,16 +5377,16 @@ class RangerGearBot(threading.Thread):
                         if elapsed >= 3:
                             print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] gachaout.png ค้างครบ 3 วินาที - clear app")
                             device.clear_and_restart()
-                            time.sleep(6)
+                            sleep(6)
                             return True
                     else:
                         if gachaout_found_time is not None:
                             print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] gachaout.png หายไป - รีเซ็ต")
                             gachaout_found_time = None
-                    time.sleep(0.8)
+                    sleep(0.8)
                 except Exception as e:
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Error check gachaout: {e}")
-                    time.sleep(0.8)
+                    sleep(0.8)
             return False
         
         def priority_check_gachaout(action_name, timeout=8):
@@ -5394,7 +5406,7 @@ class RangerGearBot(threading.Thread):
                         print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ พบ gachaout.png ก่อน {action_name} - จบ swap_shop ทันที! (ไม่ใช้เพชร)")
                         ui_stats.update_hero("สุ่มไม่ได้")
                         device.clear_and_restart()
-                        time.sleep(6)
+                        sleep(6)
                         return True
                 except Exception as e:
                     pass
@@ -5403,13 +5415,13 @@ class RangerGearBot(threading.Thread):
         
         def safe_tap(x, y, image_name, delay_before=0, delay_after=0, check_gachaout_time=0.3):
             if delay_before > 0:
-                time.sleep(delay_before)
+                sleep(delay_before)
             
             print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ⚡ กดปุ่ม: {image_name}")
             device.tap(x, y)
             
             if delay_after > 0:
-                time.sleep(delay_after)
+                sleep(delay_after)
             
             if not all_in_mode and check_gachaout_time > 0:
                 check_start = time.time()
@@ -5422,11 +5434,11 @@ class RangerGearBot(threading.Thread):
                             print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ [SAFE TAP] พบ gachaout.png หลังกด {image_name}! จบ swap_shop ทันที!")
                             ui_stats.update_hero("สุ่มไม่ได้")
                             device.clear_and_restart()
-                            time.sleep(6)
+                            sleep(6)
                             return "gachaout_found"
-                        time.sleep(0.1)
+                        sleep(0.1)
                     except Exception as e:
-                        time.sleep(0.1)
+                        sleep(0.1)
 
             return "ok"
         
@@ -5434,7 +5446,7 @@ class RangerGearBot(threading.Thread):
             nonlocal gacha_count
             if max_gacha <= 0: return False
             print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] รอ 3 วินาทีก่อนตรวจสอบ swapgacha1.png")
-            time.sleep(3)
+            sleep(3)
             print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] เริ่มตรวจสอบ swapgacha1.png เป็นเวลา 3 วินาที")
             check_start_time = time.time()
             swapgacha1_found = False
@@ -5451,7 +5463,7 @@ class RangerGearBot(threading.Thread):
                             if gacha_count >= max_gacha:
                                 return "complete_gacha"
                             break
-                    time.sleep(0.2)
+                    sleep(0.2)
                 except Exception as e:
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Error checking swapgacha1.png: {e}")
                     break
@@ -5463,7 +5475,7 @@ class RangerGearBot(threading.Thread):
                 if gacha1_pos:
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] กด gacha1")
                     device.tap(gacha1_pos[0][0], gacha1_pos[0][1])
-                    time.sleep(1.5)
+                    sleep(1.5)
                     if check_gachaout_after_click(): return "random-Fail"
                     return True
                 return False
@@ -5477,7 +5489,7 @@ class RangerGearBot(threading.Thread):
                 if fixbuggacha_pos:
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] กด fixbuggacha")
                     device.tap(fixbuggacha_pos[0][0], fixbuggacha_pos[0][1])
-                    time.sleep(1.5)
+                    sleep(1.5)
                     if check_gachaout_after_click(): return "random-Fail"
                     return True
                 return False
@@ -5519,7 +5531,7 @@ class RangerGearBot(threading.Thread):
                     if selected_channel in ['ch4', 'ch5']:
                         for _ in range(2):
                             device.swipe(852, 316, 855, 116, 2000)
-                            time.sleep(0.2)
+                            sleep(0.2)
                     return channel_pos
             except Exception as e:
                 print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Error config: {e}")
@@ -5532,9 +5544,9 @@ class RangerGearBot(threading.Thread):
             print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] กด event")
             device.tap(event_pos[0][0], event_pos[0][1])
             last_click_position = event_pos[0]
-            time.sleep(2)
+            sleep(2)
             if check_gachaout_after_click(): return "random-Fail"
-            time.sleep(1)
+            sleep(1)
         
         while running:
             try:
@@ -5569,7 +5581,7 @@ class RangerGearBot(threading.Thread):
                             device.backup_game_data(prefix)
                             ui_stats.update_hero(main_name or prefix)
                             device.clear_and_restart()
-                            time.sleep(2)
+                            sleep(2)
                             return "backup_complete"
 
                 # ⭐ เช็ค fixrandom1 ลอยๆ ตลอดทั้งกระบวนการ - เจอเมื่อไหร่กด fixrandom2 ทันที
@@ -5578,7 +5590,7 @@ class RangerGearBot(threading.Thread):
                     if fixrandom2_pos:
                         print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] 🎲 พบ fixrandom1 - กด fixrandom2")
                         device.tap(fixrandom2_pos[0][0], fixrandom2_pos[0][1])
-                        time.sleep(1)
+                        sleep(1)
                         continue
 
                 critical_error = check_critical_errors(device, adb_img, "process_swap_shop")
@@ -5589,7 +5601,7 @@ class RangerGearBot(threading.Thread):
                 if kaibyswap_pos:
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ⚠️ พบ kaibyswap_shop.png - ส่งไปห้องไก่บี้")
                     device.clear_and_restart()
-                    time.sleep(6)
+                    sleep(6)
                     return "kaiby"
 
                 # Check for clear-ruby -> clear app + ส่งไป random-fail + เริ่มไฟล์ใหม่
@@ -5600,7 +5612,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ พบ clear-ruby - clear app + ส่งไป random-fail")
                     ui_stats.update_hero("สุ่มไม่ได้")
                     device.clear_and_restart()
-                    time.sleep(6)
+                    sleep(6)
                     return "random-Fail"
 
                 if not all_in_mode:
@@ -5611,7 +5623,7 @@ class RangerGearBot(threading.Thread):
                         print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ❌ พบ gachaout.png - จบ swap_shop")
                         ui_stats.update_hero("สุ่มไม่ได้")
                         device.clear_and_restart()
-                        time.sleep(6)
+                        sleep(6)
                         return "random-Fail"
                 else:
                     # all-in: สุ่มด้วยเพชรไปเรื่อยๆ - หยุดเฉพาะเมื่อเจอ gachaout1 (ทับทิมหมดจริง) เท่านั้น
@@ -5623,7 +5635,7 @@ class RangerGearBot(threading.Thread):
                         ui_stats.update_hero("สุ่มไม่ได้")
                         device.backup_failed_game_data()
                         device.clear_and_restart()
-                        time.sleep(6)
+                        sleep(6)
                         return "random-Fail"
                 
                 # CONTINUOUS CHECK removed to let outer loop handle gachaout natively (0 delay)
@@ -5633,7 +5645,7 @@ class RangerGearBot(threading.Thread):
                 if fixunkown_pos:
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] พบ fixunkown - กด (477,349)")
                     device.tap(477, 349)
-                    time.sleep(1.5)
+                    sleep(1.5)
                     if check_gachaout_after_click(): return "random-Fail"
                     continue
                 check_result = check_fixbuggacha(adb_img)
@@ -5658,7 +5670,7 @@ class RangerGearBot(threading.Thread):
                         device.backup_failed_game_data()
                         ui_stats.update_hero("สุ่มไม่ได้")
                         device.clear_and_restart()
-                        time.sleep(2)
+                        sleep(2)
                         return "random-Fail"
                     else:
                         hero_key = found_hero.replace(".png", "").replace("heroo", "gachahero")
@@ -5666,7 +5678,7 @@ class RangerGearBot(threading.Thread):
                         ui_stats.update_hero(display_name)
                         device.backup_game_data(build_prefix(display_name))
                         device.clear_and_restart()
-                        time.sleep(2)
+                        sleep(2)
                         return "backup_complete"
                 gacha3_pos = find_cond('img/gacha3.png')
                 if gacha3_pos:
@@ -5685,12 +5697,12 @@ class RangerGearBot(threading.Thread):
                                             if find_cond('img/gachaout.png'):
                                                 found_gachaout = True
                                                 break
-                                            time.sleep(0.5)
+                                            sleep(0.5)
                                         except RestartTimeoutError: raise
-                                        except Exception: time.sleep(0.5)
+                                        except Exception: sleep(0.5)
                                     if found_gachaout:
                                         device.clear_and_restart()
-                                        time.sleep(6)
+                                        sleep(6)
                                         return "random-Fail"
                             gacha3_start_time = None
                             continue
@@ -5707,16 +5719,16 @@ class RangerGearBot(threading.Thread):
                     if device.backup_game_data(build_prefix(display_name)):
                         ui_stats.update_hero(display_name)
                         device.clear_and_restart()
-                        time.sleep(2)
+                        sleep(2)
                         return "backup_complete"
                     else:
-                        time.sleep(1)
+                        sleep(1)
                         continue
                 stopgachaok_pos = find_cond('img/stopgachaok.png')
                 if stopgachaok_pos:
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] พบ stopgachaok - กด (480,353)")
                     device.tap(480, 353)
-                    time.sleep(2)
+                    sleep(2)
                     if check_gachaout_after_click(timeout=5): return "random-Fail"
                     continue
                 stopgacha4_pos = find_btn2('img/stopgacha4.png')
@@ -5728,7 +5740,7 @@ class RangerGearBot(threading.Thread):
                     if safe_tap(stopgacha4_pos[0][0], stopgacha4_pos[0][1], "stopgacha4 (2)", 0, 0, 0.3) == "gachaout_found": return "random-Fail"
                     if check_and_count_swapgacha1() == "complete_gacha":
                         device.clear_and_restart()
-                        time.sleep(2)
+                        sleep(2)
                         return "random-Fail"
                     continue
                 gachafix_pos = find_btn2('img/gachafix.png')
@@ -5743,7 +5755,7 @@ class RangerGearBot(threading.Thread):
                             ui_stats.update_hero("สุ่มไม่ได้")
                             device.backup_failed_game_data()
                             device.clear_and_restart()
-                            time.sleep(2)
+                            sleep(2)
                             return "random-Fail"
                 current_hash = get_image_hash(adb_img)
                 if current_hash == last_image_hash:
@@ -5772,7 +5784,7 @@ class RangerGearBot(threading.Thread):
                             device.backup_failed_game_data()
                             ui_stats.update_hero("สุ่มไม่ได้")
                             device.clear_and_restart()
-                            time.sleep(2)
+                            sleep(2)
                             return "random-Fail"
                         else:
                             hero_key = found_hero.replace(".png", "").replace("heroo", "gachahero")
@@ -5780,7 +5792,7 @@ class RangerGearBot(threading.Thread):
                             ui_stats.update_hero(display_name)
                             device.backup_game_data(display_name)
                             device.clear_and_restart()
-                            time.sleep(2)
+                            sleep(2)
                             return "backup_complete"
                 if all_in_spent_ruby:
                     continue
@@ -5795,7 +5807,7 @@ class RangerGearBot(threading.Thread):
                         device.tap(swap_shop_pos[0][0], swap_shop_pos[0][1])
                         last_click_position = swap_shop_pos[0]
                         found_initial_swap_shop = True
-                        time.sleep(2)
+                        sleep(2)
                         if check_gachaout_after_click(): return "random-Fail"
                         start_time = time.time()
                         found_waitgacha = False
@@ -5820,7 +5832,7 @@ class RangerGearBot(threading.Thread):
                                     if time.time() - start_time > 10:
                                         checked_waitgacha = True
                                         break
-                                time.sleep(0.5)
+                                sleep(0.5)
                             except RestartTimeoutError: raise
                             except Exception: continue
                         channel_pos = get_channel_position()
@@ -5832,7 +5844,7 @@ class RangerGearBot(threading.Thread):
                 if not checked_waitgacha:
                     if find_btn2('img/waitgacha.png'):
                         checked_waitgacha = True
-                        time.sleep(1.5)
+                        sleep(1.5)
                         continue
                 if first_sequence_position < 3:
                     purchase_sequence = ['stopgacha.png', 'stopgacha1.png', 'stopgacha2.png']
@@ -5845,7 +5857,7 @@ class RangerGearBot(threading.Thread):
                         if check_and_count_swapgacha1() == "complete_gacha":
                             ui_stats.update_hero("สุ่มไม่ได้")
                             device.clear_and_restart()
-                            time.sleep(2)
+                            sleep(2)
                             return "random-Fail"
                         if current_img == 'stopgacha2.png': first_sequence_position = 3
                         continue
@@ -5864,12 +5876,12 @@ class RangerGearBot(threading.Thread):
                         if safe_tap(pos[0][0], pos[0][1], f"{current_img}", 0, 0, 0.3) == "gachaout_found": return "random-Fail"
                         if check_and_count_swapgacha1() == "complete_gacha":
                             device.clear_and_restart()
-                            time.sleep(2)
+                            sleep(2)
                             return "random-Fail"
                 if time.time() % 300 < 1: gc.collect()
             except Exception as e:
                 print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Error: {e}")
-                time.sleep(2)
+                sleep(2)
         return "complete"
 
 
