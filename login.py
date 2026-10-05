@@ -9168,7 +9168,11 @@ class RangerGearBot(threading.Thread):
                     pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
-            self.check_floating_popups()
+            # เพิ่งจบรัว BACK แล้วเห็น stoplogin -> ข้ามรอบนี้ ไปเข้า step ล็อกอินผ่านให้เร็วที่สุด
+            if getattr(self, "_fast_to_lobby", False):
+                self._fast_to_lobby = False
+            else:
+                self.check_floating_popups()
 
             # Hard recovery for the case where the app is alive but the login
             # screen has gone dead (no expected login UI for many cycles).
@@ -9847,6 +9851,15 @@ class RangerGearBot(threading.Thread):
                             sleep(0.4)
                             continue
                         print(f"[{self.device_id}] [EVENT] ไม่เจอ event แล้ว - หยุดรัว BACK ({back_press_count} ครั้ง)")
+                        # หา stoplogin ต่อทันที (สูงสุด 3 วิ) เจอแล้วรอบหน้าข้ามเช็คป๊อปอัพ ไปทำงาน step ต่อไปเลย
+                        _sl_end = time.time() + float(config.get("event_stoplogin_wait", 3))
+                        while time.time() < _sl_end:
+                            if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
+                                print(f"[{self.device_id}] [EVENT] เจอ stoplogin - ไปทำงานต่อเลย")
+                                self._fast_to_lobby = True
+                                break
+                            sleep(0.3)
+                            self._raw_capture()
                         break
 
                     if back_press_count >= int(config.get("event_spam_max", 150)): # ป้องกันลูปค้างถาวรเท่านั้น
