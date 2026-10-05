@@ -8109,7 +8109,10 @@ class RangerGearBot(threading.Thread):
                         return "restart"
 
                     self.capture_screen()
-                    
+                    if self.exists_in_cache(checkpoint_img, similarity=0.95):   # ถึงแล้วไปต่อทันที
+                        print(f"[{self.device_id}] Checkpoint reached: {checkpoint_img}")
+                        break
+
                     # ---- Check floating popups on every iteration ----
                     self.check_floating_popups()
                     # --------------------------------------------------
@@ -8306,12 +8309,17 @@ class RangerGearBot(threading.Thread):
 
                 # Check fixcak/stopcheck/blackscreen/fixbug/unkhow
                 self.capture_screen() # Ensure screen is captured before checking errors
-                
-                # ---- Check floating popups on every iteration ----
-                self.check_floating_popups()
-                # --------------------------------------------------
-                
-                err = self.check_error_images()
+
+                # หาปุ่มของขั้นนี้ก่อน เจอแล้วกดทันที (เร็วแบบ fixnet1) - ไม่ต้องไล่เช็คป๊อปอัพ/error หลายสิบรูปก่อน
+                pos = self._find_in_screen(img_path)
+                if not pos:
+                    # ยังไม่เจอ -> เคลียร์ป๊อปอัพลอยทุก 3 รอบ + เช็ค error ทุกรอบ (ของเดิม)
+                    self._seq_round = getattr(self, "_seq_round", 0) + 1
+                    if self._seq_round % 3 == 1:
+                        self.check_floating_popups()
+                    err = self.check_error_images()
+                else:
+                    err = None
                 if err == "fixcak":
                     print(f"[{self.device_id}] Found fixcak.png! Restarting first loop...")
                     return "restart"
@@ -8335,8 +8343,7 @@ class RangerGearBot(threading.Thread):
                     self.clear_and_restart()
                     sleep(2)
                     return "kaiby"
-                
-                pos = self._find_in_screen(img_path)
+
                 if pos:
                     print(f"[{self.device_id}] Found {item}, clicking...")
                     self.click(pos)
@@ -8348,7 +8355,7 @@ class RangerGearBot(threading.Thread):
                         found_cont = False
                         wait_box_started = time.time()
                         while time.time() - wait_box_started < 20:
-                            self.capture_screen()
+                            self._raw_capture()
                             if self.exists_in_cache("img/box2.png"):
                                 print(f"[{self.device_id}] [BOX] box2.png detected. Proceeding...")
                                 found_cont = True
@@ -8357,18 +8364,18 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{self.device_id}] [BOX] end_box.png detected. Stopping box sequence.")
                                 # We don't set found_cont=True because we want to jump to box5
                                 break
-                            sleep(1)
+                            sleep(0.3)
                         
                         if not found_cont:
                             print(f"[{self.device_id}] [BOX] Box2 not found or end reached. Clicking box5.png and finishing.")
                             # Try to click box5.png to close
-                            for _ in range(10):
-                                self.capture_screen()
+                            for _ in range(30):
+                                self._raw_capture()
                                 if self.exists_in_cache("img/box5.png"):
                                     self.click("img/box5.png")
                                     print(f"[{self.device_id}] [BOX] Clicked box5.png")
                                     break
-                                sleep(1)
+                                sleep(0.3)
                             return "success" # Exit this sequence early
 
                     break
@@ -8384,19 +8391,20 @@ class RangerGearBot(threading.Thread):
             img_path = img_name
         
         start = time.time()
+        _round = 0
         while time.time() - start < timeout:
             try:
                 self.capture_screen()
-                # ---- Check floating popups on every iteration ----
-                self.check_floating_popups()
-                # --------------------------------------------------
-                # Match once and click the position we just got (the old code
-                # searched, then made click() search the very same screen again).
+                _round += 1
+                # หาปุ่มที่ต้องการก่อน เจอแล้วกดทันที (เร็วแบบ fixnet1) - เดิมไล่เช็คป๊อปอัพลอยหลายสิบรูปก่อนทุกรอบ
                 pos = self._find_in_screen(img_path, similarity)
                 if pos:
                     print(f"[{self.device_id}] Found {img_name} (sim={similarity})! Clicking...")
                     self.click(pos)
                     return True
+                # ยังไม่เจอ -> ค่อยเคลียร์ป๊อปอัพลอย (ทุก 3 รอบ) เผื่อมีอะไรบังปุ่มอยู่
+                if _round % 3 == 1:
+                    self.check_floating_popups()
             except Exception as e:
                 print(f"[{self.device_id}] Error while waiting for {img_name}: {e}")
             sleep(self.loop_delay(0.2))   # was 0.2
