@@ -9198,6 +9198,8 @@ class RangerGearBot(threading.Thread):
         status = "unknown"
         event_passed = False  # หลังเจอ event.png แล้วหยุดเช็ค fixok
         login_idle_loops = 0
+        self._login_loop_start = time.time()       # จับเวลาเป็นวินาที (ไม่นับรอบ - บอทเร็วขึ้นแล้วรอบสั้นมาก)
+        self._login_ui_seen_ts = time.time()
 
         
         while True:
@@ -9240,7 +9242,8 @@ class RangerGearBot(threading.Thread):
 
             # Hard recovery for the case where the app is alive but the login
             # screen has gone dead (no expected login UI for many cycles).
-            if loop_count % 10 == 0:
+            # (เดิมนับรอบ: "3 รอบ" -> ตอนนี้บอทเร็วขึ้น 1 รอบไม่ถึงวิ เกมยังโหลดไม่เสร็จก็โดนเคลียร์ -> เปลี่ยนเป็นนับวินาทีจริง)
+            if True:
                 login_idle_hits = False
                 for p in [
                     "img/fixid.png",
@@ -9258,16 +9261,17 @@ class RangerGearBot(threading.Thread):
                             break
                     except Exception:
                         pass
-                if login_idle_hits:
-                    login_idle_loops = 0
+                _now = time.time()
+                if login_idle_hits or not getattr(self, "_login_ui_seen_ts", None):
+                    self._login_ui_seen_ts = _now
                 else:
-                    login_idle_loops += 1
-                    if login_idle_loops >= 3:
-                        print(f"[{self.device_id}] [LOGIN-RECOVER] ไม่มี UI login ที่จับได้ใน 3 รอบ -> รีสตาร์ทแอปและเริ่มใหม่")
+                    _lim = float(config.get("login_ui_timeout_sec", 60))
+                    if _now - self._login_ui_seen_ts >= _lim:
+                        print(f"[{self.device_id}] [LOGIN-RECOVER] ไม่มี UI login ที่จับได้ {_lim:.0f} วิ -> รีสตาร์ทแอปและเริ่มใหม่")
                         self.clear_and_restart()
                         self.open_app()
-                        sleep(3)
-                        login_idle_loops = 0
+                        _real_sleep(3)
+                        self._login_ui_seen_ts = time.time()
                         continue
 
             # fixnetv3.png Check in login loop
@@ -9296,9 +9300,9 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/alert2.png", similarity=0.8):
                 if not hasattr(self, '_alert2_start_time') or self._alert2_start_time is None:
                     self._alert2_start_time = time.time()
-                    print(f"[{self.device_id}] Detected alert2.png... waiting 8s to clear app")
-                elif time.time() - self._alert2_start_time >= 8:
-                    print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ 8 วินาที! เคลียร์แอพและเข้าใหม่...")
+                    print(f"[{self.device_id}] Detected alert2.png... waiting {config.get('alert2_timeout_sec', 15)}s to clear app")
+                elif time.time() - self._alert2_start_time >= float(config.get("alert2_timeout_sec", 15)):
+                    print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ {config.get('alert2_timeout_sec', 15)} วินาที! เคลียร์แอพและเข้าใหม่...")
                     self.clear_and_restart()
                     self.open_app()
                     self._alert2_start_time = None
@@ -9913,8 +9917,8 @@ class RangerGearBot(threading.Thread):
             if login_idle_loops in (3, 10) or login_idle_loops % 30 == 0:
                 self._report_login_screen(login_idle_loops)
             sleep(float(config.get("login_loop_delay", 0.6)))
-            if loop_count > 500:
-                print(f"[{self.device_id}] Login timeout after 500 iterations")
+            if time.time() - self._login_loop_start > float(config.get("login_timeout_sec", 900)):
+                print(f"[{self.device_id}] Login timeout after {config.get('login_timeout_sec', 900)}s")
                 status = "timeout"
                 return status
         
