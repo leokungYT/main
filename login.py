@@ -3807,11 +3807,14 @@ class RangerGearBot(threading.Thread):
             except Exception:
                 return None
 
+        bad = getattr(self, "_wg_bad", set())   # ไฟล์ที่เน็ตหลุดซ้ำบนจอนี้ (auto failover) - ไม่กลับไปใช้
         for p in confs:                      # จองไว้แล้วจากรอบก่อน -> ใช้อันเดิม
-            if _owner(p) == self.device_id:
+            if _owner(p) == self.device_id and p not in bad:
                 return p
         order = confs[idx % len(confs):] + confs[:idx % len(confs)]
         for p in order:
+            if p in bad:
+                continue
             lock = os.path.join(claim_dir, os.path.basename(p) + ".lock")
             try:
                 fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -3900,6 +3903,13 @@ class RangerGearBot(threading.Thread):
             self.last_activity_time = time.time()
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
             self._wg_down()
+            # เน็ตหลุดซ้ำบนเซิร์ฟเวอร์เดิม -> สลับไปเซิร์ฟเวอร์สำรองที่ว่างอยู่ (auto failover)
+            cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
+            strikes = self.__dict__.setdefault("_wg_strikes", {})
+            if cur:
+                strikes[cur] = strikes.get(cur, 0) + 1
+                if strikes[cur] >= int(config.get("wg_failover_after", 2)):
+                    self._wg_failover(cur)
             self._ensure_wireguard()
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "start", "-n",
                           self._resolve_game_activity()], timeout=15)
@@ -3912,6 +3922,47 @@ class RangerGearBot(threading.Thread):
             return False
         finally:
             lock.release()
+
+    def _wg_failover(self, conf):
+        """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
+        self.__dict__.setdefault("_wg_bad", set()).add(conf)
+        try:
+            os.remove(os.path.join(os.path.dirname(conf), ".claims", os.path.basename(conf) + ".lock"))
+        except OSError:
+            pass
+        self._wg_conf_applied = None
+        self._wg_conf_written = None
+        print(f"[{self.device_id}] [WG] เน็ตหลุดซ้ำบน {os.path.basename(conf)} - สลับไปเซิร์ฟเวอร์สำรอง")
+
+    def _wg_tuned_conf(self, conf):
+        """ปรับไฟล์ก่อนส่งเข้าเครื่อง (ไม่แก้ไฟล์ต้นฉบับ):
+        - IncludedApplications = เกม  -> ให้เฉพาะเกมผ่าน VPN (split tunnel) ระบบ/แอปอื่นใช้เน็ตปกติ
+        - PersistentKeepalive = 25    -> ส่งสัญญาณเลี้ยง tunnel กันเราเตอร์/NAT ตัดทิ้งตอนเกมเงียบ"""
+        try:
+            with open(conf, encoding="utf-8-sig") as f:
+                lines = f.read().replace(chr(13), "").split(chr(10))
+        except Exception:
+            return conf
+        apps = str(config.get("wg_split_apps", "") or "").strip()   # ปิดไว้ก่อน - เปิดด้วย "wg_split_apps": "com.linecorp.LGRGS" หลังทดสอบ 1 จอ
+        ka = int(config.get("wg_keepalive", 25) or 0)
+        low = [l.strip().lower() for l in lines]
+        out = []
+        section = ""
+        for l in lines:
+            s = l.strip().lower()
+            if s.startswith("[") and section == "[interface]" and apps and not any(x.startswith("includedapplications") for x in low):
+                out.append(f"IncludedApplications = {apps}")
+            if s.startswith("["):
+                section = s
+            out.append(l)
+        if ka and not any(x.startswith("persistentkeepalive") for x in low):
+            while out and not out[-1].strip():
+                out.pop()
+            out.append(f"PersistentKeepalive = {ka}")
+        tuned = os.path.join(tempfile.gettempdir(), f"wg_tuned_{self.device_id.replace(':', '_')}.conf")
+        with open(tuned, "w", encoding="utf-8", newline=chr(10)) as f:
+            f.write(chr(10).join(out).rstrip() + chr(10))
+        return tuned
 
     def _wg_is_up(self):
         r = self.adb_shell("ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true", timeout=10)
@@ -4009,7 +4060,8 @@ class RangerGearBot(threading.Thread):
         ])
         with open(local_sh, "w", newline=chr(10)) as f:   # ไฟล์ sh ต้องเป็น LF
             f.write(script)
-        for src, dst in ((conf, tmp_conf), (local_pb, tmp_pb), (local_sh, tmp_sh)):
+        self._wg_last_conf = conf
+        for src, dst in ((self._wg_tuned_conf(conf), tmp_conf), (local_pb, tmp_pb), (local_sh, tmp_sh)):
             self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, dst], timeout=30)
         self.adb_shell(f"su -c 'sh {tmp_sh}'", timeout=30)   # ต้องครอบ quote: su ของ MuMu รับแค่คำถัดไปคำเดียว
         for _ in range(10):
