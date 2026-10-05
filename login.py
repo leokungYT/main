@@ -7550,7 +7550,6 @@ class RangerGearBot(threading.Thread):
             # Usually box icon is always there or we can just try once
             if check_task_available("img/box1.png"):
                 self.process_sequence(self.box_seq)
-                sleep(2)
             else:
                 print(f"[{self.device_id}] Box icon not found, skipping.")
 
@@ -7593,7 +7592,6 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Task Check: Opening Boxes (Round 2)...")
             if check_task_available("img/box1.png"):
                 self.process_sequence(self.box_seq)
-                sleep(2)
             else:
                 print(f"[{self.device_id}] Box icon (Round 2) not found, skipping.")
             
@@ -8305,6 +8303,8 @@ class RangerGearBot(threading.Thread):
 
             print(f"[{self.device_id}] Waiting for {item}...")
             start_wait = time.time()
+            # ขั้นเปิดกล่อง: ไม่พักเลย (กดตามรูปที่เห็นอยู่แล้ว ไม่มีทางกดผิด) - จังหวะมาจากเวลาจับจออย่างเดียว
+            _nodelay = isinstance(item, str) and item.startswith(("box", "end_box"))
             
             # Custom timeout for specific images
             item_timeout = 180
@@ -8359,7 +8359,8 @@ class RangerGearBot(threading.Thread):
                 if pos:
                     print(f"[{self.device_id}] Found {item}, clicking...")
                     self.click(pos)
-                    sleep(0.8) # Fast transition for images
+                    if not _nodelay:
+                        sleep(0.8) # Fast transition for images
 
                     # === SPECIAL CASE: box1.png logic ===
                     if item == 'box1.png':
@@ -8376,22 +8377,22 @@ class RangerGearBot(threading.Thread):
                                 print(f"[{self.device_id}] [BOX] end_box.png detected. Stopping box sequence.")
                                 # We don't set found_cont=True because we want to jump to box5
                                 break
-                            sleep(0.3)
                         
                         if not found_cont:
                             print(f"[{self.device_id}] [BOX] Box2 not found or end reached. Clicking box5.png and finishing.")
                             # Try to click box5.png to close
-                            for _ in range(30):
+                            _b5_end = time.time() + 10      # รอ box5 ได้ 10 วิจริง (ไม่นับรอบ - ไม่พักระหว่างจับจอ)
+                            while time.time() < _b5_end:
                                 self._raw_capture()
                                 if self.exists_in_cache("img/box5.png"):
                                     self.click("img/box5.png")
                                     print(f"[{self.device_id}] [BOX] Clicked box5.png")
                                     break
-                                sleep(0.3)
                             return "success" # Exit this sequence early
 
                     break
-                sleep(self.loop_delay(0.5)) # Fast loop search (was 0.5)
+                if not _nodelay:
+                    sleep(self.loop_delay(0.5)) # Fast loop search (was 0.5)
 
         return "success"
 
