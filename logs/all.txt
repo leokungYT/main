@@ -3513,3 +3513,73 @@
 [2026-10-04 03:14:20] [GUI] Launched Successfully. Waiting for manual start.
 [2026-10-04 03:14:20] [GUI] Auto-start disabled. Press START to launch the bot.
 [2026-10-04 03:14:25] [GUI] Shutting down... Killing background processes.
+[2026-10-05 12:04:42] ============================================
+[2026-10-05 12:04:42]   Cloudflare WARP + norandom-reid Bot
+[2026-10-05 12:04:42] ============================================
+[2026-10-05 12:04:42] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-10-05 12:04:42] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-05 12:04:42] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-05 12:04:42] === Auto Ranger+Gear Script v3.3.0 ===
+[2026-10-05 12:04:42] [VERSION] build 2026-10-02 fast-v1 | ไฟล์แก้ล่าสุด 2026-10-05 12:00
+[2026-10-05 12:04:42] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-05 12:04:42] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-05 12:04:42] [CLEANUP] Removed old shared_stats.json
+[2026-10-05 12:04:42] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-10-05 12:04:42] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-10-05 12:04:42] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-05 12:04:49] --- [ADB] Auto-scanning 151 ports (5555-5755 odd + 16384+32n) ---
+[2026-10-05 12:04:57] [ADB] Port scan found no devices.
+[2026-10-05 12:05:02] [ADB] adb devices เห็นทั้งหมด 0 เครื่องหลังรอให้นิ่ง
+[2026-10-05 12:05:02] --- Scan Complete ---
+[2026-10-05 12:05:02] [DEV] Attempt 1: No devices found yet, waiting 3s...
+[2026-10-05 12:05:05] [DEV] Attempt 2: No devices found yet, waiting 3s...
+[2026-10-05 12:05:08] [ERROR] No devices connected. Make sure your emulator is running.
+[2026-10-05 12:06:07] ============================================
+[2026-10-05 12:06:07]   Cloudflare WARP + norandom-reid Bot
+[2026-10-05 12:06:07] ============================================
+[2026-10-05 12:06:07] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-10-05 12:06:07] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-05 12:06:07] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-05 12:06:07] === Auto Ranger+Gear Script v3.3.0 ===
+[2026-10-05 12:06:07] [VERSION] build 2026-10-02 fast-v1 | ไฟล์แก้ล่าสุด 2026-10-05 12:00
+[2026-10-05 12:06:07] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-05 12:06:07] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-05 12:06:07] [CLEANUP] Removed old shared_stats.json
+[2026-10-05 12:06:07] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-10-05 12:06:07] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-10-05 12:06:07] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-05 12:06:13] --- [ADB] Auto-scanning 151 ports (5555-5755 odd + 16384+32n) ---
+[2026-10-05 12:06:20] [ADB] Port scan found 2 device(s): 127.0.0.1:16416, 127.0.0.1:5557
+[2026-10-05 12:06:21] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-05 12:06:23] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-05 12:06:26] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-05 12:06:26] [ADB] adb devices เห็นทั้งหมด 1 เครื่องหลังรอให้นิ่ง
+[2026-10-05 12:06:26] --- Scan Complete ---
+[2026-10-05 12:06:26] [ADB] ข้าม emulator-5556 (เครื่องเดียวกับ 127.0.0.1:16416 - boot_id ซ้ำ)
+[2026-10-05 12:06:26] [INFO] Connected Devices (1): 127.0.0.1:16416
+[2026-10-05 12:06:26] [NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม (1 จอ)...
+[2026-10-05 12:06:29] [NET-RESET] 127.0.0.1:16416: ไม่มี VPN ค้าง | เน็ต: ใช้ได้
+[2026-10-05 12:06:29] [NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง 30 วิ ก่อนเริ่มทำงาน...
+[2026-10-05 12:06:59] [WG-GEN] ใช้ Key Pair จาก Windscribe-Bangkok-Wat-Pho-WG.conf | มีอยู่แล้ว 10 ไฟล์ ต้องการ 3
+[2026-10-05 12:06:59] [WG-GEN] ครบแล้ว ไม่ต้องสร้างเพิ่ม
+[2026-10-05 12:07:02] [INFO] Pre-loading OCR model...
+[2026-10-05 12:07:14] [INFO] Loading EasyOCR model (first time only)...
+[2026-10-05 12:07:14] Using CPU. Note: This module is much faster with a GPU.
+[2026-10-05 12:07:18] C:\Users\leoku\AppData\Roaming\Python\Python311\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+[2026-10-05 12:07:18]   w_ih = torch.quantize_per_tensor(
+[2026-10-05 12:07:18] [OK] EasyOCR model loaded!
+[2026-10-05 12:07:18] [OK] OCR model loaded.
+[2026-10-05 12:07:18] [FILE] Found 30 files in c:\Users\leoku\Downloads\LGR\main\input-id (รวมโฟลเดอร์ย่อย)
+[2026-10-05 12:07:18] [FILE] คิวรวมทั้งหมด 30 ไฟล์ (backup + input-id)
+[2026-10-05 12:07:18] [32m[START] Launching GUI Mode...[0m
+[2026-10-05 12:07:20] [GUI] Launched Successfully. Waiting for manual start.
+[2026-10-05 12:07:20] [GUI] Auto-start disabled. Press START to launch the bot.
+[2026-10-05 12:07:25] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-05 12:07:25] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-05 12:07:55] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-05 12:07:55] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-05 12:08:25] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-05 12:08:25] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-05 12:08:29] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-05 12:08:29] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-05 12:08:31] [GUI] Shutting down... Killing background processes.

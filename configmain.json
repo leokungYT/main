@@ -9,8 +9,8 @@
     "wg_dir": "wg",
     "wg_per_device": {},
     "7day": 0,
-    "shopgacha": 0,
-    "swap_shop": 0,
+    "shopgacha": 1,
+    "swap_shop": 1,
     "swap_shopevent": 0,
     "all-tiket": 0,
     "all-in": 0,
@@ -47,10 +47,10 @@
         "swap_shopkom9star": 1
     },
     "HERO_MAPPING": {
-        "gachahero1": "Som+",
-        "gachahero2": "kappa+",
-        "gachahero3": "KafkaU+",
-        "gachahero4": "Kafka+"
+        "gachahero1": "Lelouch+",
+        "gachahero2": "LelouchU+",
+        "gachahero3": "Suzaku+",
+        "gachahero4": "SuzakuU+"
     },
     "Hero_low": {
         "search": 1,
@@ -70,7 +70,7 @@
     "check-gear": 0,
     "use_ocr": 0,
     "box_settings": {
-        "first_round": 0,
+        "first_round": 1,
         "second_round": 0
     },
     "black_screen_timeout": 8,
@@ -128,7 +128,7 @@
         "gpu_model": "Adreno (TM) 640",
         "note": "Baseline profile used for all MuMu instances"
     },
-    "check_lv": 1,
+    "check_lv": 0,
     "lv_threshold": 4,
     "lv_low_dir": "lv-3-4",
     "lv_high_dir": "lv5+",
@@ -143,5 +143,5 @@
     "net_full_scan_every": 10,
     "event_max_back": 30,
     "event_back_per_round": 10,
-    "check_ruby_ticket": 1
+    "check_ruby_ticket": 0
 }
