@@ -6728,15 +6728,9 @@ class RangerGearBot(threading.Thread):
                 self.capture_screen()
             except Exception:
                 return False
-        hit = self._find_in_screen(template_path, similarity) is not None
-        if hit:
-            return True
-        # One fresh retry avoids the common stale-frame problem where the bot
-        # keeps looking at an old screenshot and never taps the current button.
-        try:
-            self.capture_screen()
-        except Exception:
-            return False
+        # เช็คจากภาพที่จับไว้แล้วเท่านั้น (แบบ main-lg ~18 ms)
+        # เดิม: ไม่เจอ -> จับจอใหม่ทุกครั้ง (~300 ms) ทำให้เช็คป๊อปอัพ 30 รูป = จับจอ 30 ครั้ง (~9 วิ)
+        # ผู้เรียกทุกลูปจับจอใหม่เองอยู่แล้วทุกรอบ ภาพจึงไม่เก่า
         return self._find_in_screen(template_path, similarity) is not None
 
     def _get_similarity_score(self, template_path):
