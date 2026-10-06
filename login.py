@@ -4003,11 +4003,41 @@ class RangerGearBot(threading.Thread):
         strikes[cur] = strikes.get(cur, 0) + 1
         lim = int(config.get("wg_failover_after", 2))
         print(f"[{self.device_id}] [WG] เข้าเกมไม่ได้ ({reason}) บน {os.path.basename(cur)} - ครั้งที่ {strikes[cur]}/{lim}")
+        self._block_evidence(reason, cur)
         if strikes[cur] >= lim:
             self._wg_down()
             self._wg_failover(cur)
             return True
         return False
+
+    def _block_evidence(self, reason, conf=None):
+        """เก็บหลักฐานตอนเข้าเกมไม่ได้ -> logs/block_log.csv + รูปจอ logs/block/ (ใช้หาว่าโดน block เพราะอะไร)
+        api = HTTP code จากเซิร์ฟเวอร์เกมผ่านเน็ตของจอนี้: 401 = IP ใช้ได้ปกติ / 403,429,000 = IP โดน block หรือเน็ตไม่ออก"""
+        if not int(config.get("block_log", 1) or 0):
+            return
+        try:
+            r = self.adb_shell("curl -s -m 8 https://api.ipify.org; echo; "
+                               "curl -s -m 10 -o /dev/null -w '%{http_code}' https://rangers-api.line-apps.com/v12.3/home",
+                               timeout=25)
+            out = (r.stdout or b"").decode("utf-8", "ignore").split()
+            ip = out[0] if len(out) > 1 else "-"
+            code = out[-1] if out else "-"
+            ts = time.strftime("%Y-%m-%d %H:%M:%S")
+            os.makedirs(os.path.join("logs", "block"), exist_ok=True)
+            shot = os.path.join("logs", "block", time.strftime("%Y%m%d_%H%M%S_") + self.device_id.replace(":", "_") + ".png")
+            try:
+                with open(shot, "wb") as f:
+                    f.write(self.adb_run(["exec-out", "screencap", "-p"], timeout=20).stdout or b"")
+            except Exception:
+                shot = "-"
+            new = not os.path.exists(os.path.join("logs", "block_log.csv"))
+            with open(os.path.join("logs", "block_log.csv"), "a", encoding="utf-8-sig") as f:
+                if new:
+                    f.write("time,device,reason,server,exit_ip,api_code,screenshot" + chr(10))
+                f.write(f"{ts},{self.device_id},{reason},{_wg_endpoint(conf) if conf else '-'},{ip},{code},{shot}" + chr(10))
+            print(f"[{self.device_id}] [BLOCK] {reason} | IP {ip} | game api {code} | {shot}")
+        except Exception as e:
+            print(f"[{self.device_id}] [BLOCK] เก็บหลักฐานไม่ได้: {e}")
 
     def _wg_ok(self):
         """ล็อกอินผ่านบนเซิร์ฟเวอร์นี้ -> ล้างตัวนับ (นับเฉพาะครั้งที่ล้มติดกัน)"""

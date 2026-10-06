@@ -62,3 +62,4 @@ wg/*
 wg_accounts/
 # ตัวติดตั้งกุญแจ VPN ต่อบัญชี (มีกุญแจบัญชีอยู่ข้างใน) - ห้ามขึ้น git
 install_account*.bat
+logs/
