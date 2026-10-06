@@ -3996,7 +3996,7 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] [WG] ปิด VPN ไม่สำเร็จ: {e}")
 
-    def _wg_request_net_recover(self, where):
+    def _wg_request_net_recover(self, where, switch_now=False):
         """เจอ Unstable network (fixnetv3) บนจอที่ต่อ VPN อยู่ -> ทำทันทีตรงนี้ (ไม่ต้องรอลูปล็อกอิน):
         ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
         ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
@@ -4018,8 +4018,21 @@ class RangerGearBot(threading.Thread):
             self.last_activity_time = time.time()
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
             self._wg_down()
-            # เน็ตหลุดซ้ำบนเซิร์ฟเวอร์เดิม -> สลับไปเซิร์ฟเวอร์สำรองที่ว่างอยู่ (auto failover)
-            self._wg_strike("Unstable network")
+            if switch_now:
+                # fixnet1: เปลี่ยน IP ทันที (ไม่รอนับ 2 ครั้ง) - พักเซิร์ฟเวอร์นี้ไว้ แต่ไม่ลบไฟล์
+                cur = getattr(self, "_wg_last_conf", None)
+                if cur:
+                    self.__dict__.setdefault("_wg_bad", set()).add(cur)
+                    _wg_cooldown_add(os.path.dirname(cur), _wg_endpoint(cur))
+                    try:
+                        os.remove(os.path.join(os.path.dirname(cur), ".claims", os.path.basename(cur) + ".lock"))
+                    except OSError:
+                        pass
+                    self._wg_conf_written = None
+                    print(f"[{self.device_id}] [WG] {where}: เลิกใช้ {os.path.basename(cur)} - เปลี่ยน IP")
+            else:
+                # เน็ตหลุดซ้ำบนเซิร์ฟเวอร์เดิม -> สลับไปเซิร์ฟเวอร์สำรองที่ว่างอยู่ (auto failover)
+                self._wg_strike("Unstable network")
             self._ensure_wireguard()
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "start", "-n",
                           self._resolve_game_activity()], timeout=15)
@@ -7181,6 +7194,10 @@ class RangerGearBot(threading.Thread):
             if getattr(self, "_net_scale", None) is not None or sc != 1.0:
                 print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
             self._net_scale = sc   # จำเสมอ (รวม 1.0) monitor จะได้เลิกกวาดทุกสเกลทุกรอบ
+        # fixnet1 บนจอที่ต่อ VPN -> ไม่กด RETRY: ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (config "wg_fixnet1_switch")
+        if (os.path.basename(path) == "fixnet1.png" and int(config.get("wg_fixnet1_switch", 1) or 0)
+                and self._wg_request_net_recover("fixnet1", switch_now=True)):
+            return os.path.basename(path)
         # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
         # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
         self._adb_tap(cx, cy)

@@ -15,6 +15,7 @@
     "wg_probe": 1,
     "wg_rotate_logins": 5,
     "wg_regen_blocked": 1,
+    "wg_fixnet1_switch": 1,
     "wg_blocked_days": 7,
     "wg_exclude_countries": ["TH"],
     "wg_after_login": 0,
