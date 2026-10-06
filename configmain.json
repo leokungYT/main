@@ -14,7 +14,6 @@
     "wg_cooldown_hours": 6,
     "wg_probe": 1,
     "wg_rotate_logins": 5,
-    "wg_off_after_login": 0,
     "wg_regen_blocked": 1,
     "wg_blocked_days": 7,
     "wg_exclude_countries": ["TH"],

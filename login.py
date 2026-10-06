@@ -9869,11 +9869,6 @@ class RangerGearBot(threading.Thread):
                 self._close_lobby_popups()    # ปิดป๊อปอัพอีเวนต์ที่ทับ Lobby ก่อนทำงานตาม config (check-lv / ruby / ฯลฯ)
                 if int(config.get("wg_after_login", 0) or 0):
                     self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
-                elif int(config.get("wg_off_after_login", 0) or 0):
-                    # ใช้ VPN แค่ช่วงเข้าเกม/ล็อกอิน -> เจอ stoplogin แล้วปิด ที่เหลือ (event/กล่อง/สุ่ม) วิ่งเน็ตบ้าน
-                    # IP ของ VPN ถูกใช้น้อยลงมาก = โดนบล็อกช้าลง ; open_app รอบหน้าจะต่อ VPN ใหม่ให้เอง
-                    print(f"[{self.device_id}] [WG] เข้าเกมแล้ว - ปิด VPN (wg_off_after_login)")
-                    self._wg_down()
 
                 # --- เช็คเลเวลบัญชี (config "check_lv") - อ่านครั้งเดียวตรงนี้ ---
                 #     จำเลเวลไว้เฉย ๆ แล้ว "ทำงานตาม config ต่อตามปกติ" (event/กล่อง/สุ่ม/7วัน)
