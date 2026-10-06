@@ -4066,6 +4066,20 @@ class RangerGearBot(threading.Thread):
         cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
         if cur:
             self.__dict__.setdefault("_wg_strikes", {})[cur] = 0
+            # สลับ IP เป็นช่วง: ใช้เซิร์ฟเวอร์เดิมครบ wg_rotate_logins รอบ -> ปล่อยไฟล์นี้ให้จออื่น
+            # แล้วเปิดเกมรอบหน้าจะต่อเซิร์ฟเวอร์ใหม่ (ไม่ตัดเน็ตตอนกำลังเล่น ; ไม่นับเป็นโดนบล็อก ไม่ติดพัก)
+            n = int(config.get("wg_rotate_logins", 5) or 0)
+            if n > 0:
+                used = self.__dict__.setdefault("_wg_uses", {})
+                used[cur] = used.get(cur, 0) + 1
+                if used[cur] >= n:
+                    used[cur] = 0
+                    self.__dict__.setdefault("_wg_bad", set()).add(cur)
+                    try:
+                        os.remove(os.path.join(os.path.dirname(cur), ".claims", os.path.basename(cur) + ".lock"))
+                    except OSError:
+                        pass
+                    print(f"[{self.device_id}] [WG] ใช้ {os.path.basename(cur)} ครบ {n} รอบ - รอบหน้าสลับ IP")
 
     def _wg_failover(self, conf):
         """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
