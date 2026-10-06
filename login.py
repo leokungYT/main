@@ -3139,7 +3139,7 @@ def relaunch_self(reason=""):
     return True
 
 
-def connect_known_ports():
+def connect_known_ports(_retry=True):
     """เชื่อมต่อ emulator: kill adb server ก่อนเสมอแล้วค่อยเชื่อมใหม่
     ถาม MuMuManager ก่อน (แม่นสุด ไม่มี ghost) แล้วเช็คซ้ำจนเชื่อมครบทุกตัว
     ถ้าหา MuMuManager ไม่เจอค่อย fallback scan พอร์ต"""
@@ -3150,12 +3150,22 @@ def connect_known_ports():
             subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=10)
         except Exception:
             pass
+        # ล้างของเก่าให้หมดก่อนเชื่อม: adb.exe ตัวอื่นที่ค้าง/คนละเวอร์ชัน (แย่งกัน -> ทุกจอ offline)
+        if os.name == "nt" and int(config.get("adb_kill_all", 1) or 0):
+            try:
+                subprocess.run(["taskkill", "/f", "/im", "adb.exe"], capture_output=True, timeout=10)
+            except Exception:
+                pass
         time.sleep(0.5)
         try:
             subprocess.run([adb_path, "start-server"], capture_output=True, timeout=20)
         except Exception:
             pass
         time.sleep(2)  # รอ daemon พร้อมจริงก่อนยิง connect ไม่งั้นตัวแรก ๆ เชื่อมหลุด
+        try:
+            subprocess.run([adb_path, "disconnect"], capture_output=True, timeout=10)   # ล้างพอร์ตเก่าทั้งหมด
+        except Exception:
+            pass
 
         # === ถาม MuMuManager ตรงๆ ว่ามี instance ไหนเปิดอยู่ ===
         instances = get_mumu_instances()
@@ -3173,6 +3183,8 @@ def connect_known_ports():
                 # ยิงพร้อมกัน - เดิมไล่ทีละตัว 19 เครื่องก็รอกันเป็นสิบวินาทีตั้งแต่ยกแรก
                 def _connect_one(serial):
                     try:
+                        # ค้างเป็น offline ("already connected" แต่ใช้ไม่ได้) -> ตัดพอร์ตนั้นทิ้งก่อนแล้วเชื่อมใหม่
+                        subprocess.run([adb_path, "disconnect", serial], capture_output=True, timeout=5)
                         r = subprocess.run([adb_path, "connect", serial],
                                            capture_output=True, timeout=5, text=True)
                         msg_lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
@@ -3194,6 +3206,22 @@ def connect_known_ports():
             online = set(get_connected_devices())
             ok = [s for s in targets if s in online]
             missing = [s for s in targets if s not in online]
+            if missing and _retry and int(config.get("adb_restart_stuck", 1) or 0):
+                # จอที่ยังไม่ติดหลังล้างพอร์ต+เชื่อมใหม่ครบ 6 ยก = Android ข้างในค้าง -> สั่ง MuMu รีสตาร์ทจอนั้นแล้วลองอีกรอบ
+                mgr = find_mumu_manager()
+                idx = [i for i, s in instances if s in missing]
+                if mgr and idx:
+                    print(f"[ADB] {len(missing)} จอเชื่อมไม่ติด - สั่ง MuMu รีสตาร์ทจอ {', '.join(idx)} แล้วเชื่อมใหม่...")
+                    _mumu_run_v(mgr, "control", ",".join(idx), "restart", timeout=180)
+                    wait = float(config.get("adb_restart_wait", 60))
+                    t_end = time.time() + wait
+                    while time.time() < t_end:          # รอบูตเสร็จ (เช็คทุก 5 วิ ครบแล้วไปต่อเลย)
+                        time.sleep(5)
+                        inst = get_mumu_instances() or []
+                        if all(s in {x for _, x in inst} for s in missing):
+                            time.sleep(5)
+                            break
+                    return connect_known_ports(_retry=False)
             if missing:
                 print(f"[ADB] เชื่อมสำเร็จ {len(ok)}/{len(targets)} | ยังไม่ติด: {', '.join(missing)}")
             else:
