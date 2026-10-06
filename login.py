@@ -351,6 +351,49 @@ def _wg_endpoint(conf):
     return os.path.basename(conf)
 
 
+def _wg_replace_blocked(conf, dev=""):
+    """เซิร์ฟเวอร์นี้โดนเกมบล็อก -> จดลง wg/.blocked.json (wg_gen ไม่สร้างซ้ำ), ลบไฟล์ทิ้ง,
+    แล้วสั่ง wg_gen สร้างเซิร์ฟเวอร์ใหม่มาแทนให้จำนวนไฟล์เท่าเดิม
+    (ข้ามถ้าไฟล์มาจาก server RemoteFileManager (.managed) ; หลายจอพร้อมกัน -> ล็อกให้สร้างทีละจอ)"""
+    wg_dir = os.path.dirname(conf) or "."
+    if os.path.exists(os.path.join(wg_dir, ".managed")) or not os.path.exists(conf):
+        return
+    lock = os.path.join(wg_dir, ".gen.lock")
+    try:
+        if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
+            os.remove(lock)                 # ล็อกค้างจาก process ที่ตายไป
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except Exception:
+        return                              # จออื่นกำลังสร้างอยู่ - รอบนั้นจะเติมให้ครบเอง
+    try:
+        ep = _wg_endpoint(conf)
+        bp = os.path.join(wg_dir, ".blocked.json")
+        try:
+            with open(bp, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            d = {}
+        d[ep] = time.time()
+        with open(bp, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        want = len(_wg_list_configs(wg_dir))
+        os.remove(conf)
+        print(f"[{dev}] [WG] ลบ {os.path.basename(conf)} (เกมบล็อก IP) - สร้างเซิร์ฟเวอร์ใหม่มาแทน")
+        import wg_gen
+        wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
+                        int(config.get("wg_machine", 0) or 0),
+                        str(config.get("wg_account", "") or "").strip() or None,
+                        int(config.get("wg_total_machines", 30) or 30))
+    except Exception as e:
+        print(f"[{dev}] [WG] สร้างไฟล์แทนไม่สำเร็จ: {e}")
+    finally:
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+
+
 def _wg_cooldown_load(wg_dir):
     """{endpoint: หมดเวลาพัก} ที่ยังไม่หมด (ใช้ร่วมทุกจอผ่านไฟล์ wg/.cooldown.json)"""
     try:
@@ -4085,6 +4128,8 @@ class RangerGearBot(threading.Thread):
         """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
         self.__dict__.setdefault("_wg_bad", set()).add(conf)
         _wg_cooldown_add(os.path.dirname(conf), _wg_endpoint(conf))
+        if int(config.get("wg_regen_blocked", 1) or 0):
+            _wg_replace_blocked(conf, self.device_id)
         try:
             os.remove(os.path.join(os.path.dirname(conf), ".claims", os.path.basename(conf) + ".lock"))
         except OSError:

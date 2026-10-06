@@ -73,6 +73,22 @@ def save_config(account=None, machine=None, path="configmain.json"):
     print("[WG-GEN] configmain.json: " + ", ".join(f"{k}={v}" for k, v in vals.items()))
 
 
+def load_blocked(wg_dir):
+    """{endpoint: เวลาที่โดนบล็อก} ที่ยังไม่หมดอายุ (wg_blocked_days วัน, default 7)"""
+    try:
+        with open(os.path.join(wg_dir, ".blocked.json"), encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        return {}
+    try:
+        days = float(json.load(open(os.path.join(os.path.dirname(os.path.abspath(wg_dir)), "configmain.json"),
+                                    encoding="utf-8-sig")).get("wg_blocked_days", 7))
+    except Exception:
+        days = 7.0
+    import time as _t
+    return {k: v for k, v in d.items() if _t.time() - v < days * 86400}
+
+
 def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0):
     """ให้มีไฟล์ใน wg/ อย่างน้อย want ไฟล์ - คืน 0 = สำเร็จ/ครบแล้ว, 1 = สร้างไม่ได้
 
@@ -174,6 +190,7 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
     except Exception:
         _ex = ["TH"]
     exclude = {str(c).upper() for c in (_ex or [])}
+    blocked = load_blocked(WG_DIR)      # เซิร์ฟเวอร์ที่บอทเจอว่าเกมบล็อก IP (wg/.blocked.json) - ไม่สร้างซ้ำ
     order = {c: i for i, c in enumerate(countries)}
     groups = []
     for loc in data:
@@ -184,6 +201,8 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
             continue                        # โหมดเครื่องเดียว: เอาเฉพาะประเทศที่เลือก
         for g in loc.get("groups") or []:
             if not g.get("wg_pubkey") or not g.get("wg_endpoint") or not g.get("nodes"):
+                continue
+            if g["wg_endpoint"] in blocked:
                 continue
             groups.append((order.get(cc, len(order)), cc, g))
     # เรียงแบบตายตัว (ทุกเครื่องได้ลำดับเดียวกัน) -> แบ่งช่วงต่อเครื่องได้ไม่ชน
