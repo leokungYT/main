@@ -4047,11 +4047,26 @@ class RangerGearBot(threading.Thread):
         finally:
             lock.release()
 
+    def _wg_auth_failed(self):
+        """Authentication failed (fixid) ตอนต่อ VPN -> ด่าน login ของ LINE ไม่รับ IP ของ VPN
+        เจอครบ wg_auth_fallback ไอดี (default 2) -> ปิด VPN ของจอนี้ไปจนปิดบอท ใช้เน็ตบ้านแทน (0 = ไม่ปิด)"""
+        if not int(config.get("wg_enabled", 0) or 0) or not getattr(self, "_wg_conf_applied", None):
+            return
+        lim = int(config.get("wg_auth_fallback", 2) or 0)
+        if lim <= 0:
+            return
+        self._wg_auth_fail = getattr(self, "_wg_auth_fail", 0) + 1
+        print(f"[{self.device_id}] [WG] Authentication failed ผ่าน VPN ({self._wg_auth_fail}/{lim})")
+        if self._wg_auth_fail >= lim:
+            self._wg_off = True
+            self._wg_down()
+            print(f"[{self.device_id}] [WG] ด่าน login LINE ไม่รับ IP VPN - ปิด VPN จอนี้ ใช้เน็ตบ้านแทน (จนกว่าจะเปิดบอทใหม่)")
+
     def _wg_strike(self, reason, now_switch=False):
         """จอนี้เข้าเกมไม่ได้บนเซิร์ฟเวอร์ VPN ปัจจุบัน 1 ครั้ง (Unstable network / fixid ครบ / LINE GAME ค้าง /
         จอดำ / login failed) - ครบ wg_failover_after (2) ครั้งบนเซิร์ฟเวอร์เดิม -> เลิกใช้ แล้วจองเซิร์ฟเวอร์อื่น
         (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว"""
-        if not int(config.get("wg_enabled", 0) or 0):
+        if not int(config.get("wg_enabled", 0) or 0) or getattr(self, "_wg_off", False):
             return False
         cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
         if not cur:
@@ -4188,7 +4203,7 @@ class RangerGearBot(threading.Thread):
 
     def _ensure_wireguard(self):
         """ต่อ WireGuard ในอีมูฯ จอนี้ (เรียกก่อนเปิดเกมทุกครั้ง - ต่ออยู่แล้วจะข้ามเร็ว)"""
-        if not int(config.get("wg_enabled", 0) or 0):
+        if not int(config.get("wg_enabled", 0) or 0) or getattr(self, "_wg_off", False):
             return
         conf = self._wg_conf_for_device()
         if not conf and not getattr(self, "_wg_down_done", False):
@@ -9489,6 +9504,7 @@ class RangerGearBot(threading.Thread):
                     
                     if self._login_fixid_count >= 3:
                         print(f"[{self.device_id}] fixid limit reached (3 times)! Failing...")
+                        self._wg_auth_failed()
                         self._wg_strike("fixid ครบ 3")
                         self._login_fixid_count = 0
                         return "failed"
@@ -9884,6 +9900,7 @@ class RangerGearBot(threading.Thread):
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
                 self._wg_ok()
+                self._wg_auth_fail = 0
                 self._close_lobby_popups()    # ปิดป๊อปอัพอีเวนต์ที่ทับ Lobby ก่อนทำงานตาม config (check-lv / ruby / ฯลฯ)
                 if int(config.get("wg_after_login", 0) or 0):
                     self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
