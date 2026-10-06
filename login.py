@@ -3258,6 +3258,9 @@ def connect_known_ports():
         print(f"[ADB] Port scan error: {e}")
 
 
+_GHOST_WARNED = set()
+
+
 def get_connected_devices():
     """ดึงรายชื่อ devices ที่ online จาก adb devices (ไม่จำกัดจำนวน, กรองซ้ำ)"""
     try:
@@ -3316,7 +3319,9 @@ def get_connected_devices():
                         pass
                 if d in allowed or serial in allowed:
                     filtered.append(d)
-                else:
+                elif d not in _GHOST_WARNED:
+                    # แจ้งครั้งเดียวต่อเครื่อง (ฟังก์ชันนี้ถูกเรียกทุกยก - เดิม log ท่วมจอจนดูเหมือนค้าง)
+                    _GHOST_WARNED.add(d)
                     print(f"[ADB] ข้าม {d} (ไม่อยู่ในรายชื่อ instance ของ MuMuManager - ghost)")
             final_devices = filtered
 
