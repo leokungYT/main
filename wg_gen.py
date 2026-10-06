@@ -167,11 +167,18 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
 
     # เซิร์ฟเวอร์ที่ใช้อยู่แล้ว (กุญแจไหนก็ตาม) ไม่ซ้ำ จะได้ IP ไม่ซ้ำด้วย
     used = {kv.get("PublicKey") for kv in have}
+    # ประเทศที่เซิร์ฟเวอร์เกมบล็อก IP VPN (ทดสอบ 2026-10-06: Bangkok ออกเน็ตได้แต่ rangers-api ไม่ตอบ)
+    try:
+        _ex = json.load(open(os.path.join(os.path.dirname(os.path.abspath(WG_DIR)), "configmain.json"),
+                             encoding="utf-8-sig")).get("wg_exclude_countries", ["TH"])
+    except Exception:
+        _ex = ["TH"]
+    exclude = {str(c).upper() for c in (_ex or [])}
     order = {c: i for i, c in enumerate(countries)}
     groups = []
     for loc in data:
         cc = loc.get("country_code", "")
-        if not loc.get("status", 1):
+        if not loc.get("status", 1) or cc in exclude:
             continue
         if cc not in order and not machine:
             continue                        # โหมดเครื่องเดียว: เอาเฉพาะประเทศที่เลือก

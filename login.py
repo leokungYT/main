@@ -4010,18 +4010,40 @@ class RangerGearBot(threading.Thread):
             return True
         return False
 
+    def _net_probe(self):
+        """(IP ขาออก, HTTP code ของเซิร์ฟเวอร์เกม) ผ่านเน็ตที่เกมใช้จริง
+        adb shell / root ถูก Android ยกเว้นจาก VPN -> ถ้ามี tun0 ใส่ ip rule ชั่วคราวให้ root วิ่งผ่าน tunnel ก่อนยิง
+        code: 401 = ต่อได้ปกติ (แค่ไม่ได้ล็อกอิน) / 000 = ไม่ตอบ (IP โดนบล็อกหรือเน็ตไม่ออก) / 403,429 = ถูกปฏิเสธ"""
+        safe = self.device_id.replace(":", "_")
+        sh = f"/data/local/tmp/probe_{safe}.sh"
+        local = os.path.join(tempfile.gettempdir(), f"probe_{safe}.sh")
+        script = chr(10).join([
+            "R=0",
+            "if ip -o link | grep -q ' tun0'; then ip rule add pref 10500 uidrange 0-0 lookup tun0 2>/dev/null && R=1; fi",
+            "IP=$(curl -s -m 8 https://api.ipify.org)",
+            "C=$(curl -s -m 12 -o /dev/null -w '%{http_code}' https://rangers-api.line-apps.com/v12.3/home)",
+            "[ $R = 1 ] && ip rule del pref 10500",
+            "echo \"P ${IP:--} ${C:-000}\"",
+            f"rm -f {sh}",
+            "",
+        ])
+        with open(local, "w", newline=chr(10)) as f:
+            f.write(script)
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "push", local, sh], timeout=20)
+        r = self.adb_shell(f"su -c 'sh {sh}'", timeout=40)
+        for line in (r.stdout or b"").decode("utf-8", "ignore").splitlines():
+            if line.startswith("P "):
+                parts = line.split()
+                return parts[1], parts[2]
+        return "-", "000"
+
     def _block_evidence(self, reason, conf=None):
         """เก็บหลักฐานตอนเข้าเกมไม่ได้ -> logs/block_log.csv + รูปจอ logs/block/ (ใช้หาว่าโดน block เพราะอะไร)
         api = HTTP code จากเซิร์ฟเวอร์เกมผ่านเน็ตของจอนี้: 401 = IP ใช้ได้ปกติ / 403,429,000 = IP โดน block หรือเน็ตไม่ออก"""
         if not int(config.get("block_log", 1) or 0):
             return
         try:
-            r = self.adb_shell("curl -s -m 8 https://api.ipify.org; echo; "
-                               "curl -s -m 10 -o /dev/null -w '%{http_code}' https://rangers-api.line-apps.com/v12.3/home",
-                               timeout=25)
-            out = (r.stdout or b"").decode("utf-8", "ignore").split()
-            ip = out[0] if len(out) > 1 else "-"
-            code = out[-1] if out else "-"
+            ip, code = self._net_probe()
             ts = time.strftime("%Y-%m-%d %H:%M:%S")
             os.makedirs(os.path.join("logs", "block"), exist_ok=True)
             shot = os.path.join("logs", "block", time.strftime("%Y%m%d_%H%M%S_") + self.device_id.replace(":", "_") + ".png")
@@ -4114,6 +4136,22 @@ class RangerGearBot(threading.Thread):
             return                          # จอนี้ต่อ VPN ไม่ขึ้นมา 2 รอบแล้ว - เลิกลอง (ไม่เสียเวลาทุกไอดี)
         try:
             self._wg_setup(conf)
+            if getattr(self, "_wg_conf_applied", None) == conf and int(config.get("wg_probe", 1) or 0):
+                # ต่อแล้ว -> ยิงเซิร์ฟเวอร์เกมผ่าน VPN ทันที: ไม่ตอบ/ถูกปฏิเสธ = IP นี้โดนบล็อก -> สลับเลย ไม่ต้องรอเกมพัง
+                ip, code = self._net_probe()
+                if code in ("000", "403", "429"):
+                    print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมไม่รับ IP {ip} ({os.path.basename(conf)}, code {code}) - สลับเซิร์ฟเวอร์")
+                    self._wg_down()
+                    self._wg_failover(conf)
+                    tries = getattr(self, "_wg_probe_tries", 0) + 1
+                    self._wg_probe_tries = tries
+                    if tries < int(config.get("wg_probe_max", 5)):
+                        return self._ensure_wireguard()
+                    print(f"[{self.device_id}] [WG] ลองแล้ว {tries} เซิร์ฟเวอร์ยังไม่ผ่าน - เล่นต่อแบบไม่มี VPN รอบนี้")
+                    self._wg_probe_tries = 0
+                    return
+                self._wg_probe_tries = 0
+                print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมตอบปกติผ่าน IP {ip} (code {code})")
             if getattr(self, "_wg_conf_applied", None) == conf:
                 self._wg_fail = 0
             else:
