@@ -339,6 +339,44 @@ def ensure_windscribe_bootstrap():
         print(f"[WINDSCRIBE] ต่อไม่สำเร็จ ({out[-200:] or 'ไม่มีข้อความ'}) - รันบอทต่อโดยไม่มี VPN")
 
 
+def _wg_endpoint(conf):
+    """host ของ Endpoint ในไฟล์ .conf (= IP ขาออกของ VPN)"""
+    try:
+        with open(conf, encoding="utf-8-sig") as f:
+            for l in f:
+                if l.strip().lower().startswith("endpoint"):
+                    return l.split("=", 1)[1].strip().rsplit(":", 1)[0]
+    except Exception:
+        pass
+    return os.path.basename(conf)
+
+
+def _wg_cooldown_load(wg_dir):
+    """{endpoint: หมดเวลาพัก} ที่ยังไม่หมด (ใช้ร่วมทุกจอผ่านไฟล์ wg/.cooldown.json)"""
+    try:
+        with open(os.path.join(wg_dir, ".cooldown.json"), encoding="utf-8") as f:
+            d = json.load(f)
+        now = time.time()
+        return {k: v for k, v in d.items() if v > now}
+    except Exception:
+        return {}
+
+
+def _wg_cooldown_add(wg_dir, endpoint):
+    h = float(config.get("wg_cooldown_hours", 6) or 0)
+    if h <= 0 or not endpoint:
+        return
+    d = _wg_cooldown_load(wg_dir)
+    d[endpoint] = time.time() + h * 3600
+    try:
+        tmp = os.path.join(wg_dir, f".cooldown.{os.getpid()}.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        os.replace(tmp, os.path.join(wg_dir, ".cooldown.json"))
+    except Exception:
+        pass
+
+
 def _wg_list_configs(wg_dir=None):
     """รายการไฟล์ config WireGuard ตามลำดับจอ (path ในเครื่อง)
 
@@ -3819,7 +3857,22 @@ class RangerGearBot(threading.Thread):
             except Exception:
                 return None
 
-        bad = getattr(self, "_wg_bad", set())   # ไฟล์ที่เน็ตหลุดซ้ำบนจอนี้ (auto failover) - ไม่กลับไปใช้
+        bad = set(getattr(self, "_wg_bad", set()))   # ไฟล์ที่เน็ตหลุดซ้ำบนจอนี้ (auto failover) - ไม่กลับไปใช้
+        # เซิร์ฟเวอร์ (IP ขาออก) ที่จอไหนก็ตามเพิ่งโดน block -> พักไว้ wg_cooldown_hours ชม. ทุกจอเลี่ยง
+        cool = _wg_cooldown_load(wg_dir)
+        bad |= {c for c in confs if _wg_endpoint(c) in cool}
+        # จำกัดจำนวนจอต่อเซิร์ฟเวอร์เดียวกัน (IP ขาออกเดียวกัน) ; 0 = ไม่จำกัด
+        max_ip = int(config.get("wg_max_per_ip", 3) or 0)
+        if max_ip > 0:
+            used = {}
+            for c in confs:
+                o = _owner(c)
+                if o and o != self.device_id:
+                    e = _wg_endpoint(c)
+                    used[e] = used.get(e, 0) + 1
+            full = {c for c in confs if used.get(_wg_endpoint(c), 0) >= max_ip}
+            if len(full | bad) < len(confs):
+                bad |= full
         for p in confs:                      # จองไว้แล้วจากรอบก่อน -> ใช้อันเดิม
             if _owner(p) == self.device_id and p not in bad:
                 return p
@@ -3840,6 +3893,8 @@ class RangerGearBot(threading.Thread):
         if bad and len(bad) >= len(confs):
             # ลองครบทุกไฟล์แล้ว -> ให้โอกาสใหม่ทั้งหมด (วนรอบใหม่) แทนที่จะไม่มี VPN
             print(f"[{self.device_id}] [WG] ลองครบทุกเซิร์ฟเวอร์แล้ว - เริ่มวนใหม่")
+            if not getattr(self, "_wg_bad", None):
+                return None                  # ทุกตัวติดพัก/เต็ม -> ไม่ต่อ VPN รอบนี้
             self._wg_bad = set()
             return self._wg_conf_for_device()
         if not getattr(self, "_wg_short_warned", False):
@@ -3963,6 +4018,7 @@ class RangerGearBot(threading.Thread):
     def _wg_failover(self, conf):
         """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
         self.__dict__.setdefault("_wg_bad", set()).add(conf)
+        _wg_cooldown_add(os.path.dirname(conf), _wg_endpoint(conf))
         try:
             os.remove(os.path.join(os.path.dirname(conf), ".claims", os.path.basename(conf) + ".lock"))
         except OSError:
