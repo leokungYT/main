@@ -1393,7 +1393,8 @@ if GUI_AVAILABLE:
             else:
                 self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
                 # Auto-start is opt-in only. Default is disabled to prevent accidental launches.
-                cloud_fast_enabled = bool(config.get("cloud_fast_start", config.get("auto_start", 0)))
+                # auto_start หรือ cloud_fast_start ตัวไหนเป็น 1 ก็เริ่มเอง (เดิม cloud_fast_start: 0 ทับ auto_start: 1 จนไม่เริ่ม)
+                cloud_fast_enabled = bool(int(config.get("auto_start", 0) or 0) or int(config.get("cloud_fast_start", 0) or 0))
                 delay_sec = float(config.get("cloud_start_delay_sec", 2.0))
                 if cloud_fast_enabled:
                     print(f"[GUI] cloud_fast_start=1 - จะเริ่มบอทอัตโนมัติใน {delay_sec:.1f} วินาที")
