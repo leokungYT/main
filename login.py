@@ -3982,8 +3982,6 @@ class RangerGearBot(threading.Thread):
                         pass
                     self._wg_conf_written = None
                     print(f"[{self.device_id}] [WG] {where}: เลิกใช้ {os.path.basename(cur)} - เปลี่ยน IP")
-                    if where == "Authentication failed" and int(config.get("wg_regen_blocked", 1) or 0):
-                        _wg_replace_blocked(cur, self.device_id)   # ลบตัวที่โดนบล็อก + สร้างเซิร์ฟเวอร์ใหม่มาแทน
             else:
                 # เน็ตหลุดซ้ำบนเซิร์ฟเวอร์เดิม -> สลับไปเซิร์ฟเวอร์สำรองที่ว่างอยู่ (auto failover)
                 self._wg_strike("Unstable network")
@@ -4107,11 +4105,13 @@ class RangerGearBot(threading.Thread):
                         pass
                     print(f"[{self.device_id}] [WG] ใช้ {os.path.basename(cur)} ครบ {n} รอบ - รอบหน้าสลับ IP")
 
-    def _wg_failover(self, conf):
+    def _wg_failover(self, conf, confirmed=False):
         """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
         self.__dict__.setdefault("_wg_bad", set()).add(conf)
         _wg_cooldown_add(os.path.dirname(conf), _wg_endpoint(conf))
-        if int(config.get("wg_regen_blocked", 1) or 0):
+        # ลบไฟล์ + จดว่าโดนบล็อก 7 วัน เฉพาะตอน "ยืนยันแล้ว" (ทดสอบผ่าน VPN ได้ IP จริงแต่เซิร์ฟเวอร์เกมไม่ตอบ)
+        # เข้าเกมไม่ได้เฉย ๆ อาจเป็นเน็ตกระตุก/ไอดีเสีย -> แค่พักไว้ (cooldown) ไม่ลบทิ้ง
+        if confirmed and int(config.get("wg_regen_blocked", 1) or 0):
             _wg_replace_blocked(conf, self.device_id)
         try:
             os.remove(os.path.join(os.path.dirname(conf), ".claims", os.path.basename(conf) + ".lock"))
@@ -4189,7 +4189,7 @@ class RangerGearBot(threading.Thread):
                 if code in ("000", "403", "429"):
                     print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมไม่รับ IP {ip} ({os.path.basename(conf)}, code {code}) - สลับเซิร์ฟเวอร์")
                     self._wg_down()
-                    self._wg_failover(conf)
+                    self._wg_failover(conf, confirmed=True)
                     tries = getattr(self, "_wg_probe_tries", 0) + 1
                     self._wg_probe_tries = tries
                     if tries < int(config.get("wg_probe_max", 5)):
@@ -10244,6 +10244,12 @@ if __name__ == "__main__":
         for lf in glob.glob(os.path.join(temp_lock_dir, "*.lock")):
             try: os.remove(lf); cleanup_count += 1
             except: pass
+    # 2b. ล้างรายชื่อ IP ที่จดว่าโดนบล็อก/พักไว้จากรอบก่อน (wg_reset_blocked_on_start, default 1)
+    #     กันรายชื่อที่จดผิดสะสมจนไม่มี IP ให้ใช้/สร้างใหม่ไม่ได้ - ตัวที่โดนจริงบอทจะทดสอบเจอใหม่เอง
+    if int(config.get("wg_reset_blocked_on_start", 1) or 0):
+        for _bf in (".blocked.json", ".cooldown.json"):
+            try: os.remove(os.path.join(str(config.get("wg_dir", "wg")), _bf)); cleanup_count += 1
+            except OSError: pass
     # 3. ล้างการจองไฟล์ WireGuard ของรอบก่อน (แต่ละจอจะจองใหม่ไม่ซ้ำกัน)
     for lf in glob.glob(os.path.join(str(config.get("wg_dir", "wg")), ".claims", "*.lock")):
         try: os.remove(lf); cleanup_count += 1
