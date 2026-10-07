@@ -3985,7 +3985,7 @@ class RangerGearBot(threading.Thread):
             else:
                 # เน็ตหลุดซ้ำบนเซิร์ฟเวอร์เดิม -> สลับไปเซิร์ฟเวอร์สำรองที่ว่างอยู่ (auto failover)
                 self._wg_strike("Unstable network")
-            self._ensure_wireguard()
+            self._wg_must_be_up()
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "start", "-n",
                           self._resolve_game_activity()], timeout=15)
             self.last_activity_time = time.time()
@@ -4209,6 +4209,29 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] [WG] ต่อไม่สำเร็จ: {e} - เล่นต่อด้วยเน็ตปกติ")
 
+    def _wg_must_be_up(self):
+        """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
+        ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
+        ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
+        if not int(config.get("wg_enabled", 0) or 0):
+            return
+        if not int(config.get("wg_required", 1) or 0):
+            return self._ensure_wireguard()
+        tries = int(config.get("wg_required_tries", 10) or 10)
+        for n in range(1, tries + 1):
+            self._wg_off = False
+            self._wg_fail = 0
+            self._wg_probe_tries = 0
+            self.last_activity_time = time.time()
+            self._ensure_wireguard()
+            if getattr(self, "_wg_conf_applied", None) and self._wg_is_up():
+                return
+            print(f"[{self.device_id}] [WG] VPN ยังไม่ขึ้น ({n}/{tries}) - ไม่เปิดเกมด้วยเน็ตบ้าน ลองใหม่...")
+            self._wg_bad = set()            # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
+            _real_sleep(5)
+        print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น {tries} รอบ - รีสตาร์ทไฟล์นี้แทนการเข้าเกมด้วยเน็ตบ้าน")
+        raise RestartTimeoutError("wg_required: VPN not up")
+
     def _wg_setup(self, conf):
         pkg, name = self.WG_PKG, self.WG_TUNNEL
         # ทางลัด: ไฟล์ config นี้เคยเขียนลงเครื่องแล้ว (แค่ปิดไปตอนส่งไฟล์) -> สั่งเปิด tunnel อย่างเดียว ไม่ต้องส่งไฟล์ใหม่
@@ -4358,7 +4381,7 @@ class RangerGearBot(threading.Thread):
         if int(config.get("wg_after_login", 0) or 0):
             self._wg_down()          # wg_after_login: ส่งไฟล์+ล็อกอินด้วยเน็ตปกติ แล้วค่อยต่อ VPN หลังเข้าเกม
         else:
-            self._ensure_wireguard() # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น)
+            self._wg_must_be_up()    # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น) - ไม่ขึ้นห้ามเปิดเกม
         sleep(0.5)
         if not self._check_device_identity():
             print(f"[{self.device_id}] [DEVICE-FP] หยุด login: device identity ซ้ำ/clone -> ข้ามไฟล์นี้ไป")
