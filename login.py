@@ -4469,7 +4469,18 @@ class RangerGearBot(threading.Thread):
                 if "com.linecorp.LGRGS" in pm_out:
                     app_found = True
                     break
-                print(f"[{self.device_id}] [WARN] pm ยังไม่เจอแอป (รอบ {pm_attempt+1}/3) - รอ 2 วิแล้วเช็คใหม่...")
+                pm_err = ((pm_res.stderr or b"").decode("utf-8", "ignore") + " " + pm_out).strip()
+                if "not found" in pm_err or "offline" in pm_err:
+                    # adb หลุดจอนี้ (ไม่ใช่แอปหาย) -> ต่อพอร์ตใหม่ก่อนลองรอบถัดไป
+                    self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=8)
+                else:
+                    # pm ตอบช้า/พังตอนเครื่องหนัก -> ดูโฟลเดอร์แอปตรง ๆ แทน (เหมือนเช็ค WireGuard)
+                    d = self.adb_shell("su -c 'test -d /data/data/com.linecorp.LGRGS && echo YES'", timeout=10)
+                    if b"YES" in (d.stdout or b""):
+                        app_found = True
+                        break
+                print(f"[{self.device_id}] [WARN] pm ยังไม่เจอแอป (รอบ {pm_attempt+1}/3) "
+                      f"[{pm_err[:80] or 'ว่าง'}] - รอ 2 วิแล้วเช็คใหม่...")
                 sleep(2)
             if not app_found:
                 print(f"[{self.device_id}] ⛔ ไม่พบแอป com.linecorp.LGRGS บนเครื่องนี้! (เช็คแล้ว 3 รอบ - ยังไม่ได้ติดตั้ง/ชื่อ package ไม่ตรง/เครื่อง ghost) - หยุด retry")
@@ -8234,7 +8245,11 @@ class RangerGearBot(threading.Thread):
                 if not local_size:
                     return None                    # ไฟล์ต้นทางพัง/ว่าง - ไม่ต้องลองซ้ำ
                 if not ok:
-                    print(f"[{self.device_id}] Put attempt {attempt}: ส่งไฟล์เข้าเครื่องไม่สำเร็จ - ลองใหม่")
+                    print(f"[{self.device_id}] Put attempt {attempt}: ส่งไฟล์เข้าเครื่องไม่สำเร็จ - ต่อ adb ใหม่แล้วลองอีกครั้ง")
+                    try:
+                        self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=8)   # หลุด "device not found"
+                    except Exception:
+                        pass
                     sleep(2)
                     continue
 
