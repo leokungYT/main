@@ -3938,7 +3938,7 @@ class RangerGearBot(threading.Thread):
         เจอครบ wg_auth_fallback ไอดี (default 2) -> ปิด VPN ของจอนี้ไปจนปิดบอท ใช้เน็ตบ้านแทน (0 = ไม่ปิด)"""
         if not int(config.get("wg_enabled", 0) or 0) or not getattr(self, "_wg_conf_applied", None):
             return
-        lim = int(config.get("wg_auth_fallback", 2) or 0)
+        lim = int(config.get("wg_auth_fallback", 0) or 0)
         if lim <= 0:
             return
         self._wg_auth_fail = getattr(self, "_wg_auth_fail", 0) + 1
