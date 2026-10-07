@@ -3897,7 +3897,7 @@ class RangerGearBot(threading.Thread):
             return True                       # อีกเธรดกำลังกู้อยู่ -> ไม่ต้องกดอะไร
         try:
             n = getattr(self, "_wg_recover_n", 0)
-            if n >= int(config.get("wg_net_recover_max", 3)):
+            if n >= int(config.get("wg_net_recover_max", 10)):
                 return False                  # ครบโควตาแล้ว -> กลับไปกด RETRY แบบเดิม
             self._wg_recover_n = n + 1
             print(f"[{self.device_id}] [WG] เจอ Unstable network ({where}) - ปิดเกม + ปิด/เปิด VPN ใหม่ + เปิดเกมใหม่ "
@@ -9396,6 +9396,12 @@ class RangerGearBot(threading.Thread):
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png", similarity=0.95):
+                # Authentication failed ตอนต่อ VPN = IP นี้โดนบล็อก -> ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (วนไปเรื่อย ๆ)
+                if (int(config.get("wg_fixid_switch", 1) or 0)
+                        and self._wg_request_net_recover("Authentication failed", switch_now=True)):
+                    self._login_fixid_count = 0
+                    sleep(2)
+                    continue
                 if not self._auth_take_turn("auth"):
                     sleep(1)
                     continue

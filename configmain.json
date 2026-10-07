@@ -17,6 +17,8 @@
     "wg_regen_blocked": 1,
     "wg_fixnet1_switch": 1,
     "wg_auth_fallback": 0,
+    "wg_fixid_switch": 1,
+    "wg_net_recover_max": 10,
     "wg_blocked_days": 7,
     "wg_exclude_countries": ["TH"],
     "wg_after_login": 0,
