@@ -3843,7 +3843,7 @@ class RangerGearBot(threading.Thread):
         cool = _wg_cooldown_load(wg_dir)
         bad |= {c for c in confs if _wg_endpoint(c) in cool}
         # จำกัดจำนวนจอต่อเซิร์ฟเวอร์เดียวกัน (IP ขาออกเดียวกัน) ; 0 = ไม่จำกัด
-        max_ip = int(config.get("wg_max_per_ip", 3) or 0)
+        max_ip = int(config.get("wg_max_per_ip", 0) or 0)
         if max_ip > 0:
             used = {}
             for c in confs:

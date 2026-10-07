@@ -10,7 +10,7 @@
     "wg_machine": 1,
     "wg_per_machine": 15,
     "wg_total_machines": 30,
-    "wg_max_per_ip": 3,
+    "wg_max_per_ip": 0,
     "wg_cooldown_hours": 6,
     "wg_probe": 1,
     "wg_rotate_logins": 5,
