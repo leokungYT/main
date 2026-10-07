@@ -3953,8 +3953,8 @@ class RangerGearBot(threading.Thread):
         ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
         ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
         คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
-        if not int(config.get("wg_enabled", 0) or 0):
-            return False
+        if not int(config.get("wg_enabled", 0) or 0) or int(config.get("wg_once", 1) or 0):
+            return False                      # wg_once: VPN เปิดค้าง ไม่ปิด/เปิดใหม่เพราะเน็ตแกว่ง -> กด RETRY แบบเดิม
         if not getattr(self, "_wg_conf_applied", None):
             return False                      # จอนี้ไม่ได้ต่อ VPN -> ไม่ใช่เรื่อง VPN
         lock = self.__dict__.setdefault("_wg_recover_lock", threading.Lock())
@@ -4019,6 +4019,8 @@ class RangerGearBot(threading.Thread):
         (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว"""
         if not int(config.get("wg_enabled", 0) or 0) or getattr(self, "_wg_off", False):
             return False
+        if int(config.get("wg_once", 1) or 0) and not any(k in str(reason) for k in ("fixid", "login failed")):
+            return False                      # wg_once: เปลี่ยนเซิร์ฟเวอร์เฉพาะโดนบล็อก (fixid / login failed) - เน็ตแกว่ง/จอดำ/ค้าง ไม่นับ
         cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
         if not cur:
             return False
