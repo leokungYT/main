@@ -7042,6 +7042,7 @@ class RangerGearBot(threading.Thread):
     def _normalize_frame(self):
         """ย่อ/ขยายเฟรมให้เป็น 960x540 เสมอ แล้วจำอัตราส่วนไว้สเกลจุดกดกลับเป็นพิกัดจริง"""
         self._screen_ts = time.time()   # เวลาที่ได้เฟรมล่าสุด (monitor ใช้ดูว่าเฟรมค้างไหม)
+        self._cap_timeouts = 0
         scr = self._screen
         if scr is None:
             self._tap_scale = (1.0, 1.0)
@@ -7509,6 +7510,58 @@ class RangerGearBot(threading.Thread):
                     self._in_net_check = False
         except Exception as e:
             print(f"[{self.device_id}] Raw capture error: {e}")
+            if "timed out" in str(e):
+                self._cap_timeouts = getattr(self, "_cap_timeouts", 0) + 1
+                if self._cap_timeouts >= int(config.get("hung_restart_after", 6)):
+                    self._cap_timeouts = 0
+                    self._restart_hung_instance()
+
+    def _restart_hung_instance(self):
+        """จอค้าง (adb screencap/push timeout ติดกัน) -> สั่ง MuMu รีสตาร์ทจอนี้ แล้วรอบูตกลับมา
+        เดิมบอทวนรอ timeout ไม่จบ จอนั้นทำงานไม่ได้จนกว่าจะปิดเปิดเอง (config hung_restart_after=0 ปิด)"""
+        if not int(config.get("hung_restart_after", 6) or 0):
+            return
+        now = time.time()
+        if now - getattr(self, "_hung_restart_t", 0) < 300:
+            return                                # เพิ่งรีไป รอ 5 นาทีก่อนรีซ้ำ
+        self._hung_restart_t = now
+        idx = None
+        try:
+            if self.device_id.startswith("emulator-"):
+                idx = (int(self.device_id.split("-")[1]) - 5554) // 2
+            else:
+                port = int(self.device_id.rsplit(":", 1)[1])
+                if port >= 16384:
+                    idx = (port - 16384) // 32
+        except Exception:
+            idx = None
+        mgr = find_mumu_manager()
+        if idx is None or idx < 0 or not mgr:
+            print(f"[{self.device_id}] [HUNG] จอค้าง แต่หาเลขจอ/MuMuManager ไม่ได้ - รีสตาร์ทเองไม่ได้")
+            return
+        print(f"[{self.device_id}] [HUNG] จอค้าง (adb timeout ติดกัน) - สั่ง MuMu รีสตาร์ทจอ #{idx}...")
+        try:
+            _mumu_run_v(mgr, "control", idx, "restart", timeout=120)
+        except Exception as e:
+            print(f"[{self.device_id}] [HUNG] สั่งรีสตาร์ทไม่สำเร็จ: {e}")
+            return
+        self.last_activity_time = time.time()
+        deadline = time.time() + float(config.get("hung_boot_wait", 120))
+        while time.time() < deadline:
+            _real_sleep(5)
+            try:
+                if not self.device_id.startswith("emulator-"):
+                    self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=8)
+                r = self.adb_shell("getprop sys.boot_completed", timeout=8)
+                if b"1" in (r.stdout or b""):
+                    print(f"[{self.device_id}] [HUNG] จอกลับมาแล้ว - ทำงานต่อ")
+                    self._wg_conf_applied = None      # VPN หายไปกับการรีสตาร์ท -> open_app ต่อใหม่
+                    self._wg_conf_written = None
+                    self.last_activity_time = time.time()
+                    return
+            except Exception:
+                pass
+        print(f"[{self.device_id}] [HUNG] รอจอบูตเกิน {config.get('hung_boot_wait', 120)} วิ - ไปต่อ")
 
     def _app_is_gone(self):
         """True when the game process is not running.
