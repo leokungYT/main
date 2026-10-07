@@ -3192,14 +3192,16 @@ def relaunch_self(reason=""):
     return True
 
 
-def connect_known_ports():
+def connect_known_ports(kill_server=False):
     """Auto-scan ALL emulator ports, connect everything that responds"""
     try:
-        # Kill & start adb server
-        subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=3)
-        time.sleep(0.1)
-        subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
-        time.sleep(0.5)
+        # kill-server เฉพาะตอนเปิดบอท (แบบ PES) - ถ้า kill กลางทาง (ปุ่ม Connect Missing / รีสตาร์ทจอ)
+        # adb ของทุกจอที่รันอยู่จะหลุดเป็น offline พร้อมกันหมด
+        if kill_server:
+            subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=3)
+            time.sleep(0.1)
+            subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
+            time.sleep(0.5)
 
         # สแกนพอร์ตคี่ตั้งแต่ 5555-5755 (รองรับ 100 จอ MuMu)
         ports = list(range(5555, 5756, 2))  # [5555, 5557, 5559, ..., 5755]
@@ -3258,32 +3260,28 @@ def get_connected_devices():
         if not raw_devices:
             return []
                 
-        # กรองซ้ำ: ถ้ามี emulator-5556 อยู่แล้ว ไม่ต้องเอา 127.0.0.1:5557 อีก
-        emulator_adb_ports = set()  # เก็บพอร์ต ADB (คี่) ที่ emulator-xxx ครอง
-        for d in raw_devices:
-            if d.startswith("emulator-"):
-                try:
-                    console_port = int(d.replace("emulator-", ""))
-                    emulator_adb_ports.add(console_port + 1)  # emulator-5556 -> ADB port 5557
-                except ValueError:
-                    pass
-        
+        # แบบเดียวกับ PES: ใช้ชื่อ 127.0.0.1:port เสมอ (emulator-5556 -> 127.0.0.1:5557)
+        # emulator-XXXX เป็นช่องทาง local ของ adb ที่หลุดเป็น offline เองบ่อย และ "adb connect" ต่อกลับไม่ได้
+        # ส่วน 127.0.0.1:port เป็น TCP - หลุดเมื่อไหร่ adb connect กลับได้ทันที
         final_devices = []
         seen = set()
         for d in raw_devices:
+            if d.startswith("emulator-"):
+                try:
+                    ip = f"127.0.0.1:{int(d.replace('emulator-', '')) + 1}"
+                except ValueError:
+                    ip = d
+                if ip != d and ip not in raw_devices:
+                    try:
+                        subprocess.run([adb_path, "connect", ip], capture_output=True, timeout=3)
+                    except Exception:
+                        pass
+                d = ip
             if d in seen:
                 continue
-            # ถ้าเป็น 127.0.0.1:port แล้วมี emulator- ครองอยู่แล้ว -> ข้าม
-            if d.startswith("127.0.0.1:"):
-                try:
-                    port = int(d.split(":")[1])
-                    if port in emulator_adb_ports:
-                        continue  # ซ้ำกับ emulator-xxxx
-                except ValueError:
-                    pass
             seen.add(d)
             final_devices.append(d)
-        
+
         return final_devices
     except Exception as e:
         print(f"[ERR] get_connected_devices: {e}")
@@ -10366,7 +10364,7 @@ if __name__ == "__main__":
     # Reset ADB and execute port scan (Skip if requested)
     if not args.no_reset_adb:
         print("[INFO] Connecting to all MuMu ports (ADB Restart inside)...")
-        connect_known_ports()
+        connect_known_ports(kill_server=True)
         
     devices = []
     if args.device:
