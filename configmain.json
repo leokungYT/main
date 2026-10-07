@@ -20,13 +20,15 @@
     "wg_fixid_switch": 1,
     "wg_net_recover_max": 10,
     "wg_blocked_days": 7,
-    "wg_exclude_countries": ["TH"],
+    "wg_exclude_countries": [
+        "TH"
+    ],
     "wg_after_login": 0,
     "wg_dir": "wg",
     "wg_per_device": {},
     "7day": 0,
-    "shopgacha": 1,
-    "swap_shop": 1,
+    "shopgacha": 0,
+    "swap_shop": 0,
     "swap_shopevent": 0,
     "all-tiket": 0,
     "all-in": 0,
@@ -86,7 +88,7 @@
     "check-gear": 0,
     "use_ocr": 0,
     "box_settings": {
-        "first_round": 1,
+        "first_round": 0,
         "second_round": 0
     },
     "black_screen_timeout": 8,
