@@ -947,7 +947,7 @@ def connect_known_ports(kill_server=False):
                 addr = f"127.0.0.1:{port}"
                 result = subprocess.run(
                     [adb_path, "connect", addr],
-                    capture_output=True, timeout=1, text=True
+                    capture_output=True, timeout=3, text=True
                 )
                 out = result.stdout.lower()
                 if ("connected" in out or "already connected" in out) and "cannot" not in out:
@@ -956,13 +956,20 @@ def connect_known_ports(kill_server=False):
                 pass
             return None
 
-        # ยิงเชื่อมต่อพร้อมกัน
-        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-            futures = {executor.submit(try_connect_port, p): p for p in ports}
-            for future in concurrent.futures.as_completed(futures):
-                result = future.result()
-                if result:
-                    connected.append(result)
+        # ยิงเชื่อมต่อพร้อมกัน - สแกนซ้ำจนจำนวนจอนิ่ง (จอที่เพิ่งบูต/adb เพิ่งรีสตาร์ท ตอบไม่ทันรอบแรก
+        # เคยสแกนรอบเดียวแล้วเจอแค่ 1 จอจาก 15 จอ)
+        found = set()
+        stable = 0
+        for _round in range(8):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+                got = {r for r in executor.map(try_connect_port, ports) if r}
+            before = len(found)
+            found |= got
+            stable = stable + 1 if len(found) == before and found else 0
+            if stable >= 2:
+                break
+            time.sleep(2)
+        connected.extend(found)
         
         if connected:
             print(f"[ADB] Port scan found {len(connected)} device(s): {', '.join(sorted(connected))}")
