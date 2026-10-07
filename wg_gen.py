@@ -89,7 +89,7 @@ def load_blocked(wg_dir):
     return {k: v for k, v in d.items() if _t.time() - v < days * 86400}
 
 
-def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0):
+def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0, managed_ok=False):
     """ให้มีไฟล์ใน wg/ อย่างน้อย want ไฟล์ - คืน 0 = สำเร็จ/ครบแล้ว, 1 = สร้างไม่ได้
 
     machine (1, 2, 3 ...) = โหมดหลายเครื่องใช้ Key Pair เดียวกัน: เครื่องที่ N ได้เซิร์ฟเวอร์ช่วงของตัวเอง
@@ -112,7 +112,7 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
         if not total:
             total = int(_cfg.get("wg_total_machines", 30) or 30)
     key_txt = os.path.join(WG_DIR, "keypair.txt")
-    if os.path.exists(os.path.join(WG_DIR, ".managed")):
+    if os.path.exists(os.path.join(WG_DIR, ".managed")) and not managed_ok:
         print("[WG-GEN] ไฟล์ VPN มาจาก server (RemoteFileManager) - ไม่สร้างเพิ่มเอง")
         return 0
 

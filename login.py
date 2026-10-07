@@ -351,12 +351,50 @@ def _wg_endpoint(conf):
     return os.path.basename(conf)
 
 
+def _wg_generate_more(wg_dir, want, dev=""):
+    """สร้างไฟล์เซิร์ฟเวอร์เพิ่มให้มี want ไฟล์ (ล็อกให้สร้างทีละจอ) - คืน True ถ้ามีไฟล์เพิ่มจริง"""
+    lock = os.path.join(wg_dir, ".gen.lock")
+    try:
+        if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
+            os.remove(lock)
+        os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except Exception:
+        return False
+    try:
+        before = len(_wg_list_configs(wg_dir))
+        managed = os.path.exists(os.path.join(wg_dir, ".managed"))
+        kp = os.path.join(wg_dir, "keypair.txt")
+        confs = _wg_list_configs(wg_dir)
+        if managed and not os.path.exists(kp) and confs:
+            with open(confs[0], "rb") as f_src, open(kp, "wb") as f_dst:
+                f_dst.write(f_src.read())
+        print(f"[{dev}] [WG] ไฟล์ VPN ว่างไม่พอ - สร้างเซิร์ฟเวอร์ใหม่เพิ่ม (มี {before} -> {want})")
+        import wg_gen
+        if managed:
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
+        else:
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
+                            int(config.get("wg_machine", 0) or 0),
+                            str(config.get("wg_account", "") or "").strip() or None,
+                            int(config.get("wg_total_machines", 30) or 30))
+        return len(_wg_list_configs(wg_dir)) > before
+    except Exception as e:
+        print(f"[{dev}] [WG] สร้างไฟล์เพิ่มไม่สำเร็จ: {e}")
+        return False
+    finally:
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+
+
 def _wg_replace_blocked(conf, dev=""):
     """เซิร์ฟเวอร์นี้โดนเกมบล็อก -> จดลง wg/.blocked.json (wg_gen ไม่สร้างซ้ำ), ลบไฟล์ทิ้ง,
     แล้วสั่ง wg_gen สร้างเซิร์ฟเวอร์ใหม่มาแทนให้จำนวนไฟล์เท่าเดิม
     (ข้ามถ้าไฟล์มาจาก server RemoteFileManager (.managed) ; หลายจอพร้อมกัน -> ล็อกให้สร้างทีละจอ)"""
     wg_dir = os.path.dirname(conf) or "."
-    if os.path.exists(os.path.join(wg_dir, ".managed")) or not os.path.exists(conf):
+    managed = os.path.exists(os.path.join(wg_dir, ".managed"))
+    if not os.path.exists(conf) or (managed and not int(config.get("wg_regen_managed", 1) or 0)):
         return
     lock = os.path.join(wg_dir, ".gen.lock")
     try:
@@ -378,13 +416,22 @@ def _wg_replace_blocked(conf, dev=""):
         with open(bp, "w", encoding="utf-8") as f:
             json.dump(d, f)
         want = len(_wg_list_configs(wg_dir))
+        kp = os.path.join(wg_dir, "keypair.txt")
+        if managed and not os.path.exists(kp):
+            # ไฟล์จาก server: เก็บกุญแจไว้ก่อนลบ -> ไฟล์ใน wg/ หมดเกลี้ยงก็ยังสร้างใหม่ได้
+            with open(conf, "rb") as f_src, open(kp, "wb") as f_dst:
+                f_dst.write(f_src.read())
         os.remove(conf)
         print(f"[{dev}] [WG] ลบ {os.path.basename(conf)} (เกมบล็อก IP) - สร้างเซิร์ฟเวอร์ใหม่มาแทน")
         import wg_gen
-        wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
-                        int(config.get("wg_machine", 0) or 0),
-                        str(config.get("wg_account", "") or "").strip() or None,
-                        int(config.get("wg_total_machines", 30) or 30))
+        if managed:
+            # เครื่องที่รับไฟล์จาก server: ใช้กุญแจเดิมของเครื่อง (keypair.txt) สร้างเซิร์ฟเวอร์ใหม่ที่ยังไม่มีในเครื่อง
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
+        else:
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
+                            int(config.get("wg_machine", 0) or 0),
+                            str(config.get("wg_account", "") or "").strip() or None,
+                            int(config.get("wg_total_machines", 30) or 30))
     except Exception as e:
         print(f"[{dev}] [WG] สร้างไฟล์แทนไม่สำเร็จ: {e}")
     finally:
@@ -3767,6 +3814,10 @@ class RangerGearBot(threading.Thread):
             p = mapped if os.path.isabs(mapped) else os.path.join(wg_dir, mapped)
             return p if os.path.exists(p) else None
         confs = _wg_list_configs(wg_dir)
+        if not confs and os.path.exists(os.path.join(wg_dir, "keypair.txt")) and int(config.get("wg_regen_blocked", 1) or 0):
+            # ไฟล์ใน wg/ หมด (ลบตัวที่โดนบล็อกไปหมด) แต่ยังมีกุญแจ -> สร้างชุดใหม่
+            _wg_generate_more(wg_dir, int(config.get("wg_gen_extra", 5)) + 10, self.device_id)
+            confs = _wg_list_configs(wg_dir)
         if not confs:
             return None
         # แต่ละจอ "จอง" ไฟล์ของตัวเอง ไม่ใช้ซ้ำกับจออื่น (กุญแจเดียวกันต่อพร้อมกัน = ตีกันเน็ตหลุด)
@@ -3820,6 +3871,14 @@ class RangerGearBot(threading.Thread):
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(self.device_id)
             return p
+        if not getattr(self, "_wg_gen_tried", False) and int(config.get("wg_regen_blocked", 1) or 0):
+            # ไม่มีไฟล์ว่างให้ใช้เลย (โดนบล็อก/พัก/จองเต็ม) -> สร้างเซิร์ฟเวอร์ใหม่เพิ่มแล้วลองอีกรอบ (ไม่ปล่อยจอไปใช้เน็ตบ้าน)
+            self._wg_gen_tried = True
+            try:
+                if _wg_generate_more(wg_dir, len(confs) + int(config.get("wg_gen_extra", 5)), self.device_id):
+                    return self._wg_conf_for_device()
+            finally:
+                self._wg_gen_tried = False
         if bad and len(bad) >= len(confs):
             # ลองครบทุกไฟล์แล้ว -> ให้โอกาสใหม่ทั้งหมด (วนรอบใหม่) แทนที่จะไม่มี VPN
             print(f"[{self.device_id}] [WG] ลองครบทุกเซิร์ฟเวอร์แล้ว - เริ่มวนใหม่")
@@ -3917,6 +3976,8 @@ class RangerGearBot(threading.Thread):
                         pass
                     self._wg_conf_written = None
                     print(f"[{self.device_id}] [WG] {where}: เลิกใช้ {os.path.basename(cur)} - เปลี่ยน IP")
+                    if where == "Authentication failed" and int(config.get("wg_regen_blocked", 1) or 0):
+                        _wg_replace_blocked(cur, self.device_id)   # ลบตัวที่โดนบล็อก + สร้างเซิร์ฟเวอร์ใหม่มาแทน
             else:
                 # เน็ตหลุดซ้ำบนเซิร์ฟเวอร์เดิม -> สลับไปเซิร์ฟเวอร์สำรองที่ว่างอยู่ (auto failover)
                 self._wg_strike("Unstable network")
