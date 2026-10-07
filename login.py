@@ -8115,9 +8115,7 @@ class RangerGearBot(threading.Thread):
 
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
-        # wg_keep_on (default 1): เปิด VPN ค้างไว้ตลอด ไม่ปิด-เปิดทุกไอดี (เปลี่ยนเฉพาะตอนโดนบล็อก)
-        if not int(config.get("wg_keep_on", 1) or 0):
-            self._wg_down()   # แบบเก่า: ส่งไฟล์ตอนไม่มี VPN แล้ว open_app เปิด VPN กลับก่อนเข้าเกม
+        # VPN เปิดค้างไว้ตลอด ไม่ปิดตอนส่งไฟล์ (เปลี่ยนเฉพาะตอน IP โดนบล็อก)
 
         # ขั้นเตรียมทั้งหมดเป็น best-effort: timeout/พัง = เตือนแล้วไปต่อ ไม่ให้ล้มทั้ง inject
         # (เดิมคำสั่ง mount ค้างเกิน 10 วิ -> TimeoutExpired เด้งออกเป็น Critical Error ทั้งที่เป็นแค่ขั้นเตรียม)
@@ -9392,8 +9390,6 @@ class RangerGearBot(threading.Thread):
                 self.clear_and_restart()
                 if getattr(self, "_need_vpn_cycle", False):
                     self._need_vpn_cycle = False
-                    if not int(config.get("wg_keep_on", 1) or 0):
-                        self._wg_down()               # ปิด VPN สนิท -> open_app จะเปิด VPN ใหม่ก่อนเข้าเกม
                 self.open_app()
                 sleep(5)
                 continue
