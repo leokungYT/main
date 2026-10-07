@@ -2391,6 +2391,24 @@ def reset_network_all(devices):
 
 def find_adb_executable():
     global adb_path
+
+    # ใช้ adb ของ MuMu เองก่อน (เวอร์ชันเดียวกับที่ MuMu ใช้) - ถ้าใช้ adb คนละเวอร์ชันกับ MuMu
+    # สองตัวจะฆ่า server กันไปมา -> ทุกจอหลุด "device not found" / pm ไม่เจอแอป / offline ทั้งเครื่อง
+    if int(config.get("adb_use_mumu", 1) or 0):
+        try:
+            mgr = find_mumu_manager()
+            if mgr:
+                root = os.path.dirname(os.path.dirname(mgr))
+                for cand in (os.path.join(os.path.dirname(mgr), "adb.exe"),
+                             os.path.join(root, "shell", "adb.exe"), os.path.join(root, "nx_main", "adb.exe")):
+                    if os.path.exists(cand):
+                        r = subprocess.run([cand, "version"], capture_output=True, text=True, timeout=15)
+                        if r.returncode == 0:
+                            adb_path = cand
+                            print(f"[ADB] ใช้ adb ของ MuMu: {adb_path}")
+                            return True
+        except Exception as e:
+            print(f"[ADB] หา adb ของ MuMu ไม่ได้: {e} - ใช้ adb ของบอทแทน")
     
     # Check common locations
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -3151,7 +3169,7 @@ def connect_known_ports(_retry=True):
         except Exception:
             pass
         # ล้างของเก่าให้หมดก่อนเชื่อม: adb.exe ตัวอื่นที่ค้าง/คนละเวอร์ชัน (แย่งกัน -> ทุกจอ offline)
-        if os.name == "nt" and int(config.get("adb_kill_all", 1) or 0):
+        if os.name == "nt" and int(config.get("adb_kill_all", 0) or 0):
             try:
                 subprocess.run(["taskkill", "/f", "/im", "adb.exe"], capture_output=True, timeout=10)
             except Exception:
