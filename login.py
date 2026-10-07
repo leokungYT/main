@@ -4043,6 +4043,7 @@ class RangerGearBot(threading.Thread):
         sh = f"/data/local/tmp/probe_{safe}.sh"
         local = os.path.join(tempfile.gettempdir(), f"probe_{safe}.sh")
         script = chr(10).join([
+            "command -v curl >/dev/null 2>&1 || { echo 'P NA NA'; rm -f " + sh + "; exit 0; }",
             "R=0",
             "if ip -o link | grep -q ' tun0'; then ip rule add pref 10500 uidrange 0-0 lookup tun0 2>/dev/null && R=1; fi",
             "IP=$(curl -s -m 8 https://api.ipify.org)",
@@ -4180,6 +4181,11 @@ class RangerGearBot(threading.Thread):
             if getattr(self, "_wg_conf_applied", None) == conf and int(config.get("wg_probe", 1) or 0):
                 # ต่อแล้ว -> ยิงเซิร์ฟเวอร์เกมผ่าน VPN ทันที: ไม่ตอบ/ถูกปฏิเสธ = IP นี้โดนบล็อก -> สลับเลย ไม่ต้องรอเกมพัง
                 ip, code = self._net_probe()
+                # ทดสอบไม่ได้ (ไม่มี curl / ip rule ใช้ไม่ได้ -> IP เป็น "-") = ไม่ตัดสิน ปล่อยเข้าเกม
+                # (เดิมเครื่องที่ทดสอบไม่ได้ถูกนับว่าโดนบล็อกทุกเซิร์ฟเวอร์ -> สลับวนไม่ได้เข้าเกมเลย)
+                if code == "NA" or ip in ("-", "", "NA"):
+                    print(f"[{self.device_id}] [WG] ทดสอบเซิร์ฟเวอร์เกมไม่ได้บนเครื่องนี้ (IP {ip}) - ข้ามการทดสอบ เข้าเกมเลย")
+                    code = "skip"
                 if code in ("000", "403", "429"):
                     print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมไม่รับ IP {ip} ({os.path.basename(conf)}, code {code}) - สลับเซิร์ฟเวอร์")
                     self._wg_down()
