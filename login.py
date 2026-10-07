@@ -4211,6 +4211,15 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] [WG] ต่อไม่สำเร็จ: {e} - เล่นต่อด้วยเน็ตปกติ")
 
+    def _adb_relink(self):
+        """ต่อ adb ของจอนี้ใหม่ตอนหลุด/offline
+        "adb connect" ใช้ได้แค่ชื่อแบบ ip:port - จอแบบ emulator-5556 สั่ง connect ไปก็ไม่มีผล (ค้าง offline ตลอด)
+        จอแบบ emulator-N ใช้ "reconnect offline" ให้ adb server ต่อจอที่ offline ใหม่แทน"""
+        if ":" in self.device_id:
+            self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=8)
+        else:
+            self.adb_run([self.adb_cmd, "reconnect", "offline"], timeout=10)
+
     def _wg_must_be_up(self):
         """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
         ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
@@ -4405,7 +4414,7 @@ class RangerGearBot(threading.Thread):
                 pm_err = ((pm_res.stderr or b"").decode("utf-8", "ignore") + " " + pm_out).strip()
                 if "not found" in pm_err or "offline" in pm_err:
                     # adb หลุดจอนี้ (ไม่ใช่แอปหาย) -> ต่อพอร์ตใหม่ก่อนลองรอบถัดไป
-                    self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=8)
+                    self._adb_relink()
                 else:
                     # pm ตอบช้า/พังตอนเครื่องหนัก -> ดูโฟลเดอร์แอปตรง ๆ แทน (เหมือนเช็ค WireGuard)
                     d = self.adb_shell("su -c 'test -d /data/data/com.linecorp.LGRGS && echo YES'", timeout=10)
@@ -7576,7 +7585,7 @@ class RangerGearBot(threading.Thread):
             _real_sleep(5)
             try:
                 if not self.device_id.startswith("emulator-"):
-                    self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=8)
+                    self._adb_relink()
                 r = self.adb_shell("getprop sys.boot_completed", timeout=8)
                 if b"1" in (r.stdout or b""):
                     print(f"[{self.device_id}] [HUNG] จอกลับมาแล้ว - ทำงานต่อ")
@@ -8232,7 +8241,7 @@ class RangerGearBot(threading.Thread):
                 if not ok:
                     print(f"[{self.device_id}] Put attempt {attempt}: ส่งไฟล์เข้าเครื่องไม่สำเร็จ - ต่อ adb ใหม่แล้วลองอีกครั้ง")
                     try:
-                        self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=8)   # หลุด "device not found"
+                        self._adb_relink()   # หลุด "device not found"
                     except Exception:
                         pass
                     sleep(2)
