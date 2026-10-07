@@ -838,6 +838,9 @@ def _inject_gate():
         try: sem.release()
         except ValueError: pass
 
+_configmain_sig = None
+
+
 def load_config(quiet=False):
     """quiet=True -> พิมพ์เฉพาะตอนไฟล์ config เปลี่ยนจริง
 
@@ -862,6 +865,307 @@ def load_config(quiet=False):
             print(f"[WARN] Error loading config: {e}")
     else:
         print(f"[WARN] Config not found: {main_config_file}")
+
+    # ค่า WireGuard (wg_*) อยู่ใน configmain.json เหมือน login.py (login.py โหลดไฟล์นี้ทับ ranger-gear_config.json)
+    # ดึงมาเฉพาะคีย์ VPN/เน็ต - ไม่เอาสวิตช์โหมดอื่นของ login.py มาทับการทำงานของ ranger-gear
+    global _configmain_sig
+    ui_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configmain.json")
+    if os.path.exists(ui_config_file):
+        try:
+            with open(ui_config_file, 'r', encoding='utf-8') as f:
+                raw = f.read()
+            loaded = json.loads(raw)
+            config.update({k: v for k, v in loaded.items()
+                           if k.startswith("wg_") or k in ("reset_network_on_start", "net_reset_wait", "block_log")})
+            sig = hashlib.md5(raw.encode("utf-8")).hexdigest()
+            if not quiet or sig != _configmain_sig:
+                print(f"[CONFIG] WG Settings Loaded: {ui_config_file}")
+            _configmain_sig = sig
+        except Exception as e:
+            print(f"[WARN] Error loading configmain.json (wg_*): {e}")
+
+
+# =========================================================
+# WireGuard (VPN แยกต่อจอ) - พอร์ตมาจาก login.py ให้ทำงานเหมือนกัน
+# =========================================================
+_real_sleep = time.sleep   # พักจริง (ไม่ผ่านตัวปรับความเร็ว) ให้เหมือน login.py
+
+
+class RestartTimeoutError(Exception):
+    """wg_required: ต่อ VPN ไม่ขึ้น -> เด้งออกจากไฟล์นี้ (_main_loop จับแล้วปล่อยล็อก หยิบไฟล์ใหม่)
+    ใช้ Exception (ไม่ใช่ BaseException แบบ login.py) เพื่อให้ except ของ _main_loop จับได้ ไม่ให้ thread ตาย"""
+
+
+def _wg_endpoint(conf):
+    """host ของ Endpoint ในไฟล์ .conf (= IP ขาออกของ VPN)"""
+    try:
+        with open(conf, encoding="utf-8-sig") as f:
+            for l in f:
+                if l.strip().lower().startswith("endpoint"):
+                    return l.split("=", 1)[1].strip().rsplit(":", 1)[0]
+    except Exception:
+        pass
+    return os.path.basename(conf)
+
+
+def _wg_generate_more(wg_dir, want, dev=""):
+    """สร้างไฟล์เซิร์ฟเวอร์เพิ่มให้มี want ไฟล์ (ล็อกให้สร้างทีละจอ) - คืน True ถ้ามีไฟล์เพิ่มจริง"""
+    lock = os.path.join(wg_dir, ".gen.lock")
+    try:
+        if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
+            os.remove(lock)
+        os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except Exception:
+        return False
+    try:
+        before = len(_wg_list_configs(wg_dir))
+        managed = os.path.exists(os.path.join(wg_dir, ".managed"))
+        kp = os.path.join(wg_dir, "keypair.txt")
+        confs = _wg_list_configs(wg_dir)
+        if managed and not os.path.exists(kp) and confs:
+            with open(confs[0], "rb") as f_src, open(kp, "wb") as f_dst:
+                f_dst.write(f_src.read())
+        print(f"[{dev}] [WG] ไฟล์ VPN ว่างไม่พอ - สร้างเซิร์ฟเวอร์ใหม่เพิ่ม (มี {before} -> {want})")
+        import wg_gen
+        if managed:
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
+        else:
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
+                            int(config.get("wg_machine", 0) or 0),
+                            str(config.get("wg_account", "") or "").strip() or None,
+                            int(config.get("wg_total_machines", 30) or 30))
+        return len(_wg_list_configs(wg_dir)) > before
+    except Exception as e:
+        print(f"[{dev}] [WG] สร้างไฟล์เพิ่มไม่สำเร็จ: {e}")
+        return False
+    finally:
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+
+
+def _wg_replace_blocked(conf, dev=""):
+    """เซิร์ฟเวอร์นี้โดนเกมบล็อก -> จดลง wg/.blocked.json (wg_gen ไม่สร้างซ้ำ), ลบไฟล์ทิ้ง,
+    แล้วสั่ง wg_gen สร้างเซิร์ฟเวอร์ใหม่มาแทนให้จำนวนไฟล์เท่าเดิม
+    (ข้ามถ้าไฟล์มาจาก server RemoteFileManager (.managed) ; หลายจอพร้อมกัน -> ล็อกให้สร้างทีละจอ)"""
+    wg_dir = os.path.dirname(conf) or "."
+    managed = os.path.exists(os.path.join(wg_dir, ".managed"))
+    if not os.path.exists(conf) or (managed and not int(config.get("wg_regen_managed", 1) or 0)):
+        return
+    lock = os.path.join(wg_dir, ".gen.lock")
+    try:
+        if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
+            os.remove(lock)                 # ล็อกค้างจาก process ที่ตายไป
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except Exception:
+        return                              # จออื่นกำลังสร้างอยู่ - รอบนั้นจะเติมให้ครบเอง
+    try:
+        ep = _wg_endpoint(conf)
+        bp = os.path.join(wg_dir, ".blocked.json")
+        try:
+            with open(bp, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            d = {}
+        d[ep] = time.time()
+        with open(bp, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        want = len(_wg_list_configs(wg_dir))
+        kp = os.path.join(wg_dir, "keypair.txt")
+        if managed and not os.path.exists(kp):
+            # ไฟล์จาก server: เก็บกุญแจไว้ก่อนลบ -> ไฟล์ใน wg/ หมดเกลี้ยงก็ยังสร้างใหม่ได้
+            with open(conf, "rb") as f_src, open(kp, "wb") as f_dst:
+                f_dst.write(f_src.read())
+        # ไฟล์ที่ออก IP เดียวกัน (แชร์เซิร์ฟเวอร์หลายจอ คนละกุญแจ) โดนบล็อกด้วยกันหมด -> ลบทุกตัว
+        gone = [c for c in _wg_list_configs(wg_dir) if _wg_endpoint(c) == ep] or [conf]
+        for c in gone:
+            try:
+                os.remove(c)
+            except OSError:
+                pass
+        print(f"[{dev}] [WG] ลบ {', '.join(os.path.basename(c) for c in gone)} (เกมบล็อก IP {ep}) - สร้างเซิร์ฟเวอร์ใหม่มาแทน")
+        import wg_gen
+        if managed:
+            # เครื่องที่รับไฟล์จาก server: ใช้กุญแจเดิมของเครื่อง (keypair.txt) สร้างเซิร์ฟเวอร์ใหม่ที่ยังไม่มีในเครื่อง
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
+        else:
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
+                            int(config.get("wg_machine", 0) or 0),
+                            str(config.get("wg_account", "") or "").strip() or None,
+                            int(config.get("wg_total_machines", 30) or 30))
+    except Exception as e:
+        print(f"[{dev}] [WG] สร้างไฟล์แทนไม่สำเร็จ: {e}")
+    finally:
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+
+
+def _wg_cooldown_load(wg_dir):
+    """{endpoint: หมดเวลาพัก} ที่ยังไม่หมด (ใช้ร่วมทุกจอผ่านไฟล์ wg/.cooldown.json)"""
+    try:
+        with open(os.path.join(wg_dir, ".cooldown.json"), encoding="utf-8") as f:
+            d = json.load(f)
+        now = time.time()
+        return {k: v for k, v in d.items() if v > now}
+    except Exception:
+        return {}
+
+
+def _wg_cooldown_add(wg_dir, endpoint):
+    h = float(config.get("wg_cooldown_hours", 6) or 0)
+    if h <= 0 or not endpoint:
+        return
+    d = _wg_cooldown_load(wg_dir)
+    d[endpoint] = time.time() + h * 3600
+    try:
+        tmp = os.path.join(wg_dir, f".cooldown.{os.getpid()}.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        os.replace(tmp, os.path.join(wg_dir, ".cooldown.json"))
+    except Exception:
+        pass
+
+
+def _wg_list_configs(wg_dir=None):
+    """รายการไฟล์ config WireGuard ตามลำดับจอ (path ในเครื่อง)
+
+    1) wg/wg.txt (Notepad ไฟล์เดียว) - วาง config ต่อกันได้หลายอัน แต่ละอันเริ่มด้วย [Interface]
+       อันแรก = จอ 1, อันที่สอง = จอ 2 ... บรรทัดที่ขึ้นต้นด้วย # คือหมายเหตุ ไม่สนใจ
+       (แยกเก็บเป็นไฟล์ไว้ใน wg/.split/ ให้บอทส่งเข้าเครื่อง)
+    2) ตามด้วยไฟล์ *.conf ในโฟลเดอร์ wg/ เรียงตามชื่อ
+    """
+    if wg_dir is None:
+        wg_dir = str(config.get("wg_dir", "wg"))
+    out = []
+    txt = os.path.join(wg_dir, "wg.txt")
+    if os.path.exists(txt):
+        try:
+            with open(txt, "r", encoding="utf-8-sig", errors="replace") as f:
+                lines = [ln.rstrip() for ln in f if not ln.lstrip().startswith(("#", "//"))]
+            blocks, cur = [], []
+            for ln in lines:
+                if ln.strip().lower() == "[interface]" and cur:
+                    blocks.append(cur)
+                    cur = []
+                cur.append(ln)
+            if cur:
+                blocks.append(cur)
+            split_dir = os.path.join(wg_dir, ".split")
+            os.makedirs(split_dir, exist_ok=True)
+            for i, blk in enumerate(blocks, 1):
+                text = "\n".join(blk).strip()
+                if "privatekey" not in text.lower() or "endpoint" not in text.lower():
+                    continue
+                p = os.path.join(split_dir, f"wg{i:02d}.conf")
+                old = open(p, encoding="utf-8").read() if os.path.exists(p) else None
+                if old != text + "\n":
+                    with open(p, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(text + "\n")
+                out.append(p)
+        except Exception as e:
+            print(f"[WG] อ่าน wg.txt ไม่ได้: {e}")
+    try:
+        out += [os.path.join(wg_dir, f) for f in sorted(os.listdir(wg_dir)) if f.lower().endswith(".conf")]
+    except Exception:
+        pass
+    # ตัดไฟล์ที่ข้างในซ้ำกัน: กุญแจ (PrivateKey) เดียวกัน + เซิร์ฟเวอร์ (Endpoint) เดียวกัน
+    # ต่อพร้อมกันหลายจอ = แย่งกันเน็ตหลุดทุกจอ (เช่นโหลด Singapore ซ้ำ ๆ ด้วย Key Pair เดิม) -> ใช้ได้แค่ไฟล์เดียว
+    seen, uniq, dup = {}, [], []
+    for p in out:
+        try:
+            with open(p, encoding="utf-8-sig", errors="replace") as f:
+                kv = {}
+                for ln in f:
+                    if "=" in ln:
+                        k, v = ln.split("=", 1)
+                        kv[k.strip().lower()] = v.strip()
+            ident = (kv.get("privatekey", ""), kv.get("endpoint", "").rsplit(":", 1)[0].lower())
+        except Exception:
+            ident = (p, "")
+        if ident in seen:
+            dup.append((os.path.basename(p), os.path.basename(seen[ident])))
+            continue
+        seen[ident] = p
+        uniq.append(p)
+    if dup and not _wg_dup_warned:
+        _wg_dup_warned.append(1)
+        print(f"[WG] เตือน: มี {len(dup)} ไฟล์ซ้ำ (กุญแจ+เซิร์ฟเวอร์เดียวกัน ใช้พร้อมกันไม่ได้) - ไม่ใช้ไฟล์พวกนี้:")
+        for a, b in dup:
+            print(f"[WG]   {a}  ซ้ำกับ  {b}")
+        print("[WG]   แก้: โหลดใหม่เป็น 'คนละเมือง' หรือเมืองเดิมแต่เลือก New Key Pair")
+    return uniq
+
+
+_wg_dup_warned = []   # เตือนไฟล์ซ้ำครั้งเดียวต่อ process
+
+
+WG_APK_URL = "https://download.wireguard.com/android-client/com.wireguard.android-1.0.20260315.apk"
+_wg_apk_lock = threading.Lock()
+
+
+def _wg_apk_path():
+    """ไฟล์ติดตั้งแอป WireGuard (Android) - ไม่มีจะโหลดมาเก็บที่ wg/wireguard.apk ครั้งเดียว (ทุกจอใช้ร่วม)"""
+    wg_dir = str(config.get("wg_dir", "wg"))
+    path = os.path.join(wg_dir, "wireguard.apk")
+    with _wg_apk_lock:
+        if os.path.exists(path) and os.path.getsize(path) > 1_000_000:
+            return path
+        try:
+            import urllib.request
+            os.makedirs(wg_dir, exist_ok=True)
+            print("[WG] กำลังโหลดแอป WireGuard (ครั้งแรกครั้งเดียว)...")
+            tmp = path + ".part"
+            urllib.request.urlretrieve(str(config.get("wg_apk_url", WG_APK_URL)), tmp)
+            os.replace(tmp, path)
+            return path
+        except Exception as e:
+            print(f"[WG] โหลดแอป WireGuard ไม่ได้: {e}")
+            return None
+
+
+def reset_network_all(devices):
+    """ก่อนเริ่มบอท: ล้างของค้างทุกจอ (พร้อมกัน) - tunnel WireGuard, แอป WireGuard, proxy
+    แล้ว ping 1.1.1.1 จากในอีมูฯ บอกใน log ว่าจอไหนเน็ตใช้ได้/ไม่ได้
+    ปิดได้ด้วย config "reset_network_on_start": 0
+    """
+    if not int(config.get("reset_network_on_start", 1) or 0):
+        return
+    pkg = "com.wireguard.android"
+    kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+
+    def sh(dev, cmd, timeout=20):
+        try:
+            return subprocess.run([adb_path, "-s", dev, "shell", cmd], capture_output=True,
+                                  text=True, errors="replace", timeout=timeout, **kw).stdout or ""
+        except Exception:
+            return ""
+
+    def one(dev):
+        had = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
+        sh(dev, f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr'")
+        time.sleep(1.5)
+        sh(dev, f"su -c 'am force-stop {pkg}'")
+        sh(dev, "settings put global http_proxy :0; settings delete global http_proxy; "
+                "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
+        still = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
+        ping = sh(dev, "ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1 && echo OK || echo FAIL", timeout=10).strip()
+        state = ("ปิด VPN ค้างแล้ว" if had else "ไม่มี VPN ค้าง") + (" (แต่ tunnel ยังอยู่!)" if still else "")
+        print(f"[NET-RESET] {dev}: {state} | เน็ต: {'ใช้ได้' if ping == 'OK' else 'ออกเน็ตไม่ได้!'}")
+
+    print(f"[NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม ({len(devices)} จอ)...")
+    ts = [threading.Thread(target=one, args=(d,), daemon=True) for d in devices]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(60)
+    wait = float(config.get("net_reset_wait", 30) or 0)
+    if wait > 0:
+        print(f"[NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง {wait:.0f} วิ ก่อนเริ่มทำงาน...")
+        time.sleep(wait)
 
 
 def find_adb_executable():
@@ -1576,6 +1880,10 @@ class RangerGearBot(threading.Thread):
             if getattr(self, "_net_scale", None) is not None or sc != 1.0:
                 print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
             self._net_scale = sc   # จำเสมอ (รวม 1.0) monitor จะได้เลิกกวาดทุกสเกลทุกรอบ
+        # fixnet1 บนจอที่ต่อ VPN -> ไม่กด RETRY: ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (config "wg_fixnet1_switch")
+        if (os.path.basename(path) == "fixnet1.png" and int(config.get("wg_fixnet1_switch", 1) or 0)
+                and self._wg_request_net_recover("fixnet1", switch_now=True)):
+            return os.path.basename(path)
         # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
         # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
         self._adb_tap(cx, cy)
@@ -1652,8 +1960,527 @@ class RangerGearBot(threading.Thread):
                 pass
             time.sleep(3)  # Check every 3 seconds (lighter than 2.5)
 
+    # =========================================================
+    # WireGuard ต่อจอ (IP ไม่ซ้ำกันแต่ละอีมูฯ) - ใช้ไฟล์ .conf จาก Windscribe Config Generator
+    # วางไฟล์ไว้ในโฟลเดอร์ wg/ (ไม่ขึ้น git) จอที่ i ได้ไฟล์ที่ i ตามลำดับชื่อ
+    # หรือกำหนดเองใน config "wg_per_device": {"127.0.0.1:16384": "Tokyo.conf", ...}
+    # ขั้นตอน (ต้อง root): ลงแอป WireGuard -> เขียนไฟล์ tunnel ลง data ของแอป ->
+    #   เปิด "allow remote control" + อนุญาต VPN ล่วงหน้า -> ยิง intent SET_TUNNEL_UP
+    # =========================================================
+    WG_PKG = "com.wireguard.android"
+    WG_TUNNEL = "lgr"
+
+    def _wg_conf_for_device(self):
+        """ไฟล์ .conf ของจอนี้ (None = ไม่มีไฟล์/ไม่เปิดใช้)"""
+        wg_dir = str(config.get("wg_dir", "wg"))
+        mapped = (config.get("wg_per_device") or {}).get(self.device_id)
+        if mapped:
+            p = mapped if os.path.isabs(mapped) else os.path.join(wg_dir, mapped)
+            return p if os.path.exists(p) else None
+        confs = _wg_list_configs(wg_dir)
+        if not confs and os.path.exists(os.path.join(wg_dir, "keypair.txt")) and int(config.get("wg_regen_blocked", 1) or 0):
+            # ไฟล์ใน wg/ หมด (ลบตัวที่โดนบล็อกไปหมด) แต่ยังมีกุญแจ -> สร้างชุดใหม่
+            _wg_generate_more(wg_dir, int(config.get("wg_gen_extra", 5)) + 10, self.device_id)
+            confs = _wg_list_configs(wg_dir)
+        if not confs:
+            return None
+        # แต่ละจอ "จอง" ไฟล์ของตัวเอง ไม่ใช้ซ้ำกับจออื่น (กุญแจเดียวกันต่อพร้อมกัน = ตีกันเน็ตหลุด)
+        # ลองไฟล์ตามลำดับจอ MuMu ก่อน (พอร์ต 16384 + 32*i) จะได้ไฟล์เดิมทุกครั้งที่เปิดบอต
+        try:
+            port = int(self.device_id.rsplit(":", 1)[1])
+            idx = (port - 16384) // 32 if port >= 16384 else port
+        except Exception:
+            idx = sum(map(ord, self.device_id))
+        # แต่ละจอเป็นคนละ process -> จองด้วยไฟล์ล็อก wg/.claims/<ชื่อไฟล์>.lock (สร้างแบบ O_EXCL = ได้คนเดียว)
+        claim_dir = os.path.join(wg_dir, ".claims")
+        os.makedirs(claim_dir, exist_ok=True)
+
+        def _owner(p):
+            try:
+                with open(os.path.join(claim_dir, os.path.basename(p) + ".lock"), encoding="utf-8") as f:
+                    return f.read().strip()
+            except Exception:
+                return None
+
+        bad = set(getattr(self, "_wg_bad", set()))   # ไฟล์ที่เน็ตหลุดซ้ำบนจอนี้ (auto failover) - ไม่กลับไปใช้
+        # เซิร์ฟเวอร์ (IP ขาออก) ที่จอไหนก็ตามเพิ่งโดน block -> พักไว้ wg_cooldown_hours ชม. ทุกจอเลี่ยง
+        cool = _wg_cooldown_load(wg_dir)
+        bad |= {c for c in confs if _wg_endpoint(c) in cool}
+        # จำกัดจำนวนจอต่อเซิร์ฟเวอร์เดียวกัน (IP ขาออกเดียวกัน) ; 0 = ไม่จำกัด
+        max_ip = int(config.get("wg_max_per_ip", 0) or 0)
+        if max_ip > 0:
+            used = {}
+            for c in confs:
+                o = _owner(c)
+                if o and o != self.device_id:
+                    e = _wg_endpoint(c)
+                    used[e] = used.get(e, 0) + 1
+            full = {c for c in confs if used.get(_wg_endpoint(c), 0) >= max_ip}
+            if len(full | bad) < len(confs):
+                bad |= full
+        for p in confs:                      # จองไว้แล้วจากรอบก่อน -> ใช้อันเดิม
+            if _owner(p) == self.device_id and p not in bad:
+                return p
+        order = confs[idx % len(confs):] + confs[:idx % len(confs)]
+        for p in order:
+            if p in bad:
+                continue
+            lock = os.path.join(claim_dir, os.path.basename(p) + ".lock")
+            try:
+                fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                continue
+            except Exception:
+                continue
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(self.device_id)
+            return p
+        if not getattr(self, "_wg_gen_tried", False) and int(config.get("wg_regen_blocked", 1) or 0):
+            # ไม่มีไฟล์ว่างให้ใช้เลย (โดนบล็อก/พัก/จองเต็ม) -> สร้างเซิร์ฟเวอร์ใหม่เพิ่มแล้วลองอีกรอบ (ไม่ปล่อยจอไปใช้เน็ตบ้าน)
+            self._wg_gen_tried = True
+            try:
+                if _wg_generate_more(wg_dir, len(confs) + int(config.get("wg_gen_extra", 5)), self.device_id):
+                    return self._wg_conf_for_device()
+            finally:
+                self._wg_gen_tried = False
+        if bad and len(bad) >= len(confs):
+            # ลองครบทุกไฟล์แล้ว -> ให้โอกาสใหม่ทั้งหมด (วนรอบใหม่) แทนที่จะไม่มี VPN
+            print(f"[{self.device_id}] [WG] ลองครบทุกเซิร์ฟเวอร์แล้ว - เริ่มวนใหม่")
+            if not getattr(self, "_wg_bad", None):
+                return None                  # ทุกตัวติดพัก/เต็ม -> ไม่ต่อ VPN รอบนี้
+            self._wg_bad = set()
+            return self._wg_conf_for_device()
+        if not getattr(self, "_wg_short_warned", False):
+            self._wg_short_warned = True
+            print(f"[{self.device_id}] [WG] ไฟล์ config ไม่พอ ({len(confs)} ไฟล์ ถูกจออื่นจองหมดแล้ว) - จอนี้ไม่ต่อ VPN "
+                  f"(โหลด .conf เพิ่มมาใส่ {wg_dir}/)")
+        return None
+
+    def _wg_after_refresh(self):
+        """wg_after_login: กด refresh แล้ว -> ต่อ VPN ตรงนี้เลย (ส่งไฟล์/เปิดเกมไปด้วยเน็ตปกติแล้ว)"""
+        if int(config.get("wg_after_login", 0) or 0):
+            self._ensure_wireguard()
+
+    def _wg_vpn_active(self):
+        """Android ยังมี VPN ต่ออยู่ไหม (ดูทั้ง tun interface และ VPN network ใน connectivity)"""
+        if self._wg_is_up():
+            return True
+        r = self.adb_shell("dumpsys connectivity 2>/dev/null | grep -c 'VPN CONNECTED' || true", timeout=15)
+        try:
+            return int((r.stdout or b"0").strip().splitlines()[0] or 0) > 0
+        except Exception:
+            return False
+
+    def _wg_down(self):
+        """ปิด VPN ของจอนี้ "สนิท" ก่อนส่งไฟล์/เปิดเกม ให้ออกเน็ตด้วย IP ปกติ
+
+        ทำทุกครั้ง (ไม่ใช่เฉพาะตอนเห็น tun): สั่งปิด tunnel -> ฆ่าแอป WireGuard ->
+        รอจน Android ไม่มี VPN ค้าง -> รอจนออกเน็ตได้จริง (ping) -> พักให้เน็ตนิ่ง แล้วค่อยไปต่อ
+        """
+        if not int(config.get("wg_enabled", 0) or 0):
+            return
+        try:
+            was = self._wg_vpn_active()
+            self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
+                           f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {self.WG_TUNNEL}'", timeout=20)
+            _real_sleep(1)
+            self.adb_shell(f"su -c 'am force-stop {self.WG_PKG}'", timeout=15)
+            self._wg_conf_applied = None
+            gone = False
+            for _ in range(10):
+                if not self._wg_vpn_active():
+                    gone = True
+                    break
+                _real_sleep(1)
+            net = False
+            for _ in range(10):
+                r = self.adb_shell("ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1 && echo OK || echo FAIL", timeout=8)
+                if b"OK" in (r.stdout or b""):
+                    net = True
+                    break
+                _real_sleep(1)
+            if was or not gone or not net:
+                _real_sleep(float(config.get("wg_down_settle", 0.5)))   # เน็ตเพิ่งสลับ - พักให้นิ่งก่อนเปิดเกม
+                print(f"[{self.device_id}] [WG] ปิด VPN ก่อนเปิดเกม: "
+                      f"{'ปิดสนิทแล้ว' if gone else 'ยังเห็น VPN ค้าง!'} | เน็ต: {'ใช้ได้' if net else 'ยังออกไม่ได้!'}")
+        except Exception as e:
+            print(f"[{self.device_id}] [WG] ปิด VPN ไม่สำเร็จ: {e}")
+
+    def _wg_request_net_recover(self, where, switch_now=False):
+        """เจอ Unstable network (fixnetv3) บนจอที่ต่อ VPN อยู่ -> ทำทันทีตรงนี้ (ไม่ต้องรอลูปล็อกอิน):
+        ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
+        ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
+        คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
+        if not int(config.get("wg_enabled", 0) or 0) or int(config.get("wg_once", 1) or 0):
+            return False                      # wg_once: VPN เปิดค้าง ไม่ปิด/เปิดใหม่เพราะเน็ตแกว่ง -> กด RETRY แบบเดิม
+        if not getattr(self, "_wg_conf_applied", None):
+            return False                      # จอนี้ไม่ได้ต่อ VPN -> ไม่ใช่เรื่อง VPN
+        lock = self.__dict__.setdefault("_wg_recover_lock", threading.Lock())
+        if not lock.acquire(blocking=False):
+            return True                       # อีกเธรดกำลังกู้อยู่ -> ไม่ต้องกดอะไร
+        try:
+            n = getattr(self, "_wg_recover_n", 0)
+            if n >= int(config.get("wg_net_recover_max", 10)):
+                return False                  # ครบโควตาแล้ว -> กลับไปกด RETRY แบบเดิม
+            self._wg_recover_n = n + 1
+            print(f"[{self.device_id}] [WG] เจอ Unstable network ({where}) - ปิดเกม + ปิด/เปิด VPN ใหม่ + เปิดเกมใหม่ "
+                  f"(ครั้งที่ {n + 1})")
+            self.last_activity_time = time.time()
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+            self._wg_down()
+            if switch_now:
+                # fixnet1: เปลี่ยน IP ทันที (ไม่รอนับ 2 ครั้ง) - พักเซิร์ฟเวอร์นี้ไว้ แต่ไม่ลบไฟล์
+                cur = getattr(self, "_wg_last_conf", None)
+                if cur:
+                    self.__dict__.setdefault("_wg_bad", set()).add(cur)
+                    _wg_cooldown_add(os.path.dirname(cur), _wg_endpoint(cur))
+                    try:
+                        os.remove(os.path.join(os.path.dirname(cur), ".claims", os.path.basename(cur) + ".lock"))
+                    except OSError:
+                        pass
+                    self._wg_conf_written = None
+                    print(f"[{self.device_id}] [WG] {where}: เลิกใช้ {os.path.basename(cur)} - เปลี่ยน IP")
+            else:
+                # เน็ตหลุดซ้ำบนเซิร์ฟเวอร์เดิม -> สลับไปเซิร์ฟเวอร์สำรองที่ว่างอยู่ (auto failover)
+                self._wg_strike("Unstable network")
+            self._wg_must_be_up()
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "start", "-n",
+                          "com.linecorp.LGRGS/com.linecorp.common.activity.LineActivity"], timeout=15)
+            self.last_activity_time = time.time()
+            print(f"[{self.device_id}] [WG] เปิดเกมใหม่แล้ว (VPN: {os.path.basename(str(getattr(self, '_wg_conf_applied', '') or '-'))})")
+            _real_sleep(3)
+            return True
+        except Exception as e:
+            print(f"[{self.device_id}] [WG] กู้เน็ตไม่สำเร็จ: {e}")
+            return False
+        finally:
+            lock.release()
+
+    def _wg_auth_failed(self):
+        """Authentication failed (fixid) ตอนต่อ VPN -> ด่าน login ของ LINE ไม่รับ IP ของ VPN
+        เจอครบ wg_auth_fallback ไอดี (default 2) -> ปิด VPN ของจอนี้ไปจนปิดบอท ใช้เน็ตบ้านแทน (0 = ไม่ปิด)"""
+        if not int(config.get("wg_enabled", 0) or 0) or not getattr(self, "_wg_conf_applied", None):
+            return
+        lim = int(config.get("wg_auth_fallback", 0) or 0)
+        if lim <= 0:
+            return
+        self._wg_auth_fail = getattr(self, "_wg_auth_fail", 0) + 1
+        print(f"[{self.device_id}] [WG] Authentication failed ผ่าน VPN ({self._wg_auth_fail}/{lim})")
+        if self._wg_auth_fail >= lim:
+            self._wg_off = True
+            self._wg_down()
+            print(f"[{self.device_id}] [WG] ด่าน login LINE ไม่รับ IP VPN - ปิด VPN จอนี้ ใช้เน็ตบ้านแทน (จนกว่าจะเปิดบอทใหม่)")
+
+    def _wg_strike(self, reason, now_switch=False):
+        """จอนี้เข้าเกมไม่ได้บนเซิร์ฟเวอร์ VPN ปัจจุบัน 1 ครั้ง (Unstable network / fixid ครบ / LINE GAME ค้าง /
+        จอดำ / login failed) - ครบ wg_failover_after (2) ครั้งบนเซิร์ฟเวอร์เดิม -> เลิกใช้ แล้วจองเซิร์ฟเวอร์อื่น
+        (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว"""
+        if not int(config.get("wg_enabled", 0) or 0) or getattr(self, "_wg_off", False):
+            return False
+        if int(config.get("wg_once", 1) or 0) and not any(k in str(reason) for k in ("fixid", "login failed")):
+            return False                      # wg_once: เปลี่ยนเซิร์ฟเวอร์เฉพาะโดนบล็อก (fixid / login failed) - เน็ตแกว่ง/จอดำ/ค้าง ไม่นับ
+        cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
+        if not cur:
+            return False
+        strikes = self.__dict__.setdefault("_wg_strikes", {})
+        strikes[cur] = strikes.get(cur, 0) + 1
+        lim = int(config.get("wg_failover_after", 2))
+        print(f"[{self.device_id}] [WG] เข้าเกมไม่ได้ ({reason}) บน {os.path.basename(cur)} - ครั้งที่ {strikes[cur]}/{lim}")
+        self._block_evidence(reason, cur)
+        if strikes[cur] >= lim:
+            self._wg_down()
+            self._wg_failover(cur)
+            return True
+        return False
+
+    def _net_probe(self):
+        """(IP ขาออก, HTTP code ของเซิร์ฟเวอร์เกม) ผ่านเน็ตที่เกมใช้จริง
+        adb shell / root ถูก Android ยกเว้นจาก VPN -> ถ้ามี tun0 ใส่ ip rule ชั่วคราวให้ root วิ่งผ่าน tunnel ก่อนยิง
+        code: 401 = ต่อได้ปกติ (แค่ไม่ได้ล็อกอิน) / 000 = ไม่ตอบ (IP โดนบล็อกหรือเน็ตไม่ออก) / 403,429 = ถูกปฏิเสธ"""
+        safe = self.device_id.replace(":", "_")
+        sh = f"/data/local/tmp/probe_{safe}.sh"
+        local = os.path.join(tempfile.gettempdir(), f"probe_{safe}.sh")
+        script = chr(10).join([
+            "command -v curl >/dev/null 2>&1 || { echo 'P NA NA'; rm -f " + sh + "; exit 0; }",
+            "R=0",
+            "if ip -o link | grep -q ' tun0'; then ip rule add pref 10500 uidrange 0-0 lookup tun0 2>/dev/null && R=1; fi",
+            "IP=$(curl -s -m 8 https://api.ipify.org)",
+            "C=$(curl -s -m 12 -o /dev/null -w '%{http_code}' https://rangers-api.line-apps.com/v12.3/home)",
+            "[ $R = 1 ] && ip rule del pref 10500",
+            "echo \"P ${IP:--} ${C:-000}\"",
+            f"rm -f {sh}",
+            "",
+        ])
+        with open(local, "w", newline=chr(10)) as f:
+            f.write(script)
+        self.adb_run([self.adb_cmd, "-s", self.device_id, "push", local, sh], timeout=20)
+        r = self.adb_shell(f"su -c 'sh {sh}'", timeout=40)
+        for line in (r.stdout or b"").decode("utf-8", "ignore").splitlines():
+            if line.startswith("P "):
+                parts = line.split()
+                return parts[1], parts[2]
+        return "-", "000"
+
+    def _block_evidence(self, reason, conf=None):
+        """เก็บหลักฐานตอนเข้าเกมไม่ได้ -> logs/block_log.csv + รูปจอ logs/block/ (ใช้หาว่าโดน block เพราะอะไร)
+        api = HTTP code จากเซิร์ฟเวอร์เกมผ่านเน็ตของจอนี้: 401 = IP ใช้ได้ปกติ / 403,429,000 = IP โดน block หรือเน็ตไม่ออก"""
+        if not int(config.get("block_log", 1) or 0):
+            return
+        try:
+            ip, code = self._net_probe()
+            ts = time.strftime("%Y-%m-%d %H:%M:%S")
+            os.makedirs(os.path.join("logs", "block"), exist_ok=True)
+            shot = os.path.join("logs", "block", time.strftime("%Y%m%d_%H%M%S_") + self.device_id.replace(":", "_") + ".png")
+            try:
+                with open(shot, "wb") as f:
+                    f.write(self.adb_run(["exec-out", "screencap", "-p"], timeout=20).stdout or b"")
+            except Exception:
+                shot = "-"
+            new = not os.path.exists(os.path.join("logs", "block_log.csv"))
+            with open(os.path.join("logs", "block_log.csv"), "a", encoding="utf-8-sig") as f:
+                if new:
+                    f.write("time,device,reason,server,exit_ip,api_code,screenshot" + chr(10))
+                f.write(f"{ts},{self.device_id},{reason},{_wg_endpoint(conf) if conf else '-'},{ip},{code},{shot}" + chr(10))
+            print(f"[{self.device_id}] [BLOCK] {reason} | IP {ip} | game api {code} | {shot}")
+        except Exception as e:
+            print(f"[{self.device_id}] [BLOCK] เก็บหลักฐานไม่ได้: {e}")
+
+    def _wg_ok(self):
+        """ล็อกอินผ่านบนเซิร์ฟเวอร์นี้ -> ล้างตัวนับ (นับเฉพาะครั้งที่ล้มติดกัน)"""
+        cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
+        if cur:
+            self.__dict__.setdefault("_wg_strikes", {})[cur] = 0
+            # สลับ IP เป็นช่วง: ใช้เซิร์ฟเวอร์เดิมครบ wg_rotate_logins รอบ -> ปล่อยไฟล์นี้ให้จออื่น
+            # แล้วเปิดเกมรอบหน้าจะต่อเซิร์ฟเวอร์ใหม่ (ไม่ตัดเน็ตตอนกำลังเล่น ; ไม่นับเป็นโดนบล็อก ไม่ติดพัก)
+            n = int(config.get("wg_rotate_logins", 0) or 0)
+            if n > 0:
+                used = self.__dict__.setdefault("_wg_uses", {})
+                used[cur] = used.get(cur, 0) + 1
+                if used[cur] >= n:
+                    used[cur] = 0
+                    self.__dict__.setdefault("_wg_bad", set()).add(cur)
+                    try:
+                        os.remove(os.path.join(os.path.dirname(cur), ".claims", os.path.basename(cur) + ".lock"))
+                    except OSError:
+                        pass
+                    print(f"[{self.device_id}] [WG] ใช้ {os.path.basename(cur)} ครบ {n} รอบ - รอบหน้าสลับ IP")
+
+    def _wg_failover(self, conf, confirmed=False):
+        """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
+        self.__dict__.setdefault("_wg_bad", set()).add(conf)
+        _wg_cooldown_add(os.path.dirname(conf), _wg_endpoint(conf))
+        # ลบไฟล์ + จดว่าโดนบล็อก 7 วัน เฉพาะตอน "ยืนยันแล้ว" (ทดสอบผ่าน VPN ได้ IP จริงแต่เซิร์ฟเวอร์เกมไม่ตอบ)
+        # เข้าเกมไม่ได้เฉย ๆ อาจเป็นเน็ตกระตุก/ไอดีเสีย -> แค่พักไว้ (cooldown) ไม่ลบทิ้ง
+        if confirmed and int(config.get("wg_regen_blocked", 1) or 0):
+            _wg_replace_blocked(conf, self.device_id)
+        try:
+            os.remove(os.path.join(os.path.dirname(conf), ".claims", os.path.basename(conf) + ".lock"))
+        except OSError:
+            pass
+        self._wg_conf_applied = None
+        self._wg_conf_written = None
+        print(f"[{self.device_id}] [WG] เข้าเกมไม่ได้ซ้ำบน {os.path.basename(conf)} - สลับไปเซิร์ฟเวอร์/ประเทศอื่น")
+
+    def _wg_tuned_conf(self, conf):
+        """ปรับไฟล์ก่อนส่งเข้าเครื่อง (ไม่แก้ไฟล์ต้นฉบับ):
+        - IncludedApplications = เกม  -> ให้เฉพาะเกมผ่าน VPN (split tunnel) ระบบ/แอปอื่นใช้เน็ตปกติ
+        - PersistentKeepalive = 25    -> ส่งสัญญาณเลี้ยง tunnel กันเราเตอร์/NAT ตัดทิ้งตอนเกมเงียบ"""
+        try:
+            with open(conf, encoding="utf-8-sig") as f:
+                lines = f.read().replace(chr(13), "").split(chr(10))
+        except Exception:
+            return conf
+        apps = str(config.get("wg_split_apps", "") or "").strip()   # ปิดไว้ก่อน - เปิดด้วย "wg_split_apps": "com.linecorp.LGRGS" หลังทดสอบ 1 จอ
+        ka = int(config.get("wg_keepalive", 25) or 0)
+        low = [l.strip().lower() for l in lines]
+        out = []
+        section = ""
+        for l in lines:
+            s = l.strip().lower()
+            if s.startswith("[") and section == "[interface]" and apps and not any(x.startswith("includedapplications") for x in low):
+                out.append(f"IncludedApplications = {apps}")
+            if s.startswith("["):
+                section = s
+            out.append(l)
+        if ka and not any(x.startswith("persistentkeepalive") for x in low):
+            while out and not out[-1].strip():
+                out.pop()
+            out.append(f"PersistentKeepalive = {ka}")
+        tuned = os.path.join(tempfile.gettempdir(), f"wg_tuned_{self.device_id.replace(':', '_')}.conf")
+        with open(tuned, "w", encoding="utf-8", newline=chr(10)) as f:
+            f.write(chr(10).join(out).rstrip() + chr(10))
+        return tuned
+
+    def _wg_is_up(self):
+        r = self.adb_shell("ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true", timeout=10)
+        return bool((r.stdout or b"").strip())
+
+    def _ensure_wireguard(self):
+        """ต่อ WireGuard ในอีมูฯ จอนี้ (เรียกก่อนเปิดเกมทุกครั้ง - ต่ออยู่แล้วจะข้ามเร็ว)"""
+        if not int(config.get("wg_enabled", 0) or 0) or getattr(self, "_wg_off", False):
+            return
+        conf = self._wg_conf_for_device()
+        if not conf and not getattr(self, "_wg_down_done", False):
+            # ไม่ได้ไฟล์รอบนี้ แต่ tunnel เก่าจากรอบก่อนยังค้าง (อาจใช้กุญแจชนกับจออื่น) -> ปิดทิ้ง
+            self._wg_down_done = True
+            if self._wg_is_up():
+                self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
+                               f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {self.WG_TUNNEL}'", timeout=20)
+                print(f"[{self.device_id}] [WG] ปิด tunnel เก่าที่ค้างอยู่ (จอนี้ไม่มีไฟล์ config ของตัวเอง)")
+        if not conf:
+            if not getattr(self, "_wg_warned", False):
+                self._wg_warned = True
+                print(f"[{self.device_id}] [WG] ไม่มีไฟล์ .conf ในโฟลเดอร์ {config.get('wg_dir', 'wg')}/ - ข้าม (ใช้เน็ตปกติ)")
+            return
+        if getattr(self, "_wg_conf_applied", None) == conf and self._wg_is_up():
+            return
+        if getattr(self, "_wg_fail", 0) >= 2:
+            return                          # จอนี้ต่อ VPN ไม่ขึ้นมา 2 รอบแล้ว - เลิกลอง (ไม่เสียเวลาทุกไอดี)
+        try:
+            self._wg_setup(conf)
+            if getattr(self, "_wg_conf_applied", None) == conf and int(config.get("wg_probe", 1) or 0):
+                # ต่อแล้ว -> ยิงเซิร์ฟเวอร์เกมผ่าน VPN ทันที: ไม่ตอบ/ถูกปฏิเสธ = IP นี้โดนบล็อก -> สลับเลย ไม่ต้องรอเกมพัง
+                ip, code = self._net_probe()
+                # ทดสอบไม่ได้ (ไม่มี curl / ip rule ใช้ไม่ได้ -> IP เป็น "-") = ไม่ตัดสิน ปล่อยเข้าเกม
+                # (เดิมเครื่องที่ทดสอบไม่ได้ถูกนับว่าโดนบล็อกทุกเซิร์ฟเวอร์ -> สลับวนไม่ได้เข้าเกมเลย)
+                if code == "NA" or ip in ("-", "", "NA"):
+                    print(f"[{self.device_id}] [WG] ทดสอบเซิร์ฟเวอร์เกมไม่ได้บนเครื่องนี้ (IP {ip}) - ข้ามการทดสอบ เข้าเกมเลย")
+                    code = "skip"
+                if code in ("000", "403", "429"):
+                    print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมไม่รับ IP {ip} ({os.path.basename(conf)}, code {code}) - สลับเซิร์ฟเวอร์")
+                    self._wg_down()
+                    self._wg_failover(conf, confirmed=True)
+                    tries = getattr(self, "_wg_probe_tries", 0) + 1
+                    self._wg_probe_tries = tries
+                    if tries < int(config.get("wg_probe_max", 5)):
+                        return self._ensure_wireguard()
+                    print(f"[{self.device_id}] [WG] ลองแล้ว {tries} เซิร์ฟเวอร์ยังไม่ผ่าน - เล่นต่อแบบไม่มี VPN รอบนี้")
+                    self._wg_probe_tries = 0
+                    return
+                self._wg_probe_tries = 0
+                print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมตอบปกติผ่าน IP {ip} (code {code})")
+            if getattr(self, "_wg_conf_applied", None) == conf:
+                self._wg_fail = 0
+            else:
+                self._wg_fail = getattr(self, "_wg_fail", 0) + 1
+                if self._wg_fail >= 2:
+                    print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น 2 รอบติด - ปิด VPN ของจอนี้ไปจนกว่าจะเปิดบอทใหม่ "
+                          f"(ถ้าเจอ 'pm ยังไม่เจอแอป' ด้วย = MuMu จอนี้ค้าง ให้รีสตาร์ทจอ)")
+        except Exception as e:
+            print(f"[{self.device_id}] [WG] ต่อไม่สำเร็จ: {e} - เล่นต่อด้วยเน็ตปกติ")
+
+    def _wg_must_be_up(self):
+        """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
+        ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
+        ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
+        if not int(config.get("wg_enabled", 0) or 0):
+            return
+        if not int(config.get("wg_required", 1) or 0):
+            return self._ensure_wireguard()
+        tries = int(config.get("wg_required_tries", 10) or 10)
+        for n in range(1, tries + 1):
+            self._wg_off = False
+            self._wg_fail = 0
+            self._wg_probe_tries = 0
+            self.last_activity_time = time.time()
+            self._ensure_wireguard()
+            if getattr(self, "_wg_conf_applied", None) and self._wg_is_up():
+                return
+            print(f"[{self.device_id}] [WG] VPN ยังไม่ขึ้น ({n}/{tries}) - ไม่เปิดเกมด้วยเน็ตบ้าน ลองใหม่...")
+            self._wg_bad = set()            # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
+            _real_sleep(5)
+        print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น {tries} รอบ - รีสตาร์ทไฟล์นี้แทนการเข้าเกมด้วยเน็ตบ้าน")
+        raise RestartTimeoutError("wg_required: VPN not up")
+
+    def _wg_setup(self, conf):
+        pkg, name = self.WG_PKG, self.WG_TUNNEL
+        # ทางลัด: ไฟล์ config นี้เคยเขียนลงเครื่องแล้ว (แค่ปิดไปตอนส่งไฟล์) -> สั่งเปิด tunnel อย่างเดียว ไม่ต้องส่งไฟล์ใหม่
+        # (เทียบเวลาแก้ไฟล์ด้วย - server ส่งไฟล์ชื่อเดิมแต่เนื้อหาใหม่มา ต้องเขียนลงเครื่องใหม่)
+        if getattr(self, "_wg_conf_written", None) == (conf, os.path.getmtime(conf)):
+            self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}'",
+                           timeout=20)
+            for _ in range(8):
+                _real_sleep(0.5)
+                if self._wg_is_up():
+                    self._wg_conf_applied = conf
+                    print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
+                    return
+            self._wg_conf_written = None    # ไม่ขึ้น -> รอบนี้ทำแบบเต็มต่อเลย
+        # 1) ลงแอป WireGuard ถ้ายังไม่มี - เช็คจากโฟลเดอร์แอปในเครื่อง (ไม่พึ่ง pm ที่ตอบช้าตอนเครื่องโหลดหนัก)
+        #    เคยเจอ: pm ตอบไม่ทัน -> นึกว่ายังไม่ลง -> ติดตั้ง 17 MB ซ้ำทุกจอทุกรอบ -> pm ยิ่งช้า หาแม้แต่ตัวเกมไม่เจอ
+        if not getattr(self, "_wg_installed", False):
+            r = self.adb_shell(f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=15)
+            if b"YES" in (r.stdout or b""):
+                self._wg_installed = True
+            elif getattr(self, "_wg_install_tried", False):
+                print(f"[{self.device_id}] [WG] ติดตั้ง WireGuard ไปแล้วรอบนี้แต่ยังไม่เห็นแอป - ไม่ติดตั้งซ้ำ (ข้าม VPN ของจอนี้ไปก่อน)")
+                return
+            else:
+                apk = _wg_apk_path()
+                if not apk:
+                    print(f"[{self.device_id}] [WG] ไม่มีไฟล์แอป WireGuard (โหลดไม่ได้) - ข้าม")
+                    return
+                self._wg_install_tried = True
+                print(f"[{self.device_id}] [WG] ติดตั้งแอป WireGuard (ครั้งเดียว)...")
+                self.adb_run([self.adb_cmd, "-s", self.device_id, "install", "-r", apk], timeout=180)
+                r = self.adb_shell(f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=15)
+                self._wg_installed = b"YES" in (r.stdout or b"")
+
+        # 2) เขียนไฟล์ tunnel + ตั้งค่าแอป (ต้องปิดแอปก่อน ไม่งั้นมันเขียนทับ)
+        self.adb_shell(f"am force-stop {pkg}")
+        safe_dev = self.device_id.replace(":", "_")
+        tmp_conf = f"/data/local/tmp/wg_{safe_dev}.conf"
+        tmp_pb = f"/data/local/tmp/wg_{safe_dev}.pb"
+        local_pb = os.path.join(tempfile.gettempdir(), f"wg_{safe_dev}.pb")
+        # DataStore (protobuf) ของแอป: allow_remote_control_intents = true
+        key = b"allow_remote_control_intents"
+        entry = b"\x0a" + bytes([len(key)]) + key + b"\x12\x02\x08\x01"
+        with open(local_pb, "wb") as f:
+            f.write(b"\x0a" + bytes([len(entry)]) + entry)
+        # คำสั่ง root เขียนเป็นสคริปต์แล้วรันทีเดียว - su ของ MuMu กิน $ / quote ถ้าส่งเป็นสตริงตรง ๆ
+        d = f"/data/data/{pkg}"
+        tmp_sh = f"/data/local/tmp/wg_{safe_dev}.sh"
+        local_sh = os.path.join(tempfile.gettempdir(), f"wg_{safe_dev}.sh")
+        script = chr(10).join([
+            f"mkdir -p {d}/files/datastore",
+            f"cp {tmp_conf} {d}/files/{name}.conf",
+            f"cp {tmp_pb} {d}/files/datastore/settings.preferences_pb",
+            f"U=$(stat -c %u {d})",
+            f"chown -R $U:$U {d}/files",
+            f"chmod -R 700 {d}/files",
+            f"restorecon -R {d}/files 2>/dev/null",
+            f"rm -f {tmp_conf} {tmp_pb}",
+            # อนุญาตสร้าง VPN ล่วงหน้า (ไม่ต้องกดยืนยันบนจอ)
+            f"cmd appops set {pkg} ACTIVATE_VPN allow",
+            # Android 12 ห้ามแอปเปิด VpnService จากเบื้องหลัง -> ใส่ไว้ในรายการยกเว้นประหยัดแบต (ทดสอบบน MuMu แล้วผ่าน)
+            f"cmd deviceidle whitelist +{pkg}",
+            # สั่งเปิด tunnel เป็น root (ผ่านสิทธิ์ CONTROL_TUNNELS) ; -f 0x20 = ส่งถึงแอปที่ถูก force-stop
+            f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}",
+            f"rm -f {tmp_sh}",
+            "",
+        ])
+        with open(local_sh, "w", newline=chr(10)) as f:   # ไฟล์ sh ต้องเป็น LF
+            f.write(script)
+        self._wg_last_conf = conf
+        for src, dst in ((self._wg_tuned_conf(conf), tmp_conf), (local_pb, tmp_pb), (local_sh, tmp_sh)):
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, dst], timeout=30)
+        self.adb_shell(f"su -c 'sh {tmp_sh}'", timeout=30)   # ต้องครอบ quote: su ของ MuMu รับแค่คำถัดไปคำเดียว
+        for _ in range(10):
+            _real_sleep(1)
+            if self._wg_is_up():
+                self._wg_conf_applied = conf
+                self._wg_conf_written = (conf, os.path.getmtime(conf))
+                print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
+                return
+        print(f"[{self.device_id}] [WG] สั่งต่อแล้วแต่ยังไม่เห็น tunnel ภายใน 10 วิ ({os.path.basename(conf)})")
+
     def open_app(self):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
+        self.last_activity_time = time.time()
+        if int(config.get("wg_after_login", 0) or 0):
+            self._wg_down()          # wg_after_login: ส่งไฟล์+ล็อกอินด้วยเน็ตปกติ แล้วค่อยต่อ VPN หลังเข้าเกม
+        else:
+            self._wg_must_be_up()    # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น) - ไม่ขึ้นห้ามเปิดเกม
         attempt = 0
         while attempt < 5:
             attempt += 1
@@ -3895,6 +4722,7 @@ class RangerGearBot(threading.Thread):
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
+        self._wg_recover_n = 0       # โควตาเคลียร์แอป+ปิด/เปิด VPN เมื่อเจอ Unstable network (ต่อไอดี)
         
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -3931,6 +4759,7 @@ class RangerGearBot(threading.Thread):
             
             if is_stuck:
                 print(f"[{self.device_id}] [BLACK] Dark screen 15s after launch! (attempt {black_attempt+1}/3) Clearing...")
+                self._wg_strike("จอดำหลังเปิดเกม")
                 self.clear_and_restart()
                 self.open_app()
                 sleep(1)
@@ -4009,6 +4838,8 @@ class RangerGearBot(threading.Thread):
                 continue
 
             # fixnetv3.png Check in login loop
+            if self.exists_in_cache("img/fixnetv3.png", similarity=0.8) and self._wg_request_net_recover("login loop"):
+                continue                      # ปิดเกม + ปิด/เปิด VPN + เปิดเกมใหม่แล้ว (wg_once=1 จะไม่ทำ -> กดแบบเดิม)
             if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
                 print(f"[{self.device_id}] [POPUP] fixnetv3.png detected in login loop! Tapping (472, 361)...")
                 self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
@@ -4035,6 +4866,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] Detected alert2.png... waiting 15s to clear app")
                 elif time.time() - self._alert2_start_time >= 15:
                     print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ 15 วินาที! เคลียร์แอพและเข้าใหม่...")
+                    self._wg_strike("LINE GAME ค้าง")
                     self.clear_and_restart()
                     self.open_app()
                     self._alert2_start_time = None
@@ -4051,11 +4883,19 @@ class RangerGearBot(threading.Thread):
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png", similarity=0.95):
+                # Authentication failed ตอนต่อ VPN = IP นี้โดนบล็อก -> ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (config "wg_fixid_switch")
+                if (int(config.get("wg_fixid_switch", 1) or 0)
+                        and self._wg_request_net_recover("Authentication failed", switch_now=True)):
+                    self._login_fixid_count = 0
+                    sleep(2)
+                    continue
                 self._login_fixid_count += 1
-                print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/8), fixok -> refresh -> check...")
+                print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/15), fixok -> refresh -> check...")
                 
-                if self._login_fixid_count >= 8:
-                    print(f"[{self.device_id}] fixid limit reached (8 times)! Failing...")
+                if self._login_fixid_count >= 15:
+                    print(f"[{self.device_id}] fixid limit reached (15 times)! Failing...")
+                    self._wg_auth_failed()
+                    self._wg_strike("fixid ครบ 15")
                     self._login_fixid_count = 0
                     return "failed"
                 
@@ -4078,6 +4918,7 @@ class RangerGearBot(threading.Thread):
                     if self.exists_in_cache("img/refresh.png", similarity=0.8):
                         self.click("img/refresh.png", similarity=0.8)
                         print(f"[{self.device_id}] Clicked refresh.png")
+                        self._wg_after_refresh()
                         sleep(0.5)
                         break
                     sleep(0.5)
@@ -4123,6 +4964,7 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/refresh.png", similarity=0.8):
                 print(f"[{self.device_id}] Found refresh.png (no fixid), clicking refresh -> check...")
                 self.click("img/refresh.png", similarity=0.8)
+                self._wg_after_refresh()
                 sleep(0.5)
                 
                 check_wait_start = time.time()
@@ -4197,6 +5039,10 @@ class RangerGearBot(threading.Thread):
             # *** SUCCESS -> Just Login and Backup ***
             if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
+                self._wg_ok()
+                self._wg_auth_fail = 0
+                if int(config.get("wg_after_login", 0) or 0):
+                    self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
                 
                 # === Check for kaibyswap_shop.png before proceeding (if configured) ===
                 kaibyskip_enabled = config.get("kaibyskip", 0)
@@ -4374,6 +5220,7 @@ class RangerGearBot(threading.Thread):
             # Failed
             if self.exists_in_cache("img/login-failed.png"):
                 print(f"[{self.device_id}] Login failed (login-failed.png detected)")
+                self._wg_strike("login failed")
                 self._login_fixid_count = 0
                 return "failed"
                 
@@ -4558,6 +5405,16 @@ if __name__ == "__main__":
         for lf in glob.glob(os.path.join(temp_lock_dir, "*.lock")):
             try: os.remove(lf); cleanup_count += 1
             except: pass
+    # 2b. ล้างรายชื่อ IP ที่จดว่าโดนบล็อก/พักไว้จากรอบก่อน (wg_reset_blocked_on_start, default 1)
+    #     กันรายชื่อที่จดผิดสะสมจนไม่มี IP ให้ใช้/สร้างใหม่ไม่ได้ - ตัวที่โดนจริงบอทจะทดสอบเจอใหม่เอง
+    if int(config.get("wg_reset_blocked_on_start", 1) or 0):
+        for _bf in (".blocked.json", ".cooldown.json"):
+            try: os.remove(os.path.join(str(config.get("wg_dir", "wg")), _bf)); cleanup_count += 1
+            except OSError: pass
+    # 2c. ล้างการจองไฟล์ WireGuard ของรอบก่อน (แต่ละจอจะจองใหม่ไม่ซ้ำกัน)
+    for lf in glob.glob(os.path.join(str(config.get("wg_dir", "wg")), ".claims", "*.lock")):
+        try: os.remove(lf); cleanup_count += 1
+        except: pass
     if cleanup_count > 0:
         print(f"[CLEANUP] Removed {cleanup_count} stale .lock file(s)")
 
@@ -4605,6 +5462,21 @@ if __name__ == "__main__":
 
     print(f"[INFO] Connected Devices ({len(devices)}): {', '.join(devices)}")
     
+    # === ล้างเน็ตทุกจอก่อนเริ่ม: ปิด VPN (WireGuard) ที่ค้าง + ล้าง proxy ค้าง แล้วเช็คว่าออกเน็ตได้ ===
+    reset_network_all(devices)
+
+    # === ไฟล์ WireGuard ไม่พอจำนวนจอ -> สร้างเพิ่มอัตโนมัติจาก Key Pair ที่มี (wg_gen.py) ===
+    if int(config.get("wg_enabled", 0) or 0) and int(config.get("wg_auto_gen", 1) or 0):
+        try:
+            import wg_gen
+            _mach = int(config.get("wg_machine", 0) or 0)   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
+            _per = int(config.get("wg_per_machine", 0) or 0) or (len(devices) + int(config.get("wg_gen_spare", 2)))
+            wg_gen.generate(_per, config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")), _mach,
+                            str(config.get("wg_account", "") or "").strip() or None,   # เลือกบัญชี: wg_accounts/<ชื่อ>/
+                            int(config.get("wg_total_machines", 30) or 30))
+        except Exception as e:
+            print(f"[WG-GEN] สร้างไฟล์อัตโนมัติไม่สำเร็จ: {e}")
+
     # Prepare OCR
     find_ranger = config.get("find_ranger", 0)
     find_gear = config.get("find_gear", 0)

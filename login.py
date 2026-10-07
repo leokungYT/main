@@ -8410,7 +8410,7 @@ class RangerGearBot(threading.Thread):
             # === SPECIAL CASE: apple.png ===
             # เจอ apple.png ให้กดด้วย และทำลูป fixid ต่อ
             # เจอ fixid ก่อน -> กด fixok -> refresh -> check -> วนเช็ค fixid ไปเรื่อยๆ
-            # ถ้าเจอ fixid ครบ 8 รอบ -> return "failed" ส่งไป login-failed
+            # ถ้าเจอ fixid ครบ 15 รอบ -> return "failed" ส่งไป login-failed
             # ถ้าไม่เจอ fixid -> ผ่านไปต่อ step ถัดไป
             if item == 'apple.png':
                 print(f"[{self.device_id}] Apple step: clicking apple.png (if found) and checking for fixid loop...")
@@ -8418,7 +8418,7 @@ class RangerGearBot(threading.Thread):
                     sleep(1)
                     continue
                 fixid_count = 0
-                max_fixid_retries = 3
+                max_fixid_retries = 15
                 apple_start_wait = time.time()
                 try:
                     while True:
@@ -9556,12 +9556,12 @@ class RangerGearBot(threading.Thread):
                     continue
                 try:
                     self._login_fixid_count += 1
-                    print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/3), fixok -> refresh -> check...")
+                    print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/15), fixok -> refresh -> check...")
                     
-                    if self._login_fixid_count >= 3:
-                        print(f"[{self.device_id}] fixid limit reached (3 times)! Failing...")
+                    if self._login_fixid_count >= 15:
+                        print(f"[{self.device_id}] fixid limit reached (15 times)! Failing...")
                         self._wg_auth_failed()
-                        self._wg_strike("fixid ครบ 3")
+                        self._wg_strike("fixid ครบ 15")
                         self._login_fixid_count = 0
                         return "failed"
                     

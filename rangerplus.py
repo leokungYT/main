@@ -3649,10 +3649,10 @@ class RangerPlusBot(multiprocessing.Process):
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png", similarity=0.95):
                 self._login_fixid_count += 1
-                print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/8), fixok -> refresh -> check...")
+                print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/15), fixok -> refresh -> check...")
                 
-                if self._login_fixid_count >= 8:
-                    print(f"[{self.device_id}] fixid limit reached (8 times)! Failing...")
+                if self._login_fixid_count >= 15:
+                    print(f"[{self.device_id}] fixid limit reached (15 times)! Failing...")
                     self._login_fixid_count = 0
                     return "failed"
                 
