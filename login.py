@@ -421,8 +421,14 @@ def _wg_replace_blocked(conf, dev=""):
             # ไฟล์จาก server: เก็บกุญแจไว้ก่อนลบ -> ไฟล์ใน wg/ หมดเกลี้ยงก็ยังสร้างใหม่ได้
             with open(conf, "rb") as f_src, open(kp, "wb") as f_dst:
                 f_dst.write(f_src.read())
-        os.remove(conf)
-        print(f"[{dev}] [WG] ลบ {os.path.basename(conf)} (เกมบล็อก IP) - สร้างเซิร์ฟเวอร์ใหม่มาแทน")
+        # ไฟล์ที่ออก IP เดียวกัน (แชร์เซิร์ฟเวอร์หลายจอ คนละกุญแจ) โดนบล็อกด้วยกันหมด -> ลบทุกตัว
+        gone = [c for c in _wg_list_configs(wg_dir) if _wg_endpoint(c) == ep] or [conf]
+        for c in gone:
+            try:
+                os.remove(c)
+            except OSError:
+                pass
+        print(f"[{dev}] [WG] ลบ {', '.join(os.path.basename(c) for c in gone)} (เกมบล็อก IP {ep}) - สร้างเซิร์ฟเวอร์ใหม่มาแทน")
         import wg_gen
         if managed:
             # เครื่องที่รับไฟล์จาก server: ใช้กุญแจเดิมของเครื่อง (keypair.txt) สร้างเซิร์ฟเวอร์ใหม่ที่ยังไม่มีในเครื่อง
