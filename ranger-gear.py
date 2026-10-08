@@ -2426,7 +2426,7 @@ class RangerGearBot(threading.Thread):
         ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
         if not int(config.get("wg_enabled", 0) or 0):
             return
-        if not int(config.get("wg_required", 1) or 0):
+        if not int(config.get("wg_required", 0) or 0):   # 0 = VPN ไม่ขึ้นก็เล่นต่อด้วยเน็ตบ้าน (แบบเดิม)
             return self._ensure_wireguard()
         if (int(config.get("wg_once", 1) or 0) and not getattr(self, "_wg_conf_applied", None)
                 and not getattr(self, "_wg_started", False) and self._wg_is_up()):
