@@ -60,5 +60,98 @@
     "mumu_ram": 2,
     "mumu_root": "เปิด",
     "mumu_renderer": "DirectX",
-    "mumu_app_running": "เปิด"
+    "mumu_app_running": "เปิด",
+    "warp_autostart": 0,
+    "windscribe_autostart": 1,
+    "windscribe_location": "best",
+    "windscribe_protocol": "wireguard",
+    "windscribe_rotate_every": 0,
+    "delay_scale": 0.1,
+    "wg_enabled": 1,
+    "wg_account": "account2",
+    "wg_machine": 1,
+    "wg_per_machine": 15,
+    "wg_total_machines": 30,
+    "wg_max_per_ip": 0,
+    "wg_cooldown_hours": 6,
+    "wg_probe": 1,
+    "wg_rotate_logins": 0,
+    "wg_regen_blocked": 1,
+    "wg_fixnet1_switch": 1,
+    "wg_auth_fallback": 0,
+    "wg_fixid_switch": 1,
+    "wg_net_recover_max": 10,
+    "wg_blocked_days": 7,
+    "wg_exclude_countries": [
+        "TH"
+    ],
+    "wg_after_login": 0,
+    "wg_dir": "wg",
+    "wg_per_device": {},
+    "channels": {
+        "ch1": [
+            732,
+            189
+        ],
+        "ch2": [
+            748,
+            309
+        ],
+        "ch3": [
+            745,
+            380
+        ],
+        "ch4": [
+            742,
+            169
+        ],
+        "ch5": [
+            745,
+            312
+        ]
+    },
+    "HERO_MAPPING": {
+        "gachahero1": "Lelouch+",
+        "gachahero2": "LelouchU+",
+        "gachahero3": "Suzaku+",
+        "gachahero4": "SuzakuU+"
+    },
+    "loop1": 0,
+    "auto_start": 1,
+    "cloud_fast_start": 0,
+    "cloud_start_delay_sec": 2.0,
+    "screen_boot_wait": 180,
+    "screen_max_relaunch": 2,
+    "recycle_failed": 0,
+    "recycle_failed_cooldown": 600,
+    "recycle_7day": 1,
+    "recycle_7day_target": 7,
+    "recycle_7day_cooldown": 60,
+    "inject_method": "auto",
+    "inject_shell_max_bytes": 262144,
+    "inject_max_concurrent": 0,
+    "screen_clear_wm_override": 1,
+    "auth_queue": 0,
+    "auth_slots": 2,
+    "auth_max_hold": 15,
+    "auth_backoff_min": 2,
+    "auth_backoff_max": 8,
+    "device_identity_check": 1,
+    "device_identity_block_on_duplicate": 1,
+    "device_profile": {
+        "model": "Asus ROG Phone 9",
+        "gpu_model": "Adreno (TM) 640",
+        "note": "Baseline profile used for all MuMu instances"
+    },
+    "lv_timeout": 8,
+    "lv_similarity": 0.7,
+    "lv_only": 1,
+    "lv_clear_popups": 1,
+    "lv_back_rounds": 10,
+    "net_inline_rounds": 1,
+    "event_similarity": 0.9,
+    "login_loop_delay": 0.6,
+    "net_full_scan_every": 10,
+    "event_max_back": 30,
+    "event_back_per_round": 10
 }
