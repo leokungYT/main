@@ -2420,6 +2420,12 @@ def reset_network_all(devices):
 
     def one(dev):
         had = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
+        if int(config.get("wg_enabled", 0) or 0) and int(config.get("wg_once", 1) or 0):
+            # wg_once: VPN ต้องเปิดแช่ไว้ - ตอนเริ่มห้ามปิด tunnel ที่เปิดอยู่ ล้างแค่ proxy ค้าง
+            sh(dev, "settings put global http_proxy :0; settings delete global http_proxy; "
+                    "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
+            print(f"[NET-RESET] {dev}: VPN {'เปิดอยู่แล้ว - ไม่ยุ่ง' if had else 'ปิดอยู่ - จะเปิดให้ก่อนเข้าเกม'}")
+            return
         sh(dev, f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr'")
         time.sleep(1.5)
         sh(dev, f"su -c 'am force-stop {pkg}'")
@@ -2437,6 +2443,8 @@ def reset_network_all(devices):
     for t in ts:
         t.join(60)
     wait = float(config.get("net_reset_wait", 30) or 0)
+    if int(config.get("wg_enabled", 0) or 0) and int(config.get("wg_once", 1) or 0):
+        wait = 0                     # wg_once: ไม่ได้ปิด VPN -> ไม่ต้องรอเน็ตนิ่ง
     if wait > 0:
         print(f"[NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง {wait:.0f} วิ ก่อนเริ่มทำงาน...")
         time.sleep(wait)
@@ -4271,6 +4279,15 @@ class RangerGearBot(threading.Thread):
             return
         if not int(config.get("wg_required", 1) or 0):
             return self._ensure_wireguard()
+        if (int(config.get("wg_once", 1) or 0) and not getattr(self, "_wg_conf_applied", None)
+                and not getattr(self, "_wg_started", False) and self._wg_is_up()):
+            # ตอนเริ่ม: tunnel เปิดแช่อยู่แล้ว -> ใช้ต่อเลย ห้ามยุ่ง (ไม่เขียนไฟล์ใหม่/ไม่ปิดเปิด)
+            self._wg_started = True
+            self._wg_conf_applied = self._wg_conf_for_device() or "(เปิดอยู่แล้ว)"
+            self._wg_last_conf = self._wg_conf_applied if os.path.isfile(str(self._wg_conf_applied)) else None
+            print(f"[{self.device_id}] [WG] VPN เปิดอยู่แล้ว - ใช้ต่อ ไม่ยุ่ง")
+            return
+        self._wg_started = True
         tries = int(config.get("wg_required_tries", 10) or 10)
         for n in range(1, tries + 1):
             self._wg_off = False
