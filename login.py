@@ -5951,10 +5951,27 @@ class RangerGearBot(threading.Thread):
             if check_gachaout_after_click(): return "random-Fail"
             sleep(1)
         
+        _no_img = 0
         while running:
             try:
                 device.capture_screen()
                 adb_img = device._screen_color
+                if adb_img is None:
+                    # แคปจอไม่ได้ (adb timeout/จอค้าง) - เดิมพังเป็น error tobytes วนไม่จบ จอค้างอยู่ในลูปนี้ตลอด
+                    _no_img += 1
+                    if _no_img == 15:
+                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] [SWAP] แคปจอไม่ได้ 15 รอบ - รีสตาร์ทจอ MuMu")
+                        try:
+                            device._hung_restart_t = 0
+                            device._restart_hung_instance()
+                        except Exception as _e:
+                            print(f"[SWAP] รีสตาร์ทจอไม่สำเร็จ: {_e}")
+                    if _no_img >= 45:
+                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] [SWAP] แคปจอไม่ได้ต่อเนื่อง - ออกจาก swap_shop")
+                        return "random-Fail"
+                    sleep(1)
+                    continue
+                _no_img = 0
                 current_time = time.time()
                 loop_beat += 1
                 if loop_beat % 30 == 0:
