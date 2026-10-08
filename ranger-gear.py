@@ -4739,6 +4739,7 @@ class RangerGearBot(threading.Thread):
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
+        self._fixid_seen = False
         self._wg_recover_n = 0       # โควตาเคลียร์แอป+ปิด/เปิด VPN เมื่อเจอ Unstable network (ต่อไอดี)
         
         # Clear app
@@ -4867,8 +4868,15 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache("img/fixokk.png", similarity=0.8):
                 if not hasattr(self, '_fixokk_start_time') or self._fixokk_start_time is None:
                     self._fixokk_start_time = time.time()
-                    print(f"[{self.device_id}] Detected fixokk.png... waiting 5s")
-                elif time.time() - self._fixokk_start_time >= 5:
+                    if getattr(self, '_fixid_seen', False):
+                        # เคยเจอ fixid ในไอดีนี้แล้ว -> ไม่ต้องรอ 5 วิ กด fixokk เลย
+                        print(f"[{self.device_id}] เจอ fixokk.png (เคยเจอ fixid แล้ว) -> กดเลย")
+                        self.click("img/fixokk.png", similarity=0.8)
+                        self._fixokk_start_time = None
+                        sleep(2)
+                    else:
+                        print(f"[{self.device_id}] Detected fixokk.png... waiting 5s")
+                elif getattr(self, '_fixid_seen', False) or time.time() - self._fixokk_start_time >= 5:
                     print(f"[{self.device_id}] ⚠️ fixokk.png ค้างอยู่ครบ 5 วินาที! ทำการกด...")
                     self.click("img/fixokk.png", similarity=0.8)
                     self._fixokk_start_time = None
@@ -4900,6 +4908,7 @@ class RangerGearBot(threading.Thread):
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png", similarity=0.95):
+                self._fixid_seen = True   # จำไว้: ต่อจากนี้เจอ fixokk กดทันที
                 # Authentication failed ตอนต่อ VPN = IP นี้โดนบล็อก -> ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (config "wg_fixid_switch")
                 if (int(config.get("wg_fixid_switch", 1) or 0)
                         and self._wg_request_net_recover("Authentication failed", switch_now=True)):

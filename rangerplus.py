@@ -3523,6 +3523,7 @@ class RangerPlusBot(multiprocessing.Process):
     def main_login(self, current_filename):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
+        self._fixid_seen = False
         
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -3633,8 +3634,15 @@ class RangerPlusBot(multiprocessing.Process):
             if self.exists_in_cache("img/fixokk.png", similarity=0.8):
                 if not hasattr(self, '_fixokk_start_time') or self._fixokk_start_time is None:
                     self._fixokk_start_time = time.time()
-                    print(f"[{self.device_id}] Detected fixokk.png... waiting 5s")
-                elif time.time() - self._fixokk_start_time >= 5:
+                    if getattr(self, '_fixid_seen', False):
+                        # เคยเจอ fixid ในไอดีนี้แล้ว -> ไม่ต้องรอ 5 วิ กด fixokk เลย
+                        print(f"[{self.device_id}] เจอ fixokk.png (เคยเจอ fixid แล้ว) -> กดเลย")
+                        self.click("img/fixokk.png", similarity=0.8)
+                        self._fixokk_start_time = None
+                        sleep(2)
+                    else:
+                        print(f"[{self.device_id}] Detected fixokk.png... waiting 5s")
+                elif getattr(self, '_fixid_seen', False) or time.time() - self._fixokk_start_time >= 5:
                     print(f"[{self.device_id}] ⚠️ fixokk.png ค้างอยู่ครบ 5 วินาที! ทำการกด...")
                     self.click("img/fixokk.png", similarity=0.8)
                     self._fixokk_start_time = None
@@ -3665,6 +3673,7 @@ class RangerPlusBot(multiprocessing.Process):
 
             # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png", similarity=0.95):
+                self._fixid_seen = True   # จำไว้: ต่อจากนี้เจอ fixokk กดทันที
                 self._login_fixid_count += 1
                 print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/15), fixok -> refresh -> check...")
                 
