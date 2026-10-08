@@ -10570,7 +10570,15 @@ if __name__ == "__main__":
         while True:
             try:
                 wg_dir = str(config.get("wg_dir", "wg"))
-                if not _glob.glob(os.path.join(wg_dir, "*.conf")):
+                _have = _glob.glob(os.path.join(wg_dir, "*.conf"))
+                _bk = os.path.join(os.path.dirname(os.path.abspath(wg_dir)), "wg_accounts", "_backup", "key.conf")
+                if _have and not os.path.exists(_bk):
+                    # เก็บกุญแจสำรองไว้นอก wg/ ตั้งแต่ตอนยังมีไฟล์ (ไฟล์จาก remote ก็มีกุญแจ) -> หมดเมื่อไหร่สร้างเองได้ ไม่ต้องกด
+                    os.makedirs(os.path.dirname(_bk), exist_ok=True)
+                    import shutil as _sh
+                    _sh.copy2(_have[0], _bk)
+                    print(f"[WG-GEN] เก็บกุญแจสำรองไว้แล้ว ({os.path.basename(_have[0])}) - IP หมดเมื่อไหร่บอทสร้างใหม่เอง")
+                if not _have:
                     import wg_gen
                     os.makedirs(wg_dir, exist_ok=True)
                     try:
