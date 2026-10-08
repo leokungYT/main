@@ -1616,11 +1616,29 @@ if GUI_AVAILABLE:
             ctk.CTkButton(bottom_bar, text="📤 ย้าย Success", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#3b8ed0", command=self.move_success_now).pack(side="left", padx=3, pady=4)
             ctk.CTkLabel(bottom_bar, text="v3.4.0", font=ctk.CTkFont(size=10), text_color="#888888").pack(side="right", padx=8)
 
-        def connect_missing_devices(self):
+        def _auto_connect_tick(self):
+            """ทุก auto_connect_every_sec วิ (default 60): สแกนหาจอที่ขาดในเธรดแยก (หน้าบอทไม่ค้าง)
+            เจอจอใหม่ (บูตช้ากว่าตอนเปิดบอท / หลุดแล้วกลับมา) -> เพิ่มและปล่อยบอทให้เองเหมือนกดปุ่ม Connect Missing"""
+            sec = float(config.get("auto_connect_every_sec", 60) or 0)
+            if sec <= 0:
+                return
+            def _scan():
+                try:
+                    connect_known_ports()
+                    self.after(0, lambda: self.connect_missing_devices(skip_scan=True, quiet=True))
+                except Exception as e:
+                    print(f"[AUTO-CONNECT] สแกนไม่สำเร็จ: {e}")
+                finally:
+                    self.after(int(sec * 1000), self._auto_connect_tick)
+            threading.Thread(target=_scan, daemon=True).start()
+
+        def connect_missing_devices(self, skip_scan=False, quiet=False):
             """Scan for missing adb connections and start them dynamically"""
-            self.log("INFO", "Scanning for missing emulators...")
+            if not quiet:
+                self.log("INFO", "Scanning for missing emulators...")
             # Automatically perform port scan before checking devices
-            connect_known_ports()
+            if not skip_scan:
+                connect_known_ports()
             
             current_devices = get_connected_devices()
             emulator_devices = [d for d in current_devices if d.startswith("emulator-") or d.startswith("127.0.0.1:")]
@@ -1651,7 +1669,7 @@ if GUI_AVAILABLE:
             
             if new_count > 0:
                 self.lbl_status.configure(text=f"   ● ONLINE ({len(self.devices)})")
-            else:
+            elif not quiet:
                 self.log("INFO", "No new devices found.")
 
         def apply_display_to_all_devices_gui(self):
@@ -1752,6 +1770,8 @@ if GUI_AVAILABLE:
             self.log("INFO", f"Starting {len(self._pending)} Bot Processes: ปล่อยทีละ {self._slots} จอ "
                              f"เว้น {self._gap:.0f}s ต่อจอ (เพดานรอต่อจอ {self._start_timeout:.0f}s)")
             self._ramp_tick()
+            # สแกนหาจอที่ขาดเองเป็นระยะ (จอบูตช้า / หลุดแล้วกลับมา) - ไม่ต้องกด Connect Missing
+            self.after(int(float(config.get("auto_connect_every_sec", 60) or 60) * 1000), self._auto_connect_tick)
 
         def on_closing(self):
             if messagebox.askokcancel("Quit", "คุณต้องการหยุดบอทและปิดโปรแกรมใช่หรือไม่?\n(จะทำการ Kill ADB และ Python ทั้งหมด)"):
