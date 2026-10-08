@@ -4296,6 +4296,9 @@ class RangerGearBot(threading.Thread):
             self._wg_last_conf = self._wg_conf_applied if os.path.isfile(str(self._wg_conf_applied)) else None
             print(f"[{self.device_id}] [WG] VPN เปิดอยู่แล้ว - ใช้ต่อ ไม่ยุ่ง")
             return
+        if (int(config.get("wg_once", 1) or 0) and getattr(self, "_wg_started", False)
+                and getattr(self, "_wg_conf_applied", None) and self._wg_is_up()):
+            return                          # เปิดแช่อยู่ -> ห้ามยุ่ง (แม้ไฟล์ใน wg/ ถูกสร้างใหม่ตามรอบแล้วก็ตาม)
         self._wg_started = True
         tries = int(config.get("wg_required_tries", 10) or 10)
         for n in range(1, tries + 1):
@@ -10473,6 +10476,38 @@ if __name__ == "__main__":
                             int(config.get("wg_total_machines", 30) or 30))
         except Exception as e:
             print(f"[WG-GEN] สร้างไฟล์อัตโนมัติไม่สำเร็จ: {e}")
+
+    # === สร้าง IP ใหม่ทุก ๆ wg_regen_every_min นาที (default 60): ลบไฟล์ .conf เก่าใน wg/ ทิ้ง แล้วสร้างชุดใหม่ตามที่ตั้งไว้ ===
+    #     จอที่ต่อ VPN อยู่แล้วไม่โดนตัด (tunnel อยู่ในเครื่องแล้ว) - ชุดใหม่ใช้ตอนจอต้องเปลี่ยน IP ครั้งถัดไป ; 0 = ปิด
+    def _wg_regen_loop(_per_default):
+        import glob as _glob
+        while True:
+            mins = float(config.get("wg_regen_every_min", 60) or 0)
+            if mins <= 0:
+                return
+            time.sleep(mins * 60)
+            try:
+                import wg_gen
+                wg_dir = str(config.get("wg_dir", "wg"))
+                old = _glob.glob(os.path.join(wg_dir, "*.conf"))
+                for p in old:
+                    try: os.remove(p)
+                    except OSError: pass
+                for p in _glob.glob(os.path.join(wg_dir, ".claims", "*.lock")) + [os.path.join(wg_dir, ".cooldown.json"), os.path.join(wg_dir, ".blocked.json")]:
+                    try: os.remove(p)
+                    except OSError: pass
+                per = int(config.get("wg_per_machine", 0) or 0) or _per_default
+                print(f"[WG-GEN] ครบ {mins:.0f} นาที - ลบ IP เก่า {len(old)} ไฟล์ แล้วสร้างใหม่ {per} ไฟล์...")
+                wg_gen.generate(per, config.get("wg_gen_countries") or None, wg_dir,
+                                int(config.get("wg_machine", 0) or 0),
+                                str(config.get("wg_account", "") or "").strip() or None,
+                                int(config.get("wg_total_machines", 30) or 30))
+            except Exception as e:
+                print(f"[WG-GEN] สร้าง IP ใหม่ตามรอบไม่สำเร็จ: {e}")
+
+    if int(config.get("wg_enabled", 0) or 0) and float(config.get("wg_regen_every_min", 60) or 0) > 0:
+        threading.Thread(target=_wg_regen_loop, args=(len(devices) + int(config.get("wg_gen_spare", 2)),),
+                         daemon=True).start()
 
     # === ตั้งค่าจอ MuMu ให้ตรง config ก่อนเริ่ม (ความละเอียด/FPS/CPU/RAM/root/renderer/App running) ===
     # ค่าไม่ตรง -> ตั้งผ่าน MuMuManager -> รีเฉพาะจอที่เปิดอยู่ -> รอบูต -> รันโปรแกรมใหม่

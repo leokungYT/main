@@ -2429,6 +2429,9 @@ class RangerGearBot(threading.Thread):
             self._wg_last_conf = self._wg_conf_applied if os.path.isfile(str(self._wg_conf_applied)) else None
             print(f"[{self.device_id}] [WG] VPN เปิดอยู่แล้ว - ใช้ต่อ ไม่ยุ่ง")
             return
+        if (int(config.get("wg_once", 1) or 0) and getattr(self, "_wg_started", False)
+                and getattr(self, "_wg_conf_applied", None) and self._wg_is_up()):
+            return                          # เปิดแช่อยู่ -> ห้ามยุ่ง (แม้ไฟล์ใน wg/ ถูกสร้างใหม่ตามรอบแล้วก็ตาม)
         self._wg_started = True
         tries = int(config.get("wg_required_tries", 10) or 10)
         for n in range(1, tries + 1):
