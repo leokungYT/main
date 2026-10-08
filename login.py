@@ -88,7 +88,7 @@ def ensure_warp_bootstrap():
     """Match the bot-tiket launcher flow: ensure WARP is installed and connected before bot startup."""
     # เปิด/ปิดได้ที่ configmain.json -> "warp_autostart": 1 = เปิด VPN 1.1.1.1 อัตโนมัติ, 0 = ไม่ยุ่งกับ WARP
     try:
-        with open("configmain.json", "r", encoding="utf-8-sig") as f:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "configmain.json"), "r", encoding="utf-8-sig") as f:
             _warp_on = int(json.load(f).get("warp_autostart", 0))
     except Exception:
         _warp_on = 0
@@ -259,7 +259,7 @@ _windscribe_account_count = 0
 def _read_main_config():
     """อ่าน configmain.json ตรง ๆ (ใช้ตอนบูต ก่อนตัวแปร config หลักจะโหลด)"""
     try:
-        with open("configmain.json", "r", encoding="utf-8-sig") as f:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "configmain.json"), "r", encoding="utf-8-sig") as f:
             return json.load(f)
     except Exception:
         return {}
@@ -1010,7 +1010,7 @@ if GUI_AVAILABLE:
         def load_config(self):
             try:
                 if os.path.exists('configmain.json'):
-                    with open('configmain.json', 'r', encoding='utf-8') as f:
+                    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "configmain.json"), 'r', encoding='utf-8') as f:
                         return json.load(f)
             except Exception as e:
                 print(f"Error loading config: {e}")
@@ -1163,7 +1163,7 @@ if GUI_AVAILABLE:
                 self.cfg["mumu_renderer"] = self.mumu_renderer_menu.get().strip()
                 self.cfg["mumu_app_running"] = self.mumu_app_menu.get().strip()
 
-                with open('configmain.json', 'w', encoding='utf-8') as f:
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "configmain.json"), 'w', encoding='utf-8') as f:
                     json.dump(self.cfg, f, indent=4, ensure_ascii=False)
                 
                 if close:
@@ -1214,7 +1214,7 @@ if GUI_AVAILABLE:
         def load_config(self):
             try:
                 if os.path.exists('configmain.json'):
-                    with open('configmain.json', 'r', encoding='utf-8') as f:
+                    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "configmain.json"), 'r', encoding='utf-8') as f:
                         return json.load(f)
             except Exception as e:
                 print(f"Error loading config: {e}")
@@ -1362,7 +1362,7 @@ if GUI_AVAILABLE:
                     weapon_mapping[img] = "true" if var.get() else "false"
                 self.cfg["weaponname"] = weapon_mapping
                 
-                with open('configmain.json', 'w', encoding='utf-8') as f:
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "configmain.json"), 'w', encoding='utf-8') as f:
                     json.dump(self.cfg, f, indent=4, ensure_ascii=False)
                 
                 messagebox.showinfo("สำเร็จ", "บันทึก Ranger & Gear เรียบร้อย!")
