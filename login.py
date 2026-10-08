@@ -3137,6 +3137,7 @@ def ensure_screen_resolution(devices):
         _report_screen_mismatch(devices)
         return False
 
+    os.environ["LGR_EXPECT_DEVICES"] = str(len(devices))   # โปรเซสที่รันใหม่ต้องรอให้ครบเท่านี้ ไม่ใช่เจอ 2 จอแล้วเริ่มเลย
     print(f"[SCREEN] รอจอที่รีสตาร์ท {len(restarted)} จอ บูตกลับมา...")
     time.sleep(8)
     connect_known_ports()
@@ -3229,13 +3230,19 @@ def connect_known_ports(kill_server=False):
         # เคยสแกนรอบเดียวแล้วเจอแค่ 1 จอจาก 15 จอ)
         found = set()
         stable = 0
-        for _round in range(8):
+        expect = int(os.environ.get("LGR_EXPECT_DEVICES", "0") or 0)
+        max_rounds = 8
+        if expect:
+            # เพิ่งรีจอ MuMu (ตั้ง fps/จอ) -> จอยังบูตไม่เสร็จ ต้องรอให้ครบตามจำนวนเดิม (สูงสุด screen_boot_wait วิ)
+            max_rounds = max(8, int(config.get("screen_boot_wait", 180)) // 5)
+            print(f"[ADB] รอจอให้ครบ {expect} จอ (เพิ่งรีสตาร์ท MuMu)...")
+        for _round in range(max_rounds):
             with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
                 got = {r for r in executor.map(try_connect_port, ports) if r}
             before = len(found)
             found |= got
             stable = stable + 1 if len(found) == before and found else 0
-            if stable >= 2:
+            if stable >= 2 and len(found) >= expect:
                 break
             time.sleep(2)
         connected.extend(found)
