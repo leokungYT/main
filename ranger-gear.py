@@ -2295,7 +2295,7 @@ class RangerGearBot(threading.Thread):
                 lines = f.read().replace(chr(13), "").split(chr(10))
         except Exception:
             return conf
-        apps = str(config.get("wg_split_apps", "") or "").strip()   # ปิดไว้ก่อน - เปิดด้วย "wg_split_apps": "com.linecorp.LGRGS" หลังทดสอบ 1 จอ
+        apps = str(config.get("wg_split_apps", "com.linecorp.LGRGS") or "").strip()   # ดีฟอลต์ = เฉพาะเกมผ่าน VPN - ถ้าทั้งเครื่องผ่าน VPN adbd ตอบกลับไม่ถึงพีซี -> adb offline/not found ทุกจอ ("" = ทั้งเครื่อง)
         ka = int(config.get("wg_keepalive", 25) or 0)
         low = [l.strip().lower() for l in lines]
         out = []
