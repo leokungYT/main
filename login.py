@@ -4125,7 +4125,25 @@ class RangerGearBot(threading.Thread):
         จอดำ / login failed) - ครบ wg_failover_after (2) ครั้งบนเซิร์ฟเวอร์เดิม -> เลิกใช้ แล้วจองเซิร์ฟเวอร์อื่น
         (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว"""
         if int(config.get("wg_lock", 1) or 0):
-            return False   # wg_lock: ใช้ IP เดิมต่อไป แม้โดน block
+            # wg_lock: ใช้ IP เดิมต่อไป - ยกเว้นค้างหน้า LINE GAME ซ้ำ (LINE ไม่รับ IP นี้ = ไม่มีทางเข้าเกมได้)
+            if "LINE GAME" not in str(reason):
+                return False
+            self._wg_line_stuck = getattr(self, "_wg_line_stuck", 0) + 1
+            lim = int(config.get("wg_line_stuck_switch", 2) or 2)
+            cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
+            print(f"[{self.device_id}] [WG] ค้างหน้า LINE GAME {self._wg_line_stuck}/{lim} บน {os.path.basename(str(cur or '-'))}")
+            if self._wg_line_stuck < lim or not cur or not os.path.isfile(str(cur)):
+                return False
+            self._wg_line_stuck = 0
+            self.__dict__.setdefault("_wg_bad", set()).add(cur)
+            try:
+                os.remove(os.path.join(os.path.dirname(cur), ".claims", os.path.basename(cur) + ".lock"))
+            except OSError:
+                pass
+            self._wg_conf_applied = None      # open_app ครั้งถัดไปจะต่อ IP ตัวใหม่ (VPN ไม่ปิด แค่เปลี่ยนไฟล์)
+            self._wg_conf_written = None
+            print(f"[{self.device_id}] [WG] LINE ไม่รับ IP {os.path.basename(cur)} - สลับ IP ใหม่ตอนเปิดเกมรอบหน้า")
+            return True
         if not int(config.get("wg_enabled", 0) or 0) or getattr(self, "_wg_off", False):
             return False
         if int(config.get("wg_once", 1) or 0) and not any(k in str(reason) for k in ("fixid", "login failed")):
