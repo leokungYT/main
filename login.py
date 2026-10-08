@@ -3904,7 +3904,9 @@ class RangerGearBot(threading.Thread):
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(self.device_id)
             return p
-        if not getattr(self, "_wg_gen_tried", False) and int(config.get("wg_regen_blocked", 1) or 0):
+        if (not getattr(self, "_wg_gen_tried", False) and int(config.get("wg_regen_blocked", 1) or 0)
+                and time.time() - getattr(self, "_wg_gen_last_t", 0) > 600):   # สร้างไม่ได้แล้ว อย่าลองซ้ำทุกรอบ (เสียเวลาโหลดรายชื่อเซิร์ฟเวอร์)
+            self._wg_gen_last_t = time.time()
             # ไม่มีไฟล์ว่างให้ใช้เลย (โดนบล็อก/พัก/จองเต็ม) -> สร้างเซิร์ฟเวอร์ใหม่เพิ่มแล้วลองอีกรอบ (ไม่ปล่อยจอไปใช้เน็ตบ้าน)
             self._wg_gen_tried = True
             try:
@@ -3918,6 +3920,14 @@ class RangerGearBot(threading.Thread):
             if not getattr(self, "_wg_bad", None):
                 # ทุกตัวติดพัก -> ยอมใช้ตัวที่ติดพักไปก่อน ดีกว่าไม่มี VPN เลย (wg_required ห้ามเข้าเกมด้วยเน็ตบ้าน)
                 if getattr(self, "_wg_ignore_cool", False):
+                    if int(config.get("wg_lock", 1) or 0) and confs:
+                        # wg_lock: ไม่มีไฟล์ว่าง -> ห้ามปล่อยจอไม่มี IP: ใช้ IP เดิมของจอ ถ้าไม่มีก็ใช้ไฟล์ร่วมกับจออื่น
+                        last = getattr(self, "_wg_last_conf", None)
+                        pick = last if last and os.path.isfile(last) else confs[idx % len(confs)]
+                        if not getattr(self, "_wg_share_warned", False):
+                            self._wg_share_warned = True
+                            print(f"[{self.device_id}] [WG] ไฟล์ว่างไม่พอ - ใช้ {os.path.basename(pick)} ร่วมกับจออื่นไปก่อน (ไม่ปล่อยให้ไม่มี IP)")
+                        return pick
                     return None              # ไม่สนการพักแล้วก็ยังไม่ว่าง = ไฟล์ถูกจออื่นจองหมดจริง
                 self._wg_ignore_cool = True
                 try:
@@ -3930,6 +3940,14 @@ class RangerGearBot(threading.Thread):
             self._wg_short_warned = True
             print(f"[{self.device_id}] [WG] ไฟล์ config ไม่พอ ({len(confs)} ไฟล์ ถูกจออื่นจองหมดแล้ว) - จอนี้ไม่ต่อ VPN "
                   f"(โหลด .conf เพิ่มมาใส่ {wg_dir}/)")
+        if int(config.get("wg_lock", 1) or 0) and confs:
+            # wg_lock: ไม่มีไฟล์ว่าง -> ห้ามปล่อยจอไม่มี IP: ใช้ IP เดิมของจอ ถ้าไม่มีก็ใช้ไฟล์ร่วมกับจออื่น
+            last = getattr(self, "_wg_last_conf", None)
+            pick = last if last and os.path.isfile(last) else confs[idx % len(confs)]
+            if not getattr(self, "_wg_share_warned", False):
+                self._wg_share_warned = True
+                print(f"[{self.device_id}] [WG] ไฟล์ว่างไม่พอ - ใช้ {os.path.basename(pick)} ร่วมกับจออื่นไปก่อน (ไม่ปล่อยให้ไม่มี IP)")
+            return pick
         return None
 
     def _wg_after_refresh(self):
