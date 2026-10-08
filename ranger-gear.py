@@ -3055,6 +3055,24 @@ class RangerGearBot(threading.Thread):
     def adb_run(self, args, timeout=10, **kwargs):
         return subprocess.run(args, capture_output=True, timeout=timeout, **kwargs)
 
+    def _adb_relink(self):
+        """ต่อ adb ของจอนี้ใหม่ตอนหลุด/offline (แบบ PES: ใช้ adb connect)
+        - ห้ามใช้ "adb -s <จอ> reconnect" กับจอ 127.0.0.1:port: มันตัดจอออกจาก adb ไปเลย (ขึ้น not found ไม่กลับมาเอง)
+        - จอ offline: connect เฉย ๆ ได้แค่ "already connected" ไม่หาย -> disconnect ก่อนแล้วค่อย connect
+        - จอแบบ emulator-N: connect ใช้ไม่ได้ -> reconnect offline"""
+        if ":" not in self.device_id:
+            self.adb_run([self.adb_cmd, "reconnect", "offline"], timeout=10)
+            return
+        try:
+            r = self.adb_run([self.adb_cmd, "-s", self.device_id, "get-state"], timeout=5)
+            if (r.stdout or b"").decode(errors="ignore").strip() == "device":
+                return
+        except Exception:
+            pass
+        self.adb_run([self.adb_cmd, "disconnect", self.device_id], timeout=5)
+        time.sleep(0.5)
+        self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=8)
+
     def adb_shell(self, shell_cmd, timeout=10):
         return subprocess.run(
             [self.adb_cmd, "-s", self.device_id, "shell", shell_cmd],
@@ -3163,8 +3181,8 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [CAPTURE] screencap ล้มเหลวติดกัน {self._cap_fail} ครั้ง - บอทเห็นแต่ภาพเก่า จะหาอะไรไม่เจอทั้งนั้น (adb หรือเครื่องค้าง)")
             if self._cap_fail % 5 == 0:
                 try:
-                    self.adb_run([self.adb_cmd, "-s", self.device_id, "reconnect"], timeout=10)
-                    print(f"[{self.device_id}] [CAPTURE] สั่ง adb reconnect {self.device_id} แล้ว")
+                    self._adb_relink()
+                    print(f"[{self.device_id}] [CAPTURE] ต่อ adb {self.device_id} ใหม่แล้ว")
                 except Exception:
                     pass
             if hasattr(self, "_in_popup_check"):
