@@ -3866,7 +3866,7 @@ class RangerGearBot(threading.Thread):
 
         bad = set(getattr(self, "_wg_bad", set()))   # ไฟล์ที่เน็ตหลุดซ้ำบนจอนี้ (auto failover) - ไม่กลับไปใช้
         # เซิร์ฟเวอร์ (IP ขาออก) ที่จอไหนก็ตามเพิ่งโดน block -> พักไว้ wg_cooldown_hours ชม. ทุกจอเลี่ยง
-        cool = _wg_cooldown_load(wg_dir)
+        cool = {} if getattr(self, "_wg_ignore_cool", False) else _wg_cooldown_load(wg_dir)
         bad |= {c for c in confs if _wg_endpoint(c) in cool}
         # จำกัดจำนวนจอต่อเซิร์ฟเวอร์เดียวกัน (IP ขาออกเดียวกัน) ; 0 = ไม่จำกัด
         max_ip = int(config.get("wg_max_per_ip", 0) or 0)
@@ -3909,7 +3909,14 @@ class RangerGearBot(threading.Thread):
             # ลองครบทุกไฟล์แล้ว -> ให้โอกาสใหม่ทั้งหมด (วนรอบใหม่) แทนที่จะไม่มี VPN
             print(f"[{self.device_id}] [WG] ลองครบทุกเซิร์ฟเวอร์แล้ว - เริ่มวนใหม่")
             if not getattr(self, "_wg_bad", None):
-                return None                  # ทุกตัวติดพัก/เต็ม -> ไม่ต่อ VPN รอบนี้
+                # ทุกตัวติดพัก -> ยอมใช้ตัวที่ติดพักไปก่อน ดีกว่าไม่มี VPN เลย (wg_required ห้ามเข้าเกมด้วยเน็ตบ้าน)
+                if getattr(self, "_wg_ignore_cool", False):
+                    return None              # ไม่สนการพักแล้วก็ยังไม่ว่าง = ไฟล์ถูกจออื่นจองหมดจริง
+                self._wg_ignore_cool = True
+                try:
+                    return self._wg_conf_for_device()
+                finally:
+                    self._wg_ignore_cool = False
             self._wg_bad = set()
             return self._wg_conf_for_device()
         if not getattr(self, "_wg_short_warned", False):
@@ -4017,7 +4024,9 @@ class RangerGearBot(threading.Thread):
                 cur = getattr(self, "_wg_last_conf", None)
                 if cur:
                     self.__dict__.setdefault("_wg_bad", set()).add(cur)
-                    _wg_cooldown_add(os.path.dirname(cur), _wg_endpoint(cur))
+                    if not str(where).startswith("fixnet"):
+                        # เน็ตหลุด (fixnet) ไม่ใช่โดนบล็อก -> ไม่พักเซิร์ฟเวอร์ 6 ชม. (เคยพักจนหมดทุกตัว ไม่เหลือให้ต่อ)
+                        _wg_cooldown_add(os.path.dirname(cur), _wg_endpoint(cur))
                     try:
                         os.remove(os.path.join(os.path.dirname(cur), ".claims", os.path.basename(cur) + ".lock"))
                     except OSError:
