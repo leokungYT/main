@@ -10522,8 +10522,11 @@ if __name__ == "__main__":
     def _wg_regen_loop(_per_default):
         import glob as _glob
         while True:
-            mins = float(config.get("wg_regen_every_min", 60) or 0)
+            mins = float(config.get("wg_regen_every_min", 0) or 0)
             if mins <= 0:
+                return
+            if os.path.exists(os.path.join(str(config.get("wg_dir", "wg")), ".managed")):
+                print("[WG-GEN] ไฟล์ IP มาจาก server (.managed) - ไม่สร้าง/ลบเองตามรอบ")
                 return
             time.sleep(mins * 60)
             try:
@@ -10559,7 +10562,7 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"[WG-GEN] สร้าง IP ใหม่ตามรอบไม่สำเร็จ: {e}")
 
-    if int(config.get("wg_enabled", 0) or 0) and float(config.get("wg_regen_every_min", 60) or 0) > 0:
+    if int(config.get("wg_enabled", 0) or 0) and float(config.get("wg_regen_every_min", 0) or 0) > 0:
         threading.Thread(target=_wg_regen_loop, args=(len(devices) + int(config.get("wg_gen_spare", 2)),),
                          daemon=True).start()
 

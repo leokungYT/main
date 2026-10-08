@@ -154,7 +154,7 @@
     "net_full_scan_every": 10,
     "event_max_back": 30,
     "event_back_per_round": 10,
-    "wg_regen_every_min": 60,
+    "wg_regen_every_min": 0,
     "wg_required": 1,
     "wg_lock": 1
 }
