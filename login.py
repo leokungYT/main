@@ -3953,6 +3953,8 @@ class RangerGearBot(threading.Thread):
         ทำทุกครั้ง (ไม่ใช่เฉพาะตอนเห็น tun): สั่งปิด tunnel -> ฆ่าแอป WireGuard ->
         รอจน Android ไม่มี VPN ค้าง -> รอจนออกเน็ตได้จริง (ping) -> พักให้เน็ตนิ่ง แล้วค่อยไปต่อ
         """
+        if int(config.get("wg_lock", 1) or 0):
+            return None   # wg_lock: ห้ามปิด VPN เด็ดขาด (ปิดแล้วเข้าเกมไม่ได้)
         if not int(config.get("wg_enabled", 0) or 0):
             return
         try:
@@ -3987,6 +3989,8 @@ class RangerGearBot(threading.Thread):
         ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
         ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
         คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
+        if int(config.get("wg_lock", 1) or 0):
+            return False   # wg_lock: ไม่ปิด/สลับ VPN ตอนเน็ตหลุด -> กด RETRY แบบเดิม
         if not int(config.get("wg_enabled", 0) or 0):
             return False
         if int(config.get("wg_once", 1) or 0):
@@ -4059,6 +4063,8 @@ class RangerGearBot(threading.Thread):
     def _wg_auth_failed(self):
         """Authentication failed (fixid) ตอนต่อ VPN -> ด่าน login ของ LINE ไม่รับ IP ของ VPN
         เจอครบ wg_auth_fallback ไอดี (default 2) -> ปิด VPN ของจอนี้ไปจนปิดบอท ใช้เน็ตบ้านแทน (0 = ไม่ปิด)"""
+        if int(config.get("wg_lock", 1) or 0):
+            return None   # wg_lock: ไม่ปิด VPN แม้ login ไม่ผ่าน
         if not int(config.get("wg_enabled", 0) or 0) or not getattr(self, "_wg_conf_applied", None):
             return
         lim = int(config.get("wg_auth_fallback", 0) or 0)
@@ -4075,6 +4081,8 @@ class RangerGearBot(threading.Thread):
         """จอนี้เข้าเกมไม่ได้บนเซิร์ฟเวอร์ VPN ปัจจุบัน 1 ครั้ง (Unstable network / fixid ครบ / LINE GAME ค้าง /
         จอดำ / login failed) - ครบ wg_failover_after (2) ครั้งบนเซิร์ฟเวอร์เดิม -> เลิกใช้ แล้วจองเซิร์ฟเวอร์อื่น
         (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว"""
+        if int(config.get("wg_lock", 1) or 0):
+            return False   # wg_lock: ใช้ IP เดิมต่อไป แม้โดน block
         if not int(config.get("wg_enabled", 0) or 0) or getattr(self, "_wg_off", False):
             return False
         if int(config.get("wg_once", 1) or 0) and not any(k in str(reason) for k in ("fixid", "login failed")):
@@ -4167,6 +4175,8 @@ class RangerGearBot(threading.Thread):
 
     def _wg_failover(self, conf, confirmed=False):
         """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
+        if int(config.get("wg_lock", 1) or 0):
+            return None   # wg_lock: ไม่สลับเซิร์ฟเวอร์
         self.__dict__.setdefault("_wg_bad", set()).add(conf)
         _wg_cooldown_add(os.path.dirname(conf), _wg_endpoint(conf))
         # ลบไฟล์ + จดว่าโดนบล็อก 7 วัน เฉพาะตอน "ยืนยันแล้ว" (ทดสอบผ่าน VPN ได้ IP จริงแต่เซิร์ฟเวอร์เกมไม่ตอบ)
@@ -4223,7 +4233,7 @@ class RangerGearBot(threading.Thread):
         if not conf and not getattr(self, "_wg_down_done", False):
             # ไม่ได้ไฟล์รอบนี้ แต่ tunnel เก่าจากรอบก่อนยังค้าง (อาจใช้กุญแจชนกับจออื่น) -> ปิดทิ้ง
             self._wg_down_done = True
-            if self._wg_is_up():
+            if self._wg_is_up() and not int(config.get("wg_lock", 1) or 0):   # wg_lock: tunnel ที่เปิดอยู่ห้ามปิด
                 self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
                                f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {self.WG_TUNNEL}'", timeout=20)
                 print(f"[{self.device_id}] [WG] ปิด tunnel เก่าที่ค้างอยู่ (จอนี้ไม่มีไฟล์ config ของตัวเอง)")
@@ -4246,7 +4256,7 @@ class RangerGearBot(threading.Thread):
                 if code == "NA" or ip in ("-", "", "NA"):
                     print(f"[{self.device_id}] [WG] ทดสอบเซิร์ฟเวอร์เกมไม่ได้บนเครื่องนี้ (IP {ip}) - ข้ามการทดสอบ เข้าเกมเลย")
                     code = "skip"
-                if code in ("000", "403", "429"):
+                if code in ("000", "403", "429") and not int(config.get("wg_lock", 1) or 0):   # wg_lock: โดน block ก็ใช้ต่อ
                     print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมไม่รับ IP {ip} ({os.path.basename(conf)}, code {code}) - สลับเซิร์ฟเวอร์")
                     self._wg_down()
                     self._wg_failover(conf, confirmed=True)
