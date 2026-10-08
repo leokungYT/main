@@ -1612,7 +1612,7 @@ if GUI_AVAILABLE:
             ctk.CTkButton(bottom_bar, text="📁 Backup", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{backup_folder}"')).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="🦸 Heroes", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{heroes_folder}"')).pack(side="left", padx=3, pady=4)
             ctk.CTkButton(bottom_bar, text="📤 ย้าย Success", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#3b8ed0", command=self.move_success_now).pack(side="left", padx=3, pady=4)
-            ctk.CTkLabel(bottom_bar, text="v3.3.0", font=ctk.CTkFont(size=10), text_color="#888888").pack(side="right", padx=8)
+            ctk.CTkLabel(bottom_bar, text="v3.4.0", font=ctk.CTkFont(size=10), text_color="#888888").pack(side="right", padx=8)
 
         def connect_missing_devices(self):
             """Scan for missing adb connections and start them dynamically"""
@@ -10307,7 +10307,7 @@ if __name__ == "__main__":
     sys.stdout = DeviceLogTee(sys.stdout)
     sys.stderr = DeviceLogTee(sys.stderr)
 
-    parser = argparse.ArgumentParser(description="Auto Ranger+Gear Script v3.3.0")
+    parser = argparse.ArgumentParser(description="Auto Ranger+Gear Script v3.4.0")
     parser.add_argument("--device", type=str, help="Specific device ID/address to run (e.g. 127.0.0.1:5557)")
     parser.add_argument("--no-start", action="store_true", help="Don't auto-start bot threads in GUI")
     parser.add_argument("--no-reset-adb", action="store_true", help="Don't kill/start ADB server")
@@ -10333,8 +10333,8 @@ if __name__ == "__main__":
                 ctypes.windll.user32.ShowWindow(hwnd, 2)
         except: pass
 
-    print("=== Auto Ranger+Gear Script v3.3.0 ===")
-    print(f"[VERSION] build 2026-10-02 fast-v1 | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
+    print("=== Auto Ranger+Gear Script v3.4.0 ===")
+    print(f"[VERSION] build 2026-10-08 vpn-adb-v1 | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
     
     load_config()
     

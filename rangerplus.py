@@ -4112,7 +4112,7 @@ if __name__ == "__main__":
         except: pass
 
     print("=== Auto Ranger+Gear Script v3.2.0 ===")
-    print(f"[VERSION] build 2026-09-09 net-v2 | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
+    print(f"[VERSION] build 2026-10-08 vpn-adb-v1 | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
     
     load_config()
     
