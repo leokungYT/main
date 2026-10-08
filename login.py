@@ -6777,11 +6777,7 @@ class RangerGearBot(threading.Thread):
             except Exception:
                 pass
             if i + 1 < retries:
-                try:
-                    self._adb_relink()
-                except Exception:
-                    pass
-                time.sleep(1.5)
+                time.sleep(1.5)   # แค่รอแล้วเช็คใหม่ - ไม่สั่ง reconnect (เคยตัดจอหลุดจาก adb)
         return False
 
     def _keep_file_in_queue(self, file_path, reason):
@@ -6910,12 +6906,6 @@ class RangerGearBot(threading.Thread):
             self._cap_fail = getattr(self, "_cap_fail", 0) + 1
             if self._cap_fail in (3, 10) or self._cap_fail % 30 == 0:
                 print(f"[{self.device_id}] [CAPTURE] screencap ล้มเหลวติดกัน {self._cap_fail} ครั้ง - บอทเห็นแต่ภาพเก่า จะหาอะไรไม่เจอทั้งนั้น (adb หรือเครื่องค้าง)")
-            if self._cap_fail % 5 == 0:
-                try:
-                    self._adb_relink()
-                    print(f"[{self.device_id}] [CAPTURE] ต่อ adb {self.device_id} ใหม่แล้ว")
-                except Exception:
-                    pass
             if hasattr(self, "_in_popup_check"):
                 self._in_popup_check = False
 
