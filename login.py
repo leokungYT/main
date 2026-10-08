@@ -964,7 +964,7 @@ if GUI_AVAILABLE:
             self.screen_w_entry = _entry(mumu_row, "กว้าง", self.cfg.get("screen_width", 960))
             self.screen_h_entry = _entry(mumu_row, "สูง", self.cfg.get("screen_height", 540))
             self.screen_dpi_entry = _entry(mumu_row, "DPI", self.cfg.get("screen_dpi", 160))
-            self.mumu_fps_entry = _entry(mumu_row, "FPS", self.cfg.get("mumu_fps", 120), color="#3b8ed0")
+            self.mumu_fps_entry = _entry(mumu_row, "FPS", self.cfg.get("mumu_fps", 30), color="#3b8ed0")
             self.mumu_cpu_entry = _entry(mumu_row, "CPU core", self.cfg.get("mumu_cpu", 2))
             self.mumu_ram_entry = _entry(mumu_row, "RAM GB", self.cfg.get("mumu_ram", 2))
 
@@ -7571,6 +7571,8 @@ class RangerGearBot(threading.Thread):
                 port = int(self.device_id.rsplit(":", 1)[1])
                 if port >= 16384:
                     idx = (port - 16384) // 32
+                elif 5555 <= port <= 5755:   # ชื่อจอแบบ PES 127.0.0.1:55xx -> จอ #(port-5555)/2 (เท่ากับ emulator-(port-1))
+                    idx = (port - 5555) // 2
         except Exception:
             idx = None
         mgr = find_mumu_manager()
