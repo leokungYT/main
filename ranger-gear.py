@@ -1886,7 +1886,7 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
             self._net_scale = sc   # จำเสมอ (รวม 1.0) monitor จะได้เลิกกวาดทุกสเกลทุกรอบ
         # fixnet1 บนจอที่ต่อ VPN -> ไม่กด RETRY: ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (config "wg_fixnet1_switch")
-        if (os.path.basename(path) == "fixnet1.png" and int(config.get("wg_fixnet1_switch", 1) or 0)
+        if (os.path.basename(path) in ("fixnet1.png", "fixnet.png") and int(config.get("wg_fixnet1_switch", 1) or 0)
                 and self._wg_request_net_recover("fixnet1", switch_now=True)):
             return os.path.basename(path)
         # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
@@ -2116,8 +2116,30 @@ class RangerGearBot(threading.Thread):
         ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
         ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
         คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
-        if not int(config.get("wg_enabled", 0) or 0) or int(config.get("wg_once", 1) or 0):
-            return False                      # wg_once: VPN เปิดค้าง ไม่ปิด/เปิดใหม่เพราะเน็ตแกว่ง -> กด RETRY แบบเดิม
+        if not int(config.get("wg_enabled", 0) or 0):
+            return False
+        if int(config.get("wg_once", 1) or 0):
+            # wg_once: เน็ตแกว่งครั้งเดียวไม่เปลี่ยน IP (กด RETRY) แต่ถ้าเจอซ้ำครบ wg_net_switch_after ครั้ง
+            # = IP นี้ใช้ไม่ได้แล้ว -> เปลี่ยน IP ทันที (VPN ปิดแค่ช่วงสลับ แล้วต่อตัวใหม่ก่อนเปิดเกมเสมอ)
+            self._wg_net_hits = getattr(self, "_wg_net_hits", 0) + 1
+            lim = int(config.get("wg_net_switch_after", 1) or 1)   # 1 = เน็ตหลุดครั้งแรกก็ ปิดแอป -> IP ใหม่ -> เปิดเกมใหม่
+            if self._wg_net_hits < lim:
+                # ยังไม่ครบ -> ปิดแอปแล้วเปิดใหม่ด้วย IP เดิมก่อน (VPN ไม่แตะ เปิดค้างไว้)
+                print(f"[{self.device_id}] [WG] เน็ตหลุด ({where}) {self._wg_net_hits}/{lim} - ปิดแอปเข้าใหม่ (IP เดิม) ครบแล้วจะเปลี่ยน IP")
+                try:
+                    self.last_activity_time = time.time()
+                    self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
+                    _real_sleep(2)
+                    self._wg_must_be_up()     # VPN ยังต่ออยู่ = ข้ามเร็ว ; หลุด = ต่อใหม่ก่อนเปิดเกม
+                    self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "start", "-n", "com.linecorp.LGRGS/com.linecorp.common.activity.LineActivity"], timeout=15)
+                    self.last_activity_time = time.time()
+                    _real_sleep(3)
+                    return True
+                except Exception as e:
+                    print(f"[{self.device_id}] [WG] ปิดแอปเข้าใหม่ไม่สำเร็จ: {e}")
+                    return False
+            self._wg_net_hits = 0
+            switch_now = True
         if not getattr(self, "_wg_conf_applied", None):
             return False                      # จอนี้ไม่ได้ต่อ VPN -> ไม่ใช่เรื่อง VPN
         lock = self.__dict__.setdefault("_wg_recover_lock", threading.Lock())
@@ -4740,6 +4762,7 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Starting Main Login...")
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
         self._fixid_seen = False
+        self._wg_net_hits = 0
         self._wg_recover_n = 0       # โควตาเคลียร์แอป+ปิด/เปิด VPN เมื่อเจอ Unstable network (ต่อไอดี)
         
         # Clear app
