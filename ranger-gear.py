@@ -2477,7 +2477,9 @@ class RangerGearBot(threading.Thread):
             self._ensure_wireguard()
             if getattr(self, "_wg_conf_applied", None) and self._wg_is_up():
                 return
-            print(f"[{self.device_id}] [WG] VPN ยังไม่ขึ้น ({n}/{tries}) - ไม่เปิดเกมด้วยเน็ตบ้าน ลองใหม่...")
+            _c = self._wg_conf_for_device()
+            _why = ("ไม่มีไฟล์ .conf ใน " + str(config.get("wg_dir", "wg")) + "/") if not _c else ("ใช้ " + os.path.basename(_c) + " แต่ tunnel ไม่ขึ้น")
+            print(f"[{self.device_id}] [WG] VPN ยังไม่ขึ้น ({n}/{tries}) - {_why} - ลองใหม่...")
             self._wg_bad = set()            # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
             _real_sleep(5)
         print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น {tries} รอบ - รีสตาร์ทไฟล์นี้แทนการเข้าเกมด้วยเน็ตบ้าน")

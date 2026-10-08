@@ -4344,7 +4344,9 @@ class RangerGearBot(threading.Thread):
             self._ensure_wireguard()
             if getattr(self, "_wg_conf_applied", None) and self._wg_is_up():
                 return
-            print(f"[{self.device_id}] [WG] VPN ยังไม่ขึ้น ({n}/{tries}) - ไม่เปิดเกมด้วยเน็ตบ้าน ลองใหม่...")
+            _c = self._wg_conf_for_device()
+            _why = ("ไม่มีไฟล์ .conf ใน " + str(config.get("wg_dir", "wg")) + "/") if not _c else ("ใช้ " + os.path.basename(_c) + " แต่ tunnel ไม่ขึ้น")
+            print(f"[{self.device_id}] [WG] VPN ยังไม่ขึ้น ({n}/{tries}) - {_why} - ลองใหม่...")
             self._wg_bad = set()            # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
             _real_sleep(5)
         print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น {tries} รอบ - รีสตาร์ทไฟล์นี้แทนการเข้าเกมด้วยเน็ตบ้าน")
@@ -10522,21 +10524,33 @@ if __name__ == "__main__":
                 return
             time.sleep(mins * 60)
             try:
-                import wg_gen
+                import wg_gen, shutil as _sh, tempfile as _tf
                 wg_dir = str(config.get("wg_dir", "wg"))
-                old = _glob.glob(os.path.join(wg_dir, "*.conf"))
-                for p in old:
-                    try: os.remove(p)
-                    except OSError: pass
-                for p in _glob.glob(os.path.join(wg_dir, ".claims", "*.lock")) + [os.path.join(wg_dir, ".cooldown.json"), os.path.join(wg_dir, ".blocked.json")]:
-                    try: os.remove(p)
-                    except OSError: pass
                 per = int(config.get("wg_per_machine", 0) or 0) or _per_default
-                print(f"[WG-GEN] ครบ {mins:.0f} นาที - ลบ IP เก่า {len(old)} ไฟล์ แล้วสร้างใหม่ {per} ไฟล์...")
-                wg_gen.generate(per, config.get("wg_gen_countries") or None, wg_dir,
+                # สร้างชุดใหม่ในโฟลเดอร์ชั่วคราวก่อน - ได้ไฟล์จริงแล้วค่อยสลับ ; สร้างไม่ได้ = เก็บชุดเดิมไว้ (เคยลบก่อนแล้ว wg/ ว่างทั้งเครื่อง)
+                tmp = _tf.mkdtemp(prefix="wg_new_")
+                for kf in _glob.glob(os.path.join(wg_dir, "*.txt")) + _glob.glob(os.path.join(wg_dir, "*.json")):
+                    _sh.copy2(kf, tmp)
+                print(f"[WG-GEN] ครบ {mins:.0f} นาที - สร้าง IP ชุดใหม่ {per} ไฟล์...")
+                wg_gen.generate(per, config.get("wg_gen_countries") or None, tmp,
                                 int(config.get("wg_machine", 0) or 0),
                                 str(config.get("wg_account", "") or "").strip() or None,
                                 int(config.get("wg_total_machines", 30) or 30))
+                fresh = _glob.glob(os.path.join(tmp, "*.conf"))
+                if not fresh:
+                    print("[WG-GEN] สร้างชุดใหม่ไม่ได้ - เก็บ IP ชุดเดิมไว้ใช้ต่อ")
+                else:
+                    old = _glob.glob(os.path.join(wg_dir, "*.conf"))
+                    for p in old:
+                        try: os.remove(p)
+                        except OSError: pass
+                    for p in fresh:
+                        _sh.copy2(p, wg_dir)
+                    for p in _glob.glob(os.path.join(wg_dir, ".claims", "*.lock")) + [os.path.join(wg_dir, ".cooldown.json"), os.path.join(wg_dir, ".blocked.json")]:
+                        try: os.remove(p)
+                        except OSError: pass
+                    print(f"[WG-GEN] เปลี่ยน IP ชุดใหม่แล้ว: เก่า {len(old)} -> ใหม่ {len(fresh)} ไฟล์")
+                _sh.rmtree(tmp, ignore_errors=True)
             except Exception as e:
                 print(f"[WG-GEN] สร้าง IP ใหม่ตามรอบไม่สำเร็จ: {e}")
 
