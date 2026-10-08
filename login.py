@@ -353,6 +353,7 @@ def _wg_endpoint(conf):
 
 def _wg_generate_more(wg_dir, want, dev=""):
     """สร้างไฟล์เซิร์ฟเวอร์เพิ่มให้มี want ไฟล์ (ล็อกให้สร้างทีละจอ) - คืน True ถ้ามีไฟล์เพิ่มจริง"""
+    os.makedirs(wg_dir, exist_ok=True)   # โฟลเดอร์หาย -> สร้างไฟล์ล็อกไม่ได้ แล้วเลิกเงียบ ๆ
     lock = os.path.join(wg_dir, ".gen.lock")
     try:
         if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
@@ -396,6 +397,7 @@ def _wg_replace_blocked(conf, dev=""):
     managed = os.path.exists(os.path.join(wg_dir, ".managed"))
     if not os.path.exists(conf) or (managed and not int(config.get("wg_regen_managed", 1) or 0)):
         return
+    os.makedirs(wg_dir, exist_ok=True)   # โฟลเดอร์หาย -> สร้างไฟล์ล็อกไม่ได้ แล้วเลิกเงียบ ๆ
     lock = os.path.join(wg_dir, ".gen.lock")
     try:
         if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
@@ -10561,6 +10563,34 @@ if __name__ == "__main__":
                 _sh.rmtree(tmp, ignore_errors=True)
             except Exception as e:
                 print(f"[WG-GEN] สร้าง IP ใหม่ตามรอบไม่สำเร็จ: {e}")
+
+    # === ตัวเฝ้า: wg/ ไม่มีไฟล์ IP เลย -> รัน wg_gen สร้างใหม่ทันที (เช็คทุก 30 วิ) ตามบัญชีใน wg_account ===
+    def _wg_empty_watch(_per_default):
+        import glob as _glob
+        while True:
+            try:
+                wg_dir = str(config.get("wg_dir", "wg"))
+                if not _glob.glob(os.path.join(wg_dir, "*.conf")):
+                    import wg_gen
+                    os.makedirs(wg_dir, exist_ok=True)
+                    try:
+                        os.remove(os.path.join(wg_dir, ".managed"))   # ไฟล์ server หมดแล้ว -> ให้ wg_gen สร้างเองได้
+                    except OSError:
+                        pass
+                    per = int(config.get("wg_per_machine", 0) or 0) or _per_default
+                    acc = str(config.get("wg_account", "") or "").strip() or None
+                    print(f"[WG-GEN] wg/ ไม่มีไฟล์ IP เลย - รัน wg_gen สร้างใหม่ {per} ไฟล์ (บัญชี {acc or '-'})...")
+                    wg_gen.generate(per, config.get("wg_gen_countries") or None, wg_dir,
+                                    int(config.get("wg_machine", 0) or 0), acc,
+                                    int(config.get("wg_total_machines", 30) or 30))
+                    print(f"[WG-GEN] ตอนนี้มี {len(_glob.glob(os.path.join(wg_dir, '*.conf')))} ไฟล์ใน wg/")
+            except Exception as e:
+                print(f"[WG-GEN] สร้าง IP ใหม่ไม่สำเร็จ: {e}")
+            time.sleep(30)
+
+    if int(config.get("wg_enabled", 0) or 0):
+        threading.Thread(target=_wg_empty_watch, args=(len(devices) + int(config.get("wg_gen_spare", 2)),),
+                         daemon=True).start()
 
     if int(config.get("wg_enabled", 0) or 0) and float(config.get("wg_regen_every_min", 0) or 0) > 0:
         threading.Thread(target=_wg_regen_loop, args=(len(devices) + int(config.get("wg_gen_spare", 2)),),

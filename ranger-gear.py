@@ -910,6 +910,7 @@ def _wg_endpoint(conf):
 
 def _wg_generate_more(wg_dir, want, dev=""):
     """สร้างไฟล์เซิร์ฟเวอร์เพิ่มให้มี want ไฟล์ (ล็อกให้สร้างทีละจอ) - คืน True ถ้ามีไฟล์เพิ่มจริง"""
+    os.makedirs(wg_dir, exist_ok=True)   # โฟลเดอร์หาย -> สร้างไฟล์ล็อกไม่ได้ แล้วเลิกเงียบ ๆ
     lock = os.path.join(wg_dir, ".gen.lock")
     try:
         if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
@@ -953,6 +954,7 @@ def _wg_replace_blocked(conf, dev=""):
     managed = os.path.exists(os.path.join(wg_dir, ".managed"))
     if not os.path.exists(conf) or (managed and not int(config.get("wg_regen_managed", 1) or 0)):
         return
+    os.makedirs(wg_dir, exist_ok=True)   # โฟลเดอร์หาย -> สร้างไฟล์ล็อกไม่ได้ แล้วเลิกเงียบ ๆ
     lock = os.path.join(wg_dir, ".gen.lock")
     try:
         if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
