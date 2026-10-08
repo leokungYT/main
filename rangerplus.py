@@ -950,6 +950,13 @@ def connect_known_ports(kill_server=False):
                     capture_output=True, timeout=3, text=True
                 )
                 out = result.stdout.lower()
+                if "already connected" in out:
+                    # ต่ออยู่แล้วแต่ adb อาจค้างสถานะ offline (connect ซ้ำไม่ช่วย) -> ตัดแล้วต่อใหม่
+                    st = subprocess.run([adb_path, "-s", addr, "get-state"], capture_output=True, timeout=3, text=True)
+                    if (st.stdout or "").strip() != "device":
+                        subprocess.run([adb_path, "disconnect", addr], capture_output=True, timeout=3)
+                        result = subprocess.run([adb_path, "connect", addr], capture_output=True, timeout=3, text=True)
+                        out = result.stdout.lower()
                 if ("connected" in out or "already connected" in out) and "cannot" not in out:
                     return addr
             except Exception:
