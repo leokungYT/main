@@ -3847,7 +3847,10 @@ class RangerGearBot(threading.Thread):
             p = mapped if os.path.isabs(mapped) else os.path.join(wg_dir, mapped)
             return p if os.path.exists(p) else None
         confs = _wg_list_configs(wg_dir)
-        if not confs and os.path.exists(os.path.join(wg_dir, "keypair.txt")) and int(config.get("wg_regen_blocked", 1) or 0):
+        if (not confs and int(config.get("wg_regen_blocked", 1) or 0)
+                and time.time() - getattr(self, "_wg_empty_gen_t", 0) > 60):
+            # ไม่มีไฟล์ IP เลย (ถูกลบ/หาย) -> สร้างใหม่เองทันที (โหมดบัญชีไม่มี keypair.txt ก็สร้างได้)
+            self._wg_empty_gen_t = time.time()
             # ไฟล์ใน wg/ หมด (ลบตัวที่โดนบล็อกไปหมด) แต่ยังมีกุญแจ -> สร้างชุดใหม่
             _wg_generate_more(wg_dir, int(config.get("wg_gen_extra", 5)) + 10, self.device_id)
             confs = _wg_list_configs(wg_dir)
@@ -10528,7 +10531,9 @@ if __name__ == "__main__":
                 wg_dir = str(config.get("wg_dir", "wg"))
                 per = int(config.get("wg_per_machine", 0) or 0) or _per_default
                 # สร้างชุดใหม่ในโฟลเดอร์ชั่วคราวก่อน - ได้ไฟล์จริงแล้วค่อยสลับ ; สร้างไม่ได้ = เก็บชุดเดิมไว้ (เคยลบก่อนแล้ว wg/ ว่างทั้งเครื่อง)
-                tmp = _tf.mkdtemp(prefix="wg_new_")
+                tmp = os.path.join(os.path.dirname(os.path.abspath(wg_dir)), "wg_new")   # ต้องอยู่ข้าง wg/ - wg_gen หา wg_accounts/ จากโฟลเดอร์แม่
+                _sh.rmtree(tmp, ignore_errors=True)
+                os.makedirs(tmp, exist_ok=True)
                 for kf in _glob.glob(os.path.join(wg_dir, "*.txt")) + _glob.glob(os.path.join(wg_dir, "*.json")):
                     _sh.copy2(kf, tmp)
                 print(f"[WG-GEN] ครบ {mins:.0f} นาที - สร้าง IP ชุดใหม่ {per} ไฟล์...")

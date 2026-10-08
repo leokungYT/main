@@ -1998,7 +1998,10 @@ class RangerGearBot(threading.Thread):
             p = mapped if os.path.isabs(mapped) else os.path.join(wg_dir, mapped)
             return p if os.path.exists(p) else None
         confs = _wg_list_configs(wg_dir)
-        if not confs and os.path.exists(os.path.join(wg_dir, "keypair.txt")) and int(config.get("wg_regen_blocked", 1) or 0):
+        if (not confs and int(config.get("wg_regen_blocked", 1) or 0)
+                and time.time() - getattr(self, "_wg_empty_gen_t", 0) > 60):
+            # ไม่มีไฟล์ IP เลย (ถูกลบ/หาย) -> สร้างใหม่เองทันที (โหมดบัญชีไม่มี keypair.txt ก็สร้างได้)
+            self._wg_empty_gen_t = time.time()
             # ไฟล์ใน wg/ หมด (ลบตัวที่โดนบล็อกไปหมด) แต่ยังมีกุญแจ -> สร้างชุดใหม่
             _wg_generate_more(wg_dir, int(config.get("wg_gen_extra", 5)) + 10, self.device_id)
             confs = _wg_list_configs(wg_dir)

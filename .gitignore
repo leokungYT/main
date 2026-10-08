@@ -64,3 +64,5 @@ wg_accounts/
 install_account*.bat
 logs/
 wg_jp/
+wg_new/
+wg_test/
