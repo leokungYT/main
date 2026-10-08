@@ -128,16 +128,44 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
                     seen.add(kv["PrivateKey"])
                     keys.append(kv)
         if not keys:
-            print(f"[WG-GEN] บัญชี '{account}': ไม่มีไฟล์ Key Pair ใน {acc_dir} - วางไฟล์ .conf ของบัญชีนั้นไว้ก่อน")
+            # บัญชีนี้ไม่มีกุญแจ -> หาจากที่อื่นเอง: บัญชีอื่นใน wg_accounts/, keypair.txt, ไฟล์ .conf ใน wg/, ไฟล์สำรอง
+            root = os.path.dirname(os.path.abspath(WG_DIR))
+            cands = []
+            accs = os.path.join(root, "wg_accounts")
+            for a2 in sorted(os.listdir(accs)) if os.path.isdir(accs) else []:
+                d2 = os.path.join(accs, a2)
+                if os.path.isdir(d2):
+                    cands += [os.path.join(d2, x) for x in sorted(os.listdir(d2)) if x.lower().endswith((".conf", ".txt"))]
+            cands += [key_txt] + [os.path.join(WG_DIR, c) for c in confs]
+            for p in cands:
+                if os.path.isfile(p):
+                    kv = read_conf(p)
+                    if all(kv.get(k) for k in ("PrivateKey", "Address", "DNS", "PresharedKey")):
+                        keys.append(kv)
+                        print(f"[WG-GEN] บัญชี '{account}' ไม่มีกุญแจ - ใช้กุญแจจาก {p} แทน")
+                        break
+        if not keys:
+            print(f"[WG-GEN] ไม่มีกุญแจ Windscribe ในเครื่องเลย - วางไฟล์ .conf ของ Windscribe 1 ไฟล์ไว้ที่ {acc_dir}")
             return 1
+        # สำรองกุญแจไว้นอก wg/ เสมอ (wg/ โดนล้างได้) -> wg_accounts/_backup/key.conf
+        try:
+            bk = os.path.join(os.path.dirname(os.path.abspath(WG_DIR)), "wg_accounts", "_backup")
+            os.makedirs(bk, exist_ok=True)
+            if not os.path.exists(os.path.join(bk, "key.conf")):
+                k0 = keys[0]
+                with open(os.path.join(bk, "key.conf"), "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write("[Interface]\n" + "".join(f"{k} = {k0[k]}\n" for k in ("PrivateKey", "Address", "DNS")) +
+                             "\n[Peer]\n" + f"PresharedKey = {k0['PresharedKey']}\n")
+        except Exception:
+            pass
         os.makedirs(WG_DIR, exist_ok=True)
         marker = os.path.join(WG_DIR, ".account")
         prev = open(marker, encoding="utf-8").read().strip() if os.path.exists(marker) else ""
         if prev != account:
             # เปลี่ยนบัญชี -> ลบไฟล์ของบัญชีเก่า (+ การจองของจอ) แล้วสร้างใหม่ทั้งหมด
             for f in os.listdir(WG_DIR):
-                if f.lower().endswith(".conf") or f in ("keypair.txt", ".managed"):
-                    os.remove(os.path.join(WG_DIR, f))
+                if f.lower().endswith(".conf") or f == ".managed":
+                    os.remove(os.path.join(WG_DIR, f))   # keypair.txt ห้ามลบ (เคยลบแล้วกุญแจหายทั้งเครื่อง สร้าง IP ไม่ได้อีกเลย)
             cl = os.path.join(WG_DIR, ".claims")
             if os.path.isdir(cl):
                 for f in os.listdir(cl):
