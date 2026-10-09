@@ -5952,6 +5952,7 @@ class RangerGearBot(threading.Thread):
             sleep(1)
         
         _no_img = 0
+        _swap_t0 = time.time()
         while running:
             try:
                 device.capture_screen()
@@ -5973,6 +5974,11 @@ class RangerGearBot(threading.Thread):
                     continue
                 _no_img = 0
                 current_time = time.time()
+                _lim = float(config.get("swap_shop_max_sec", 1200) or 0)
+                if _lim and current_time - _swap_t0 > _lim:
+                    # เคยวนเป็นชั่วโมง (รอบ 9000+) ไม่เจออะไรเลย จอค้างอยู่ตรงนี้ - ครบเวลาแล้วออกไปทำไฟล์ถัดไป
+                    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] [SWAP] วน swap_shop เกิน {_lim:.0f} วิ ({loop_beat} รอบ) - ออกไปไฟล์ถัดไป")
+                    return "random-Fail"
                 loop_beat += 1
                 if loop_beat % 30 == 0:
                     hb = color_score('img/gacha.png')
@@ -6938,6 +6944,16 @@ class RangerGearBot(threading.Thread):
     def _keep_file_in_queue(self, file_path, reason):
         """ไม่ย้ายไฟล์ไปไหน ปล่อยคาคิวไว้ให้รอบหน้าหยิบใหม่"""
         print(f"[{self.device_id}] ⛔ {reason} — ไม่ย้ายไฟล์ {os.path.basename(file_path)} ปล่อยไว้ที่เดิม")
+        if "offline" in str(reason):
+            # จอ offline ติดกัน = adbd ในจอค้าง ต่อใหม่ไม่ช่วย -> สั่ง MuMu รีสตาร์ทจอนี้
+            self._offline_n = getattr(self, "_offline_n", 0) + 1
+            if self._offline_n >= 2:
+                self._offline_n = 0
+                self._hung_restart_t = 0
+                try:
+                    self._restart_hung_instance()
+                except Exception as e:
+                    print(f"[{self.device_id}] [HUNG] รีสตาร์ทจอไม่สำเร็จ: {e}")
 
     def _decode_raw_screencap(self, raw_data):
         """Decode a raw (un-encoded) screencap frame.
