@@ -2710,6 +2710,68 @@ def wait_devices_boot(devs, timeout=180):
     return not left
 
 
+def warn_host_vpn():
+    """เตือนถ้ามี VPN เปิดบนเครื่องหลัก (diag 2026-10-10: WARP+Surfshark+Tailscale+Radmin เปิดพร้อมกัน ตอนที่จอ adb ตายเกือบหมด)
+    ไม่ปิดให้เอง - RemoteFileManager อาจใช้ Tailscale/WARP ต่อกับ server"""
+    try:
+        r = subprocess.run(["tasklist"], capture_output=True, text=True, timeout=15,
+                           **({'creationflags': 0x08000000} if os.name == 'nt' else {}))
+        names = {"warp-svc.exe": "Cloudflare WARP", "Surfshark.exe": "Surfshark", "tailscaled.exe": "Tailscale",
+                 "tailscale-ipn.exe": "Tailscale", "RvRvpnGui.exe": "Radmin VPN"}
+        on = sorted({v for k, v in names.items() if k.lower() in (r.stdout or "").lower()})
+        if on:
+            print(f"[WARN] VPN บนเครื่องหลักเปิดอยู่: {', '.join(on)} - ทำเน็ต/adb ของอีมูแกว่งได้ ถ้าไม่ได้ใช้ให้ปิดก่อนรันบอท")
+    except Exception:
+        pass
+
+
+def revive_dead_screens():
+    """จอที่ adb ใน MuMu ตาย (state=offline ทั้ง emulator-N และ 127.0.0.1:port) ต่อใหม่กี่รอบก็ไม่กลับ
+    -> ตอนเปิดบอท สั่ง MuMuManager รีสตาร์ทเฉพาะจอนั้น รอบูต แล้วค่อยเริ่มงาน (config revive_offline_on_start=0 ปิด)
+    diag 2026-10-10: 15 จอ ใช้ได้แค่ 4 จอ ที่เหลือ offline/ค้าง -> บอทได้ทำงานแค่ 4 จอ"""
+    if not int(config.get("revive_offline_on_start", 1) or 0):
+        return
+    try:
+        r = subprocess.run([adb_path, "devices"], capture_output=True, text=True, timeout=15,
+                           **({'creationflags': 0x08000000} if os.name == 'nt' else {}))
+    except Exception:
+        return
+    good, bad = set(), set()
+    for line in (r.stdout or "").splitlines()[1:]:
+        p = line.split()
+        if len(p) < 2:
+            continue
+        idx = None
+        try:
+            if p[0].startswith("emulator-"):
+                idx = (int(p[0].split("-")[1]) - 5554) // 2
+            elif p[0].startswith("127.0.0.1:"):
+                port = int(p[0].split(":")[1])
+                if 5555 <= port <= 5755:
+                    idx = (port - 5555) // 2
+        except Exception:
+            idx = None
+        if idx is None:
+            continue
+        (good if p[1] == "device" else bad).add(idx)
+    dead = sorted(bad - good)
+    if not dead:
+        return
+    mgr = find_mumu_manager()
+    if not mgr:
+        print(f"[REVIVE] จอ adb ตาย {len(dead)} จอ (#{', #'.join(map(str, dead))}) แต่หา MuMuManager ไม่เจอ - ปิดเปิดจอเองใน MuMu")
+        return
+    print(f"[REVIVE] จอ adb ตาย {len(dead)} จอ (#{', #'.join(map(str, dead))}) - สั่ง MuMu รีสตาร์ทจอเหล่านี้...")
+    for i in dead:
+        try:
+            _mumu_run_v(mgr, "control", i, "restart", timeout=120)
+        except Exception as e:
+            print(f"[REVIVE] รีสตาร์ทจอ #{i} ไม่สำเร็จ: {e}")
+    time.sleep(15)
+    wait_devices_boot([f"127.0.0.1:{5555 + 2 * i}" for i in dead], timeout=int(config.get("screen_boot_wait", 180)))
+    connect_known_ports()
+
+
 # =========================================================
 # ตั้งค่าจอ MuMu ผ่าน MuMuManager — พอร์ตมาจากตัว remote ที่ใช้งานได้จริง
 # (คีย์/รูปแบบคำสั่งอ้างอิงจาก `MuMuManager setting -v 0 -aw` ของ MuMu 12 / nx_main 5.27)
@@ -10526,6 +10588,8 @@ if __name__ == "__main__":
     if not args.no_reset_adb:
         print("[INFO] Connecting to all MuMu ports (ADB Restart inside)...")
         connect_known_ports()
+        warn_host_vpn()
+        revive_dead_screens()
         
     devices = []
     if args.device:
