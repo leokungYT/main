@@ -1617,14 +1617,14 @@ if GUI_AVAILABLE:
             ctk.CTkLabel(bottom_bar, text="v3.4.0", font=ctk.CTkFont(size=10), text_color="#888888").pack(side="right", padx=8)
 
         def _auto_connect_tick(self):
-            """ทุก auto_connect_every_sec วิ (default 60): สแกนหาจอที่ขาดในเธรดแยก (หน้าบอทไม่ค้าง)
+            """ทุก auto_connect_every_sec วิ (default 300): สแกนหาจอที่ขาดในเธรดแยก (หน้าบอทไม่ค้าง)
             เจอจอใหม่ (บูตช้ากว่าตอนเปิดบอท / หลุดแล้วกลับมา) -> เพิ่มและปล่อยบอทให้เองเหมือนกดปุ่ม Connect Missing"""
-            sec = float(config.get("auto_connect_every_sec", 60) or 0)
+            sec = float(config.get("auto_connect_every_sec", 300) or 0)
             if sec <= 0:
                 return
             def _scan():
                 try:
-                    connect_known_ports()
+                    connect_known_ports(quick=True)
                     self.after(0, lambda: self.connect_missing_devices(skip_scan=True, quiet=True))
                 except Exception as e:
                     print(f"[AUTO-CONNECT] สแกนไม่สำเร็จ: {e}")
@@ -1771,7 +1771,7 @@ if GUI_AVAILABLE:
                              f"เว้น {self._gap:.0f}s ต่อจอ (เพดานรอต่อจอ {self._start_timeout:.0f}s)")
             self._ramp_tick()
             # สแกนหาจอที่ขาดเองเป็นระยะ (จอบูตช้า / หลุดแล้วกลับมา) - ไม่ต้องกด Connect Missing
-            self.after(int(float(config.get("auto_connect_every_sec", 60) or 60) * 1000), self._auto_connect_tick)
+            self.after(int(float(config.get("auto_connect_every_sec", 300) or 300) * 1000), self._auto_connect_tick)
 
         def on_closing(self):
             if messagebox.askokcancel("Quit", "คุณต้องการหยุดบอทและปิดโปรแกรมใช่หรือไม่?\n(จะทำการ Kill ADB และ Python ทั้งหมด)"):
@@ -3223,7 +3223,7 @@ def relaunch_self(reason=""):
     return True
 
 
-def connect_known_ports(kill_server=False):
+def connect_known_ports(kill_server=False, quick=False):
     """Auto-scan ALL emulator ports, connect everything that responds"""
     try:
         # kill-server เฉพาะตอนเปิดบอท (แบบ PES) - ถ้า kill กลางทาง (ปุ่ม Connect Missing / รีสตาร์ทจอ)
@@ -3236,8 +3236,18 @@ def connect_known_ports(kill_server=False):
 
         # สแกนพอร์ตคี่ตั้งแต่ 5555-5755 (รองรับ 100 จอ MuMu)
         ports = list(range(5555, 5756, 2))  # [5555, 5557, 5559, ..., 5755]
+        if quick:
+            # โหมดสแกนเบา (ตัวสแกนอัตโนมัติระหว่างรัน): ข้ามพอร์ตที่ต่ออยู่แล้ว สแกนรอบเดียว ไม่พิมพ์ log
+            # (เดิมยิง adb connect 101 พอร์ต x 3+ รอบทุกนาที = adb server ถูกรุม แคปจอ timeout)
+            try:
+                _r = subprocess.run([adb_path, "devices"], capture_output=True, text=True, timeout=10)
+                _have = {l.split()[0] for l in (_r.stdout or "").splitlines()[1:] if l.strip().endswith("device")}
+            except Exception:
+                _have = set()
+            ports = [p for p in ports if f"127.0.0.1:{p}" not in _have and f"emulator-{p - 1}" not in _have]
 
-        print(f"\n--- [ADB] Auto-scanning {len(ports)} ports (5555-5755 odd) ---")
+        if not quick:
+            print(f"\n--- [ADB] Auto-scanning {len(ports)} ports (5555-5755 odd) ---")
         
         connected = []
         
@@ -3273,6 +3283,8 @@ def connect_known_ports(kill_server=False):
             # เพิ่งรีจอ MuMu (ตั้ง fps/จอ) -> จอยังบูตไม่เสร็จ ต้องรอให้ครบตามจำนวนเดิม (สูงสุด screen_boot_wait วิ)
             max_rounds = max(8, int(config.get("screen_boot_wait", 180)) // 5)
             print(f"[ADB] รอจอให้ครบ {expect} จอ (เพิ่งรีสตาร์ท MuMu)...")
+        if quick:
+            max_rounds = 1
         for _round in range(max_rounds):
             with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
                 got = {r for r in executor.map(try_connect_port, ports) if r}
@@ -3283,6 +3295,10 @@ def connect_known_ports(kill_server=False):
                 break
             time.sleep(2)
         connected.extend(found)
+        if quick:
+            if found:
+                print(f"[AUTO-CONNECT] เจอจอใหม่: {', '.join(sorted(found))}")
+            return
         
         if connected:
             print(f"[ADB] Port scan found {len(connected)} device(s): {', '.join(sorted(connected))}")
