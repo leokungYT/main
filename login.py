@@ -2710,6 +2710,29 @@ def wait_devices_boot(devs, timeout=180):
     return not left
 
 
+def kill_host_vpn():
+    """ปิด Surfshark + Cloudflare WARP บนเครื่องหลักตอนเปิดบอท (ผู้ใช้สั่ง 2026-10-10: ไม่ใช้แล้ว)
+    ดึงเน็ตทั้งเครื่องรวมอีมูไปวิ่งผ่าน VPN ซ้อนกับ VPN ในอีมู - ไม่แตะ Tailscale / Radmin (remote ใช้อยู่)
+    config kill_host_vpn=0 ปิด"""
+    if not int(config.get("kill_host_vpn", 1) or 0) or os.name != "nt":
+        return
+    kw = {'creationflags': 0x08000000}
+    def _q(args, t=20):
+        try:
+            return subprocess.run(args, capture_output=True, text=True, timeout=t, **kw)
+        except Exception:
+            return None
+    for cli in ("warp-cli", r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"):
+        _q([cli, "disconnect"])
+    _q(["powershell", "-NoProfile", "-Command",
+        "Get-Service | Where-Object { $_.Name -match 'surfshark|cloudflarewarp' -or $_.DisplayName -match 'Surfshark|Cloudflare WARP' } | "
+        "ForEach-Object { Set-Service $_.Name -StartupType Manual -ErrorAction SilentlyContinue; Stop-Service $_.Name -Force -ErrorAction SilentlyContinue }"], 60)
+    for exe in ("Surfshark.exe", "Surfshark.Service.exe", "SurfsharkService.exe", "Surfshark.AntivirusService.exe",
+                "Cloudflare WARP.exe", "warp-svc.exe"):
+        _q(["taskkill", "/f", "/im", exe])
+    print("[NET] ปิด Surfshark + Cloudflare WARP บนเครื่องหลักแล้ว (ไม่แตะ Tailscale / Radmin)")
+
+
 def warn_host_vpn():
     """เตือนถ้ามี VPN เปิดบนเครื่องหลัก (diag 2026-10-10: WARP+Surfshark+Tailscale+Radmin เปิดพร้อมกัน ตอนที่จอ adb ตายเกือบหมด)
     ไม่ปิดให้เอง - RemoteFileManager อาจใช้ Tailscale/WARP ต่อกับ server"""
@@ -10588,6 +10611,7 @@ if __name__ == "__main__":
     if not args.no_reset_adb:
         print("[INFO] Connecting to all MuMu ports (ADB Restart inside)...")
         connect_known_ports()
+        kill_host_vpn()
         warn_host_vpn()
         revive_dead_screens()
         
