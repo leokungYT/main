@@ -2712,7 +2712,7 @@ def wait_devices_boot(devs, timeout=180):
 
 def kill_host_vpn():
     """ปิด Surfshark + Cloudflare WARP บนเครื่องหลักตอนเปิดบอท (ผู้ใช้สั่ง 2026-10-10: ไม่ใช้แล้ว)
-    ดึงเน็ตทั้งเครื่องรวมอีมูไปวิ่งผ่าน VPN ซ้อนกับ VPN ในอีมู - ไม่แตะ Tailscale / Radmin (remote ใช้อยู่)
+    ดึงเน็ตทั้งเครื่องรวมอีมูไปวิ่งผ่าน VPN ซ้อนกับ VPN ในอีมู - + Radmin VPN - ไม่แตะ Tailscale (remote ใช้อยู่)
     config kill_host_vpn=0 ปิด"""
     if not int(config.get("kill_host_vpn", 1) or 0) or os.name != "nt":
         return
@@ -2725,12 +2725,12 @@ def kill_host_vpn():
     for cli in ("warp-cli", r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"):
         _q([cli, "disconnect"])
     _q(["powershell", "-NoProfile", "-Command",
-        "Get-Service | Where-Object { $_.Name -match 'surfshark|cloudflarewarp' -or $_.DisplayName -match 'Surfshark|Cloudflare WARP' } | "
+        "Get-Service | Where-Object { $_.Name -match 'surfshark|cloudflarewarp|rvcontrolsvc|radmin' -or $_.DisplayName -match 'Surfshark|Cloudflare WARP|Radmin' } | "
         "ForEach-Object { Set-Service $_.Name -StartupType Manual -ErrorAction SilentlyContinue; Stop-Service $_.Name -Force -ErrorAction SilentlyContinue }"], 60)
     for exe in ("Surfshark.exe", "Surfshark.Service.exe", "SurfsharkService.exe", "Surfshark.AntivirusService.exe",
-                "Cloudflare WARP.exe", "warp-svc.exe"):
+                "Cloudflare WARP.exe", "warp-svc.exe", "RvRvpnGui.exe", "RvControlSvc.exe"):
         _q(["taskkill", "/f", "/im", exe])
-    print("[NET] ปิด Surfshark + Cloudflare WARP บนเครื่องหลักแล้ว (ไม่แตะ Tailscale / Radmin)")
+    print("[NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)")
 
 
 def warn_host_vpn():
