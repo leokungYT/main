@@ -3206,7 +3206,7 @@ class RangerGearBot(threading.Thread):
 
             # ไม่มี -p = ไม่ encode PNG บนเครื่อง Android และไม่ต้อง decode ฝั่งนี้
             result = subprocess.run(
-                [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap"],
+                [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap"] + (["-p"] if int(config.get("screencap_png", 1) or 0) else []),
                 capture_output=True, timeout=10, **kwargs
             )
 
@@ -3610,7 +3610,7 @@ class RangerGearBot(threading.Thread):
             if os.name == 'nt':
                 kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
-                [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap"],
+                [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap"] + (["-p"] if int(config.get("screencap_png", 1) or 0) else []),
                 capture_output=True, timeout=10, **kwargs
             )
             if result.returncode == 0 and len(result.stdout) > 100:
