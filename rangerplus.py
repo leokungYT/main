@@ -923,16 +923,14 @@ def find_adb_executable():
     return False
 
 
-def connect_known_ports(kill_server=False):
+def connect_known_ports():
     """Auto-scan ALL emulator ports, connect everything that responds"""
     try:
-        # kill-server เฉพาะตอนเปิดบอท (แบบ PES) - ถ้า kill กลางทาง (ปุ่ม Connect Missing / รีสตาร์ทจอ)
-        # adb ของทุกจอที่รันอยู่จะหลุดเป็น offline พร้อมกันหมด
-        if kill_server:
-            subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=3)
-            time.sleep(0.1)
-            subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
-            time.sleep(0.5)
+        # Kill & start adb server
+        subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=3)
+        time.sleep(0.1)
+        subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
+        time.sleep(0.5)
 
         # สแกนพอร์ตคี่ตั้งแต่ 5555-5755 (รองรับ 100 จอ MuMu)
         ports = list(range(5555, 5756, 2))  # [5555, 5557, 5559, ..., 5755]
@@ -947,36 +945,22 @@ def connect_known_ports(kill_server=False):
                 addr = f"127.0.0.1:{port}"
                 result = subprocess.run(
                     [adb_path, "connect", addr],
-                    capture_output=True, timeout=3, text=True
+                    capture_output=True, timeout=1, text=True
                 )
                 out = result.stdout.lower()
-                if "already connected" in out:
-                    # ต่ออยู่แล้วแต่ adb อาจค้างสถานะ offline (connect ซ้ำไม่ช่วย) -> ตัดแล้วต่อใหม่
-                    st = subprocess.run([adb_path, "-s", addr, "get-state"], capture_output=True, timeout=3, text=True)
-                    if (st.stdout or "").strip() != "device":
-                        subprocess.run([adb_path, "disconnect", addr], capture_output=True, timeout=3)
-                        result = subprocess.run([adb_path, "connect", addr], capture_output=True, timeout=3, text=True)
-                        out = result.stdout.lower()
                 if ("connected" in out or "already connected" in out) and "cannot" not in out:
                     return addr
             except Exception:
                 pass
             return None
 
-        # ยิงเชื่อมต่อพร้อมกัน - สแกนซ้ำจนจำนวนจอนิ่ง (จอที่เพิ่งบูต/adb เพิ่งรีสตาร์ท ตอบไม่ทันรอบแรก
-        # เคยสแกนรอบเดียวแล้วเจอแค่ 1 จอจาก 15 จอ)
-        found = set()
-        stable = 0
-        for _round in range(8):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-                got = {r for r in executor.map(try_connect_port, ports) if r}
-            before = len(found)
-            found |= got
-            stable = stable + 1 if len(found) == before and found else 0
-            if stable >= 2:
-                break
-            time.sleep(2)
-        connected.extend(found)
+        # ยิงเชื่อมต่อพร้อมกัน
+        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+            futures = {executor.submit(try_connect_port, p): p for p in ports}
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                if result:
+                    connected.append(result)
         
         if connected:
             print(f"[ADB] Port scan found {len(connected)} device(s): {', '.join(sorted(connected))}")
@@ -1005,28 +989,32 @@ def get_connected_devices():
         if not raw_devices:
             return []
                 
-        # แบบเดียวกับ PES: ใช้ชื่อ 127.0.0.1:port เสมอ (emulator-5556 -> 127.0.0.1:5557)
-        # emulator-XXXX เป็นช่องทาง local ของ adb ที่หลุดเป็น offline เองบ่อย และ "adb connect" ต่อกลับไม่ได้
-        # ส่วน 127.0.0.1:port เป็น TCP - หลุดเมื่อไหร่ adb connect กลับได้ทันที
-        final_devices = []
-        seen = set()
+        # กรองซ้ำ: ถ้ามี emulator-5556 อยู่แล้ว ไม่ต้องเอา 127.0.0.1:5557 อีก
+        emulator_adb_ports = set()  # เก็บพอร์ต ADB (คี่) ที่ emulator-xxx ครอง
         for d in raw_devices:
             if d.startswith("emulator-"):
                 try:
-                    ip = f"127.0.0.1:{int(d.replace('emulator-', '')) + 1}"
+                    console_port = int(d.replace("emulator-", ""))
+                    emulator_adb_ports.add(console_port + 1)  # emulator-5556 -> ADB port 5557
                 except ValueError:
-                    ip = d
-                if ip != d and ip not in raw_devices:
-                    try:
-                        subprocess.run([adb_path, "connect", ip], capture_output=True, timeout=3)
-                    except Exception:
-                        pass
-                d = ip
+                    pass
+        
+        final_devices = []
+        seen = set()
+        for d in raw_devices:
             if d in seen:
                 continue
+            # ถ้าเป็น 127.0.0.1:port แล้วมี emulator- ครองอยู่แล้ว -> ข้าม
+            if d.startswith("127.0.0.1:"):
+                try:
+                    port = int(d.split(":")[1])
+                    if port in emulator_adb_ports:
+                        continue  # ซ้ำกับ emulator-xxxx
+                except ValueError:
+                    pass
             seen.add(d)
             final_devices.append(d)
-
+        
         return final_devices
     except Exception as e:
         print(f"[ERR] get_connected_devices: {e}")
@@ -2206,24 +2194,6 @@ class RangerPlusBot(multiprocessing.Process):
     def adb_run(self, args, timeout=10, **kwargs):
         return subprocess.run(args, capture_output=True, timeout=timeout, **kwargs)
 
-    def _adb_relink(self):
-        """ต่อ adb ของจอนี้ใหม่ตอนหลุด/offline (แบบ PES: ใช้ adb connect)
-        - ห้ามใช้ "adb -s <จอ> reconnect" กับจอ 127.0.0.1:port: มันตัดจอออกจาก adb ไปเลย (ขึ้น not found ไม่กลับมาเอง)
-        - จอ offline: connect เฉย ๆ ได้แค่ "already connected" ไม่หาย -> disconnect ก่อนแล้วค่อย connect
-        - จอแบบ emulator-N: connect ใช้ไม่ได้ -> reconnect offline"""
-        if ":" not in self.device_id:
-            self.adb_run([self.adb_cmd, "reconnect", "offline"], timeout=10)
-            return
-        try:
-            r = self.adb_run([self.adb_cmd, "-s", self.device_id, "get-state"], timeout=5)
-            if (r.stdout or b"").decode(errors="ignore").strip() == "device":
-                return
-        except Exception:
-            pass
-        self.adb_run([self.adb_cmd, "disconnect", self.device_id], timeout=5)
-        time.sleep(0.5)
-        self.adb_run([self.adb_cmd, "connect", self.device_id], timeout=8)
-
     def adb_shell(self, shell_cmd, timeout=10):
         return subprocess.run(
             [self.adb_cmd, "-s", self.device_id, "shell", shell_cmd],
@@ -2329,6 +2299,12 @@ class RangerPlusBot(multiprocessing.Process):
             self._cap_fail = getattr(self, "_cap_fail", 0) + 1
             if self._cap_fail in (3, 10) or self._cap_fail % 30 == 0:
                 print(f"[{self.device_id}] [CAPTURE] screencap ล้มเหลวติดกัน {self._cap_fail} ครั้ง - บอทเห็นแต่ภาพเก่า จะหาอะไรไม่เจอทั้งนั้น (adb หรือเครื่องค้าง)")
+            if self._cap_fail % 5 == 0:
+                try:
+                    self.adb_run([self.adb_cmd, "-s", self.device_id, "reconnect"], timeout=10)
+                    print(f"[{self.device_id}] [CAPTURE] สั่ง adb reconnect {self.device_id} แล้ว")
+                except Exception:
+                    pass
             if hasattr(self, "_in_popup_check"):
                 self._in_popup_check = False
 
@@ -4163,7 +4139,7 @@ if __name__ == "__main__":
     # Reset ADB and execute port scan (Skip if requested)
     if not args.no_reset_adb:
         print("[INFO] Connecting to all MuMu ports (ADB Restart inside)...")
-        connect_known_ports(kill_server=True)
+        connect_known_ports()
         
     devices = []
     if args.device:
