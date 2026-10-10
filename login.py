@@ -7742,14 +7742,14 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Raw capture error: {e}")
             if "timed out" in str(e):
                 self._cap_timeouts = getattr(self, "_cap_timeouts", 0) + 1
-                if self._cap_timeouts >= int(config.get("hung_restart_after", 0)):
+                if self._cap_timeouts >= int(config.get("hung_restart_after", 6)):
                     self._cap_timeouts = 0
                     self._restart_hung_instance()
 
     def _restart_hung_instance(self):
         """จอค้าง (adb screencap/push timeout ติดกัน) -> สั่ง MuMu รีสตาร์ทจอนี้ แล้วรอบูตกลับมา
         เดิมบอทวนรอ timeout ไม่จบ จอนั้นทำงานไม่ได้จนกว่าจะปิดเปิดเอง (config hung_restart_after=0 ปิด)"""
-        if not int(config.get("hung_restart_after", 0) or 0):
+        if not int(config.get("hung_restart_after", 6) or 0):
             return
         now = time.time()
         if now - getattr(self, "_hung_restart_t", 0) < 300:
