@@ -3975,6 +3975,27 @@ class RangerGearBot(threading.Thread):
             return pick
         return None
 
+    def _click_fixid_ok(self, max_wait=3.0):
+        """เจอ fixid (Authentication failed) -> กดปุ่ม OK ทันที ไม่ต้องรอ
+        เช็คจากเฟรมที่จับไว้แล้วก่อน (ไม่เสียเวลาแคปใหม่) ไม่เจอค่อยแคปซ้ำถี่ ๆ สูงสุด max_wait วิ
+        fixokk = ปุ่ม OK เขียวของ popup นี้ / fikcheck = OK อีกแบบ (สำรอง)"""
+        deadline = time.time() + max_wait
+        first = True
+        while True:
+            if not first:
+                self.capture_screen()
+            first = False
+            for ok_img in ("img/fixokk.png", "img/fikcheck.png"):
+                if self.exists_in_cache(ok_img, similarity=0.8):
+                    self.click(ok_img, similarity=0.8)
+                    print(f"[{self.device_id}] [FIXID] กด {ok_img[4:]} ทันที -> ไปหา refresh ต่อ")
+                    sleep(0.8)
+                    return True
+            if time.time() >= deadline:
+                print(f"[{self.device_id}] [FIXID] ไม่เจอปุ่ม OK ใน {max_wait:.0f}s -> ไปหา refresh เลย")
+                return False
+            sleep(0.25)
+
     def _wg_after_refresh(self):
         """wg_after_login: กด refresh แล้ว -> ต่อ VPN ตรงนี้เลย (ส่งไฟล์/เปิดเกมไปด้วยเน็ตปกติแล้ว)"""
         if int(config.get("wg_after_login", 0) or 0):
@@ -8651,16 +8672,8 @@ class RangerGearBot(threading.Thread):
                                 self._wg_strike("fixid ครบ")
                                 return "failed"
                             
-                            # 1) กด fikcheck
-                            print(f"[{self.device_id}] Step 1: clicking fikcheck.png...")
-                            for _ in range(10): # Timeout 10s
-                                self.capture_screen()
-                                if self.exists_in_cache("img/fikcheck.png", similarity=0.8):
-                                    self.click("img/fikcheck.png", similarity=0.8)
-                                    print(f"[{self.device_id}] Clicked fikcheck.png")
-                                    sleep(2)
-                                    break
-                                sleep(1)
+                            # 1) กด OK (fixokk) ทันที แล้วไปหา refresh ต่อเลย
+                            self._click_fixid_ok()
                             
                             # 2) กด refresh
                             print(f"[{self.device_id}] Step 2: clicking refresh.png...")
@@ -9666,8 +9679,12 @@ class RangerGearBot(threading.Thread):
 
             self.capture_screen()
 
+            # === fixid (Authentication failed) มาแล้ว → ข้ามเช็คอื่นทั้งรอบ ไปจัดการ fixid ทันที ===
+            #     (เดิมต้องผ่าน popup ลอย / เช็คแอพตาย / รอ fixokk ค้าง 5 วิ ก่อนถึงตา fixid เลยช้า)
+            fixid_now = self.exists_in_cache("img/fixid.png", similarity=0.9)
+
             # === เช็คว่าเกมยังรันอยู่จริงไหม (เช็คทุกๆ 15 รอบ ป้องกันหน่วง) ===
-            if loop_count % 15 == 0:
+            if loop_count % 15 == 0 and not fixid_now:
                 try:
                     pid_result = subprocess.run(
                         [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
@@ -9682,7 +9699,8 @@ class RangerGearBot(threading.Thread):
                     pass
 
             # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
-            self.check_floating_popups()
+            if not fixid_now:
+                self.check_floating_popups()
 
             # (ลบ LOGIN-RECOVER ออก - ให้เหมือน ranger-gear.py ที่ไม่เคลียร์แอปเองตอนไม่เห็นหน้าล็อกอิน)
 
@@ -9695,8 +9713,8 @@ class RangerGearBot(threading.Thread):
                 sleep(0.5)
                 continue
 
-            # === fixokk.png Persistence Check (รอค้างครบ 5 วิ ถึงจะกด) ===
-            if self.exists_in_cache("img/fixokk.png", similarity=0.8):
+            # === fixokk.png Persistence Check (รอค้างครบ 5 วิ ถึงจะกด) — ยกเว้น popup fixid (กดทันทีด้านล่าง) ===
+            if not fixid_now and self.exists_in_cache("img/fixokk.png", similarity=0.8):
                 if not hasattr(self, '_fixokk_start_time') or self._fixokk_start_time is None:
                     self._fixokk_start_time = time.time()
                     if getattr(self, '_fixid_seen', False):
@@ -9738,9 +9756,12 @@ class RangerGearBot(threading.Thread):
                 self._login_fixid_count = 0
                 return "failed"
 
-            # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
-            if self.exists_in_cache("img/fixid.png", similarity=0.95):
+            # === fixid.png Check (เช็คทุกรอบ) -> fixokk ทันที -> refresh -> check ===
+            if fixid_now:
                 self._fixid_seen = True   # จำไว้: ต่อจากนี้เจอ fixokk กดทันที
+                self._fixokk_start_time = None
+                # กด OK ปิด popup ก่อนเลย (ไม่ต้องรอคิว auth) แล้วค่อยไปหา refresh
+                self._click_fixid_ok()
                 # Authentication failed ตอนต่อ VPN = IP นี้โดนบล็อก -> ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (วนไปเรื่อย ๆ)
                 if (int(config.get("wg_fixid_switch", 1) or 0)
                         and self._wg_request_net_recover("Authentication failed", switch_now=True)):
@@ -9761,17 +9782,7 @@ class RangerGearBot(threading.Thread):
                         self._login_fixid_count = 0
                         return "failed"
                     
-                    # 1) กด fikcheck
-                    print(f"[{self.device_id}] Step 1: waiting for fikcheck.png (10s timeout)...")
-                    sleep(0.8) # ให้หน้าจอเสถียรหลัง re-route
-                    for _ in range(10): # Timeout 10s
-                        self.capture_screen()
-                        if self.exists_in_cache("img/fikcheck.png", similarity=0.8):
-                            self.click("img/fikcheck.png", similarity=0.8)
-                            print(f"[{self.device_id}] Clicked fikcheck.png")
-                            sleep(1)
-                            break
-                        sleep(0.4)
+                    # 1) กด OK ไปแล้วตอนเจอ fixid (ด้านบน) -> ไปกด refresh ต่อเลย
                     
                     # 2) กด refresh
                     print(f"[{self.device_id}] Step 2: clicking refresh.png (10s timeout)...")
