@@ -2459,6 +2459,21 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] [WG] ต่อไม่สำเร็จ: {e} - เล่นต่อด้วยเน็ตปกติ")
 
+    def _wg_device_is_split(self):
+        """tunnel ที่เปิดค้างในจอเป็นแบบ "เฉพาะเกม" ไหม (มี IncludedApplications)
+        ไฟล์ที่เขียนช่วง 4-8 ต.ค. เป็นแบบทั้งเครื่อง -> adbd ตอบกลับไม่ถึงพีซี = adb timeout/offline
+        ถ้าไม่ใช่แบบเฉพาะเกม -> คืน False ให้เขียนไฟล์ใหม่ทับ (ถ้าตั้ง wg_split_apps เป็น "" = ทั้งเครื่องโดยตั้งใจ ก็ปล่อย)"""
+        if not str(config.get("wg_split_apps", "com.linecorp.LGRGS") or "").strip():
+            return True
+        try:
+            r = self.adb_shell(f"su -c 'grep -c IncludedApplications /data/data/{self.WG_PKG}/files/{self.WG_TUNNEL}.conf'", timeout=10)
+            n = int(((r.stdout or b"0").decode(errors="ignore").strip().splitlines() or ["0"])[0] or 0)
+        except Exception:
+            n = 0
+        if n <= 0:
+            print(f"[{self.device_id}] [WG] tunnel ที่เปิดอยู่เป็นแบบทั้งเครื่อง (ทำ adb หลุด) - เขียนใหม่เป็นแบบเฉพาะเกม")
+        return n > 0
+
     def _wg_must_be_up(self):
         """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
         ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
@@ -2468,7 +2483,8 @@ class RangerGearBot(threading.Thread):
         if not int(config.get("wg_required", 0) or 0):   # 0 = VPN ไม่ขึ้นก็เล่นต่อด้วยเน็ตบ้าน (แบบเดิม)
             return self._ensure_wireguard()
         if (int(config.get("wg_once", 1) or 0) and not getattr(self, "_wg_conf_applied", None)
-                and not getattr(self, "_wg_started", False) and self._wg_is_up()):
+                and not getattr(self, "_wg_started", False) and self._wg_is_up()
+                and self._wg_device_is_split()):
             # ตอนเริ่ม: tunnel เปิดแช่อยู่แล้ว -> ใช้ต่อเลย ห้ามยุ่ง (ไม่เขียนไฟล์ใหม่/ไม่ปิดเปิด)
             self._wg_started = True
             self._wg_conf_applied = self._wg_conf_for_device() or "(เปิดอยู่แล้ว)"
