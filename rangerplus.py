@@ -2,6 +2,11 @@ import cv2
 import numpy as np
 import subprocess
 import os
+# ทำงานในโฟลเดอร์ของไฟล์นี้เสมอ - เปิดจากโฟลเดอร์อื่น (เช่น VS Code ที่โฟลเดอร์แม่) แล้วหา img/... ไม่เจอ
+try:
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+except Exception:
+    pass
 import struct
 import hashlib
 import time
