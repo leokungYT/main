@@ -34,7 +34,7 @@
         "enabled": 0
     },
     "scan_interval": 1.0,
-    "loop_delay": 0.3,
+    "loop_delay": 0.15,
     "auto_trade": {
         "enabled": 0,
         "swap_shop1": 1,
@@ -61,5 +61,7 @@
     "mumu_root": "เปิด",
     "mumu_renderer": "DirectX",
     "mumu_app_running": "เปิด",
-    "login_loop_delay": 0.3
+    "login_loop_delay": 0.15,
+    "adb_backoff_delay": 1.0,
+    "adb_backoff_sec": 60
 }

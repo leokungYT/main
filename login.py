@@ -3788,11 +3788,17 @@ class RangerGearBot(threading.Thread):
         """
         v = config.get("loop_delay")
         if v is None:
-            return default
+            return max(default, self._adb_backoff())
         try:
-            return float(v)
+            return max(float(v), self._adb_backoff())
         except (TypeError, ValueError):
             return default
+
+    def _adb_backoff(self):
+        """เร็วสุดแต่ไม่ให้ offline: จอนี้แคปจอ timeout เมื่อไหร่ -> ชะลอรอบเป็น adb_backoff_delay (1.0 วิ)
+        ไว้ adb_backoff_sec (60 วิ) ถ้าไม่ timeout ซ้ำก็กลับไปเร็วเหมือนเดิมเอง"""
+        t = getattr(self, "_adb_slow_until", 0)
+        return float(config.get("adb_backoff_delay", 1.0)) if time.time() < t else 0.0
 
     def __init__(self, device_id, args=None):
         threading.Thread.__init__(self)
@@ -7147,6 +7153,8 @@ class RangerGearBot(threading.Thread):
                 
         except Exception as e:
             print(f"[{self.device_id}] Capture error: {e}")
+            if "timed out" in str(e):
+                self._adb_slow_until = time.time() + float(config.get("adb_backoff_sec", 60))
             # นับ screencap ที่ล้มติดกัน - ล้มแล้ว _screen ยังเป็นภาพเก่า บอทจะ 'มองไม่เห็น' ป๊อปอัพ/ปุ่มใด ๆ
             # (เคสจริง: 20 เครื่องแย่ง adb กัน screencap ค้างเกิน 10 วิ) บอกให้ชัดและลอง reconnect เครื่องนั้น
             self._cap_fail = getattr(self, "_cap_fail", 0) + 1
@@ -7793,6 +7801,8 @@ class RangerGearBot(threading.Thread):
                     self._in_net_check = False
         except Exception as e:
             print(f"[{self.device_id}] Raw capture error: {e}")
+            if "timed out" in str(e):
+                self._adb_slow_until = time.time() + float(config.get("adb_backoff_sec", 60))
             if "timed out" in str(e):
                 self._cap_timeouts = getattr(self, "_cap_timeouts", 0) + 1
                 if self._cap_timeouts >= int(config.get("hung_restart_after", 6)):
@@ -10412,7 +10422,7 @@ class RangerGearBot(threading.Thread):
             login_idle_loops += 1
             if login_idle_loops in (3, 10) or login_idle_loops % 30 == 0:
                 self._report_login_screen(login_idle_loops)
-            sleep(float(config.get("login_loop_delay", 0.6)))
+            sleep(max(float(config.get("login_loop_delay", 0.6)), self._adb_backoff()))
             if time.time() - self._login_loop_start > float(config.get("login_timeout_sec", 900)):
                 print(f"[{self.device_id}] Login timeout after {config.get('login_timeout_sec', 900)}s")
                 status = "timeout"
