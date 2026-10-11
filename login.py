@@ -2735,6 +2735,11 @@ def kill_host_vpn():
     for exe in ("Surfshark.exe", "Surfshark.Service.exe", "SurfsharkService.exe", "Surfshark.AntivirusService.exe",
                 "Cloudflare WARP.exe", "warp-svc.exe", "RvRvpnGui.exe", "RvControlSvc.exe"):
         _q(["taskkill", "/f", "/im", exe])
+    # คืน DNS ให้ Windows: WARP/Surfshark ตั้ง DNS ชี้ไปที่ตัวมันเอง พอโดน kill แล้ว DNS ค้างชี้ไปที่ไม่มีคนตอบ
+    # = ทั้งเครื่องหาชื่อเว็บไม่เจอ (getaddrinfo failed) -> รีเซ็ต DNS ทุกการ์ดเน็ตกลับเป็นอัตโนมัติ (DHCP) แล้วล้างแคช
+    _q(["powershell", "-NoProfile", "-Command",
+        "Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }"], 60)
+    _q(["ipconfig", "/flushdns"])
     print("[NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)")
 
 

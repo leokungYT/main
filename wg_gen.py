@@ -224,7 +224,17 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
 
     print("[WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...")
     req = urllib.request.Request(SERVERLIST_URL, headers={"User-Agent": "Mozilla/5.0"})
-    data = json.load(urllib.request.urlopen(req, timeout=30))["data"]
+    data = None
+    for _try in range(3):
+        try:
+            data = json.load(urllib.request.urlopen(req, timeout=30))["data"]
+            break
+        except Exception as e:
+            print(f"[WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ไม่ได้ ({e}) - ลองใหม่ ({_try + 1}/3)")
+            import time as _t; _t.sleep(5)
+    if data is None:
+        print("[WG-GEN] เน็ต/DNS ของเครื่องใช้ไม่ได้ - ยังสร้าง IP ไม่ได้ (เช็คว่าเข้าเว็บได้ไหม ถ้าไม่ได้ให้รัน fix-dns.bat)")
+        return 1
 
     # เซิร์ฟเวอร์ที่ใช้อยู่แล้ว (กุญแจไหนก็ตาม) ไม่ซ้ำ จะได้ IP ไม่ซ้ำด้วย
     used = {kv.get("PublicKey") for kv in have}
