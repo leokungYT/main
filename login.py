@@ -739,6 +739,8 @@ class SimpleUIStats:
     
     def update_hero(self, hero_name, count=1):
         """Update hero found count and sync"""
+        if str(hero_name).endswith(".png") or str(hero_name).startswith(("gachahero", "heroo")):
+            hero_name = _hero_display_name(hero_name)
         self.load_shared() # Pull latest first
         with self.lock:
             if hero_name not in self.hero_found_list:
@@ -750,6 +752,14 @@ class SimpleUIStats:
         self.load_shared() # Always refresh before getting
         with self.lock:
             return dict(self.hero_found_list)
+
+def _hero_display_name(name):
+    """ชื่อรูปฮีโร่ -> ชื่อตัวละครตาม HERO_MAPPING (gachahero1.png / heroo1.png / gachahero1 -> Lelouch+)
+    เดิมถ้าใน config ไม่มี HERO_MAPPING (เคยหายตอน config ถูกบันทึกทับ) จะโชว์/ตั้งชื่อไฟล์เป็น gachahero1.png"""
+    n = str(name or "")
+    key = os.path.splitext(os.path.basename(n))[0].replace("heroo", "gachahero")
+    m = config.get("HERO_MAPPING") or {}
+    return m.get(key) or m.get(n) or key or n
 
 ui_stats = SimpleUIStats()
 GUI_INSTANCE = None
@@ -6184,7 +6194,7 @@ class RangerGearBot(threading.Thread):
                         return "random-Fail"
                     else:
                         hero_key = found_hero.replace(".png", "").replace("heroo", "gachahero")
-                        display_name = config.get("HERO_MAPPING", {}).get(hero_key, found_hero)
+                        display_name = _hero_display_name(found_hero)
                         ui_stats.update_hero(display_name)
                         device.backup_game_data(build_prefix(display_name))
                         device.clear_and_restart()
@@ -6224,7 +6234,7 @@ class RangerGearBot(threading.Thread):
                 found_hero = check_hero_images(adb_img)
                 if found_hero:
                     hero_key = found_hero.replace(".png", "").replace("heroo", "gachahero")
-                    display_name = config.get("HERO_MAPPING", {}).get(hero_key, found_hero)
+                    display_name = _hero_display_name(found_hero)
                     # เจอตัวหลักแล้วจบเลย ไม่หาตัวรองต่อ แต่ชื่อไฟล์เอาตัวรองที่เจอมาก่อนหน้ามาต่อหัว
                     if device.backup_game_data(build_prefix(display_name)):
                         ui_stats.update_hero(display_name)
@@ -6298,7 +6308,7 @@ class RangerGearBot(threading.Thread):
                             return "random-Fail"
                         else:
                             hero_key = found_hero.replace(".png", "").replace("heroo", "gachahero")
-                            display_name = config.get("HERO_MAPPING", {}).get(hero_key, found_hero)
+                            display_name = _hero_display_name(found_hero)
                             ui_stats.update_hero(display_name)
                             device.backup_game_data(display_name)
                             device.clear_and_restart()

@@ -63,5 +63,11 @@
     "mumu_app_running": "เปิด",
     "login_loop_delay": 0.15,
     "adb_backoff_delay": 1.0,
-    "adb_backoff_sec": 60
+    "adb_backoff_sec": 60,
+    "HERO_MAPPING": {
+        "gachahero1": "Lelouch+",
+        "gachahero2": "LelouchU+",
+        "gachahero3": "Suzaku+",
+        "gachahero4": "SuzakuU+"
+    }
 }
