@@ -1618,6 +1618,8 @@ class RangerGearBot(threading.Thread):
 
     def _save_debug_screen(self, reason):
         """เก็บภาพจอล่าสุดไว้ดูว่าค้าง/หาไม่เจออยู่หน้าไหน (โฟลเดอร์ debug-timeout/)"""
+        if not int(config.get("debug_screens", 0) or 0):
+            return None   # ปิดไว้: 15 จอเขียนภาพลงดิสก์บ่อยเกิน เปลืองดิสก์+เวลา (เปิดด้วย "debug_screens": 1)
         screen = getattr(self, "_screen_color", None)
         if screen is None:
             return None

@@ -7074,6 +7074,8 @@ class RangerGearBot(threading.Thread):
         ไม่มีภาพก็ไล่สาเหตุไม่ได้เลยว่าเป็นป๊อปอัพตัวใหม่ เน็ตหลุด หรือแอปเด้ง
         เก็บลง debug-timeout/ (อยู่ใน .gitignore ไม่ขึ้น GitHub)
         """
+        if not int(config.get("debug_screens", 0) or 0):
+            return None   # ปิดไว้: 15 จอเขียนภาพลงดิสก์บ่อยเกิน เปลืองดิสก์+เวลา (เปิดด้วย "debug_screens": 1)
         screen = getattr(self, "_screen_color", None)
         if screen is None:
             return None
