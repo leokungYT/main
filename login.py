@@ -10398,21 +10398,22 @@ class RangerGearBot(threading.Thread):
                 
                 back_press_count = 0
                 while True:
-                    # กด Back ทีเดียว 3 รอบ
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    self.adb_shell("input keyevent KEYCODE_BACK")
-                    back_press_count += 3
-                    print(f"[{self.device_id}] [EVENT] Triple Back spam! (Total: {back_press_count})")
+                    # BACK ทีละ event_back_step ครั้ง (default 1) แล้วรอ event_back_wait วิ (default 0.8) ให้เกมปิดป๊อปอัพทัน
+                    # (เดิมรัว 3 ครั้ง/0.3 วิ - กดเลยไปเจอหน้า "ออกจากเกม?" แล้ววน event -> back -> cancel ไม่จบ)
+                    _step = max(1, int(config.get("event_back_step", 1) or 1))
+                    for _ in range(_step):
+                        self.adb_shell("input keyevent KEYCODE_BACK")
+                    back_press_count += _step
+                    print(f"[{self.device_id}] [EVENT] Back x{_step} (Total: {back_press_count})")
                     
-                    sleep(0.3) # ให้เวลา UI อัปเดตเล็กน้อย
+                    sleep(float(config.get("event_back_wait", 0.8)))
                     self.capture_screen()
                     
                     # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด
                     if self.exists_in_cache("img/cancel.png"):
                         print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
                         self.click("img/cancel.png")
-                        sleep(1)
+                        sleep(float(config.get("event_after_cancel_wait", 2.0)))   # รอป๊อปอัพถัดไปขึ้นก่อน ไม่งั้นกด event ไม่ทัน
                         break
                     
                     if self.exists_in_cache("img/stoplogin.png"):
