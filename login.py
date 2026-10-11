@@ -5939,31 +5939,17 @@ class RangerGearBot(threading.Thread):
 
             return "ok"
         
-        def check_and_count_swapgacha1():
+        def check_and_count_swapgacha1(by_press=False):
+            """นับรอบสุ่ม (max-gacha): นับ 1 ครั้งต่อการกดยืนยันสุ่ม (stopgacha6 = OK ของ "Play the gacha N times?")
+            เดิมนับจากการเห็นรูป swapgacha1.png - รูปไม่ตรงจอแล้ว = นับไม่ขึ้น สุ่มไม่หยุด
+            และรอ 3+3 วิทุกครั้งที่กดปุ่มใดๆ (ช้า) ; เรียกแบบไม่ใช่ by_press = ไม่นับ (กันนับซ้ำ)"""
             nonlocal gacha_count
-            if max_gacha <= 0: return False
-            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] รอ 3 วินาทีก่อนตรวจสอบ swapgacha1.png")
-            sleep(3)
-            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] เริ่มตรวจสอบ swapgacha1.png เป็นเวลา 3 วินาที")
-            check_start_time = time.time()
-            swapgacha1_found = False
-            while time.time() - check_start_time < 3:
-                try:
-                    device.capture_screen()
-                    check_img = device._screen_color
-                    swapgacha1_pos = find_cond('img/swapgacha1.png')
-                    if swapgacha1_pos:
-                        if not swapgacha1_found:
-                            gacha_count += 1
-                            swapgacha1_found = True
-                            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] พบ swapgacha1.png - นับ poin ครั้งที่ {gacha_count}/{max_gacha}")
-                            if gacha_count >= max_gacha:
-                                return "complete_gacha"
-                            break
-                    sleep(0.2)
-                except Exception as e:
-                    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] Error checking swapgacha1.png: {e}")
-                    break
+            if max_gacha <= 0 or not by_press:
+                return False
+            gacha_count += 1
+            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] สุ่มรอบที่ {gacha_count}/{max_gacha}")
+            if gacha_count >= max_gacha:
+                return "complete_gacha"
             return False
         
         def check_gacha1(adb_img):
@@ -6269,14 +6255,19 @@ class RangerGearBot(threading.Thread):
                     stopgacha6_pos = find_btn2('img/stopgacha6.png')
                     if stopgacha6_pos:
                         last_click_position = stopgacha6_pos[0]
-                        if safe_tap(stopgacha6_pos[0][0], stopgacha6_pos[0][1], "stopgacha6 (1)", 0, 0, 0) == "gachaout_found": return "random-Fail"
-                        if safe_tap(stopgacha6_pos[0][0], stopgacha6_pos[0][1], "stopgacha6 (2)", 0, 0, 0.3) == "gachaout_found": return "random-Fail"
-                        if check_and_count_swapgacha1() == "complete_gacha":
+                        # ครบ max-gacha แล้ว -> หยุดก่อนกดยืนยันรอบถัดไป (ผลรอบสุดท้ายถูกเช็คฮีโร่ไปแล้วในลูป) ไม่เสียเพชรเพิ่ม
+                        if max_gacha > 0 and gacha_count >= max_gacha:
+                            print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] สุ่มครบ {gacha_count}/{max_gacha} รอบแล้ว ไม่เจอฮีโร่ - จบ swap_shop")
+                            kept = keep_low_if_any("สุ่มครบ max-gacha")
+                            if kept: return kept
                             ui_stats.update_hero("สุ่มไม่ได้")
                             device.backup_failed_game_data()
                             device.clear_and_restart()
                             sleep(2)
                             return "random-Fail"
+                        if safe_tap(stopgacha6_pos[0][0], stopgacha6_pos[0][1], "stopgacha6 (1)", 0, 0, 0) == "gachaout_found": return "random-Fail"
+                        if safe_tap(stopgacha6_pos[0][0], stopgacha6_pos[0][1], "stopgacha6 (2)", 0, 0, 0.3) == "gachaout_found": return "random-Fail"
+                        check_and_count_swapgacha1(by_press=True)   # นับรอบ - หยุดตอนจะกดรอบถัดไป (ข้างบน)
                 current_hash = get_image_hash(adb_img)
                 if current_hash == last_image_hash:
                     if current_time - last_image_time >= 1800:
