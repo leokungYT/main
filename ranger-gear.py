@@ -2257,7 +2257,7 @@ class RangerGearBot(threading.Thread):
         (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว"""
         if int(config.get("wg_lock", 1) or 0):
             # wg_lock: ใช้ IP เดิมต่อไป - ยกเว้นค้างหน้า LINE GAME ซ้ำ (LINE ไม่รับ IP นี้ = ไม่มีทางเข้าเกมได้)
-            if "LINE GAME" not in str(reason):
+            if not any(k in str(reason) for k in ("LINE GAME", "fixid", "login failed")):   # fixid/login failed ครบ = LINE ไม่รับ IP นี้ -> สลับด้วย
                 return False
             self._wg_line_stuck = getattr(self, "_wg_line_stuck", 0) + 1
             lim = int(config.get("wg_line_stuck_switch", 2) or 2)
