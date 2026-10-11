@@ -5133,7 +5133,7 @@ class RangerGearBot(threading.Thread):
         print(f"[{device.device_id}] เริ่มกระบวนการ shop gacha")
 
         # ถ้าเปิด swap_shop คู่กัน ห้าม clear app ตอน shopgacha จบ - ต้องไปทำ swap_shop ต่อ
-        swap_shop_enabled = bool(config.get("swap_shop") or config.get("swap_shopevent") or config.get("auto_trade", {}).get("enabled"))
+        swap_shop_enabled = bool(config.get("swap_shop") or config.get("swap_shopevent"))
 
         # เกณฑ์ความเหมือนของ "ปุ่ม" ในร้าน - 0.95 เข้มไปจนกดไม่ติด
         # ใช้เฉพาะปุ่มที่ต้องกด ไม่แตะ shopgachastop/shopgachastop1 ซึ่งเป็นเงื่อนไข
@@ -8065,7 +8065,7 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] Gacha icon not found, skipping.")
 
         # 4. Swap Shop (Auto Trade)
-        if self.cfg.get("swap_shop") or self.cfg.get("swap_shopevent") or self.cfg.get("auto_trade", {}).get("enabled"):
+        if self.cfg.get("swap_shop") or self.cfg.get("swap_shopevent"):   # Auto Trade อย่างเดียวไม่เข้าลูปสุ่มร้าน (เดิมเปิด Auto Trade แล้ว swap_shop ทำงานเองทั้งที่ปิดไว้)
             print(f"[{self.device_id}] Task Check: Auto Trade / Swap Shop...")
             # We check for gacha.png as entry point for the new process_swap_shop
             # รอนานขึ้น (15 วิ) เผื่อเพิ่งกลับจาก shopgacha (back→cancel) แล้ว Lobby ยังโหลดไม่เสร็จ
