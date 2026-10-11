@@ -16,7 +16,7 @@
     "random-gear": 0,
     "check-gear": 0,
     "use_ocr": 0,
-    "minitouch": 1,
+    "minitouch": 0,
     "pos_cache": 1,
     "channels_img": 1,
     "box_settings": {

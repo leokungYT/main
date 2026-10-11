@@ -2426,6 +2426,9 @@ def reset_network_all(devices):
             return ""
 
     def one(dev):
+        if not int(config.get("minitouch", 0) or 0):
+            # minitouch ค้างในอีมู = ระบบกันโกง (LIAPP) ขึ้น "Malicious tool(s) has been found" -> ฆ่า+ลบทิ้งทุกจอ
+            sh(dev, "su -c 'pkill -9 -f minitouch; rm -f /data/local/tmp/minitouch'")
         had = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
         if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_once", 1) or 0):
             # wg_once: VPN ต้องเปิดแช่ไว้ - ตอนเริ่มห้ามปิด tunnel ที่เปิดอยู่ ล้างแค่ proxy ค้าง
