@@ -10659,6 +10659,13 @@ if __name__ == "__main__":
     if int(config.get("wg_enabled", 0) or 0) and int(config.get("wg_auto_gen", 1) or 0):
         try:
             import wg_gen
+            _wgd = str(config.get("wg_dir", "wg"))
+            if not glob.glob(os.path.join(_wgd, "*.conf")):
+                # ครั้งแรก/ไฟล์หมด: wg/ ว่าง -> สร้าง IP ก่อนเริ่มงานเสมอ (.managed ค้างจาก remote ทำให้ wg_gen ไม่ยอมสร้าง)
+                os.makedirs(_wgd, exist_ok=True)
+                try: os.remove(os.path.join(_wgd, ".managed"))
+                except OSError: pass
+                print("[WG-GEN] wg/ ยังไม่มีไฟล์ IP - สร้างให้ก่อนเริ่มบอท...")
             _mach = int(config.get("wg_machine", 0) or 0)   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
             _per = int(config.get("wg_per_machine", 0) or 0) or (len(devices) + int(config.get("wg_gen_spare", 2)))
             wg_gen.generate(_per, config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")), _mach,
