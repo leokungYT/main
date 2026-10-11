@@ -1476,11 +1476,16 @@ class RangerGearBot(threading.Thread):
         """
         v = config.get("loop_delay")
         if v is None:
-            return default
+            return max(default, self._adb_backoff())
         try:
-            return float(v)
+            return max(float(v), self._adb_backoff())
         except (TypeError, ValueError):
             return default
+
+    def _adb_backoff(self):
+        """เร็วสุดแต่ไม่ให้ offline: แคปจอ timeout -> ชะลอ adb_backoff_delay วิ นาน adb_backoff_sec วิ แล้วกลับมาเร็วเอง"""
+        t = getattr(self, "_adb_slow_until", 0)
+        return float(config.get("adb_backoff_delay", 1.0)) if time.time() < t else 0.0
 
     def __init__(self, device_id, args=None):
         threading.Thread.__init__(self)
@@ -3278,6 +3283,8 @@ class RangerGearBot(threading.Thread):
                 
         except Exception as e:
             print(f"[{self.device_id}] Capture error: {e}")
+            if "timed out" in str(e):
+                self._adb_slow_until = time.time() + float(config.get("adb_backoff_sec", 60))
             # นับ screencap ที่ล้มติดกัน - ล้มแล้ว _screen ยังเป็นภาพเก่า บอทจะ 'มองไม่เห็น' ป๊อปอัพ/ปุ่มใด ๆ
             # (เคสจริง: 20 เครื่องแย่ง adb กัน screencap ค้างเกิน 10 วิ) บอกให้ชัดและลอง reconnect เครื่องนั้น
             self._cap_fail = getattr(self, "_cap_fail", 0) + 1
@@ -3665,6 +3672,8 @@ class RangerGearBot(threading.Thread):
                     self._in_net_check = False
         except Exception as e:
             print(f"[{self.device_id}] Raw capture error: {e}")
+            if "timed out" in str(e):
+                self._adb_slow_until = time.time() + float(config.get("adb_backoff_sec", 60))
 
     def _app_is_gone(self):
         """True when the game process is not running.
@@ -5523,7 +5532,7 @@ if __name__ == "__main__":
         except: pass
 
     print("=== Auto Ranger+Gear Script v3.2.0 ===")
-    print(f"[VERSION] build 2026-10-08 vpn-adb-v1 | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
+    print(f"[VERSION] build 2026-10-11 fast-v2 | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
     
     load_config()
     

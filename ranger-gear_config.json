@@ -119,7 +119,7 @@
     "pos_cache": 1,
     "pos_cache_margin": 12,
     "scan_interval": 1.0,
-    "loop_delay": null,
+    "loop_delay": 0.15,
     "auto_start": 1,
     "cloud_fast_start": 1,
     "cloud_start_delay_sec": 2.0,
@@ -141,5 +141,7 @@
     },
     "kaibyskip": 1,
     "kaibycheck": 0,
-    "debug_ocr": 1
+    "debug_ocr": 1,
+    "adb_backoff_delay": 1.0,
+    "adb_backoff_sec": 60
 }
