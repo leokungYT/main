@@ -3804,3 +3804,149 @@
 [2026-10-08 13:10:39] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
 [2026-10-08 13:10:39] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
 [2026-10-08 13:10:42] [GUI] Shutting down... Killing background processes.
+[2026-10-11 15:30:36] ============================================
+[2026-10-11 15:30:36]   Cloudflare WARP + norandom-reid Bot
+[2026-10-11 15:30:36] ============================================
+[2026-10-11 15:30:36] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-10-11 15:30:36] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-11 15:30:36] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-11 15:30:36] === Auto Ranger+Gear Script v3.4.0 ===
+[2026-10-11 15:30:36] [VERSION] build 2026-10-08 vpn-adb-v1 | ไฟล์แก้ล่าสุด 2026-10-11 15:19
+[2026-10-11 15:30:36] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:30:36] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 15:30:36] [CLEANUP] Removed old shared_stats.json
+[2026-10-11 15:30:36] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-10-11 15:30:36] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-10-11 15:30:36] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-11 15:30:39] --- [ADB] Auto-scanning 101 ports (5555-5755 odd) ---
+[2026-10-11 15:30:41] [ADB] Port scan found 1 device(s): 127.0.0.1:5557
+[2026-10-11 15:30:41] --- Scan Complete ---
+[2026-10-11 15:30:44] [NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)
+[2026-10-11 15:30:45] [WARN] VPN บนเครื่องหลักเปิดอยู่: Cloudflare WARP, Tailscale - ทำเน็ต/adb ของอีมูแกว่งได้ ถ้าไม่ได้ใช้ให้ปิดก่อนรันบอท
+[2026-10-11 15:30:45] [INFO] Connected Devices (1): emulator-5556
+[2026-10-11 15:30:45] [NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม (1 จอ)...
+[2026-10-11 15:30:45] [NET-RESET] emulator-5556: VPN เปิดอยู่แล้ว - ไม่ยุ่ง
+[2026-10-11 15:30:45] [WG-GEN] ไม่มีกุญแจ Windscribe ในเครื่องเลย - วางไฟล์ .conf ของ Windscribe 1 ไฟล์ไว้ที่ C:\Users\leoku\Downloads\LGR\wg_accounts\account1
+[2026-10-11 15:30:45] [WG-GEN] wg/ ไม่มีไฟล์ IP เลย - รัน wg_gen สร้างใหม่ 15 ไฟล์ (บัญชี account1)...
+[2026-10-11 15:30:45] [WG-GEN] ไม่มีกุญแจ Windscribe ในเครื่องเลย - วางไฟล์ .conf ของ Windscribe 1 ไฟล์ไว้ที่ C:\Users\leoku\Downloads\LGR\wg_accounts\account1
+[2026-10-11 15:30:45] [WG-GEN] ตอนนี้มี 0 ไฟล์ใน wg/
+[2026-10-11 15:30:49] [INFO] Pre-loading OCR model...
+[2026-10-11 15:31:06] [INFO] Loading EasyOCR model (first time only)...
+[2026-10-11 15:31:06] Using CPU. Note: This module is much faster with a GPU.
+[2026-10-11 15:31:11] C:\Users\leoku\AppData\Roaming\Python\Python311\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+[2026-10-11 15:31:11]   w_ih = torch.quantize_per_tensor(
+[2026-10-11 15:31:11] [OK] EasyOCR model loaded!
+[2026-10-11 15:31:11] [OK] OCR model loaded.
+[2026-10-11 15:31:11] [FILE] Found 0 files in c:\Users\leoku\Downloads\LGR\main\input-id (รวมโฟลเดอร์ย่อย)
+[2026-10-11 15:31:11] [32m[START] Launching GUI Mode...[0m
+[2026-10-11 15:31:13] [GUI] Launched Successfully. Waiting for manual start.
+[2026-10-11 15:31:13] [GUI] cloud_fast_start=1 - จะเริ่มบอทอัตโนมัติใน 2.0 วินาที
+[2026-10-11 15:31:15] [WG-GEN] wg/ ไม่มีไฟล์ IP เลย - รัน wg_gen สร้างใหม่ 15 ไฟล์ (บัญชี account1)...
+[2026-10-11 15:31:15] [WG-GEN] ไม่มีกุญแจ Windscribe ในเครื่องเลย - วางไฟล์ .conf ของ Windscribe 1 ไฟล์ไว้ที่ C:\Users\leoku\Downloads\LGR\wg_accounts\account1
+[2026-10-11 15:31:15] [WG-GEN] ตอนนี้มี 0 ไฟล์ใน wg/
+[2026-10-11 15:31:18] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:31:18] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 15:31:32] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:31:32] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 15:31:45] [WG-GEN] wg/ ไม่มีไฟล์ IP เลย - รัน wg_gen สร้างใหม่ 15 ไฟล์ (บัญชี account1)...
+[2026-10-11 15:31:45] [WG-GEN] ไม่มีกุญแจ Windscribe ในเครื่องเลย - วางไฟล์ .conf ของ Windscribe 1 ไฟล์ไว้ที่ C:\Users\leoku\Downloads\LGR\wg_accounts\account1
+[2026-10-11 15:31:45] [WG-GEN] ตอนนี้มี 0 ไฟล์ใน wg/
+[2026-10-11 15:31:48] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:31:48] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 15:32:15] [WG-GEN] wg/ ไม่มีไฟล์ IP เลย - รัน wg_gen สร้างใหม่ 15 ไฟล์ (บัญชี account1)...
+[2026-10-11 15:32:15] [WG-GEN] ไม่มีกุญแจ Windscribe ในเครื่องเลย - วางไฟล์ .conf ของ Windscribe 1 ไฟล์ไว้ที่ C:\Users\leoku\Downloads\LGR\wg_accounts\account1
+[2026-10-11 15:32:15] [WG-GEN] ตอนนี้มี 0 ไฟล์ใน wg/
+[2026-10-11 15:32:18] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:32:18] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 15:32:45] [WG-GEN] wg/ ไม่มีไฟล์ IP เลย - รัน wg_gen สร้างใหม่ 15 ไฟล์ (บัญชี account1)...
+[2026-10-11 15:32:45] [WG-GEN] ไม่มีกุญแจ Windscribe ในเครื่องเลย - วางไฟล์ .conf ของ Windscribe 1 ไฟล์ไว้ที่ C:\Users\leoku\Downloads\LGR\wg_accounts\account1
+[2026-10-11 15:32:45] [WG-GEN] ตอนนี้มี 0 ไฟล์ใน wg/
+[2026-10-11 15:32:48] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:32:48] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 15:33:30] ============================================
+[2026-10-11 15:33:30]   Cloudflare WARP + norandom-reid Bot
+[2026-10-11 15:33:30] ============================================
+[2026-10-11 15:33:30] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-10-11 15:33:30] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-11 15:33:30] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-11 15:33:30] === Auto Ranger+Gear Script v3.4.0 ===
+[2026-10-11 15:33:30] [VERSION] build 2026-10-08 vpn-adb-v1 | ไฟล์แก้ล่าสุด 2026-10-11 15:19
+[2026-10-11 15:33:30] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:33:30] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 15:33:30] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-10-11 15:33:30] [CLEANUP] Removed old shared_stats.json
+[2026-10-11 15:33:30] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-10-11 15:33:30] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-10-11 15:33:30] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-11 15:33:33] --- [ADB] Auto-scanning 101 ports (5555-5755 odd) ---
+[2026-10-11 15:33:35] [ADB] Port scan found 1 device(s): 127.0.0.1:5557
+[2026-10-11 15:33:35] --- Scan Complete ---
+[2026-10-11 15:33:37] [NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)
+[2026-10-11 15:33:37] [WARN] VPN บนเครื่องหลักเปิดอยู่: Cloudflare WARP, Tailscale - ทำเน็ต/adb ของอีมูแกว่งได้ ถ้าไม่ได้ใช้ให้ปิดก่อนรันบอท
+[2026-10-11 15:33:37] [INFO] Connected Devices (1): emulator-5556
+[2026-10-11 15:33:37] [NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม (1 จอ)...
+[2026-10-11 15:33:40] [NET-RESET] emulator-5556: ปิด VPN ค้างแล้ว | เน็ต: ใช้ได้
+[2026-10-11 15:33:40] [NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง 30 วิ ก่อนเริ่มทำงาน...
+[2026-10-11 15:34:12] [INFO] Pre-loading OCR model...
+[2026-10-11 15:34:17] [INFO] Loading EasyOCR model (first time only)...
+[2026-10-11 15:34:17] Using CPU. Note: This module is much faster with a GPU.
+[2026-10-11 15:34:22] C:\Users\leoku\AppData\Roaming\Python\Python311\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+[2026-10-11 15:34:22]   w_ih = torch.quantize_per_tensor(
+[2026-10-11 15:34:22] [OK] EasyOCR model loaded!
+[2026-10-11 15:34:22] [OK] OCR model loaded.
+[2026-10-11 15:34:22] [FILE] Found 8281 files in c:\Users\leoku\Downloads\LGR\main\input-id (รวมโฟลเดอร์ย่อย)
+[2026-10-11 15:34:22] [FILE] คิวรวมทั้งหมด 8281 ไฟล์ (backup + input-id)
+[2026-10-11 15:34:22] [32m[START] Launching GUI Mode...[0m
+[2026-10-11 15:34:22] [GUI] Launched Successfully. Waiting for manual start.
+[2026-10-11 15:34:22] [GUI] cloud_fast_start=1 - จะเริ่มบอทอัตโนมัติใน 2.0 วินาที
+[2026-10-11 15:34:27] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:34:27] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 15:34:57] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:34:57] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 15:35:27] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 15:35:27] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 18:27:53] ============================================
+[2026-10-11 18:27:53]   Cloudflare WARP + norandom-reid Bot
+[2026-10-11 18:27:53] ============================================
+[2026-10-11 18:27:54] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-10-11 18:27:54] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-11 18:27:54] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-11 18:27:54] === Auto Ranger+Gear Script v3.4.1 ===
+[2026-10-11 18:27:54] [VERSION] build 2026-10-11 fast-v2 | ไฟล์แก้ล่าสุด 2026-10-11 15:54
+[2026-10-11 18:27:54] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 18:27:54] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 18:27:54] [CLEANUP] Removed 4 stale .lock file(s)
+[2026-10-11 18:27:54] [CLEANUP] Removed old shared_stats.json
+[2026-10-11 18:27:54] [ADB] Found file at c:\Users\leoku\Downloads\LGR\main\adb\adb.exe, testing...
+[2026-10-11 18:27:54] [ADB] Verified: c:\Users\leoku\Downloads\LGR\main\adb\adb.exe
+[2026-10-11 18:27:54] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-11 18:27:57] --- [ADB] Auto-scanning 101 ports (5555-5755 odd) ---
+[2026-10-11 18:27:59] [ADB] Port scan found 1 device(s): 127.0.0.1:5557
+[2026-10-11 18:27:59] --- Scan Complete ---
+[2026-10-11 18:28:02] [NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)
+[2026-10-11 18:28:02] [WARN] VPN บนเครื่องหลักเปิดอยู่: Cloudflare WARP, Tailscale - ทำเน็ต/adb ของอีมูแกว่งได้ ถ้าไม่ได้ใช้ให้ปิดก่อนรันบอท
+[2026-10-11 18:28:02] [INFO] Connected Devices (1): emulator-5556
+[2026-10-11 18:28:02] [NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม (1 จอ)...
+[2026-10-11 18:28:03] [NET-RESET] emulator-5556: VPN ปิดอยู่ - จะเปิดให้ก่อนเข้าเกม
+[2026-10-11 18:28:03] [WG-GEN] ใช้ Key Pair จาก keypair.txt | มีอยู่แล้ว 88 ไฟล์ ต้องการ 3
+[2026-10-11 18:28:03] [WG-GEN] ครบแล้ว ไม่ต้องสร้างเพิ่ม
+[2026-10-11 18:28:03] [WG-GEN] เก็บกุญแจสำรองไว้แล้ว (Windscribe-Adelaide-Lofty-WG.conf) - IP หมดเมื่อไหร่บอทสร้างใหม่เอง
+[2026-10-11 18:28:07] [INFO] Pre-loading OCR model...
+[2026-10-11 18:28:15] [INFO] Loading EasyOCR model (first time only)...
+[2026-10-11 18:28:15] Using CPU. Note: This module is much faster with a GPU.
+[2026-10-11 18:28:18] C:\Users\leoku\AppData\Roaming\Python\Python311\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+[2026-10-11 18:28:18]   w_ih = torch.quantize_per_tensor(
+[2026-10-11 18:28:19] [OK] EasyOCR model loaded!
+[2026-10-11 18:28:19] [OK] OCR model loaded.
+[2026-10-11 18:28:19] [FILE] Found 8281 files in c:\Users\leoku\Downloads\LGR\main\input-id (รวมโฟลเดอร์ย่อย)
+[2026-10-11 18:28:19] [FILE] คิวรวมทั้งหมด 8281 ไฟล์ (backup + input-id)
+[2026-10-11 18:28:19] [32m[START] Launching GUI Mode...[0m
+[2026-10-11 18:28:20] [GUI] Launched Successfully. Waiting for manual start.
+[2026-10-11 18:28:20] [GUI] cloud_fast_start=1 - จะเริ่มบอทอัตโนมัติใน 2.0 วินาที
+[2026-10-11 18:28:25] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 18:28:25] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 18:28:55] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 18:28:55] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 18:29:14] [CONFIG] Base Loaded: c:\Users\leoku\Downloads\LGR\main\ranger-gear_config.json
+[2026-10-11 18:29:14] [CONFIG] UI Settings Loaded: c:\Users\leoku\Downloads\LGR\main\configmain.json
+[2026-10-11 18:29:18] [GUI] Shutting down... Killing background processes.
