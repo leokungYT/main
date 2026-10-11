@@ -187,9 +187,26 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
         tpl = read_conf(os.path.join(WG_DIR, confs[0]))
         tpl_name = confs[0]
     else:
-        print(f"[WG-GEN] ไม่มีไฟล์ .conf ใน {WG_DIR}/ เลย - โหลดจากเว็บ Windscribe มา 1 ไฟล์ก่อน (ใช้เป็น Key Pair)")
-        return 1
-    if machine and not account and tpl_name != "keypair.txt":
+        # wg/ ว่าง -> หากุญแจจาก wg_accounts/ (สำรอง _backup ก่อน แล้วบัญชีอื่น) แทนการยอมแพ้
+        accs = os.path.join(os.path.dirname(os.path.abspath(WG_DIR)), "wg_accounts")
+        cands = [os.path.join(accs, "_backup", "key.conf")]
+        for a2 in sorted(os.listdir(accs)) if os.path.isdir(accs) else []:
+            d2 = os.path.join(accs, a2)
+            if os.path.isdir(d2):
+                cands += [os.path.join(d2, x) for x in sorted(os.listdir(d2)) if x.lower().endswith((".conf", ".txt"))]
+        tpl = None
+        for p in cands:
+            if os.path.isfile(p):
+                kv = read_conf(p)
+                if all(kv.get(k) for k in ("PrivateKey", "Address", "DNS", "PresharedKey")):
+                    tpl, tpl_name = kv, p
+                    break
+        if tpl is None:
+            print(f"[WG-GEN] ไม่มีกุญแจ Windscribe ในเครื่องเลย (wg/ และ wg_accounts/ ว่าง) - โหลดไฟล์ .conf จาก Config Generator ของ Windscribe มาวางใน wg_accounts/<ชื่อบัญชี>/ 1 ไฟล์")
+            return 1
+        os.makedirs(WG_DIR, exist_ok=True)
+        print(f"[WG-GEN] wg/ ว่าง - ใช้กุญแจจาก {tpl_name}")
+    if machine and not account and tpl_name != "keypair.txt" and os.path.exists(os.path.join(WG_DIR, str(tpl_name))):
         # ไฟล์ต้นแบบ = เซิร์ฟเวอร์เดียวกันทุกเครื่องในกลุ่มกุญแจ -> ห้ามใช้ต่อจริง เก็บไว้เป็นกุญแจอย่างเดียว
         os.replace(os.path.join(WG_DIR, tpl_name), key_txt)
         print(f"[WG-GEN] โหมดหลายเครื่อง: ย้าย {tpl_name} -> keypair.txt (ใช้อ่านกุญแจ ไม่ใช้ต่อ VPN)")
