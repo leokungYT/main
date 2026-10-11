@@ -307,7 +307,7 @@ def ensure_windscribe_bootstrap():
     cfg = _read_main_config()
     if not int(cfg.get("windscribe_autostart", 0) or 0):
         return
-    if int(cfg.get("wg_enabled", 0) or 0):
+    if int(cfg.get("wg_enabled", 1) or 0):
         if _wg_list_configs(str(cfg.get("wg_dir", "wg"))):
             print("[WINDSCRIBE] ใช้ WireGuard แยกจอ (wg/) อยู่ - ไม่ต่อ VPN ทั้งเครื่อง กันซ้อน 2 ชั้น")
             return
@@ -2427,7 +2427,7 @@ def reset_network_all(devices):
 
     def one(dev):
         had = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
-        if int(config.get("wg_enabled", 0) or 0) and int(config.get("wg_once", 1) or 0):
+        if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_once", 1) or 0):
             # wg_once: VPN ต้องเปิดแช่ไว้ - ตอนเริ่มห้ามปิด tunnel ที่เปิดอยู่ ล้างแค่ proxy ค้าง
             sh(dev, "settings put global http_proxy :0; settings delete global http_proxy; "
                     "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
@@ -2450,7 +2450,7 @@ def reset_network_all(devices):
     for t in ts:
         t.join(60)
     wait = float(config.get("net_reset_wait", 30) or 0)
-    if int(config.get("wg_enabled", 0) or 0) and int(config.get("wg_once", 1) or 0):
+    if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_once", 1) or 0):
         wait = 0                     # wg_once: ไม่ได้ปิด VPN -> ไม่ต้องรอเน็ตนิ่ง
     if wait > 0:
         print(f"[NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง {wait:.0f} วิ ก่อนเริ่มทำงาน...")
@@ -4076,7 +4076,7 @@ class RangerGearBot(threading.Thread):
         """
         if int(config.get("wg_lock", 1) or 0):
             return None   # wg_lock: ห้ามปิด VPN เด็ดขาด (ปิดแล้วเข้าเกมไม่ได้)
-        if not int(config.get("wg_enabled", 0) or 0):
+        if not int(config.get("wg_enabled", 1) or 0):
             return
         try:
             was = self._wg_vpn_active()
@@ -4112,7 +4112,7 @@ class RangerGearBot(threading.Thread):
         คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
         if int(config.get("wg_lock", 1) or 0):
             return False   # wg_lock: ไม่ปิด/สลับ VPN ตอนเน็ตหลุด -> กด RETRY แบบเดิม
-        if not int(config.get("wg_enabled", 0) or 0):
+        if not int(config.get("wg_enabled", 1) or 0):
             return False
         if int(config.get("wg_once", 1) or 0):
             # wg_once: เน็ตแกว่งครั้งเดียวไม่เปลี่ยน IP (กด RETRY) แต่ถ้าเจอซ้ำครบ wg_net_switch_after ครั้ง
@@ -4186,7 +4186,7 @@ class RangerGearBot(threading.Thread):
         เจอครบ wg_auth_fallback ไอดี (default 2) -> ปิด VPN ของจอนี้ไปจนปิดบอท ใช้เน็ตบ้านแทน (0 = ไม่ปิด)"""
         if int(config.get("wg_lock", 1) or 0):
             return None   # wg_lock: ไม่ปิด VPN แม้ login ไม่ผ่าน
-        if not int(config.get("wg_enabled", 0) or 0) or not getattr(self, "_wg_conf_applied", None):
+        if not int(config.get("wg_enabled", 1) or 0) or not getattr(self, "_wg_conf_applied", None):
             return
         lim = int(config.get("wg_auth_fallback", 0) or 0)
         if lim <= 0:
@@ -4222,7 +4222,7 @@ class RangerGearBot(threading.Thread):
             self._wg_conf_written = None
             print(f"[{self.device_id}] [WG] LINE ไม่รับ IP {os.path.basename(cur)} - สลับ IP ใหม่ตอนเปิดเกมรอบหน้า")
             return True
-        if not int(config.get("wg_enabled", 0) or 0) or getattr(self, "_wg_off", False):
+        if not int(config.get("wg_enabled", 1) or 0) or getattr(self, "_wg_off", False):
             return False
         if int(config.get("wg_once", 1) or 0) and not any(k in str(reason) for k in ("fixid", "login failed")):
             return False                      # wg_once: เปลี่ยนเซิร์ฟเวอร์เฉพาะโดนบล็อก (fixid / login failed) - เน็ตแกว่ง/จอดำ/ค้าง ไม่นับ
@@ -4366,7 +4366,7 @@ class RangerGearBot(threading.Thread):
 
     def _ensure_wireguard(self):
         """ต่อ WireGuard ในอีมูฯ จอนี้ (เรียกก่อนเปิดเกมทุกครั้ง - ต่ออยู่แล้วจะข้ามเร็ว)"""
-        if not int(config.get("wg_enabled", 0) or 0) or getattr(self, "_wg_off", False):
+        if not int(config.get("wg_enabled", 1) or 0) or getattr(self, "_wg_off", False):
             return
         conf = self._wg_conf_for_device()
         if not conf and not getattr(self, "_wg_down_done", False):
@@ -4437,7 +4437,7 @@ class RangerGearBot(threading.Thread):
         """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
         ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
         ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
-        if not int(config.get("wg_enabled", 0) or 0):
+        if not int(config.get("wg_enabled", 1) or 0):
             return
         if not int(config.get("wg_required", 0) or 0):   # 0 = VPN ไม่ขึ้นก็เล่นต่อด้วยเน็ตบ้าน (แบบเดิม)
             return self._ensure_wireguard()
@@ -10656,7 +10656,7 @@ if __name__ == "__main__":
     reset_network_all(devices)
 
     # === ไฟล์ WireGuard ไม่พอจำนวนจอ -> สร้างเพิ่มอัตโนมัติจาก Key Pair ที่มี (wg_gen.py) ===
-    if int(config.get("wg_enabled", 0) or 0) and int(config.get("wg_auto_gen", 1) or 0):
+    if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_auto_gen", 1) or 0):
         try:
             import wg_gen
             _wgd = str(config.get("wg_dir", "wg"))
@@ -10751,11 +10751,11 @@ if __name__ == "__main__":
                 print(f"[WG-GEN] สร้าง IP ใหม่ไม่สำเร็จ: {e}")
             time.sleep(30)
 
-    if int(config.get("wg_enabled", 0) or 0):
+    if int(config.get("wg_enabled", 1) or 0):
         threading.Thread(target=_wg_empty_watch, args=(len(devices) + int(config.get("wg_gen_spare", 2)),),
                          daemon=True).start()
 
-    if int(config.get("wg_enabled", 0) or 0) and float(config.get("wg_regen_every_min", 0) or 0) > 0:
+    if int(config.get("wg_enabled", 1) or 0) and float(config.get("wg_regen_every_min", 0) or 0) > 0:
         threading.Thread(target=_wg_regen_loop, args=(len(devices) + int(config.get("wg_gen_spare", 2)),),
                          daemon=True).start()
 
