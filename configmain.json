@@ -77,6 +77,7 @@
     "windscribe_rotate_every": 0,
     "delay_scale": 0.1,
     "wg_enabled": 1,
+    "wg_once": 0,
     "wg_account": "account1",
     "wg_machine": 1,
     "wg_per_machine": 15,
@@ -158,5 +159,5 @@
     "event_back_per_round": 10,
     "wg_regen_every_min": 0,
     "wg_required": 1,
-    "wg_lock": 1
+    "wg_lock": 0
 }

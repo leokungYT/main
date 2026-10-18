@@ -11,6 +11,10 @@ gacha_reroll.py — สุ่มกาชาผ่าน API (เลือกต
   # สุ่มตู้ที่เลือก N ครั้ง (ไม่เจาะเป้า)
   python gacha_reroll.py <id> --group grp_gacha_1 --gacha gacha_grp_1 --index 1 --n 5
 
+  # เลือกวิธีจ่าย --pay ruby | ticket | all (all = ใช้ตั๋วก่อน หมดแล้วต่อ ruby)
+  # --n 0 = สุ่มจนทรัพยากรหมด ; ตู้ ultra หน้าแรก: 50 ruby หรือ 5 ตั๋ว/ครั้ง
+  python gacha_reroll.py <id> --group grp_gacha_10 --gacha gacha_grp_1501 --index 1 --pay all --n 3
+
   # รีโรล: สุ่มจนติดตัวเป้า (โค้ดหรือชื่อบางส่วน) หรือหมด budget/ครบ max
   python gacha_reroll.py <id> --group grp_gacha_1 --gacha gacha_grp_1 \
         --target u2030e-jessica --target kappa --max 50
@@ -31,7 +35,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from lgr_api import (
-    LGRClient, load_creds, save_creds, parse_ruby, CREDS_FILE,
+    LGRClient, load_creds, save_creds, parse_ruby, gacha_pick_pay, CREDS_FILE,
 )
 
 try:
@@ -96,8 +100,10 @@ def main():
     ap.add_argument("--gacha")
     ap.add_argument("--index", type=int, default=1)
     ap.add_argument("--target", action="append", default=[], help="โค้ด/ชื่อบางส่วนของตัวที่อยากได้ (ใส่ซ้ำได้)")
-    ap.add_argument("--n", type=int, default=1, help="จำนวนครั้งเมื่อไม่ได้ตั้ง target")
+    ap.add_argument("--n", type=int, default=1, help="จำนวนครั้งเมื่อไม่ได้ตั้ง target (0 = สุ่มจนหมด)")
     ap.add_argument("--max", type=int, default=50, help="เพดานจำนวนครั้งตอนรีโรล")
+    ap.add_argument("--pay", choices=["ruby", "ticket", "all"], default="ruby",
+                    help="จ่ายด้วย ruby / ตั๋ว premium / all (ตั๋วก่อน หมดแล้วต่อ ruby)")
     args = ap.parse_args()
 
     creds = load_creds(CREDS_FILE)
@@ -119,7 +125,8 @@ def main():
         for gi in rows:
             cf, cost = _cost_field(gi)
             print(f"  {gi.get('groupId'):22} {gi.get('gachaId'):18} idx={gi.get('gachaIndex')} "
-                  f"pull={gi.get('gachaCount')}(+{gi.get('bonusCount',0)}) cost={cost} {cf}")
+                  f"pull={gi.get('gachaCount')}(+{gi.get('bonusCount',0)}) cost={cost} {cf}"
+                  + (f" | ตั๋ว {gi.get('ticketPayableCost')}" if gi.get("ticketPayableType") == "TICKET" else ""))
         if not args.list:
             print("\n-> ระบุ --group/--gacha เพื่อสุ่ม (ดู index จากด้านบน)")
         return
@@ -129,16 +136,29 @@ def main():
     # ราคาต่อครั้งของตู้ที่เลือก (ไว้เช็ก budget)
     rows = {(g.get("groupId"), g.get("gachaId"), g.get("gachaIndex")): g for g in list_gacha(c)}
     sel = rows.get((args.group, args.gacha, args.index))
-    cost_field, cost = _cost_field(sel) if sel else ("ruby", 0)
+    if not sel:
+        print(f"[X] ไม่พบตู้ {args.group}/{args.gacha} idx={args.index} (ดู --list)")
+        return
+    _, prof = c.home()
+    res = (prof or {}).get("result", {}) if isinstance(prof, dict) else {}
+    ruby = parse_ruby(res, res.get("player") or {}) or 0
+    tickets = c.ticket_count().get("premium", 0)
 
-    limit = args.max if targets else args.n
-    mode = f"รีโรลหาเป้า {targets}" if targets else f"สุ่ม {args.n} ครั้ง"
-    print(f"[*] {args.id} | {args.group}/{args.gacha} idx={args.index} | {mode} | cost={cost} {cost_field}/ครั้ง\n", flush=True)
+    limit = args.max if targets else (args.n if args.n > 0 else 10**6)
+    mode = f"รีโรลหาเป้า {targets}" if targets else (f"สุ่ม {args.n} ครั้ง" if args.n > 0 else "สุ่มจนหมด")
+    print(f"[*] {args.id} | {args.group}/{args.gacha} idx={args.index} | {mode} | pay={args.pay} "
+          f"| มี ruby {ruby} ตั๋ว {tickets}\n", flush=True)
 
     hit = None
     done = 0
     for i in range(limit):
-        st, rewards, raw = c.gacha_pull(args.group, args.gacha, args.index)
+        use_t, cost = gacha_pick_pay(args.pay, sel, ruby, tickets)
+        if use_t is None:
+            print(f"  [{i+1}] หยุด: {cost}", flush=True)
+            break
+        if i:
+            time.sleep(1.2)   # กัน 429 (เซิร์ฟจำกัดความถี่)
+        st, rewards, raw = c.gacha_pull(args.group, args.gacha, args.index, use_ticket=use_t)
         if st != 200:
             msg = ""
             if isinstance(raw, dict):
@@ -146,8 +166,12 @@ def main():
             print(f"  [{i+1}] หยุด: status={st} {str(msg)[:100]}", flush=True)
             break
         done += 1
+        if use_t:
+            tickets -= cost
+        else:
+            ruby -= cost
         names = ", ".join(rewards) or "-"
-        print(f"  [{i+1}] {names}", flush=True)
+        print(f"  [{i+1}] ({'ตั๋ว' if use_t else 'ruby'} {cost}) {names}", flush=True)
         if targets:
             got = match_target(rewards, targets, tbase)
             if got:
@@ -168,7 +192,7 @@ def main():
     print("\n" + "=" * 55)
     print(f"สุ่มไป {done} ครั้ง | " + (f"★ ติดเป้า {hit['code']} ครั้งที่ {hit['pull']}" if hit
           else ("ไม่ติดเป้า" if targets else "ครบจำนวน")))
-    print(f"ruby คงเหลือ: {creds[args.id].get('ruby','?')}")
+    print(f"ruby คงเหลือ: {creds[args.id].get('ruby','?')} | ตั๋วคงเหลือ: {tickets}")
     print("=" * 55)
 
 

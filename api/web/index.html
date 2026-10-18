@@ -105,6 +105,10 @@
     <div class="tpill" id="openpick">⚙ ตั้งค่าตัวที่จะเช็ค <span class="n" id="tcount">0</span></div>
     <button class="btn ghost" id="cleart">ล้างเป้าหมาย</button>
     <span class="spacer"></span>
+    <button class="btn" id="daily" title="เข้าเกมประจำวัน (เช็คอิน+รับของ) อัตโนมัติทุกวัน">📅 ประจำวัน</button>
+    <button class="btn" id="autog" title="สุ่มกาชาอัตโนมัติทุกไอดี ตามลำดับตู้ที่ตั้งไว้">🎰 Auto สุ่ม</button>
+    <button class="btn" id="giftlog" title="ดูว่ารับของอะไรไปบ้าง">📜 Log</button>
+    <button class="btn" id="gifts" title="รับของในกล่องของขวัญ + รางวัลภารกิจ ทุกไอดี">🎁 รับของทุกไอดี</button>
     <button class="btn primary" id="run">▶ เริ่มเช็ค</button>
     <button class="btn" id="stop" disabled>■ หยุด</button>
     <button class="btn" id="dlhit">⬇ ZIP ที่เจอเป้า</button>
@@ -146,23 +150,48 @@
   </div>
 </div>
 
+<style>
+.gcards{display:flex;flex-direction:column;gap:8px}
+.gcard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;align-items:center;gap:10px;padding:8px}
+.gcard img{width:220px;flex:none;height:auto;border-radius:8px;display:block}
+.gcard .gc-b{flex:1;min-width:0}
+@media (max-width:600px){.gcard{flex-direction:column;align-items:stretch}.gcard img{width:100%}}
+.gcard .gc-b{padding:8px 10px;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.gcard .gc-n{font-weight:600;font-size:13px}
+.gcard .gc-p{display:flex;flex-wrap:wrap;gap:6px}
+.gcard .gc-p button{flex:1;min-width:110px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:inherit;cursor:pointer;font-size:12px}
+.gcard .gc-p button.on{outline:2px solid #6c8cff;background:#6c8cff22}
+.gcard.ended{opacity:.45}
+.gsplit{display:flex;gap:12px;align-items:flex-start}
+.gsplit .gcards{flex:1;min-width:0}
+.gres{width:320px;flex:none;position:sticky;top:0;max-height:70vh;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px}
+.gres-h{font-weight:600;margin-bottom:6px}
+@media (max-width:800px){.gsplit{flex-direction:column}.gres{width:auto;position:static}}
+</style>
 <!-- gacha modal -->
 <div class="overlay" id="goverlay">
-  <div class="modal" style="max-width:560px">
+  <div class="modal" style="max-width:1280px;width:96vw">
     <div class="mhead">
       <div class="row"><h3>🎲 สุ่มกาชา <span id="gkey" class="mut"></span></h3><span class="spacer"></span><button class="x" id="gclose">×</button></div>
       <div class="mut" style="font-size:13px;margin-top:2px">เป้าหมาย = ตัวที่เลือกไว้ (⚙ ด้านบน) — ถ้ามีเป้า จะรีโรลจนกว่าจะติด/หมด budget; ถ้าไม่มีเป้า สุ่มตามจำนวน</div>
       <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">
-        <select id="ggroup" style="flex:1;min-width:240px"></select>
+        <select id="ggroup" style="flex:1;min-width:240px;display:none"></select>
+        <span id="gsel" class="mut" style="flex:1;min-width:200px">เลือกตู้จากการ์ดด้านล่าง</span>
         <label class="mut" style="display:flex;align-items:center;gap:6px">จำนวน/เพดาน
           <input type="number" id="gmax" value="10" min="1" max="200" style="width:64px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px">
+          <select id="gpay" title="จ่ายด้วย" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px;color:inherit">
+            <option value="ruby">Ruby</option><option value="ticket">ตั๋ว</option><option value="all">All in (ตั๋วก่อน→ruby)</option>
+          </select>
         </label>
         <button class="btn primary" id="groll">▶ สุ่ม</button>
         <button class="btn" id="gstop" disabled>■ หยุด</button>
       </div>
       <div class="mut" style="margin-top:6px" id="gtargets"></div>
     </div>
-    <div class="mbody"><div id="glog" style="font-size:13px;line-height:1.9"></div></div>
+    <div class="mbody gsplit">
+      <div id="gcards" class="gcards"></div>
+      <div class="gres"><div class="gres-h">🎁 ผลการสุ่ม</div><div id="glog" style="font-size:13px;line-height:1.9"></div></div>
+    </div>
     <div class="mfoot"><span class="mut" id="ginfo">—</span></div>
   </div>
 </div>
@@ -307,6 +336,237 @@ async function runCheck(){
   render();
 }
 $("#run").onclick=runCheck; $("#stop").onclick=()=>abort=true;
+// ---------- Auto สุ่มทุกไอดี: ตั้งลำดับตู้ + วิธีจ่าย + จำนวน แล้วไล่ทีละบัญชี
+let APLAN=[]; try{ APLAN=JSON.parse(localStorage.getItem("autoplan")||"[]"); }catch(e){}
+let AOPTS=[], ARUN=false, ASTOP=false;
+let ATGT=new Set(); try{ ATGT=new Set(JSON.parse(localStorage.getItem("autotgt")||"[]")); }catch(e){}
+function saveAtgt(){ try{ localStorage.setItem("autotgt",JSON.stringify([...ATGT])); }catch(e){} }
+// ตัวเป้า = ตัวเด่นของทุกตู้ที่เปิด (ติ๊กแล้ว: ไอดีไหนสุ่มติด -> หยุดไอดีนั้น ข้ามไปไอดีต่อไป)
+function renderTargets(){
+  const seen=new Set(), list=[];
+  AOPTS.forEach(g=>(g.featured||[]).forEach(c=>{ if(c.startsWith("u")&&!seen.has(c)){ seen.add(c); list.push(c); } }));
+  $("#atgt").innerHTML=list.length?list.map(c=>'<label style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;padding:4px 8px;margin:3px;cursor:pointer'
+      +(ATGT.has(c)?';outline:2px solid #6c8cff':'')+'"><input type="checkbox" data-t="'+c+'"'+(ATGT.has(c)?' checked':'')+'>'
+      +'<img src="'+heroImg(c)+'" style="width:34px;height:34px" onerror="this.style.display=\'none\'">'
+      +'<span style="font-size:12.5px">'+aesc(dispName(c))+' <span class="mut">'+c+'</span></span></label>').join("")
+    :'<span class="mut">-</span>';
+  $("#atgt").querySelectorAll("[data-t]").forEach(el=>el.onchange=()=>{ el.checked?ATGT.add(el.dataset.t):ATGT.delete(el.dataset.t); saveAtgt(); renderTargets(); });
+}
+const aesc=t=>String(t??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function saveAplan(){ try{ localStorage.setItem("autoplan",JSON.stringify(APLAN)); }catch(e){} }
+function aKey(g){ return g.groupId+"|"+g.gachaId+"|"+g.index; }
+function aCost(g){
+  let c=g.needRuby?(g.displayRuby+" 💎"):(g.needFriendship?(g.needFriendship*g.count+" FP"):(g.needEventTicket?"ตั๋วอีเวนต์":"ฟรี"));
+  return g.ticketCost?c+" / 🎫"+g.ticketCost:c;
+}
+function aImg(g,w){ return (g.listBg||g.bg)?'<img src="'+(g.listBg||g.bg)+'" style="width:'+w+'px;border-radius:6px;flex:none">':''; }
+function aSel(i,v){
+  return '<select data-i="'+i+'" class="apay" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px;color:inherit">'
+    +[["all","All in"],["ticket","ตั๋ว"],["ruby","Ruby"]].map(([k,t])=>'<option value="'+k+'"'+(v===k?' selected':'')+'>'+t+'</option>').join("")+'</select>';
+}
+function renderAuto(){
+  const inPlan=new Set(APLAN.map(p=>p.k));
+  const plan=APLAN.map((p,i)=>{ const g=p.g;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;flex-wrap:wrap">'
+      +'<b style="width:22px;text-align:center">'+(i+1)+'</b>'+aImg(g,120)
+      +'<div style="flex:1;min-width:140px;font-size:12.5px"><div><b>'+aesc(g.name||g.groupId)+'</b></div><div class="mut">'+g.count+'ใบ'+(g.bonus?'(+'+g.bonus+')':'')+' · '+aCost(g)+'</div></div>'
+      +aSel(i,p.pay)
+      +'<label class="mut" style="font-size:12px">ครั้ง <input type="number" min="0" data-i="'+i+'" class="an" value="'+p.n+'" style="width:56px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px;color:inherit"></label>'
+      +'<button class="btn ghost" data-up="'+i+'" title="ขึ้น">▲</button><button class="btn ghost" data-dn="'+i+'" title="ลง">▼</button>'
+      +'<button class="btn ghost" data-rm="'+i+'" title="เอาออก">✕</button></div>'; }).join("");
+  const opts=AOPTS.filter(g=>!inPlan.has(aKey(g))).map(g=>
+    '<div style="display:flex;align-items:center;gap:8px;padding:5px;border-bottom:1px solid var(--line)">'+aImg(g,96)
+    +'<div style="flex:1;font-size:12.5px"><b>'+aesc(g.name||g.groupId)+'</b><div class="mut">'+g.count+'ใบ'+(g.bonus?'(+'+g.bonus+')':'')+' · '+aCost(g)+'</div></div>'
+    +'<button class="btn" data-add="'+aKey(g)+'">＋ เพิ่ม</button></div>').join("");
+  $("#aplan").innerHTML=plan||'<div class="mut">ยังไม่ได้เลือกตู้ — กด ＋ เพิ่ม ด้านล่าง (สุ่มตามลำดับบนลงล่าง)</div>';
+  $("#aopts").innerHTML=opts||'<div class="mut">-</div>';
+  const P=$("#aplan");
+  P.querySelectorAll(".apay").forEach(el=>el.onchange=()=>{APLAN[+el.dataset.i].pay=el.value;saveAplan();});
+  P.querySelectorAll(".an").forEach(el=>el.onchange=()=>{APLAN[+el.dataset.i].n=Math.max(0,+el.value||0);saveAplan();});
+  P.querySelectorAll("[data-up]").forEach(b=>b.onclick=()=>{const i=+b.dataset.up;if(i>0){[APLAN[i-1],APLAN[i]]=[APLAN[i],APLAN[i-1]];saveAplan();renderAuto();}});
+  P.querySelectorAll("[data-dn]").forEach(b=>b.onclick=()=>{const i=+b.dataset.dn;if(i<APLAN.length-1){[APLAN[i+1],APLAN[i]]=[APLAN[i],APLAN[i+1]];saveAplan();renderAuto();}});
+  P.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{APLAN.splice(+b.dataset.rm,1);saveAplan();renderAuto();});
+  $("#aopts").querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>{
+    const g=AOPTS.find(o=>aKey(o)===b.dataset.add); if(!g) return;
+    APLAN.push({k:b.dataset.add,pay:g.ticketCost?"all":"ruby",n:0,g:{groupId:g.groupId,gachaId:g.gachaId,index:g.index,name:g.name,
+      count:g.count,bonus:g.bonus,listBg:g.listBg,bg:g.bg,needRuby:g.needRuby,displayRuby:g.displayRuby,ticketCost:g.ticketCost,
+      needFriendship:g.needFriendship,needEventTicket:g.needEventTicket}});
+    saveAplan(); renderAuto(); });
+}
+async function openAuto(){
+  let ov=$("#aov");
+  if(!ov){ ov=document.createElement("div"); ov.id="aov"; ov.className="overlay";
+    ov.innerHTML='<div class="modal" style="max-width:1100px;width:96vw"><div class="mhead"><div class="row"><h3>🎰 Auto สุ่มทุกไอดี</h3><span class="spacer"></span><button class="x" id="ax">×</button></div>'
+      +'<div class="mut" style="font-size:13px;margin-top:2px">แต่ละไอดีสุ่มตู้ลำดับ 1 จนครบจำนวน/ทรัพยากรหมด แล้วต่อลำดับ 2 … · ครั้ง = 0 คือสุ่มจนหมด · All in = ใช้ตั๋วก่อนแล้วต่อ ruby</div>'
+      +'<div class="row" style="margin-top:8px;gap:8px"><button class="btn primary" id="ago">▶ เริ่ม Auto สุ่ม</button><button class="btn" id="astop" disabled>■ หยุด</button><span class="mut" id="ast"></span></div></div>'
+      +'<div class="mbody gsplit"><div style="flex:1;min-width:0">'
+      +'<div class="gres-h">🎯 ตัวเป้า — ไอดีไหนสุ่มได้ตัวที่ติ๊ก จะหยุดไอดีนั้นแล้วข้ามไปไอดีต่อไป (ไม่ติ๊ก = สุ่มตามจำนวน)</div><div id="atgt" style="margin-bottom:10px"></div>'
+      +'<div class="gres-h">ลำดับการสุ่ม</div><div id="aplan"></div>'
+      +'<div class="gres-h" style="margin-top:12px">ตู้ที่เปิดอยู่</div><div id="aopts" class="mut">กำลังโหลด…</div></div>'
+      +'<div class="gres"><div class="gres-h">🎁 ผลการสุ่ม</div><div id="alog" style="font-size:12.5px;line-height:1.8"></div></div></div></div>';
+    document.body.appendChild(ov);
+    $("#ax").onclick=()=>{ ov.style.display="none"; };
+    $("#ago").onclick=runAuto; $("#astop").onclick=()=>{ ASTOP=true; };
+  }
+  ov.style.display="flex"; renderAuto();
+  // ตู้เหมือนกันทุกไอดี -> ไล่ลองทีละบัญชีจนโหลดได้ (บางไอดี session หมด/เปิดเกมอยู่ = 401)
+  const accs=DATA.filter(a=>a.has_cred); if(!accs.length){ $("#aopts").textContent="ไม่มีบัญชี"; return; }
+  try{
+    let j=null;
+    for(const acc of accs){
+      $("#aopts").textContent="กำลังโหลดตู้จาก "+acc.key+"…";
+      j=await (await fetch("/api/gacha/info?id="+encodeURIComponent(acc.key))).json();
+      if(j.ok||j.status===403) break;
+    }
+    if(!j.ok){ $("#aopts").textContent="โหลดตู้ไม่ได้: "+(j.status===403?"IP โดนบล็อก (403)":(j.err||j.status||"?")); return; }
+    AOPTS=(j.groups||[]).filter(g=>!/tuto|_qa$/i.test(g.groupId)&&!/tuto|튜토리얼/i.test(g.name||"")&&!(g.end&&g.end<Date.now()));
+    renderAuto(); renderTargets();
+  }catch(e){ $("#aopts").textContent="error: "+e; }
+}
+async function runAuto(){
+  if(ARUN||running) return;
+  if(!APLAN.length){ $("#ast").textContent="ยังไม่ได้เลือกตู้"; return; }
+  ARUN=true; ASTOP=false; $("#ago").disabled=true; $("#astop").disabled=false;
+  const log=$("#alog"); log.innerHTML="";
+  const todo=DATA.filter(a=>a.has_cred); let total=0, done=0, nhit=0;
+  const tq=[...ATGT].join(",");
+  const AHIT=[], AMISS=[];
+  const pad=n=>String(n).padStart(2,"0"), d=new Date();
+  const ADIR="auto-"+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"-"+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds());
+  for(const a of todo){
+    if(ASTOP) break;
+    log.innerHTML+='<div style="margin-top:6px"><b>'+aesc(a.key)+'</b></div>';
+    let hit=null;
+    for(const p of APLAN){
+      if(ASTOP||hit) break;
+      const g=p.g;
+      $("#ast").textContent="ไอดี "+(done+1)+"/"+todo.length+" · "+(g.name||g.groupId)+" ("+p.pay+")";
+      let j;
+      try{ j=await (await fetch("/api/gacha/pull?id="+encodeURIComponent(a.key)+"&group="+encodeURIComponent(g.groupId)
+          +"&gacha="+encodeURIComponent(g.gachaId)+"&index="+g.index+"&max="+(p.n||0)+"&pay="+p.pay+"&targets="+encodeURIComponent(tq))).json(); }
+      catch(e){ log.innerHTML+='<div class="badge b-err">error: '+aesc(e)+'</div>'; continue; }
+      if(!j.ok){ log.innerHTML+='<div class="mut">· '+aesc(g.name||g.groupId)+': '+aesc(j.err||j.status||"?")+'</div>';
+        if(j.status===403) ASTOP=true; continue; }
+      const got=(j.pulls||[]).filter(x=>x.rewards); total+=got.length;
+      const stop=(j.pulls||[]).find(x=>x.err);
+      const names=got.map(x=>x.rewards.map(r=>aesc(r.name||r.code)).join(", ")).join(" | ");
+      log.innerHTML+='<div>· <span class="mut">'+aesc(g.name||g.groupId)+'</span> ×'+got.length+(names?': '+names:'')
+        +(stop&&!got.length?' <span class="mut">('+aesc(String(stop.err).slice(0,60))+')</span>':'')+'</div>';
+      if(j.hit){ hit=j.hit; nhit++;
+        log.innerHTML+='<div class="badge b-hit">★ เจอเป้า '+aesc(j.hit.name||j.hit.code)+' → ข้ามไปไอดีต่อไป</div>'; }
+      if(j.ruby!=null) a.ruby=j.ruby;
+      if(j.tickets!=null) a.ticket=j.tickets;
+      log.scrollTop=log.scrollHeight;
+    }
+    // ส่งไฟล์ไอดีนี้ออกทันที (ไม่ต้องรอครบทุกไอดี) -> output/<ADIR>/{เจอเป้า,norandom}/
+    let one=null;
+    if(hit){ one="hit="+encodeURIComponent(a.key+":"+(hit.name||hit.code)); AHIT.push(a.key+":"+(hit.name||hit.code)); }
+    else if(!ASTOP){ one="miss="+encodeURIComponent(a.key); AMISS.push(a.key); }
+    if(one){ try{ const e=await (await fetch("/api/auto_export?"+one+"&dir="+ADIR)).json();
+        log.innerHTML+='<div class="mut" style="font-size:11.5px">📁 '+(hit?'เจอเป้า':'norandom')+(e.count?' ✓':' (ไม่พบไฟล์ .xml)')+'</div>'; }catch(err){} }
+    done++; renderRow(a); updateStats();
+  }
+  ARUN=false; $("#ago").disabled=false; $("#astop").disabled=true;
+  // สรุป + ZIP ทั้งรอบ (ไฟล์ถูกส่งออกทีละไอดีระหว่างทางแล้ว)
+  if(AHIT.length||AMISS.length){
+    const q="hit="+encodeURIComponent(AHIT.join(","))+"&miss="+encodeURIComponent(AMISS.join(","))+"&dir="+ADIR;
+    log.innerHTML+='<div style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px">📁 เจอเป้า '+AHIT.length+' · norandom '+AMISS.length
+      +'<div class="mut" style="font-size:11.5px">api/output/'+ADIR+'/</div>'
+      +'<a class="btn" style="margin-top:4px;display:inline-block" href="/api/auto_export?'+q+'&zip=1">⬇ ดาวน์โหลด ZIP</a></div>';
+    log.scrollTop=log.scrollHeight;
+  }
+  $("#ast").textContent=(ASTOP?"หยุดที่ ":"เสร็จ ")+done+"/"+todo.length+" ไอดี · สุ่มรวม "+total+" ครั้ง"+(ATGT.size?" · เจอเป้า "+nhit+" ไอดี":"");
+}
+$("#autog").onclick=openAuto;
+
+// ---------- เข้าเกมประจำวัน (backend รันเองทุกวันตามเวลา) — หน้าต่างดูสถานะ + รันเดี๋ยวนี้
+let DTIMER=null;
+async function showDaily(run){
+  let ov=$("#dov");
+  if(!ov){ ov=document.createElement("div"); ov.id="dov"; ov.className="overlay";
+    ov.innerHTML='<div class="modal" style="max-width:820px"><div class="mhead"><div class="row"><h3>📅 เข้าเกมประจำวัน</h3><span class="spacer"></span><button class="x" id="dx">×</button></div>'
+      +'<div class="mut" style="font-size:13px;margin-top:2px" id="dinfo"></div>'
+      +'<div class="row" style="margin-top:8px"><button class="btn primary" id="drun">▶ เข้าเกมทุกไอดีเดี๋ยวนี้</button><span class="mut" id="dst" style="margin-left:8px"></span></div></div>'
+      +'<div class="mbody" id="dbody" style="font-size:12.5px;line-height:1.8"></div></div>';
+    document.body.appendChild(ov);
+    $("#dx").onclick=()=>{ ov.style.display="none"; clearInterval(DTIMER); };
+    $("#drun").onclick=()=>showDaily(true);
+  }
+  ov.style.display="flex";
+  const load=async(r)=>{
+    let j; try{ j=await (await fetch("/api/daily"+(r?"?run=1":""))).json(); }catch(e){ $("#dst").textContent="error: "+e; return; }
+    $("#dinfo").textContent="รันเองทุกวันเวลา "+j.at+" (ต้องเปิด web_app ค้างไว้) · ล็อกอิน = เช็คอินวันนั้น แล้วรับของในกล่อง + ภารกิจ · ล่าสุด: "+(j.finished||j.last_date||"-");
+    $("#drun").disabled=!!j.running;
+    $("#dst").textContent=j.running?("กำลังเข้าเกม "+j.done+"/"+j.total+" …"):("เสร็จ "+(j.results||[]).length+" ไอดี");
+    const ok=(j.results||[]).filter(x=>x.ok).length;
+    $("#dbody").innerHTML=(j.results||[]).length?('<div class="mut" style="margin-bottom:6px">สำเร็จ '+ok+' / '+j.results.length+'</div>'+j.results.map(x=>
+      '<div style="border-top:1px solid var(--line);padding:4px 0"><b>'+aesc(x.key)+'</b> <span class="mut">'+aesc(x.time||"")+'</span> '
+      +(x.ok?('<span class="badge b-ok">เข้าแล้ว</span>'+(x.attend_days?' เช็คอินสะสม '+x.attend_days+' วัน':'')+' · ของ '+(x.gifts||0)+' · ภารกิจ '+(x.missions||0)
+        +((x.items||[]).length?'<div class="mut">'+x.items.map(i=>aesc(i.name)+' ×'+aesc(i.count)).join(", ")+'</div>':''))
+       :'<span class="badge b-err">'+aesc(x.err||"ไม่ได้")+'</span>')+'</div>').join(""))
+      :'<div class="mut">ยังไม่มีผล — กด ▶ เข้าเกมทุกไอดีเดี๋ยวนี้ หรือรอถึงเวลา</div>';
+    if(!j.running) clearInterval(DTIMER);
+  };
+  clearInterval(DTIMER); await load(run); DTIMER=setInterval(()=>load(false),3000);
+}
+$("#daily").onclick=()=>showDaily(false);
+
+// ---------- log การรับของ (เก็บในหน้า + localStorage)
+let GLOG=[]; try{ GLOG=JSON.parse(localStorage.getItem("giftlog")||"[]"); }catch(e){}
+function saveGlog(){ try{ localStorage.setItem("giftlog",JSON.stringify(GLOG.slice(-200))); }catch(e){} }
+function showGlog(){
+  const esc=t=>String(t??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const tot={}; GLOG.forEach(r=>r.items.forEach(it=>{ const k=it.name; tot[k]=(tot[k]||0)+(+it.count||0); }));
+  const sum=Object.entries(tot).sort((a,b)=>b[1]-a[1]).map(([n,c])=>'<span class="badge b-ok" style="margin:2px">'+esc(n)+' ×'+c+'</span>').join("");
+  const rows=GLOG.slice().reverse().map(r=>'<div style="border-top:1px solid var(--line);padding:8px 0">'
+    +'<b>'+esc(r.key)+'</b> <span class="mut">'+esc(r.time)+' · '+r.items.length+' รายการ</span>'
+    +(r.items.length?'<div style="font-size:12.5px;margin-top:4px">'+r.items.map(it=>
+      '<div><span class="mut">['+esc(it.src)+']</span> '+esc(it.name)+' <b>×'+esc(it.count)+'</b>'
+      +(it.note?' <span class="mut">— '+esc(it.note)+'</span>':'')+'</div>').join("")+'</div>'
+     :'<div class="mut" style="font-size:12.5px">ไม่มีของค้าง</div>')+'</div>').join("");
+  let ov=$("#lgov");
+  if(!ov){ ov=document.createElement("div"); ov.id="lgov"; ov.className="overlay";
+    ov.innerHTML='<div class="modal" style="max-width:760px"><div class="mhead"><div class="row"><h3>📜 Log การรับของ</h3><span class="spacer"></span>'
+      +'<button class="btn ghost" id="lgclr">ล้าง log</button><button class="x" id="lgx">×</button></div></div>'
+      +'<div class="mbody" id="lgbody"></div></div>';
+    document.body.appendChild(ov);
+    ov.onclick=e=>{ if(e.target===ov) ov.style.display="none"; };
+    $("#lgx").onclick=()=>ov.style.display="none";
+    $("#lgclr").onclick=()=>{ GLOG=[]; saveGlog(); showGlog(); };
+  }
+  $("#lgbody").innerHTML=GLOG.length?('<div style="margin-bottom:8px"><b>รวมทั้งหมด</b><div>'+(sum||'<span class="mut">-</span>')+'</div></div>'+rows)
+    :'<div class="mut">ยังไม่มี log — กด 🎁 รับของทุกไอดี ก่อน</div>';
+  ov.style.display="flex";
+}
+$("#giftlog").onclick=showGlog;
+
+// ---------- รับของทุกไอดี (ทีละบัญชี — backend จำกัดความถี่อยู่แล้ว)
+async function runGifts(){
+  if(running)return; running=true; abort=false;
+  $("#gifts").disabled=true; $("#run").disabled=true; $("#stop").disabled=false;
+  const todo=DATA.filter(a=>a.has_cred); let done=0, tg=0, tm=0, bad=0;
+  for(const a of todo){
+    if(abort)break;
+    a.state="run"; renderRow(a);
+    try{
+      const j=await (await fetch("/api/gifts?id="+encodeURIComponent(a.key))).json();
+      if(j.ok){ tg+=j.gifts||0; tm+=j.missions||0;
+        if(j.ruby!=null)a.ruby=j.ruby; if(j.ticket!=null)a.ticket=j.ticket;
+        GLOG.push({key:a.key,time:new Date().toLocaleTimeString(),items:j.items||[]});
+        a.state=a.checked&&a.heroes.length?"ok":"wait"; a.gift="🎁 "+(j.gifts||0)+" ชิ้น · ภารกิจ "+(j.missions||0); }
+      else{ bad++; a.state="err"; a.err=j.err||("status "+(j.status||"?")); }
+    }catch(e){ bad++; a.state="err"; a.err=String(e); }
+    done++;
+    const pct=Math.round(done/todo.length*100);
+    $("#bar").style.width=pct+"%";
+    $("#status").textContent="รับของ: "+done+"/"+todo.length+" · ของ "+tg+" · ภารกิจ "+tm+(bad?" · ไม่ได้ "+bad:"");
+    renderRow(a); updateStats();
+  }
+  saveGlog();
+  running=false; $("#gifts").disabled=false; $("#run").disabled=false; $("#stop").disabled=true;
+  $("#status").textContent=(abort?"หยุดรับของที่ ":"รับของเสร็จ ")+done+"/"+todo.length+" บัญชี · ของ "+tg+" ชิ้น · ภารกิจ "+tm+(bad?" · ไม่ได้ "+bad:"");
+}
+$("#gifts").onclick=runGifts;
 $("#dlhit").onclick=()=>{
   const ids=DATA.filter(a=>a.checked&&a.nhit>0&&a.has_xml).map(a=>a.key);
   if(!ids.length){alert("ยังไม่มีบัญชีที่เจอเป้า (หรือไม่มีไฟล์ .xml)");return;}
@@ -316,8 +576,9 @@ $("#dlhit").onclick=()=>{
 // ---------- render table
 const SB={wait:["b-wait","รอเช็ค"],run:["b-run","กำลังเช็ค"],ok:["b-ok","สำเร็จ"],err:["b-err","เช็คไม่ได้"],nocred:["b-err","ไม่มี cred"]};
 function heroLine(a){
-  if(!a.checked) return "";
-  if(a.state==="err") return '<div class="heroes">'+(a.err||"")+'</div>';
+  const g=a.gift?'<div class="mut" style="font-size:12px">'+a.gift+'</div>':"";
+  if(a.state==="err") return '<div class="heroes">'+(a.err||"")+'</div>'+g;
+  if(!a.checked) return g;
   const ts=[...SELT], show=(a.team&&a.team.length?a.team:a.heroes).slice(0,12);
   const parts=show.map(h=>{const code=h.split("(")[0];const hit=ts.some(t=>hitCode(code,t));
     return '<img class="h'+(hit?" hit":"")+'" loading="lazy" src="'+heroImg(code)+'" '
@@ -390,12 +651,52 @@ async function openGacha(key){
     if(!j.ok){ $("#glog").innerHTML="<span class='badge b-err'>โหลดไม่ได้: "+(j.err||j.status||"?")+"</span>"; return; }
     $("#ginfo").textContent="Ruby "+fmt(j.ruby)+" · ตั๋ว "+(j.tickets&&j.tickets.total||0);
     $("#ggroup").innerHTML=j.groups.map(g=>{
-      const cost=g.needRuby?(g.needRuby+" ruby"):(g.needFriendship?(g.needFriendship+" FP"):(g.needEventTicket?"ตั๋วอีเวนต์":"ฟรี"));
-      return '<option value="'+g.groupId+'|'+g.gachaId+'|'+g.index+'">'
-        +g.groupId+' · '+g.count+'ใบ'+(g.bonus?'(+'+g.bonus+')':'')+' · '+cost+'</option>';
+      let cost=g.needRuby?(g.displayRuby+" ruby"):(g.needFriendship?(g.needFriendship*g.count+" FP"):(g.needEventTicket?"ตั๋วอีเวนต์":"ฟรี"));
+      if(g.ticketCost) cost+=" / ตั๋ว "+g.ticketCost;
+      const kind=(g.display||"").replace(/_/g," ").toLowerCase();
+      return '<option value="'+g.groupId+'|'+g.gachaId+'|'+g.index+'" title="'+g.groupId+'/'+g.gachaId+'">'
+        +(g.badge==="EVENT"?"★ ":"")+(g.title||g.groupId)+(kind?' ['+kind+']':'')
+        +' · '+g.count+'ใบ'+(g.bonus?'(+'+g.bonus+')':'')+' · '+cost+'</option>';
     }).join("");
+    renderGachaCards(j.groups);
     $("#glog").innerHTML="<span class='mut'>เลือกตู้แล้วกด ▶ สุ่ม</span>";
   }catch(e){ $("#glog").innerHTML="<span class='badge b-err'>error: "+e+"</span>"; }
+}
+function gLeft(ms){
+  if(!ms) return "";
+  if(ms-Date.now()>365*86400000) return "ถาวร";
+  const d=ms-Date.now(); if(d<=0) return "ปิดแล้ว";
+  const h=Math.floor(d/3600000);
+  return "เหลือ "+(h>=24?Math.floor(h/24)+" วัน "+(h%24)+" ชม.":h+" ชม. "+Math.floor(d%3600000/60000)+" นาที");
+}
+function renderGachaCards(groups){
+  const by={};
+  groups.forEach(g=>{ (by[g.groupId]=by[g.groupId]||{...g,pulls:[]}).pulls.push(g); });
+  // ซ่อนตู้ tutorial/QA (บัญชีใหม่เห็น แต่ไม่ใช่ตู้ที่สุ่มจริง)
+  const list=Object.values(by).filter(b=>!/tuto|_qa$/i.test(b.groupId)&&!/tuto|튜토리얼/i.test(b.name||""))
+    .sort((a,b)=>(a.sort||0)-(b.sort||0));
+  $("#gcards").innerHTML=list.map(b=>{
+    const ended=b.end&&b.end<Date.now();
+    const pulls=b.pulls.map(g=>{
+      let cost=g.needRuby?(g.displayRuby+" 💎"):(g.needFriendship?(g.needFriendship*g.count+" FP"):(g.needEventTicket?"ตั๋วอีเวนต์":"ฟรี"));
+      if(g.ticketCost) cost+=" / 🎫"+g.ticketCost;
+      const v=g.groupId+'|'+g.gachaId+'|'+g.index;
+      return '<button data-v="'+v+'">'+g.count+'ใบ'+(g.bonus?'(+'+g.bonus+')':'')+' · '+cost+'</button>';
+    }).join("");
+    return '<div class="gcard'+(ended?' ended':'')+'">'
+      +((b.listBg||b.bg)?'<img loading="lazy" src="'+(b.listBg||b.bg)+'" onerror="this.style.display=\'none\'">':'')
+      +'<div class="gc-b"><div class="gc-n">'+(b.badge==="EVENT"?"★ ":"")+b.name+'</div>'
+      +'<div class="mut">'+(b.display||"").replace(/_/g," ").toLowerCase()+(b.end?' · '+gLeft(b.end):'')+'</div>'
+      +(b.title?'<div class="mut" title="ตัวเด่น">'+b.title+'</div>':'')
+      +'<div class="gc-p">'+pulls+'</div></div></div>';
+  }).join("");
+  $("#gcards").querySelectorAll(".gc-p button").forEach(btn=>btn.onclick=()=>{
+    $("#gcards").querySelectorAll(".gc-p button.on").forEach(x=>x.classList.remove("on"));
+    btn.classList.add("on");
+    $("#ggroup").value=btn.dataset.v;
+    $("#gsel").textContent="เลือก: "+btn.closest(".gcard").querySelector(".gc-n").textContent+" · "+btn.textContent;
+  });
+  const first=$("#gcards").querySelector(".gcard:not(.ended) .gc-p button"); if(first) first.click();
 }
 $("#groll").onclick=async()=>{
   if(GROLLING) return;
@@ -411,7 +712,7 @@ $("#groll").onclick=async()=>{
     try{ j=await (await fetch("/api/gacha/pull?id="+encodeURIComponent(GKEY)
         +"&group="+encodeURIComponent(group)+"&gacha="+encodeURIComponent(gacha)
         +"&index="+encodeURIComponent(index)
-        +"&targets="+encodeURIComponent(ts.join(","))+"&max=1")).json();
+        +"&targets="+encodeURIComponent(ts.join(","))+"&max=1&pay="+$("#gpay").value)).json();
     }catch(e){ log.innerHTML+='<div class="badge b-err">error: '+e+'</div>'; break; }
     if(!j.ok){ log.innerHTML+='<div class="badge b-err">หยุด: '+(j.err||j.status||"?")+'</div>'; break; }
     const p=(j.pulls&&j.pulls[0])||{};

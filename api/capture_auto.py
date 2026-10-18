@@ -34,6 +34,8 @@ import sys
 import sysconfig
 import threading
 import time
+import tkinter as tk
+from tkinter import ttk
 import cv2
 import numpy as np
 
@@ -63,6 +65,8 @@ OUTPUT_DIR = os.path.join(ROOT, "login-success")   # ที่เก็บ .xml 
 FAILED_DIR = os.path.join(ROOT, "login-failed")     # ที่เก็บ .xml ของบัญชีที่เข้าไม่ได้ (เหมือน login.py)
 
 _INJECT_LOCK = threading.Lock()   # ล็อคคิวฉีดไฟล์ ให้ทำทีละจอ ป้องกันแย่ง ADB / disk I/O ชนกัน
+_WG_CONTROLLERS = {}
+_WG_CONTROLLERS_LOCK = threading.Lock()
 
 
 # ---------- helpers ----------
@@ -136,6 +140,43 @@ def list_devices():
     if not devs:
         sys.exit("[X] ไม่พบเครื่อง adb — เปิด emulator แล้ว `adb connect` ก่อน")
     return devs
+
+
+def dedupe_device_aliases(devices):
+    """Keep one ADB serial per Android fingerprint so aliases cannot race as separate workers."""
+    try:
+        import login
+    except Exception as exc:
+        print(f"[!] ตรวจ alias ของ ADB ไม่ได้ ({exc}) - ใช้ serial ตามรายการเดิม", flush=True)
+        return devices
+
+    kept = []
+    fingerprints = {}
+    for dev in devices:
+        snapshot = login._device_identity_snapshot(ADB, dev)
+        signature = login._device_identity_signature(snapshot)
+        if not signature:
+            kept.append(dev)
+            continue
+
+        current = login._device_identity_map(signature)
+        duplicate_of = None
+        for previous, previous_fp in fingerprints.items():
+            previous_map = login._device_identity_map(previous_fp)
+            if signature == previous_fp or any(
+                current.get(key) and current.get(key) == previous_map.get(key)
+                for key in current
+            ):
+                duplicate_of = previous
+                break
+
+        if duplicate_of:
+            print(f"[ADB] {dev} เป็น alias/fingerprint ซ้ำกับ {duplicate_of} - ใช้ worker เดียว", flush=True)
+            continue
+        kept.append(dev)
+        fingerprints[dev] = signature
+
+    return kept
 
 
 def load_creds(path=None):
@@ -293,10 +334,17 @@ def extract_udid_from_xml(xml_path):
 DEV_PORT = 8443   # port ฝั่งอีมูฯ (คงที่ทุกจอ) -> reverse ไป host port แยกต่อจอ
 
 
+_ROUTE_PORT = {}   # dev -> host port ของ mitm (ไว้ตั้ง routing ใหม่หลัง Reset IP ล้างทิ้ง)
+
+
 def setup_routing(dev, host_port=PORT):
+    _ROUTE_PORT[dev] = host_port
     print(f"[*] [{dev}] ตั้ง adb reverse (:{DEV_PORT}->host:{host_port}) + routing...", flush=True)
     adb(["reverse", f"tcp:{DEV_PORT}", f"tcp:{host_port}"], device=dev)
     cmd = (
+        # ไม่ซ้อน: ถอด hosts ที่ mount ค้างก่อน + ลบกฎเดิมก่อนเพิ่ม (เดิม mount/กฎซ้อนกันทุกรอบ)
+        "while grep -q rangers-api /system/etc/hosts; do umount /system/etc/hosts || break; done; "
+        f"iptables -t nat -D OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports {DEV_PORT} 2>/dev/null; "
         "cp /system/etc/hosts /data/local/tmp/hosts 2>/dev/null; "
         f"grep -q {API_HOST} /data/local/tmp/hosts || echo '127.0.0.1 {API_HOST}' >> /data/local/tmp/hosts; "
         "mount --bind /data/local/tmp/hosts /system/etc/hosts; "
@@ -533,6 +581,86 @@ def find_template(img, name, thr=0.8):
     return v >= thr, loc[0] + tpl.shape[1] // 2, loc[1] + tpl.shape[0] // 2, v
 
 
+def _login_wg_controller(dev):
+    import login
+
+    with _WG_CONTROLLERS_LOCK:
+        controller = _WG_CONTROLLERS.get(dev)
+        if controller is None:
+            controller = login.RangerGearBot(dev, start_popup_monitor=False)
+            controller.adb_cmd = ADB
+            _WG_CONTROLLERS[dev] = controller
+    return login, controller
+
+
+def open_game_like_login(dev):
+    """Use login.py's network preparation and resilient app launch for this device."""
+    try:
+        login, controller = _login_wg_controller(dev)
+    except Exception as exc:
+        print(f"[!] [{dev}] โหลดตัวเปิดเกมจาก login.py ไม่สำเร็จ: {exc}", flush=True)
+        return False
+
+    # Reset IP แบบ wg-push-file (VPN เฉพาะเกม + ทดสอบผ่าน tunnel จริง + ใกล้ไทยก่อน)
+    # แทนระบบ WG ของ login.py ; ปิดด้วย CAPTURE_RESET_IP=0
+    if os.environ.get("CAPTURE_RESET_IP", "1") != "0":
+        try:
+            import wg_reset
+            ok, msg = wg_reset.reset_ip(dev, log=lambda m: print(m, flush=True))
+            if not ok:
+                print(f"[!] [{dev}] Reset IP ไม่สำเร็จ ({msg}) - เปิดเกมต่อด้วย IP เดิม", flush=True)
+        except Exception as exc:
+            print(f"[!] [{dev}] Reset IP error: {exc}", flush=True)
+        setup_routing(dev, _ROUTE_PORT.get(dev, PORT))   # Reset IP ล้าง routing ของ mitm -> ตั้งกลับ
+        login.config["wg_enabled"] = 0                   # ไม่ให้ login.py ไปยุ่ง WG ซ้ำ
+    try:
+        # login.py resets these per account in main_login(); this controller
+        # persists across capture_auto's batch, so reset the same per-ID quota.
+        controller._wg_net_hits = 0
+        controller._wg_recover_n = 0
+        opened = controller.open_app()
+        if not opened:
+            if getattr(controller, "device_identity_issue", False):
+                print(f"[SKIP] [{dev}] device identity ซ้ำ - หยุด worker นี้และเก็บ XML ไว้", flush=True)
+                return None
+            print(f"[X] [{dev}] login.py ไม่สามารถเปิดเกมได้", flush=True)
+        return bool(opened)
+    except login.RestartTimeoutError as exc:
+        print(f"[X] [{dev}] เตรียม WireGuard ก่อนเปิดเกมไม่สำเร็จ: {exc}", flush=True)
+        return False
+    except Exception as exc:
+        print(f"[X] [{dev}] เปิดเกมผ่าน login.py ไม่สำเร็จ: {exc}", flush=True)
+        return False
+
+
+def recover_fixnet_ip(dev):
+    """Reuse login.py's WireGuard recovery path when fixnet1 appears."""
+    try:
+        login, recovery = _login_wg_controller(dev)
+    except Exception as exc:
+        print(f"[!] [{dev}] โหลดระบบ WireGuard จาก login.py ไม่สำเร็จ: {exc}", flush=True)
+        return False
+
+    cfg = login.config
+    if (not int(cfg.get("wg_enabled", 1) or 0)
+            or not int(cfg.get("wg_fixnet1_switch", 1) or 0)):
+        return False
+    if int(cfg.get("wg_lock", 1) or 0):
+        print(f"[WG] [{dev}] fixnet1 สั่งสลับ IP โดย override wg_lock เฉพาะเหตุการณ์นี้", flush=True)
+
+    try:
+        if not recovery._wg_is_up():
+            return False
+        recovery._wg_must_be_up()
+        return recovery._wg_request_net_recover("fixnet1", switch_now=True, force_switch=True)
+    except login.RestartTimeoutError as exc:
+        print(f"[!] [{dev}] WireGuard recovery ต้อง restart: {exc}", flush=True)
+        return False
+    except Exception as exc:
+        print(f"[!] [{dev}] เปลี่ยน IP จาก fixnet1 ไม่สำเร็จ: {exc}", flush=True)
+        return False
+
+
 def _tap(dev, x, y):
     adb(["shell", "input", "tap", str(int(x)), str(int(y))], device=dev)
 
@@ -590,6 +718,16 @@ def handle_screen_flow(dev):
             return
         img = cv2.imdecode(np.frombuffer(res.stdout, np.uint8), cv2.IMREAD_COLOR)
         if img is None or img.shape[0] == 0:
+            return
+
+        fixnet1, fx, fy, score = find_template(img, "fixnet1.png", 0.8)
+        if fixnet1:
+            print(f"[*] [{dev}] พบ fixnet1 (score {score:.2f}) - ตรวจสอบการสลับ IP...", flush=True)
+            if recover_fixnet_ip(dev):
+                return
+            print(f"[*] [{dev}] ไม่ได้สลับ IP - กดปุ่ม fixnet1 ตามปกติ", flush=True)
+            _tap(dev, fx, fy)
+            time.sleep(0.6)
             return
 
         # 0. checkline.png (หน้าติ๊ก terms) - เจอก่อนค่อยรัน sequence แม่น ๆ (พอร์ตจาก login.py)
@@ -784,12 +922,20 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
         # สร้าง guest ใหม่: เซฟบัญชีเดิมก่อน -> ลบ _LINE_COCOS_PREF_KEY.xml -> เปิดเกม -> GUEST Login
         pull_before_wipe(dev)                 # save ก่อน delete (กันตกบัญชีเดิม)
         wipe_account(dev)                     # ลบ _LINE_COCOS_PREF_KEY.xml + session -> เกมไม่มีบัญชีค้าง
-        launch_game(dev)
+        opened = open_game_like_login(dev)
+        if opened is None:
+            return None, None, None
+        if not opened:
+            return False, None, None
         time.sleep(22)
         guest_login_flow(dev)
     else:
         force_stop_game(dev)
-        launch_game(dev)
+        opened = open_game_like_login(dev)
+        if opened is None:
+            return None, None, None
+        if not opened:
+            return False, None, None
 
     print(f"[*] รอจับ credential (สูงสุด {timeout}s | udid={target_udid or 'auto'})...", flush=True)
     deadline = time.time() + timeout
@@ -858,7 +1004,8 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
 
 
 # ---------- queue batch processor ----------
-def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_finish="move", host_port=PORT):
+def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_finish="move", host_port=PORT,
+                      progress_events=None):
     global _ROOT_ADBD
     _ROOT_ADBD = enable_root(dev) or _ROOT_ADBD
     creds_file = part_creds(host_port)          # ไฟล์ creds แยกต่อจอ
@@ -887,7 +1034,21 @@ def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_fi
 
             fname = os.path.basename(xml_path)
             print(f"\n===== [{dev}][{i}/{total}] {fname} =====", flush=True)
+            if progress_events:
+                progress_events.put(("start", fname, dev, i, total))
             ok, key, cred = capture_account(dev, xml_path, timeout, use_login, creds_file)
+
+            if ok is None:
+                print(f"[SKIP] [{dev}] ไม่จัดไฟล์เป็น login-failed; worker นี้หยุดเพราะ device identity ซ้ำ", flush=True)
+                if progress_events:
+                    progress_events.put(("skip", fname, dev, "device identity ซ้ำ"))
+                if isinstance(xml_input, queue.Queue):
+                    xml_input.put(item)
+                elif isinstance(xml_input, list):
+                    xml_input.insert(0, xml_path)
+                if isinstance(xml_input, queue.Queue):
+                    xml_input.task_done()
+                break
 
             if ok:
                 info = fetch_account_info(cred, fname, creds_file)
@@ -905,6 +1066,8 @@ def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_fi
                         os.remove(xml_path)
                     except Exception:
                         pass
+                if progress_events:
+                    progress_events.put(("finish", "success", fname, key, dev))
             else:
                 failed_list.append(fname)
                 if action_on_finish == "move":
@@ -915,6 +1078,8 @@ def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_fi
                         print(f"[X] [{dev}] {fname} เข้าไม่ได้ -> ลบทิ้ง", flush=True)
                     except Exception:
                         print(f"[X] [{dev}] {fname} เข้าไม่ได้ (ลบไม่สำเร็จ)", flush=True)
+                if progress_events:
+                    progress_events.put(("finish", "failed", fname, "", dev))
 
             if isinstance(xml_input, queue.Queue):
                 xml_input.task_done()
@@ -926,6 +1091,160 @@ def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_fi
         teardown_routing(dev)
 
     return success_list, failed_list
+
+
+def run_xml_batch(devices, xml_files, mitmdump, args, action_on_finish, progress_events=None):
+    import concurrent.futures as cf
+
+    device_count = len(devices)
+    jobs = max(1, min(args.jobs, device_count))
+    work_queue = queue.Queue()
+    total_files = len(xml_files)
+    for index, path in enumerate(xml_files, 1):
+        work_queue.put((index, total_files, path))
+
+    print(f"[*] พบ {total_files} ไฟล์ | {device_count} จอ | รันพร้อมกัน {jobs} จอ/รอบ (คิวแชร์อัตโนมัติเหมือน login.py)", flush=True)
+    results = [([], []) for _ in range(device_count)]
+
+    def worker(index):
+        device = devices[index]
+        if index > 0 and args.stagger > 0:
+            delay = index * args.stagger
+            print(f"[*] [{device}] หน่วงเวลาปล่อยจอ {delay}s เพื่อไม่ให้แย่งกันตอนเริ่ม (เหมือน login.py thread_delay)...", flush=True)
+            time.sleep(delay)
+        try:
+            results[index] = process_xml_queue(
+                device, work_queue, mitmdump, args.use_login, args.timeout,
+                action_on_finish, PORT + index, progress_events,
+            )
+        except Exception as exc:
+            print(f"[X] [{device}] worker error: {exc}", flush=True)
+        try:
+            merge_parts_into_creds([part_creds(PORT + index)])
+        except Exception:
+            pass
+
+    with cf.ThreadPoolExecutor(max_workers=jobs) as executor:
+        list(executor.map(worker, range(device_count)))
+    try:
+        merge_parts_into_creds()
+    except Exception:
+        pass
+
+    successes = [item for result in results for item in result[0]]
+    failures = [item for result in results for item in result[1]]
+    print(f"\n[*] creds.json รวม {len(load_creds())} บัญชี", flush=True)
+    success_action = "ย้ายไป " + OUTPUT_DIR if action_on_finish == "move" else ("ลบออกจาก input-id" if action_on_finish == "delete" else "คงไฟล์ไว้")
+    fail_action = "ย้ายไป " + FAILED_DIR if action_on_finish == "move" else ("ลบออกจาก input-id" if action_on_finish == "delete" else "คงไฟล์ไว้")
+    print("\n" + "=" * 55, flush=True)
+    print("สรุปการทำงาน:", flush=True)
+    print(f"  - สำเร็จ: {len(successes)} ไฟล์ ({success_action})", flush=True)
+    print(f"  - ล้มเหลว: {len(failures)} ไฟล์ ({fail_action})", flush=True)
+    print(f"  - ข้าม/ยังไม่ทำ: {work_queue.qsize()} ไฟล์", flush=True)
+    for fname, key, cred, info in successes:
+        print(f"    - {key:<10} | {fname} | ruby={info.get('ruby', 0)} | ticket={info.get('ticket', 0)}", flush=True)
+    print("=" * 55, flush=True)
+    return len(successes), len(failures)
+
+
+class CaptureProgressWindow:
+    def __init__(self, input_total, run_total, devices):
+        self.root = tk.Tk()
+        self.root.title("LINE Rangers Credential Capture")
+        self.root.geometry("850x520")
+        self.root.minsize(680, 420)
+        self.events = queue.Queue()
+        self.input_total = input_total
+        self.run_total = run_total
+        self.completed = 0
+        self.successes = 0
+        self.failures = 0
+        self.current = "กำลังเตรียมงาน..."
+        self.finished = False
+
+        outer = ttk.Frame(self.root, padding=16)
+        outer.pack(fill="both", expand=True)
+        ttk.Label(outer, text="Credential Capture", font=("Segoe UI", 16, "bold")).pack(anchor="w")
+        ttk.Label(outer, text=f"พบ XML ใน input: {input_total}    รอบนี้: {run_total}    อุปกรณ์: {', '.join(devices)}").pack(anchor="w", pady=(6, 12))
+
+        self.progress_text = tk.StringVar(value=f"ทำแล้ว 0 / {run_total} ID")
+        ttk.Label(outer, textvariable=self.progress_text, font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        self.progress = ttk.Progressbar(outer, maximum=max(1, run_total), mode="determinate")
+        self.progress.pack(fill="x", pady=(6, 10))
+
+        self.summary_text = tk.StringVar(value="สำเร็จ 0    ล้มเหลว 0    เหลือ 0")
+        ttk.Label(outer, textvariable=self.summary_text).pack(anchor="w")
+        self.current_text = tk.StringVar(value=self.current)
+        ttk.Label(outer, textvariable=self.current_text, wraplength=800).pack(anchor="w", pady=(6, 10))
+
+        columns = ("index", "file", "device", "result")
+        self.rows = ttk.Treeview(outer, columns=columns, show="headings", height=14)
+        self.rows.heading("index", text="#")
+        self.rows.heading("file", text="XML / ID")
+        self.rows.heading("device", text="อุปกรณ์")
+        self.rows.heading("result", text="ผล")
+        self.rows.column("index", width=48, anchor="center", stretch=False)
+        self.rows.column("file", width=480)
+        self.rows.column("device", width=140, stretch=False)
+        self.rows.column("result", width=130, stretch=False)
+        self.rows.pack(fill="both", expand=True)
+
+        self.close_button = ttk.Button(outer, text="ปิด", command=self.root.destroy, state="disabled")
+        self.close_button.pack(anchor="e", pady=(10, 0))
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_close(self):
+        if self.finished:
+            self.root.destroy()
+
+    def start(self, worker):
+        def run():
+            try:
+                worker(self.events)
+                self.events.put(("complete",))
+            except Exception as exc:
+                self.events.put(("error", str(exc)))
+        threading.Thread(target=run, daemon=True).start()
+        self.root.after(100, self._poll)
+        self.root.mainloop()
+
+    def _poll(self):
+        while True:
+            try:
+                event = self.events.get_nowait()
+            except queue.Empty:
+                break
+            kind = event[0]
+            if kind == "start":
+                _, filename, device, index, total = event
+                self.current = f"กำลังทำ {index}/{total}: {filename}  [{device}]"
+                self.current_text.set(self.current)
+            elif kind == "finish":
+                _, result, filename, account_id, device = event
+                self.completed += 1
+                if result == "success":
+                    self.successes += 1
+                    status = f"สำเร็จ ({account_id})"
+                else:
+                    self.failures += 1
+                    status = "ล้มเหลว"
+                self.rows.insert("", "end", values=(self.completed, filename, device, status))
+                self.progress.configure(value=min(self.completed, self.run_total))
+                self.progress_text.set(f"ทำแล้ว {self.completed} / {self.run_total} ID")
+                self.summary_text.set(f"สำเร็จ {self.successes}    ล้มเหลว {self.failures}    เหลือ {max(0, self.run_total - self.completed)}")
+            elif kind == "skip":
+                _, filename, device, reason = event
+                self.rows.insert("", "end", values=("-", filename, device, f"ข้าม: {reason}"))
+                self.current_text.set(f"หยุด worker [{device}]: {reason}; XML คงอยู่ในคิว")
+            elif kind == "error":
+                self.current_text.set(f"เกิดข้อผิดพลาด: {event[1]}")
+            elif kind == "complete":
+                self.finished = True
+                self.current_text.set("เสร็จสิ้น")
+                self.close_button.configure(state="normal")
+                self.root.title("LINE Rangers Credential Capture - เสร็จสิ้น")
+        if not self.finished:
+            self.root.after(100, self._poll)
 
 
 # ---------- reroll loop (สร้าง guest ใหม่เองวน ๆ) ----------
@@ -982,6 +1301,7 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="จำกัดจำนวนไฟล์ที่จะทำ (0 = ทำทั้งหมด)")
     ap.add_argument("--reroll", type=int, default=0, metavar="N",
                     help="โหมดรีสร้าง: วนสร้าง guest ใหม่เอง N รอบ -> creds.json + .xml (login-success/)")
+    ap.add_argument("--no-gui", action="store_true", help="รันใน console โดยไม่เปิดหน้าต่าง progress")
     args = ap.parse_args()
 
     mitmdump = find_mitmdump()
@@ -994,7 +1314,9 @@ def main():
     if args.device:
         devices = [args.device]
     else:
-        devices = list_devices()
+        devices = dedupe_device_aliases(list_devices())
+        if not devices:
+            sys.exit("[X] ไม่พบ emulator ที่มี fingerprint ใช้งานได้")
     dev = devices[0]
     print(f"[*] เครื่องที่จะใช้งาน: {dev} (ทั้งหมดที่พบ: {devices})", flush=True)
 
@@ -1052,6 +1374,7 @@ def main():
         print(f"[*] พบ {len(xml_files)} ไฟล์ .xml ใน '{input_path}'", flush=True)
     else:
         print(f"[*] ไม่พบไฟล์ .xml ใน '{args.input_dir}/' (ค้นหาที่: {os.path.abspath(os.path.join(ROOT, args.input_dir))})", flush=True)
+    input_xml_total = len(xml_files)
 
     if args.single and xml_files:
         xml_files = xml_files[:1]
@@ -1068,6 +1391,14 @@ def main():
         action_on_finish = "move"   # ดีฟอลต์: ย้ายไฟล์ไป login-success / login-failed เหมือน login.py
 
     if xml_files:
+        if not args.no_gui:
+            try:
+                progress = CaptureProgressWindow(input_xml_total, len(xml_files), devices)
+                progress.start(lambda events: run_xml_batch(devices, xml_files, mitmdump, args, action_on_finish, events))
+                return
+            except tk.TclError as exc:
+                print(f"[!] เปิด GUI ไม่ได้ ({exc}) - ทำงานต่อใน console", flush=True)
+
         import concurrent.futures as _cf
         n = len(devices)
         jobs = max(1, min(args.jobs, n))

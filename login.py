@@ -3818,7 +3818,7 @@ class RangerGearBot(threading.Thread):
         t = getattr(self, "_adb_slow_until", 0)
         return float(config.get("adb_backoff_delay", 1.0)) if time.time() < t else 0.0
 
-    def __init__(self, device_id, args=None):
+    def __init__(self, device_id, args=None, start_popup_monitor=True):
         threading.Thread.__init__(self)
         self.device_id = device_id
         self.args = args # Store command line args
@@ -3922,9 +3922,12 @@ class RangerGearBot(threading.Thread):
         self._minitouch = None
         self._minitouch_tried = False
 
-        # Start background monitor thread
-        self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
-        self.monitor_thread.start()
+        # Allow capture_auto to reuse the WireGuard recovery methods without
+        # starting a second screen-monitor thread for the same emulator.
+        self.monitor_thread = None
+        if start_popup_monitor:
+            self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
+            self.monitor_thread.start()
 
     # =========================================================
     # WireGuard ต่อจอ (IP ไม่ซ้ำกันแต่ละอีมูฯ) - ใช้ไฟล์ .conf จาก Windscribe Config Generator
@@ -4086,13 +4089,13 @@ class RangerGearBot(threading.Thread):
         except Exception:
             return False
 
-    def _wg_down(self):
+    def _wg_down(self, force=False):
         """ปิด VPN ของจอนี้ "สนิท" ก่อนส่งไฟล์/เปิดเกม ให้ออกเน็ตด้วย IP ปกติ
 
         ทำทุกครั้ง (ไม่ใช่เฉพาะตอนเห็น tun): สั่งปิด tunnel -> ฆ่าแอป WireGuard ->
         รอจน Android ไม่มี VPN ค้าง -> รอจนออกเน็ตได้จริง (ping) -> พักให้เน็ตนิ่ง แล้วค่อยไปต่อ
         """
-        if int(config.get("wg_lock", 1) or 0):
+        if int(config.get("wg_lock", 1) or 0) and not force:
             return None   # wg_lock: ห้ามปิด VPN เด็ดขาด (ปิดแล้วเข้าเกมไม่ได้)
         if not int(config.get("wg_enabled", 1) or 0):
             return
@@ -4123,16 +4126,16 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{self.device_id}] [WG] ปิด VPN ไม่สำเร็จ: {e}")
 
-    def _wg_request_net_recover(self, where, switch_now=False):
+    def _wg_request_net_recover(self, where, switch_now=False, force_switch=False):
         """เจอ Unstable network (fixnetv3) บนจอที่ต่อ VPN อยู่ -> ทำทันทีตรงนี้ (ไม่ต้องรอลูปล็อกอิน):
         ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
         ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
         คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
-        if int(config.get("wg_lock", 1) or 0):
+        if int(config.get("wg_lock", 1) or 0) and not force_switch:
             return False   # wg_lock: ไม่ปิด/สลับ VPN ตอนเน็ตหลุด -> กด RETRY แบบเดิม
         if not int(config.get("wg_enabled", 1) or 0):
             return False
-        if int(config.get("wg_once", 1) or 0):
+        if int(config.get("wg_once", 1) or 0) and not force_switch:
             # wg_once: เน็ตแกว่งครั้งเดียวไม่เปลี่ยน IP (กด RETRY) แต่ถ้าเจอซ้ำครบ wg_net_switch_after ครั้ง
             # = IP นี้ใช้ไม่ได้แล้ว -> เปลี่ยน IP ทันที (VPN ปิดแค่ช่วงสลับ แล้วต่อตัวใหม่ก่อนเปิดเกมเสมอ)
             self._wg_net_hits = getattr(self, "_wg_net_hits", 0) + 1
@@ -4154,6 +4157,9 @@ class RangerGearBot(threading.Thread):
                     return False
             self._wg_net_hits = 0
             switch_now = True
+        if force_switch:
+            self._wg_net_hits = 0
+            switch_now = True
         if not getattr(self, "_wg_conf_applied", None):
             return False                      # จอนี้ไม่ได้ต่อ VPN -> ไม่ใช่เรื่อง VPN
         lock = self.__dict__.setdefault("_wg_recover_lock", threading.Lock())
@@ -4164,11 +4170,14 @@ class RangerGearBot(threading.Thread):
             if n >= int(config.get("wg_net_recover_max", 10)):
                 return False                  # ครบโควตาแล้ว -> กลับไปกด RETRY แบบเดิม
             self._wg_recover_n = n + 1
-            print(f"[{self.device_id}] [WG] เจอ Unstable network ({where}) - ปิดเกม + ปิด/เปิด VPN ใหม่ + เปิดเกมใหม่ "
+            print(f"[{self.device_id}] [WG] เจอ Unstable network ({where}) - ปิดเกม + สลับ IP + เปิดเกมใหม่ "
                   f"(ครั้งที่ {n + 1})")
             self.last_activity_time = time.time()
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
-            self._wg_down()
+            if force_switch:
+                print(f"[{self.device_id}] [NET] ล้าง Android system proxy ก่อนปิด VPN", flush=True)
+                self._clear_proxy_for_device()
+            self._wg_down(force=force_switch)
             if switch_now:
                 # fixnet1: เปลี่ยน IP ทันที (ไม่รอนับ 2 ครั้ง) - พักเซิร์ฟเวอร์นี้ไว้ แต่ไม่ลบไฟล์
                 cur = getattr(self, "_wg_last_conf", None)

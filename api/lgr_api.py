@@ -48,6 +48,17 @@ def _safe_print(*args, **kwargs):
 
 
 BASE = "https://rangers-api.line-apps.com/v12.3"
+# ออกเน็ตผ่าน proxy (เช่น wireproxy = WireGuard -> SOCKS5) เมื่อ IP เครื่องโดนบล็อก 403
+#   set LGR_PROXY=socks5h://127.0.0.1:1080   (ว่าง = ต่อตรง)
+LGR_PROXY = os.environ.get("LGR_PROXY", "").strip()
+if not LGR_PROXY and os.environ.get("LGR_PROXY") is None:
+    # ไม่ได้ตั้งไว้ -> ถ้า wireproxy (wg-proxy.bat) เปิดอยู่ที่ 1080 ใช้ให้อัตโนมัติ ; ตั้ง LGR_PROXY= (ว่าง) เพื่อบังคับต่อตรง
+    import socket as _socket
+    try:
+        with _socket.create_connection(("127.0.0.1", 1080), timeout=0.3):
+            LGR_PROXY = "socks5h://127.0.0.1:1080"
+    except OSError:
+        pass
 # creds.json อยู่ที่เดียว = โฟลเดอร์ api/ (ทุกสคริปต์ + capture_auto ใช้ไฟล์นี้ร่วมกัน)
 _API_DIR = os.path.dirname(os.path.abspath(__file__))
 CREDS_FILE = os.path.join(_API_DIR, "creds.json")
@@ -163,6 +174,22 @@ def save_creds(data, path=None):
 
 
 
+# จำกัดความถี่ "ทั้งโปรเซส" (ทุกบัญชี/ทุกเธรดรวมกัน) — ยิงถี่ = เซิร์ฟบล็อก IP ทั้งก้อน (403 ทุก path)
+#   LGR_MIN_GAP=0.7 วินาทีต่อคำขอ (ปรับได้ด้วย env)
+import threading as _threading
+_RATE_LOCK = _threading.Lock()
+_RATE_LAST = [0.0]
+LGR_MIN_GAP = float(os.environ.get("LGR_MIN_GAP", "0.7"))
+
+
+def _rate_wait():
+    with _RATE_LOCK:
+        wait = _RATE_LAST[0] + LGR_MIN_GAP - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        _RATE_LAST[0] = time.time()
+
+
 class LGRClient:
     def __init__(self, udid, lf_ac, app_version="12.3.1", nation="TH",
                  lang="en", model="SM-A528B", android="12"):
@@ -171,6 +198,9 @@ class LGRClient:
         self.guest_cookie_next = None         # guestCookie ใหม่ ถ้าเซิร์ฟหมุนมาระหว่างทาง (ต้องเซฟทับของเดิม)
         self.app_version = app_version
         self.s = requests.Session()
+        self.s.trust_env = False              # ไม่ใช้ proxy ของระบบ (Charles) — ใช้ LGR_PROXY เท่านั้น
+        if LGR_PROXY:
+            self.s.proxies = {"http": LGR_PROXY, "https": LGR_PROXY}
         self.s.headers.update({
             "App-Version": f"LGRGS/{app_version};android/{android}",
             "Nation-Code": nation,
@@ -196,7 +226,16 @@ class LGRClient:
         if method.upper() == "POST" and "data" not in kw and "json" not in kw:
             headers.setdefault("Content-Type", "application/json")
             kw["data"] = "{}"
-        r = self.s.request(method, BASE + path, headers=headers, timeout=25, **kw)
+        # ผ่าน WG/SOCKS บางทีต่อไม่ติดชั่วคราว (Host unreachable / DNS ใน tunnel) -> ลองใหม่ 3 ครั้ง
+        for attempt in range(3):
+            _rate_wait()
+            try:
+                r = self.s.request(method, BASE + path, headers=headers, timeout=25, **kw)
+                break
+            except requests.exceptions.ConnectionError:
+                if attempt == 2:
+                    raise
+                time.sleep(1.5 * (attempt + 1))
         # เก็บ LF_AC ที่หมุนใหม่ (และ guestCookie ถ้าเซิร์ฟหมุนมาด้วย — ของเก่าจะใช้ /login ไม่ได้อีก)
         for c in r.cookies:
             if c.name == "LF_AC" and c.value:
@@ -250,21 +289,28 @@ class LGRClient:
         """รายการกาชาทั้งหมด: result.gachaGroupResponseList[].gachaGroup.gachaGroupInfos[]"""
         return self.call("GET", "/gacha/info")
 
-    def gacha_reserve(self, group_id, gacha_id, gacha_index=1):
-        """จอง 1 การสุ่ม -> result มี reserveSeq (ต้องเอาไปใส่ confirm)"""
-        return self.call("POST", "/gacha/group/reserve",
-                         json={"groupId": group_id, "gachaId": gacha_id, "gachaIndex": gacha_index})
+    def gacha_reserve(self, group_id, gacha_id, gacha_index=1, use_ticket=False):
+        """จอง 1 การสุ่ม -> result มี reserveSeq (ต้องเอาไปใส่ confirm)
+        use_ticket=True = จ่ายตั๋ว premium (ตู้ที่ ticketPayableType=TICKET, ราคา ticketPayableCost)"""
+        body = {"groupId": group_id, "gachaId": gacha_id, "gachaIndex": gacha_index}
+        if use_ticket:
+            body["useTicket"] = True
+        return self.call("POST", "/gacha/group/reserve", json=body)
 
-    def gacha_confirm(self, reserve_result):
-        """ยืนยันการสุ่ม -> ต้องส่ง 'ทั้งก้อน result ของ reserve' กลับไป. คืน gachaResults"""
-        return self.call("POST", "/gacha/group/confirm", json=reserve_result)
+    def gacha_confirm(self, reserve_result, use_ticket=False):
+        """ยืนยันการสุ่ม -> ต้องส่ง 'ทั้งก้อน result ของ reserve' กลับไป. คืน gachaResults
+        จ่ายตั๋วต้องใส่ useTicket ทั้ง reserve และ confirm (confirm ไม่ใส่ = คิด ruby -> 104107)"""
+        body = dict(reserve_result)
+        if use_ticket:
+            body["useTicket"] = True
+        return self.call("POST", "/gacha/group/confirm", json=body)
 
-    def gacha_pull(self, group_id, gacha_id, gacha_index=1):
+    def gacha_pull(self, group_id, gacha_id, gacha_index=1, use_ticket=False):
         """สุ่มครบ flow: reserve -> confirm. คืน (status, list ของรหัสตัว/ไอเทมที่ได้, raw)"""
-        st, d = self.gacha_reserve(group_id, gacha_id, gacha_index)
+        st, d = self.gacha_reserve(group_id, gacha_id, gacha_index, use_ticket)
         if st != 200 or not isinstance(d, dict):
             return st, [], d
-        st2, d2 = self.gacha_confirm(d.get("result", {}))
+        st2, d2 = self.gacha_confirm(d.get("result", {}), use_ticket)
         return st2, parse_gacha_rewards(d2), d2
 
     def stage_last(self):
@@ -530,3 +576,22 @@ if __name__ == "__main__":
         print("usage: python lgr_api.py <udid> <LF_AC>")
         sys.exit(1)
     print(json.dumps(collect_account(sys.argv[1], sys.argv[2]), ensure_ascii=False, indent=2))
+
+
+def gacha_pick_pay(pay, gi, ruby, tickets):
+    """เลือกวิธีจ่ายของการสุ่ม 1 ครั้ง
+    pay: "ruby" | "ticket" | "all" (all = ใช้ตั๋วก่อน หมดแล้วค่อย ruby)
+    gi: gachaGroupInfo ของตู้ (จาก /gacha/info) ; ruby/tickets = ยอดคงเหลือตอนนี้
+    คืน (use_ticket, ราคา) หรือ (None, เหตุผล) ถ้าจ่ายไม่ได้แล้ว"""
+    gi = gi or {}
+    t_cost = gi.get("ticketPayableCost") if gi.get("ticketPayableType") == "TICKET" else None
+    r_cost = gi.get("displayRubyPrice") or gi.get("needRuby") or 0
+    can_t = t_cost is not None and tickets >= t_cost
+    can_r = gi.get("gachaPlayType", "RUBY") == "RUBY" and ruby >= r_cost
+    if pay in ("ticket", "all") and can_t:
+        return True, t_cost
+    if pay in ("ruby", "all") and can_r:
+        return False, r_cost
+    if pay == "ticket" and t_cost is None:
+        return None, "ตู้นี้จ่ายตั๋วไม่ได้"
+    return None, f"ไม่พอ (ruby {ruby}/{r_cost}, ตั๋ว {tickets}/{t_cost if t_cost is not None else '-'})"

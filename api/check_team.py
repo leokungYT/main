@@ -200,6 +200,19 @@ def account_units_info(cli):
                 seen.add(uc)
                 codes.append(uc)
 
+    # 3. คลังทั้งบัญชี: /collection/user/list -> masterCollections = ทุกตัวที่เคยได้ (หน้า TEAM ทั้งหมด)
+    #    (/home มีแค่ 5 ตัวในทีม ; endpoint นี้หาเจอจาก string ใน libgame.so)
+    try:
+        st_c, col = cli.call("GET", "/collection/user/list")
+        if st_c == 200 and isinstance(col, dict):
+            for u in (col.get("result") or {}).get("masterCollections", []) or []:
+                uc = u.get("unitCode") if isinstance(u, dict) else None
+                if uc and uc not in seen:
+                    seen.add(uc)
+                    codes.append(uc)
+    except Exception:
+        pass
+
     return st, codes, team_slots, home
 
 

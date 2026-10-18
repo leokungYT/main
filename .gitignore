@@ -65,3 +65,9 @@ logs/
 wg_jp/
 wg_new/
 wg_test/
+
+# wireproxy config มี PrivateKey ของ WG
+api/tools/wireproxy.conf
+
+# ผล Auto สุ่ม (.xml บัญชีจริง)
+api/output/
