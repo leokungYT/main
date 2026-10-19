@@ -723,6 +723,10 @@ def handle_screen_flow(dev):
         fixnet1, fx, fy, score = find_template(img, "fixnet1.png", 0.8)
         if fixnet1:
             print(f"[*] [{dev}] พบ fixnet1 (score {score:.2f}) - ตรวจสอบการสลับ IP...", flush=True)
+            if rotate_pc_wg(dev):                 # ขาออกจริงของเกม = mitm บน PC -> สลับ WG บน PC แล้วกดลองใหม่
+                _tap(dev, fx, fy)
+                time.sleep(2)
+                return
             if recover_fixnet_ip(dev):
                 return
             print(f"[*] [{dev}] ไม่ได้สลับ IP - กดปุ่ม fixnet1 ตามปกติ", flush=True)
@@ -844,11 +848,66 @@ def handle_screen_flow(dev):
 
 
 # ---------- mitm + capture helpers ----------
+_WG_TUNNEL_LOCK = threading.Lock()
+_WG_ROT_T = [0.0]
+
+
+def _port_open(port):
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+            return True
+    except OSError:
+        return False
+
+
+def _ensure_wg_tunnel():
+    """WG tunnel 127.0.0.1:9443 -> rangers-api (wireproxy) ให้ mitm ออกเน็ต ; web_app เปิดไว้แล้วก็ใช้ร่วม"""
+    with _WG_TUNNEL_LOCK:
+        if _port_open(9443):
+            return "127.0.0.1:9443"
+        try:
+            import web_app
+            conf = web_app.wg_ensure()
+            if conf:
+                print(f"[*] mitm ออกเน็ตผ่าน WG: {conf}", flush=True)
+                return "127.0.0.1:9443"
+        except Exception as e:
+            print(f"[!] เปิด WG tunnel ไม่ได้ ({e})", flush=True)
+        print("[!] ไม่มี WG tunnel - mitm ต่อตรงด้วย IP ของ PC", flush=True)
+        return ""
+
+
+def rotate_pc_wg(dev):
+    """เกมขึ้น fixnet1 = IP ขาออกของ mitm (WG บน PC) โดนบล็อก -> สลับ WG บน PC (30 วิ ครั้งเดียว)"""
+    if time.time() - _WG_ROT_T[0] < 30:
+        return True
+    _WG_ROT_T[0] = time.time()
+    print(f"[WG] [{dev}] fixnet1 -> สลับ WG บน PC (ขาออกของ mitm)", flush=True)
+    try:
+        if _port_open(8770):                 # web_app เป็นเจ้าของ wireproxy -> สั่งผ่านเว็บ
+            import urllib.request
+            r = json.load(urllib.request.urlopen("http://127.0.0.1:8770/api/wg?rotate=1", timeout=300))
+            conf = r.get("conf")
+        else:
+            import web_app
+            conf = web_app.wg_rotate()
+        print(f"[WG] [{dev}] ใช้ WG ใหม่: {conf or 'หาไม่ได้'}", flush=True)
+        _WG_ROT_T[0] = time.time()
+        return bool(conf)
+    except Exception as e:
+        print(f"[!] [{dev}] สลับ WG บน PC ไม่ได้: {e}", flush=True)
+        return False
+
+
 def start_mitm(mitmdump, host_port=PORT, creds_file=None):
     print(f"[*] เริ่ม mitmdump reverse-proxy host:{host_port} + addon ...", flush=True)
     env = dict(os.environ)
     if creds_file:
         env["LGR_CREDS_FILE"] = creds_file       # addon เขียน creds ไฟล์แยกต่อจอ (ไม่แย่ง .lock)
+    tunnel = _ensure_wg_tunnel()
+    if tunnel:
+        env["LGR_WG_TUNNEL"] = tunnel            # mitm ออกเน็ตผ่าน WG บน PC
     p = subprocess.Popen(
         [mitmdump, "--mode", f"reverse:https://{API_HOST}",
          "--listen-port", str(host_port), "-s", ADDON, "-q"],

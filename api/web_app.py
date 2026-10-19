@@ -314,7 +314,7 @@ def check_account(key, targets):
     if st != 200 or not isinstance(home, dict):
         # เก็บ LF_AC ที่อาจหมุนไปแล้ว
         _persist(key, {"LF_AC": cli.lf_ac})
-        err = (f"IP โดนบล็อก (403) — เปลี่ยน WG: wg-proxy.bat <conf อื่น>" if st == 403
+        err = ("IP โดนบล็อก (403) — เปลี่ยน WG แล้วก็ยังไม่ผ่าน" if st == 403
                else f"เช็คไม่ได้ (status {st})")
         return {"ok": False, "key": key, "status": st, "err": err}
 
@@ -619,9 +619,30 @@ def wg_ensure(rotate=False):
         return ""
 
 
+_WG_ROT = {"t": 0.0}
+
+
 def wg_rotate():
+    """เปลี่ยน WG ; หลายเธรดเจอ 403 พร้อมกัน -> เปลี่ยนครั้งเดียว (ภายใน 30 วิ ถือว่าเปลี่ยนแล้ว)"""
+    if time.time() - _WG_ROT["t"] < 30 and _WG.get("conf"):
+        return _WG["conf"]
+    with _WG_LOCK:
+        pass                                   # รอเธรดที่กำลังเปลี่ยนอยู่ให้เสร็จก่อน
+    if time.time() - _WG_ROT["t"] < 30 and _WG.get("conf"):
+        return _WG["conf"]
     print("[wg] IP โดนบล็อก -> เปลี่ยน WG", flush=True)
-    return wg_ensure(rotate=True)
+    conf = wg_ensure(rotate=True)
+    _WG_ROT["t"] = time.time()
+    return conf
+
+
+def with_wg_retry(fn, *a, **kw):
+    """เรียก fn ; ได้ 403 (IP โดนบล็อก) -> เปลี่ยน WG แล้วลองใหม่ 1 ครั้ง (ใช้กับเช็ค/รับของ/กาชา)"""
+    r = fn(*a, **kw)
+    if isinstance(r, dict) and not r.get("ok") and (r.get("status") == 403 or "403" in str(r.get("err", ""))):
+        if wg_rotate():
+            r = fn(*a, **kw)
+    return r
 
 
 # ---------- เข้าเกมประจำวัน (เช็คอิน) อัตโนมัติ ----------
@@ -944,7 +965,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, _json_bytes({"ok": False, "err": "ต้องระบุ id"}))
                 return
             try:
-                self._send(200, _json_bytes(check_account(key, targets)))
+                self._send(200, _json_bytes(with_wg_retry(check_account, key, targets)))
             except Exception as e:
                 self._send(200, _json_bytes({"ok": False, "key": key, "err": str(e)}))
             return
@@ -956,7 +977,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, _json_bytes({"ok": False, "err": "ต้องระบุ id"}))
                 return
             try:
-                self._send(200, _json_bytes(gift_account(key, (qs.get("missions") or ["1"])[0] != "0")))
+                self._send(200, _json_bytes(with_wg_retry(gift_account, key, (qs.get("missions") or ["1"])[0] != "0")))
             except Exception as e:
                 self._send(200, _json_bytes({"ok": False, "key": key, "err": str(e)}))
             return
@@ -981,7 +1002,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, _json_bytes({"ok": False, "err": "ต้องระบุ id"}))
                 return
             try:
-                self._send(200, _json_bytes(gacha_info_account(key)))
+                self._send(200, _json_bytes(with_wg_retry(gacha_info_account, key)))
             except Exception as e:
                 self._send(200, _json_bytes({"ok": False, "key": key, "err": str(e)}))
             return

@@ -89,9 +89,20 @@ def _cookie_parts(raw):
     return out
 
 
+# ขาออกของ mitm (บน PC) ผ่าน WG tunnel ของ wireproxy — IP ของ PC โดนเกมบล็อกได้ (403 -> เกมขึ้น fixnet1)
+WG_TUNNEL = os.environ.get("LGR_WG_TUNNEL", "").strip()     # เช่น 127.0.0.1:9443 (ว่าง = ต่อตรง)
+
+
+def server_connect(data):
+    if WG_TUNNEL:
+        host, port = WG_TUNNEL.rsplit(":", 1)
+        data.server.address = (host, int(port))
+
+
 def response(flow: http.HTTPFlow):
     r, resp = flow.request, flow.response
-    if "rangers-api" not in r.pretty_host:
+    # ผ่าน WG tunnel host จะกลายเป็น 127.0.0.1:9443 -> ดูจาก path /v12.x แทน
+    if "rangers-api" not in r.pretty_host and not r.path.startswith("/v1"):
         return
     # ข้าม pre-check เช่น /exapi/ (เช่น /exapi/nation.nhn) เพราะยังไม่ได้ล็อกอิน (ยังไม่มี guestCookie / rsn)
     if "/exapi/" in r.path:
