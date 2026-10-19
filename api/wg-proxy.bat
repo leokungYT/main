@@ -5,6 +5,6 @@ rem ใช้: wg-proxy.bat [ไฟล์ conf ใน ..\wg]   (ไม่ใส�
 cd /d "%~dp0tools"
 set CONF=%~1
 if "%CONF%"=="" set CONF=Windscribe-New-Jersey-Situation-WG.conf
-(type "..\..\wg\%CONF%" & echo. & echo [Socks5] & echo BindAddress = 127.0.0.1:1080 & echo. & echo [TCPClientTunnel] & echo BindAddress = 127.0.0.1:9443 & echo Target = rangers-api.line-apps.com:443) > wireproxy.conf
+(type "..\..\wg\%CONF%" & echo. & echo [Socks5] & echo BindAddress = 127.0.0.1:1080 & echo. & echo [http] & echo BindAddress = 127.0.0.1:1081 & echo. & echo [TCPClientTunnel] & echo BindAddress = 127.0.0.1:9443 & echo Target = rangers-api.line-apps.com:443) > wireproxy.conf
 echo [*] WG proxy: %CONF%  -^>  socks5://127.0.0.1:1080
 wireproxy.exe -s -c wireproxy.conf

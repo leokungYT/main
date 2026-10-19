@@ -463,6 +463,7 @@ def _wg_start(conf_name):
     import subprocess
     body = open(os.path.join(WG_DIR, conf_name), encoding="utf-8").read()
     body += ("\n[Socks5]\nBindAddress = 127.0.0.1:1080\n"
+             "\n[http]\nBindAddress = 127.0.0.1:1081\n"      # ให้ mitmdump (capture_newid --wg) ออกผ่าน WG
              "\n[TCPClientTunnel]\nBindAddress = 127.0.0.1:9443\nTarget = rangers-api.line-apps.com:443\n")
     with open(WG_CONF, "w", encoding="utf-8") as f:
         f.write(body)
