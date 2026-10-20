@@ -313,3 +313,53 @@ root ว่าง (0 บัญชี) แต่ `api/creds.json` มี 414 บ�
 - root `creds.json` = ที่ capture_auto เขียน (ผ่าน creds.part<port>.json) ; `api/creds.json` = พูล API (414)
 - รวมเป็นไฟล์เดียว 419 บัญชี เขียนตรงกันทั้ง root+api แล้ว
 - `lgr_api._pick_creds_file()` = เลือกไฟล์ที่ "บัญชีเยอะกว่า" ; `save_creds()` = กันเขียน dict ว่างทับ
+
+## 14. Signature Boundary & Capture Dependency — 2026-10-19
+
+สรุปเส้นแบ่ง "อะไรยิง API เองได้ / อะไรต้องให้เกมทำ" จากทราฟฟิกจริง `logs/newid_*.jsonl`
+(เปิดเกมสดหลัง `pm clear` -> เกม mint guest ใหม่ -> MITM จับทุก host) เพื่อกันเสียเวลาลองยิง mint เอง
+
+### 14.1 Signature Boundary (ขั้นที่ "มีลายเซ็น" = ยิงเองไม่ได้)
+มี 2 ชั้นลายเซ็นคนละระบบ ก่อนจะได้ credential (udid+LF_AC) มาใช้กับ REST:
+
+1) **LINE Trident (host `game-api.line.me`)** — ชั้น platform mint ตัว user:
+   - `POST /auth/v3.5/check/GUEST`            body msgpack `{uuid}`  -> 404 `AUTH_404_0201 Not exists user` (ยังไม่มี)
+   - `POST /auth/v3.8/authentication/GUEST`   body msgpack `{uuid, termsResult, country}`
+     - ครั้งแรกถ้าไม่มี termsResult -> 401 `AUTH_401_0105 Agreement of the terms of service is required`
+     - ส่ง termsResult (ยอมรับ ToS) ครบ -> 200 คืน `userKey/userToken`
+   - `POST /auth/v3.8/refresh`                body msgpack `{providerId:GUEST, refreshUserToken, country}` -> userToken ใหม่
+   - **ทุกคำขอบังคับ header `X-Linegame-Authorization: ts="<ms>", si="<base64 HMAC>"`**
+     `si` คำนวณใน native (`linecorp::trident::AuthManager`, `libtrident.so` arm64) ด้วย app secret ที่ฝังในไบนารี
+     -> **สร้างใน Python ไม่ได้** (ไม่มีคีย์ + รันโค้ด arm64 ไม่ได้บน x86 farm)
+
+2) **Rangers REST (host `rangers-api.line-apps.com`)** — ชั้น finalize signup:
+   - `GET /v12.3/signup/guest`  header `X-Guest-Timestamp` / `X-Guest-Nonce` / `X-Guest-Signature` + `Cookie: cc=<userToken>; udid=<uuid>`
+     -> 200 คืน player ใหม่ (`id/mid/rsn/userType:GUEST/tutorialStep`) และ `Set-Cookie: LF_AC=<session>`
+   - `X-Guest-Signature` เป็นลายเซ็นต่อคำขอ (nonce+timestamp) ที่สร้างฝั่ง client เช่นกัน -> **ยิงเองไม่ได้**
+
+> หลังผ่าน 2 ชั้นนี้ เกมได้ `LF_AC` (session) + `udid` + `guestCookie` แล้ว **จากตรงนี้ไปไม่มีลายเซ็นต่อ request อีก**
+> (`X-LINEGAME-TIMESTAMP` เป็นแค่ค่าเวลา ไม่ถูกตรวจเป็นลายเซ็น — ดู §11) -> REST ที่เหลือยิงด้วย cookie ล้วนได้
+
+### 14.2 Capture Dependency (ต้องให้เกม/MITM จัดหา credential ก่อน)
+เพราะชั้นลายเซ็น -> **การสร้าง guest ใหม่ต้องให้ตัวเกมทำ** แล้วดักเก็บ credential ครั้งเดียวต่อบัญชี:
+- `capture_newid.py <serial> --clear` = สำรอง `shared_prefs` -> `pm clear` -> เปิดเกม -> เกม mint guest ใหม่
+  (redirect TCP 443 ทุก host เข้า mitm) -> ได้ไฟล์ `logs/newid_<ts>.jsonl` ครบทั้ง handshake
+- `capture_credential.py` (mitmproxy addon) = ดักเฉพาะ `rangers-api` ตอนเกม `/login` -> เขียน
+  `udid + LF_AC + guestCookie(+rsn/ruby/coin/level)` ลง `creds.json` (ครั้งเดียว/บัญชี แล้วสลับไปใช้ API)
+- ข้อจำกัด: `guestCookie` ถอดจาก `_ENC_LF_AC_KEY` ในเครื่องตรง ๆ ไม่ได้ (เข้ารหัสผูกเครื่อง)
+  -> ต้องดักตอนเกมส่งแบบถอดรหัสแล้วเท่านั้น ; credential **หมุนทุก login** -> 1 บัญชี = เจ้าของเดียว อย่าเปิดเกมคู่กับ API
+
+### 14.3 สิ่งที่ยิงผ่าน API ได้จริง (headless) หลังมี credential แล้ว
+ยืนยันจากทราฟฟิก (status 200) — ไม่ต้องเปิดเกม:
+- `GET /v12.3/login`  (ใช้ `guestCookie` ขอ session ใหม่เมื่อ `LF_AC` ตาย) — คืน `rsn/mid/userType/tutorialStep`
+- `GET /v12.3/home`   (ยืนยันบัญชีมีจริง + อ่าน level/ruby/coin/badge)
+- `POST /v12.3/push/register` -> `{"result":true}`
+- รับของขวัญ/ภารกิจ/กาชา (§11-13)
+
+### 14.4 โค้ดที่ทำ workflow ส่วนนี้ (2026-10-19)
+- `lgr_api.LGRClient` + method ใหม่ `push_register()`
+- `account_workflow.py` = verify (`/home`, ตก 401 -> `/login` ด้วย guestCookie) -> activate (`push/register`)
+  -> เก็บของ (ออปชัน `--collect`) -> เขียน `LF_AC/guestCookie` ที่หมุนใหม่กลับ `creds.json` (atomic)
+  **ยืนยัน "สำเร็จจริง" ด้วยการมี `rsn`/`mid` จากเซิร์ฟ ไม่ใช่แค่ HTTP 200** ; บัญชีที่ไม่มี udid/credential ตาย
+  -> สถานะ `NEEDS_CAPTURE` (ต้องกลับไปใช้ capture ข้างบน ไม่ใช่แต่ง response เอง)
+- `test_account_workflow.py` = unit test (mock HTTP, ไม่แตะเน็ตจริง)

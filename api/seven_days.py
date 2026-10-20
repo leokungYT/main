@@ -32,7 +32,7 @@ from lgr_api import (
     LGRClient,
     parse_missions,
     load_creds as _api_load_creds,
-    save_creds as _api_save_creds,
+    try_update_creds as _api_try_update_creds,
     CREDS_FILE,
 )
 
@@ -133,17 +133,18 @@ def main():
     print(f"[*] ภารกิจ — {mode} : {len(targets)} บัญชี\n", flush=True)
 
     results = {}
+    save_errors = []
     with cf.ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(targets)))) as ex:
         for key, res in ex.map(lambda kv: _one(kv[0], kv[1], claim), targets):
             results[key] = res
-            if res.get("ok") and res.get("lf_ac_next"):
-                entry = creds.setdefault(key, {})
-                entry["LF_AC"] = res.pop("lf_ac_next")
-                if res.pop("gc_next", None):
-                    entry["guestCookie"] = res["gc_next"]
-            else:
-                res.pop("lf_ac_next", None)
-                res.pop("gc_next", None)
+            # บันทึกทีละบัญชีลงไฟล์ล่าสุด (update_creds) — ไม่เขียน snapshot ตอนเริ่มทับบัญชีอื่น
+            lf_next = res.pop("lf_ac_next", None)
+            gc_next = res.pop("gc_next", None)
+            if res.get("ok") and lf_next:
+                _, err = _api_try_update_creds({key: {"LF_AC": lf_next, "guestCookie": gc_next}},
+                                               CREDS_FILE)
+                if err:
+                    save_errors.append(key)
 
             if res.get("ok"):
                 names = ", ".join(str(m) for m in res.get("missions", [])) or "-"
@@ -154,8 +155,6 @@ def main():
             else:
                 print(f"[ERR] {key:<10} | file={res.get('file','-')}: {res}", flush=True)
 
-    _api_save_creds(creds, CREDS_FILE)
-
     good = sum(1 for r in results.values() if r.get("ok"))
     tot_pend = sum(r.get("pending", 0) for r in results.values())
     tot_claim = sum(r.get("claimed", 0) for r in results.values())
@@ -164,6 +163,8 @@ def main():
     print(f"  - สำเร็จ: {good}/{len(results)} บัญชี")
     print(f"  - ทำครบแต่ยังไม่รับ: {tot_pend} ชิ้น")
     print(f"  - รับไปได้: {tot_claim} ชิ้น")
+    if save_errors:
+        print(f"  - [!] บันทึก creds.json ไม่สำเร็จ {len(save_errors)} บัญชี: {', '.join(save_errors)}")
     print("=" * 55)
 
 

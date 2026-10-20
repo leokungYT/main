@@ -103,61 +103,134 @@ def su(serial, cmd):
     return adb(serial, "shell", "su -c '" + cmd.replace("'", "'\\''") + "'")
 
 
-def backup_and_clear(serial, stamp):
+PREFS_STAGE = "/sdcard/lgr_prefs_bak_{stamp}"   # ที่พักสำเนา prefs (ชื่อต่อรอบ ไม่ทับของรอบอื่น)
+
+
+def backup_and_clear(serial, stamp, confirm=False):
+    """สำรอง shared_prefs มาที่ PC แล้ว pm clear — ลบบัญชีบนเครื่องถาวร
+    ต้องสั่งยืนยันชัดเจน (confirm=True, มาจาก --clear / --yes-clear เท่านั้น) และต้องสำรองสำเร็จก่อน
+    (มีไฟล์ .xml ถูกดึงมาจริง) ไม่งั้นไม่ clear ; คืน True เมื่อ clear แล้ว"""
+    if not confirm:
+        print("[clear] ไม่ได้ยืนยัน -> ไม่ pm clear")
+        return False
     dst = os.path.join(LOG_DIR, f"prefs_backup_{stamp}")
     os.makedirs(dst, exist_ok=True)
-    su(serial, f"rm -rf /sdcard/lgr_prefs_bak; cp -r /data/data/{PKG}/shared_prefs /sdcard/lgr_prefs_bak")
-    adb(serial, "pull", "/sdcard/lgr_prefs_bak", dst)
+    stage = PREFS_STAGE.format(stamp=stamp)
+    su(serial, f"cp -r /data/data/{PKG}/shared_prefs {stage}")
+    adb(serial, "pull", stage, dst)
+    pulled = [f for _r, _d, fs in os.walk(dst) for f in fs if f.endswith(".xml")]
+    if not pulled:
+        print(f"[clear] ⚠️ สำรอง prefs ไม่สำเร็จ (ไม่มี .xml ใน {dst}) -> ยกเลิก ไม่ pm clear")
+        return False
     adb(serial, "shell", "am", "force-stop", PKG)
     adb(serial, "shell", "pm", "clear", PKG)
-    print(f"[clear] สำรอง prefs -> {dst} แล้ว pm clear เรียบร้อย")
+    su(serial, f"rm -rf {stage}")                  # ที่พักที่รอบนี้สร้างเอง
+    print(f"[clear] สำรอง prefs ({len(pulled)} ไฟล์) -> {dst} แล้ว pm clear เรียบร้อย")
+    return True
 
 
+CACERTS = "/system/etc/security/cacerts"
 CA_DIR = "/data/local/tmp/lgr_cacerts"
-_SAVED_PROXY = {}
+HOSTS = "/system/etc/hosts"
+ROUTE_LOCALNET = "/proc/sys/net/ipv4/conf/all/route_localnet"
+RULE = f"OUTPUT -p tcp ! -d 127.0.0.1 --dport 443 -j DNAT --to-destination 127.0.0.1:{PORT}"
+# กฎที่ capture_run/capture_auto ใช้ (REDIRECT -> 8443) — ถ้าค้างอยู่ = มีอีกสคริปต์ใช้เครื่องนี้ -> ไม่แตะ
+OTHER_RULE = f"OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports {PORT}"
+# serial -> สิ่งที่สคริปต์นี้สร้าง/เปลี่ยนจริง (ยืนยันแล้ว) พร้อมค่าเดิมที่อ่านจากเครื่อง ; teardown ถอนเฉพาะนี้
+_CREATED = {}
+
+
+def _mounted(serial, path):
+    return (" %s " % path) in su(serial, "cat /proc/mounts").stdout
+
+
+def _rule_exists(serial, rule=RULE):
+    return su(serial, "iptables -t nat -C " + rule).returncode == 0
+
+
+def _reverse_exists(serial):
+    return f"tcp:{PORT}" in adb(serial, "reverse", "--list").stdout
 
 
 def install_ca(serial):
     """ติดตั้ง CA ของ mitmproxy เป็น system cert ชั่วคราว (bind-mount ทับ cacerts)
-    เกม (libcurl) ไม่เช็ค cert อยู่แล้ว แต่ WebView (หน้า game-terms) / ส่วน Java ของ Trident เช็ค"""
-    import subprocess
+    เกม (libcurl) ไม่เช็ค cert อยู่แล้ว แต่ WebView (หน้า game-terms) / ส่วน Java ของ Trident เช็ค
+    ไม่ umount/ลบของที่ไม่ได้สร้าง: cacerts ถูก mount อยู่แล้ว หรือ CA_DIR มีอยู่แล้ว -> ข้าม (แจ้ง)"""
+    made = _CREATED.setdefault(serial, {})
     pem = os.path.join(os.path.expanduser("~"), ".mitmproxy", "mitmproxy-ca-cert.pem")
     if not os.path.exists(pem):
         print("[ca] ยังไม่มี ~/.mitmproxy/mitmproxy-ca-cert.pem (mitmdump ยังไม่เคยรัน) -> ข้าม")
-        return
+        return False
+    if _mounted(serial, CACERTS):
+        print(f"[ca] ⚠️ {CACERTS} ถูก mount อยู่แล้ว (ไม่ใช่ของรอบนี้) -> ไม่แตะ ข้ามการติดตั้ง CA")
+        return False
+    if su(serial, f"test -e {CA_DIR}").returncode == 0:
+        print(f"[ca] ⚠️ {CA_DIR} ค้างอยู่ (ไม่ใช่ของรอบนี้) -> ไม่ลบ ข้ามการติดตั้ง CA (ตรวจ/ลบเอง)")
+        return False
     # ชื่อไฟล์ = subject_hash_old (md5 ของ subject DER, 4 ไบต์แรกแบบ little-endian) ไม่ต้องพึ่ง openssl
     import hashlib
     from cryptography import x509
-    cert = x509.load_pem_x509_certificate(open(pem, "rb").read())
+    with open(pem, "rb") as f:
+        cert = x509.load_pem_x509_certificate(f.read())
     h = "%08x" % int.from_bytes(hashlib.md5(cert.subject.public_bytes()).digest()[:4], "little")
-    adb(serial, "push", pem, f"/data/local/tmp/{h}.0")
-    su(serial, f"umount /system/etc/security/cacerts 2>/dev/null; rm -rf {CA_DIR}; mkdir -p {CA_DIR}; "
-               f"cp /system/etc/security/cacerts/* {CA_DIR}/; mv /data/local/tmp/{h}.0 {CA_DIR}/; "
+    adb(serial, "push", pem, f"{CA_DIR}.{h}.0")
+    su(serial, f"mkdir -p {CA_DIR}")
+    if su(serial, f"test -d {CA_DIR}").returncode != 0:
+        print(f"[ca] สร้าง {CA_DIR} ไม่ได้ -> ข้าม")
+        su(serial, f"rm -f {CA_DIR}.{h}.0")
+        return False
+    made["ca_dir"] = True
+    su(serial, f"cp {CACERTS}/* {CA_DIR}/; mv {CA_DIR}.{h}.0 {CA_DIR}/{h}.0; "
                f"chmod 644 {CA_DIR}/*; chown root:root {CA_DIR}/*; "
                f"chcon -R u:object_r:system_file:s0 {CA_DIR}; "
-               f"mount --bind {CA_DIR} /system/etc/security/cacerts")
-    ok = su(serial, f"ls /system/etc/security/cacerts/{h}.0").returncode == 0
+               f"mount --bind {CA_DIR} {CACERTS}")
+    if _mounted(serial, CACERTS):
+        made["ca_mount"] = True
+    ok = made.get("ca_mount") and su(serial, f"ls {CACERTS}/{h}.0").returncode == 0
     print(f"[ca] mitm CA เป็น system cert: {'OK' if ok else 'ไม่สำเร็จ'} ({h}.0)")
+    return bool(ok)
 
 
 def setup(serial):
+    """ส่งทุก TCP 443 ที่ไม่ใช่ localhost -> mitm (adb reverse) ; DNS ไม่ต้องแตะ
+    ไม่ล้างของคนอื่น: เจอ reverse/กฎ/hosts mount ค้าง -> หยุด (False) ให้ผู้ใช้ตรวจเอง
+    บันทึก ownership หลังยืนยันแต่ละขั้นเท่านั้น ; คืน True เมื่อครบ"""
+    made = _CREATED.setdefault(serial, {})
+    if _reverse_exists(serial):
+        print(f"[routing] หยุด: มี adb reverse tcp:{PORT} อยู่ก่อนแล้ว (ไม่ใช่ของสคริปต์นี้)")
+        return False
+    if _mounted(serial, HOSTS) or _rule_exists(serial, OTHER_RULE):
+        print(f"[routing] หยุด: มี bind-mount {HOSTS} หรือกฎ REDIRECT ของ capture_run/capture_auto ค้างอยู่")
+        return False
+    if _rule_exists(serial):
+        print("[routing] หยุด: มีกฎ DNAT แบบเดียวกันค้างอยู่ก่อนแล้ว (ไม่ใช่ของรอบนี้)")
+        return False
+
     adb(serial, "reverse", f"tcp:{PORT}", f"tcp:{PORT}")
-    # ล้างของค้างจาก capture_run (hosts bind-mount + กฎ REDIRECT เก่า) แล้วส่ง
-    # ทุก TCP 443 ที่ไม่ใช่ localhost -> mitm (adb reverse) ; DNS ไม่ต้องแตะ
-    su(serial, f"umount /system/etc/hosts 2>/dev/null; iptables -t nat -F OUTPUT; "
-               f"sysctl -w net.ipv4.conf.all.route_localnet=1 >/dev/null 2>&1; "
-               f"iptables -t nat -A OUTPUT -p tcp ! -d 127.0.0.1 --dport 443 "
-               f"-j DNAT --to-destination 127.0.0.1:{PORT}")
+    if _reverse_exists(serial):
+        made["reverse"] = True
+    # DNAT ไป 127.0.0.1 ต้องเปิด route_localnet: อ่านค่าเดิมจริงก่อน แล้วคืนค่านั้นตอนจบ (ไม่เดา)
+    old = su(serial, f"cat {ROUTE_LOCALNET}").stdout.strip()
+    if old not in ("0", "1"):
+        print(f"[routing] อ่าน route_localnet ไม่ได้ ({old!r}) -> ไม่เปลี่ยน")
+    elif old == "0":
+        su(serial, f"echo 1 > {ROUTE_LOCALNET}")
+        if su(serial, f"cat {ROUTE_LOCALNET}").stdout.strip() == "1":
+            made["route_localnet"] = old
+    su(serial, "iptables -t nat -A " + RULE)
+    if _rule_exists(serial):
+        made["rule"] = True
     # proxy ระบบ (http_proxy) ค้าง/ตาย -> WebView หน้า game-terms ERR_TIMED_OUT (เกม native ไม่สนค่านี้)
-    old = adb(serial, "shell", "settings get global http_proxy").stdout.strip()
-    if old and old not in ("null", ":0"):
-        print(f"[proxy] ปิด proxy ระบบ {old} ชั่วคราว (คืนให้ตอนจบ)")
-        _SAVED_PROXY[serial] = old
+    oldp = adb(serial, "shell", "settings get global http_proxy").stdout.strip()
+    if oldp and oldp not in ("null", ":0"):
+        print(f"[proxy] ปิด proxy ระบบ {oldp} ชั่วคราว (คืนให้ตอนจบ)")
         adb(serial, "shell", "settings put global http_proxy :0")
-    rules = su(serial, "iptables -t nat -S OUTPUT").stdout
-    if "DNAT" not in rules:
-        print(f"[routing] ⚠️ ติดตั้งกฎ iptables ไม่สำเร็จ:\n{rules}")
-    print(f"[routing] {serial}: TCP 443 ทุก host -> mitm:{PORT}")
+        made["proxy"] = oldp                         # ค่าเดิมที่อ่านได้จริง
+    ok = bool(made.get("reverse") and made.get("rule"))
+    print(f"[routing] {serial}: reverse={bool(made.get('reverse'))} rule={bool(made.get('rule'))} "
+          f"route_localnet={'set' if 'route_localnet' in made else 'unchanged'} -> "
+          f"{'TCP 443 ทุก host -> mitm:%d' % PORT if ok else 'ไม่ครบ'}")
+    return ok
 
 
 def find_mitmdump():
@@ -211,12 +284,36 @@ def start_wireproxy(conf_name, bind):
 
 
 def teardown(serial):
-    adb(serial, "reverse", "--remove", f"tcp:{PORT}")
-    su(serial, f"iptables -t nat -F OUTPUT 2>/dev/null; "
-               f"umount /system/etc/security/cacerts 2>/dev/null; rm -rf {CA_DIR}")
-    if serial in _SAVED_PROXY:
-        adb(serial, "shell", f"settings put global http_proxy {_SAVED_PROXY.pop(serial)}")
-    print(f"[routing] {serial}: ถอด routing แล้ว")
+    """ถอนเฉพาะที่ setup()/install_ca() บันทึก ownership ไว้ (ไม่มี -F / remove-all / umount เดา)
+    แล้วตรวจซ้ำ -> คืน list ของ resource ที่ยังค้าง (ว่าง = ถอนครบ) ; ถอนไม่ได้ = แจ้ง ไม่ลบแบบกว้าง"""
+    made = _CREATED.pop(serial, {})
+    left = []
+    if made.get("rule"):
+        su(serial, "iptables -t nat -D " + RULE)
+        if _rule_exists(serial):
+            left.append(f"iptables -t nat {RULE}")
+    if "route_localnet" in made:
+        su(serial, f"echo {made['route_localnet']} > {ROUTE_LOCALNET}")
+        if su(serial, f"cat {ROUTE_LOCALNET}").stdout.strip() != made["route_localnet"]:
+            left.append(f"{ROUTE_LOCALNET} (ค่าเดิม {made['route_localnet']})")
+    if made.get("ca_mount"):
+        su(serial, f"umount {CACERTS}")
+        if _mounted(serial, CACERTS):
+            left.append(f"bind-mount {CACERTS}")
+    if made.get("ca_dir") and f"bind-mount {CACERTS}" not in left:
+        su(serial, f"rm -rf {CA_DIR}")              # โฟลเดอร์ที่รอบนี้สร้างเอง (ยืนยันว่าไม่ได้ mount แล้ว)
+        if su(serial, f"test -e {CA_DIR}").returncode == 0:
+            left.append(CA_DIR)
+    if made.get("reverse"):
+        adb(serial, "reverse", "--remove", f"tcp:{PORT}")
+        if _reverse_exists(serial):
+            left.append(f"adb reverse tcp:{PORT}")
+    if "proxy" in made:
+        adb(serial, "shell", f"settings put global http_proxy {made['proxy']}")
+    print(f"[routing] {serial}: ถอด routing แล้ว (เฉพาะที่สคริปต์สร้าง: {sorted(made) or 'ไม่มี'})")
+    if left:
+        print(f"[routing] ⚠️ ยังค้าง ต้องตรวจ/ถอนเอง: {left}")
+    return left
 
 
 def main():
@@ -236,6 +333,12 @@ def main():
     if not a.serial:
         out = subprocess.run([ADB, "devices"], capture_output=True, text=True).stdout
         devs = [l.split()[0] for l in out.splitlines()[1:] if l.strip().endswith("device")]
+        if not devs:
+            # adb ยังไม่ได้ต่อ MuMu (เช่นเพิ่งเปิดอีมู/adb server รีสตาร์ท) -> connect พอร์ตที่ MuMu ใช้บ่อยเอง
+            for port in [7555, 5555, 5557, 5563] + [16384 + 32 * i for i in range(8)]:
+                subprocess.run([ADB, "connect", f"127.0.0.1:{port}"], capture_output=True, text=True, timeout=5)
+            out = subprocess.run([ADB, "devices"], capture_output=True, text=True).stdout
+            devs = [l.split()[0] for l in out.splitlines()[1:] if l.strip().endswith("device")]
         # MuMu โผล่ 2 พอร์ต (เช่น 16416 + 5557) แต่เป็นเครื่องเดียวกัน -> ยุบตาม android_id
         seen = {}
         for d in devs:
@@ -262,8 +365,11 @@ def main():
         env["LGR_NEWID_VIA"] = a.wg
         print(f"[wg] mitm ออกเน็ตผ่าน WG {a.wg}")
 
-    if a.clear:
-        backup_and_clear(a.serial, stamp)
+    if a.clear:                                   # ผู้ใช้สั่ง --clear เองเท่านั้น
+        if not backup_and_clear(a.serial, stamp, confirm=True):
+            if wgp:
+                wgp.terminate()
+            sys.exit("[clear] ไม่ได้ clear (สำรองไม่สำเร็จ) -> หยุด")
 
     mitm = subprocess.Popen(
         [find_mitmdump(), "--mode", "reverse:https://rangers-api.line-apps.com",
@@ -273,7 +379,13 @@ def main():
         env=env,
     )
     time.sleep(4)
-    setup(a.serial)
+    if not setup(a.serial):
+        print("[routing] ตั้งค่าไม่ครบ -> ยกเลิก (ถอนเฉพาะที่ตั้งไปแล้ว)")
+        mitm.terminate()
+        left = teardown(a.serial)
+        if wgp:
+            wgp.terminate()
+        sys.exit(3 if left else 2)
     install_ca(a.serial)
     adb(a.serial, "shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
     print(f"\n>>> เปิดเกมแล้ว กดผ่าน tutorial ไปจนถึง Lv 3  (log: {log})")

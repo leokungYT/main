@@ -19,6 +19,7 @@ test_create_id.py — เช็คบัญชีที่จับได้ (cr
   python test_create_id.py --watch         # เฝ้า creds.json เช็คบัญชีใหม่เรื่อย ๆ (บอทรันคู่)
 """
 import argparse
+import copy
 import json
 import os
 import subprocess
@@ -41,7 +42,8 @@ from lgr_api import (
     parse_coin,
     parse_tickets,
     load_creds as _api_load_creds,
-    save_creds as _api_save_creds,
+    try_update_creds as _api_try_update_creds,
+    changed_fields,
     merge_part_creds,
     CREDS_FILE,
 )
@@ -205,6 +207,7 @@ def run_once(target_id, targets, device=None):
         return 0
     if target_id:
         creds = {k: v for k, v in creds.items() if k == target_id}
+    orig = copy.deepcopy(creds)                  # ค่าก่อนเช็ค -> บันทึกเฉพาะ field ที่เปลี่ยน
     hits_total = 0
     for key, cred in creds.items():
         ok, hits, codes, info = check_account(key, cred, targets)
@@ -220,12 +223,10 @@ def run_once(target_id, targets, device=None):
             print(f"[HIT!] {key} | file={fname} | ruby={ruby} | ticket={ticket} ได้ {hits} -> เซฟ {os.path.basename(dst)}")
         else:
             print(f"[miss] {key} | file={fname} | ruby={ruby} | ticket={ticket}: {sorted(codes)}")
-    # เซฟ LF_AC และ resource ที่หมุนกลับ creds.json
-    allc = load_creds()
-    for k, v in creds.items():
-        if k in allc:
-            allc[k].update(v)
-    _api_save_creds(allc, CREDS)
+    # เซฟ LF_AC และ resource ที่หมุนกลับ creds.json: เฉพาะ field ที่เปลี่ยน ลงไฟล์ล่าสุด
+    # (เดิม allc[k].update(snapshot) เอาค่าเก่าทั้งก้อนไปทับ field ที่โปรเซสอื่นเพิ่งเขียน)
+    updates = {k: changed_fields(orig.get(k), v) for k, v in creds.items()}
+    _api_try_update_creds({k: f for k, f in updates.items() if f}, CREDS)
     return hits_total
 
 

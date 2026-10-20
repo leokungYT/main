@@ -23,6 +23,7 @@ check_team.py — ตรวจสอบทีม / ตัวละคร (Ranger
 
 import argparse
 import concurrent.futures as cf
+import copy
 import json
 import os
 import re
@@ -40,7 +41,8 @@ from lgr_api import (
     parse_coin,
     parse_tickets,
     load_creds as _api_load_creds,
-    save_creds as _api_save_creds,
+    try_update_creds as _api_try_update_creds,
+    changed_fields,
     merge_part_creds,
     CREDS_FILE,
 )
@@ -337,6 +339,16 @@ def check_one_account(key, cred, targets, out_dir=OUT_DIR, device=None):
     return info
 
 
+def _save_changed(key, orig_entry, cred):
+    """บันทึกเฉพาะ field ที่ check_one_account เปลี่ยนใน cred (LF_AC/ruby/...) ลงไฟล์ล่าสุด
+    -> ไม่เอา snapshot ทั้งก้อนไปทับ field/บัญชีที่โปรเซสอื่นเพิ่งเขียน ; คืน error หรือ None"""
+    fields = changed_fields(orig_entry, cred)
+    if not fields:
+        return None
+    _, err = _api_try_update_creds({key: fields}, CREDS)
+    return err
+
+
 def run_batch(targets, target_id=None, out_dir=OUT_DIR, device=None, only_hits=False, workers=8):
     """รันตรวจสอบบัญชีทั้งหมด (หรือเฉพาะ target_id) แบบขนาน"""
     creds = load_creds()
@@ -354,6 +366,8 @@ def run_batch(targets, target_id=None, out_dir=OUT_DIR, device=None, only_hits=F
         items = [(target_id, creds[target_id])]
 
     total = len(items)
+    orig = copy.deepcopy(dict(items))            # ค่าก่อนตรวจ -> หา field ที่เปลี่ยนจริงตอนบันทึก
+    save_errors = []
     _safe_print(f"[*] ตรวจสอบ {total} บัญชี ใน creds.json (เป้าหมาย: {targets})")
     _safe_print("-" * 75)
 
@@ -368,6 +382,8 @@ def run_batch(targets, target_id=None, out_dir=OUT_DIR, device=None, only_hits=F
         for fut in cf.as_completed(futures):
             res = fut.result()
             key = res.get("key")
+            if _save_changed(key, orig.get(key), creds.get(key)):
+                save_errors.append(key)
             fname = res.get("file", "-")
             file_str = f" | {fname}" if fname and fname != "-" else ""
 
@@ -389,10 +405,10 @@ def run_batch(targets, target_id=None, out_dir=OUT_DIR, device=None, only_hits=F
                     team_str = ", ".join(res.get("team", [])[:5]) or "ว่าง"
                     _safe_print(f"[miss] {key:<10}{file_str} | Lv {res.get('level')} | ruby={res.get('ruby')} ticket={res.get('ticket')} | ทีม: [{team_str}]")
 
-    # เซฟ creds ที่มี LF_AC/ruby/ticket หมุนใหม่กลับลง creds.json
-    _api_save_creds(creds, CREDS)
-
+    # LF_AC/ruby/ticket ที่หมุนใหม่ถูกบันทึกทีละบัญชีแล้ว (_save_changed) ระหว่างวนผลลัพธ์
     _safe_print("\n" + "=" * 75)
+    if save_errors:
+        _safe_print(f"  [!] บันทึก creds.json ไม่สำเร็จ {len(save_errors)} บัญชี: {', '.join(save_errors)}")
     _safe_print("สรุปผลการตรวจสอบทีม:")
     _safe_print(f"  - พบบัญชีเป้าหมาย (HIT): {hit_count}/{total} บัญชี -> บันทึกลง {os.path.basename(out_dir)}/")
     _safe_print(f"  - บัญชีทั่วไป (Miss):    {miss_count}/{total} บัญชี")
@@ -421,7 +437,9 @@ def watch_loop(targets, out_dir=OUT_DIR, device=None, only_hits=False, workers=4
             if new_items:
                 for k, v in new_items:
                     seen_keys.add(k)
+                    before = copy.deepcopy(v)
                     res = check_one_account(k, v, targets, out_dir, device)
+                    _save_changed(k, before, v)      # error ถูกพิมพ์แจ้งใน try_update_creds แล้ว
                     fname = res.get("file", "-")
                     file_str = f" | {fname}" if fname and fname != "-" else ""
                     if not res.get("ok"):
@@ -435,7 +453,6 @@ def watch_loop(targets, out_dir=OUT_DIR, device=None, only_hits=False, workers=4
                     elif not only_hits:
                         team_str = ", ".join(res.get("team", [])[:5]) or "ว่าง"
                         _safe_print(f"[miss] {k:<10}{file_str} | Lv {res.get('level')} | ruby={res.get('ruby')} ticket={res.get('ticket')} | ทีม: [{team_str}]")
-                _api_save_creds(creds, CREDS)
             time.sleep(interval)
     except KeyboardInterrupt:
         _safe_print(f"\n[*] หยุดการเฝ้าแล้ว | พบตัวเป้าหมายทั้งหมด {total_hits} บัญชี")

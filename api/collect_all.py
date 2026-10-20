@@ -24,7 +24,7 @@ from lgr_api import (
     parse_coin,
     parse_tickets,
     load_creds as _api_load_creds,
-    save_creds as _api_save_creds,
+    try_update_creds as _api_try_update_creds,
     merge_part_creds,
     CREDS_FILE,
 )
@@ -121,25 +121,21 @@ def main():
 
     print(f"[*] พบทั้งหมด {len(targets)} บัญชี ใน creds.json กำลังเริ่มล็อกอินและรับของอัตโนมัติผ่าน API...\n", flush=True)
     results = {}
+    save_errors = []
     with cf.ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(targets)))) as ex:
         for key, res in ex.map(lambda kv: _one(*kv), targets):
             results[key] = res
             # เก็บ LF_AC และค่า ruby/ticket ที่หมุนใหม่กลับ (บัญชี API เป็นเจ้าของ ต้องตามค่าล่าสุด)
+            # บันทึกทีละบัญชีลงไฟล์ล่าสุด (update_creds) — ไม่เขียน snapshot ตอนเริ่มทับบัญชีอื่น
+            lf_next = res.pop("lf_ac_next", None)
+            gc_next = res.pop("gc_next", None)
             if res.get("ok"):
-                entry = creds.setdefault(key, {})
-                if res.get("lf_ac_next"):
-                    entry["LF_AC"] = res.pop("lf_ac_next")
-                if res.pop("gc_next", None):
-                    entry["guestCookie"] = res["gc_next"]
-                if "ruby" in res:
-                    entry["ruby"] = res["ruby"]
-                if "ticket" in res:
-                    entry["ticket"] = res["ticket"]
-                if "coin" in res:
-                    entry["coin"] = res["coin"]
-            else:
-                res.pop("lf_ac_next", None)
-                res.pop("gc_next", None)
+                _, err = _api_try_update_creds({key: {
+                    "LF_AC": lf_next, "guestCookie": gc_next,
+                    "ruby": res.get("ruby"), "ticket": res.get("ticket"), "coin": res.get("coin"),
+                }}, CREDS)
+                if err:
+                    save_errors.append(key)
             ok = "OK " if res.get("ok") else "ERR"
             fname = res.get("file", "-")
             if res.get("ok"):
@@ -151,14 +147,17 @@ def main():
             else:
                 print(f"[{ok}] {key:<10} | file={fname}: {res}", flush=True)
 
-    _api_save_creds(creds, CREDS)
     good = sum(1 for r in results.values() if r.get("ok"))
     tot_claim = sum(r.get("claimed", 0) for r in results.values())
     print("\n" + "=" * 55, flush=True)
     print(f"สรุปผลการรับของอัตโนมัติ:", flush=True)
     print(f"  - สำเร็จ: {good}/{len(results)} บัญชี", flush=True)
     print(f"  - รับของขวัญรวม: {tot_claim} ชิ้น", flush=True)
-    print(f"  - อัปเดตข้อมูลล่าสุดลง creds.json เรียบร้อย", flush=True)
+    if save_errors:
+        print(f"  - [!] บันทึก creds.json ไม่สำเร็จ {len(save_errors)} บัญชี: {', '.join(save_errors)}"
+              " (LF_AC ที่หมุนใหม่ของบัญชีเหล่านี้ไม่ได้ถูกเก็บ)", flush=True)
+    else:
+        print(f"  - อัปเดตข้อมูลล่าสุดลง creds.json เรียบร้อย", flush=True)
     print("=" * 55, flush=True)
 
 

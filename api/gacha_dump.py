@@ -22,7 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from lgr_api import LGRClient, load_creds, save_creds, CREDS_FILE
+from lgr_api import LGRClient, load_creds, try_update_creds, CREDS_FILE
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -38,15 +38,15 @@ def main():
     ap.add_argument("--lang", default="th", help="ภาษารูปแบนเนอร์ (th/en/ja/ko/zh-Hant)")
     args = ap.parse_args()
 
-    creds = load_creds(CREDS_FILE)
+    creds = load_creds(CREDS_FILE)               # อ่านอย่างเดียว (บัญชีเดียวที่ระบุ ไม่ต้อง merge part)
     cred = creds.get(args.id)
     if not cred:
         print(f"[X] ไม่พบ id '{args.id}'")
         return
     c = LGRClient(cred["udid"], cred["LF_AC"])
     st, d = c.gacha_info()
-    creds[args.id]["LF_AC"] = c.lf_ac
-    save_creds(creds, CREDS_FILE)
+    # เก็บ LF_AC ที่หมุนใหม่ เฉพาะบัญชีนี้ลงไฟล์ล่าสุด (error ถูกพิมพ์แจ้งใน try_update_creds)
+    try_update_creds({args.id: {"LF_AC": c.lf_ac, "guestCookie": c.guest_cookie_next}}, CREDS_FILE)
     if st != 200 or not isinstance(d, dict):
         print(f"[X] gacha/info status={st} {str(d)[:200]}")
         return

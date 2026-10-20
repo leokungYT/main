@@ -46,38 +46,23 @@ def _load():
         return {}
 
 
-import time as _time
-import contextlib
+import sys
 
-_LOCK = CREDS + ".lock"
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+# lock + atomic write ตัวเดียวกับ lgr_api/account_workflow (ไฟล์ <creds>.lock) -> ทุกโมดูลเขียนสลับกันไม่ทับกัน
+from lgr_api import creds_lock, CredsLockError, _write_creds_atomic, _read_json_file
 
 
-@contextlib.contextmanager
 def _flock():
-    """cross-process lock (หลาย mitmdump เขียน creds.json พร้อมกันตอนรันหลายจอ)"""
-    fd = None
-    for _ in range(200):                       # รอสูงสุด ~10s
-        try:
-            fd = os.open(_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            break
-        except FileExistsError:
-            _time.sleep(0.05)
-    try:
-        yield
-    finally:
-        if fd is not None:
-            os.close(fd)
-            try:
-                os.remove(_LOCK)
-            except OSError:
-                pass
+    """cross-process lock (หลาย mitmdump เขียน creds.json พร้อมกันตอนรันหลายจอ)
+    หมดเวลา -> CredsLockError (ไม่เขียนต่อแบบไม่มี lock)"""
+    return creds_lock(CREDS)
 
 
 def _save(d):
-    tmp = CREDS + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, CREDS)                      # atomic (กันไฟล์พังตอนเขียนพร้อมกัน)
+    _write_creds_atomic(d, CREDS)               # atomic + .bak (ผู้เรียกถือ _flock อยู่)
 
 
 def _cookie_parts(raw):
@@ -152,8 +137,21 @@ def response(flow: http.HTTPFlow):
     if rsn:
         _UDID2RSN[udid] = rsn
     key = rsn or _UDID2RSN.get(udid) or udid
-    with _flock():                            # ล็อก: reload สด -> แก้ -> เขียน (กันจออื่นเขียนทับ)
-        d = _load()
+    try:
+        entry = _store(key, udid, lf, rsn, ruby, coin, level, ck.get("guestCookie"))
+    except (CredsLockError, ValueError, OSError) as e:
+        # ไม่เขียนเลย (LF_AC หมุนทุกคำขอ -> response ถัดไปจะพยายามเขียนใหม่)
+        print(f"[creds] ERROR ไม่ได้บันทึก acct={key}: {e}", flush=True)
+        return
+    ruby_str = f" ruby={entry['ruby']}" if "ruby" in entry else ""
+    coin_str = f" coin={entry['coin']}" if "coin" in entry else ""
+    print(f"[creds] saved acct={key} udid={udid[:8]}.. LF_AC={lf[:16]}.. gc={'Y' if entry.get('guestCookie') else '-'}{ruby_str}{coin_str}", flush=True)
+
+
+def _store(key, udid, lf, rsn, ruby, coin, level, gc):
+    """ล็อก: reload สด -> แก้เฉพาะ entry นี้ -> เขียน (กันจออื่นเขียนทับ) ; คืน entry ที่บันทึก"""
+    with _flock():
+        d = _read_json_file(CREDS)                # ไฟล์พัง -> exception (ไม่เขียนทับด้วยข้อมูลบัญชีเดียว)
         # ยุบ entry เก่าที่เคยคีย์ด้วย udid ให้มารวมกับคีย์ rsn (ครั้งแรกที่รู้ rsn)
         old_udid_entry = d.get(udid, {}) if key != udid else {}
         entry = d.get(key, {}) or old_udid_entry
@@ -167,7 +165,6 @@ def response(flow: http.HTTPFlow):
             entry["coin"] = coin
         if level is not None:
             entry["level"] = level
-        gc = ck.get("guestCookie")
         if gc and len(gc) < MIN_COOKIE_LEN:       # gc สั้น = ยังไม่ใช่ credential ถาวร
             gc = None
         if gc:                                    # อย่าเขียนทับด้วย None (มีแค่ตอน /login)
@@ -179,6 +176,4 @@ def response(flow: http.HTTPFlow):
         if key != udid and udid in d:             # ลบ entry ซ้ำที่คีย์ด้วย udid
             d.pop(udid, None)
         _save(d)
-    ruby_str = f" ruby={entry['ruby']}" if "ruby" in entry else ""
-    coin_str = f" coin={entry['coin']}" if "coin" in entry else ""
-    print(f"[creds] saved acct={key} udid={udid[:8]}.. LF_AC={lf[:16]}.. gc={'Y' if entry.get('guestCookie') else '-'}{ruby_str}{coin_str}", flush=True)
+    return entry

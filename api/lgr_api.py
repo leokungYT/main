@@ -18,6 +18,7 @@ lgr_api.py — LINE Rangers (com.linecorp.LGRGS) REST client
   จากนั้นบัญชีนั้นใช้ API ตัวนี้อย่างเดียว (อย่าเปิดเกมบัญชีเดิมพร้อมกัน เดี๋ยว credential หมุนชนกัน)
 """
 
+import contextlib
 import json
 import os
 import sys
@@ -70,107 +71,237 @@ MIN_COOKIE_LEN = 200
 _SD_ENDPOINT_CACHE = None
 
 
-def merge_part_creds(base_dir=None):
+class CredsLockError(RuntimeError):
+    """ได้ lock ของ creds.json ไม่ทันเวลา -> ต้องไม่เขียนไฟล์"""
+
+
+# lock ข้ามโปรเซส = ไฟล์ <creds>.lock (O_EXCL) — ใช้ชื่อเดียวกับที่ capture_credential ใช้มาแต่เดิม
+CREDS_LOCK_TIMEOUT = float(os.environ.get("LGR_CREDS_LOCK_TIMEOUT", "10"))
+
+
+@contextlib.contextmanager
+def creds_lock(path=None, timeout=None):
+    """ถือ lock ของไฟล์ creds ระหว่าง read-modify-write ; หมดเวลา -> CredsLockError (ห้ามเขียนต่อแบบไม่มี lock)"""
+    path = path or CREDS_FILE
+    lock = path + ".lock"
+    timeout = CREDS_LOCK_TIMEOUT if timeout is None else timeout
+    deadline = time.time() + timeout
+    while True:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            if time.time() >= deadline:
+                raise CredsLockError(f"รอ lock {lock} เกิน {timeout}s (มีโปรเซสอื่นถืออยู่ หรือ lock ค้าง)")
+            time.sleep(0.05)
+        except OSError as e:
+            raise CredsLockError(f"สร้าง lock {lock} ไม่ได้: {e}") from e
+    try:
+        yield
+    finally:
+        os.close(fd)
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+
+
+def _read_json_file(path):
+    """อ่าน dict จากไฟล์ (ไม่มีไฟล์/ว่าง = {}) ; ไฟล์พังให้ exception ขึ้นไป (อย่าเขียนทับของที่อ่านไม่ออก)"""
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        c = f.read().strip()
+    return json.loads(c) if c else {}
+
+
+def _write_creds_atomic(data, path):
+    """เขียนแบบ atomic (tmp -> os.replace) พร้อมสำรอง .bak ; ผู้เรียกต้องถือ creds_lock อยู่แล้ว"""
+    if os.path.exists(path):
+        try:
+            shutil.copy2(path, path + ".bak")
+        except Exception:
+            pass
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
+
+# ownership ของ part file: ระหว่างจอหนึ่งกำลังจับ (mitm addon เขียน + capture_auto poll ไฟล์นี้อยู่)
+# เจ้าของสร้าง <part>.active ไว้ -> merge แบบ glob (สคริปต์อื่น/auto_merge) ข้าม part นั้น
+# ไม่งั้นจะลบ part กลางคัน ทำให้ capture_auto ตรวจไม่เจอบัญชีที่เพิ่งจับได้ (ข้อมูลไม่หายแต่จับ "ไม่สำเร็จ")
+# เจ้าของ merge part ตัวเองได้เสมอด้วย part_files=[...] (ส่วนการเขียนชนกันกันด้วย creds_lock ของ part)
+PART_ACTIVE_SUFFIX = ".active"
+
+
+def part_in_use(part_file):
+    return os.path.exists(part_file + PART_ACTIVE_SUFFIX)
+
+
+@contextlib.contextmanager
+def part_owner(part_file):
+    """ประกาศว่าโปรเซสนี้เป็นเจ้าของ part_file ระหว่าง with (marker ถูกลบตอนออกเสมอ)
+    marker ค้างจากรอบก่อน (โปรเซสตาย) -> เจ้าของใหม่รับช่วงต่อ เพราะจอ/พอร์ตเดียวกันมีเจ้าของได้ทีละราย"""
+    marker = part_file + PART_ACTIVE_SUFFIX
+    if os.path.exists(marker):
+        _safe_print(f"[!] พบ marker ค้าง {os.path.basename(marker)} -> รับช่วงเป็นเจ้าของ part นี้", flush=True)
+    with open(marker, "w", encoding="utf-8") as f:
+        f.write(f"pid={os.getpid()} t={int(time.time())}\n")
+    try:
+        yield
+    finally:
+        try:
+            os.remove(marker)
+        except OSError:
+            pass
+
+
+def merge_part_creds(base_dir=None, creds_path=None, part_files=None):
     """
-    รวมข้อมูลจากไฟล์ creds.part*.json ทุกไฟล์เข้า creds.json อัตโนมัติ (และลบ part files)
-    ป้องกันปัญหาข้อมูลค้างใน creds.part*.json ทำให้ creds.json ว่างจนรันไม่ติด
+    รวม creds.part*.json เข้า creds.json (ขั้นตอน "เขียนจริง" — load_creds ไม่เรียกเองแล้ว
+    ยกเว้นสั่ง auto_merge=True) ; part_files = รวมเฉพาะไฟล์ที่ระบุ (เจ้าของสั่ง)
+    ไม่ใส่ = ทุก creds.part*.json ในโฟลเดอร์ ยกเว้น part ที่มีเจ้าของกำลังใช้ (part_in_use)
+    ถือ lock ของ creds.json และของ part แต่ละไฟล์ (addon จับ credential เขียน part ภายใต้ lock เดียวกัน)
+    จนลบ part เสร็จ -> ไม่มีข้อมูลที่ addon เขียนเข้ามาระหว่างทางหาย
+    ลบ part file เฉพาะหลังเขียน creds.json สำเร็จ ; ไม่มี part = ไม่แตะไฟล์ใด ๆ
+    lock หมดเวลา -> CredsLockError (ไม่เขียน ไม่ลบ)
     คืน (dict บัญชีทั้งหมด, จำนวนไฟล์ part ที่รวม)
     """
     if not base_dir:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-    creds_path = os.path.join(base_dir, "creds.json")
-
-    merged = {}
-    if os.path.exists(creds_path):
+        base_dir = os.path.dirname(os.path.abspath(creds_path)) if creds_path else _API_DIR
+    creds_path = creds_path or os.path.join(base_dir, "creds.json")
+    if part_files is None:
+        part_files = glob.glob(os.path.join(base_dir, "creds.part*.json"))
+        busy = sorted(pf for pf in part_files if part_in_use(pf))
+        if busy:
+            _safe_print("[*] ข้าม part ที่มีเจ้าของกำลังใช้ (" + ", ".join(os.path.basename(p) for p in busy)
+                        + ") — ถ้าไม่มีโปรเซสใช้อยู่จริง ให้ลบไฟล์ .active เอง", flush=True)
+            part_files = [pf for pf in part_files if pf not in busy]
+    part_files = sorted(pf for pf in part_files if os.path.exists(pf))
+    if not part_files:
         try:
-            with open(creds_path, "r", encoding="utf-8") as f:
-                c = f.read().strip()
-                if c:
-                    merged = json.loads(c)
+            return _read_json_file(creds_path), 0
         except Exception:
-            merged = {}
+            return {}, 0
 
-    part_pattern = os.path.join(base_dir, "creds.part*.json")
-    part_files = sorted(glob.glob(part_pattern))
-    merged_count = 0
-
-    for pf in part_files:
-        try:
-            with open(pf, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-            if content:
-                data = json.loads(content)
-                if isinstance(data, dict):
-                    for k, v in data.items():
-                        if k in merged and isinstance(merged[k], dict) and isinstance(v, dict):
-                            for field, val in v.items():
-                                if val is not None or field not in merged[k]:
-                                    merged[k][field] = val
-                        else:
-                            merged[k] = v
-                    merged_count += 1
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(creds_lock(creds_path))
+        for pf in part_files:
+            stack.enter_context(creds_lock(pf))
+        merged = _read_json_file(creds_path)
+        used = []
+        for pf in part_files:
+            try:
+                data = _read_json_file(pf)
+            except Exception as e:
+                _safe_print(f"[!] ข้าม {os.path.basename(pf)} (อ่านไม่ได้: {e})", flush=True)
+                continue
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    if k in merged and isinstance(merged[k], dict) and isinstance(v, dict):
+                        for field, val in v.items():
+                            if val is not None or field not in merged[k]:
+                                merged[k][field] = val
+                    else:
+                        merged[k] = v
+            used.append(pf)
+        if not used:
+            return merged, 0
+        _write_creds_atomic(merged, creds_path)
+        for pf in used:
             try:
                 os.remove(pf)
             except OSError:
                 pass
-        except Exception:
-            pass
-
-    if merged_count > 0 or not os.path.exists(creds_path):
-        save_creds(merged, creds_path)
-        if merged_count > 0:
-            _safe_print(f"[*] ตรวจพบและรวมข้อมูลจาก {merged_count} ไฟล์ (creds.part*.json) เข้า creds.json สำเร็จ! (รวม {len(merged)} บัญชี)", flush=True)
-
-    return merged, merged_count
+    _safe_print(f"[*] รวมข้อมูลจาก {len(used)} ไฟล์ (creds.part*.json) เข้า {os.path.basename(creds_path)} "
+                f"(รวม {len(merged)} บัญชี)", flush=True)
+    return merged, len(used)
 
 
-def load_creds(path=None, auto_merge=True):
-    """โหลด creds.json (พร้อม auto-merge creds.part*.json ถ้ามี)"""
+def load_creds(path=None, auto_merge=False):
+    """โหลด creds.json แบบอ่านอย่างเดียว (ไม่สร้าง/แก้/ลบไฟล์)
+    auto_merge=True = รวม creds.part*.json เข้าไฟล์ก่อน (เขียนไฟล์จริง — ใช้เฉพาะสคริปต์ที่ตั้งใจเขียน)"""
     path = path or CREDS_FILE
-    base_dir = os.path.dirname(os.path.abspath(path))
     if auto_merge:
         try:
-            merge_part_creds(base_dir)
-        except Exception:
-            pass
-
+            merge_part_creds(creds_path=path)
+        except Exception as e:
+            _safe_print(f"[!] รวม creds.part*.json ไม่สำเร็จ: {e}", flush=True)
     try:
-        if not os.path.exists(path):
-            return {}
-        with open(path, "r", encoding="utf-8") as f:
-            c = f.read().strip()
-            return json.loads(c) if c else {}
+        return _read_json_file(path)
     except Exception:
         return {}
 
 
 def save_creds(data, path=None):
-    """บันทึก creds.json แบบ atomic พร้อมสำรองไฟล์ .bak"""
+    """บันทึก creds.json ทั้งก้อนแบบ atomic + .bak ภายใต้ creds_lock ; ได้ lock ไม่ทัน = ไม่เขียน คืน False
+    (ถ้าแก้แค่บางบัญชี ใช้ update_creds แทน — กันเขียน snapshot เก่าทับบัญชีที่โปรเซสอื่นเพิ่งเพิ่ม)"""
     path = path or CREDS_FILE
-    # กันเขียนทับด้วย dict ว่างเมื่อไฟล์เดิมมีข้อมูล (เคยทำบัญชีหายทั้งไฟล์ตอน process ชนกัน)
-    if not data and os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                cur = f.read().strip()
-            if cur and cur != "{}":
-                _safe_print(f"[!] ปฏิเสธการเขียน creds ว่างทับ {path} (ของเดิมมีข้อมูล)", flush=True)
-                return False
-        except Exception:
-            pass
     try:
-        if os.path.exists(path):
-            try:
-                shutil.copy2(path, path + ".bak")
-            except Exception:
-                pass
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
-        return True
+        with creds_lock(path):
+            # กันเขียนทับด้วย dict ว่างเมื่อไฟล์เดิมมีข้อมูล (เคยทำบัญชีหายทั้งไฟล์ตอน process ชนกัน)
+            if not data and os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        cur = f.read().strip()
+                    if cur and cur != "{}":
+                        _safe_print(f"[!] ปฏิเสธการเขียน creds ว่างทับ {path} (ของเดิมมีข้อมูล)", flush=True)
+                        return False
+                except Exception:
+                    pass
+            _write_creds_atomic(data, path)
+            return True
+    except CredsLockError as e:
+        _safe_print(f"[!] ไม่เขียน {path}: {e}", flush=True)
+        return False
     except Exception as e:
         _safe_print(f"[!] บันทึก {path} ไม่สำเร็จ: {e}", flush=True)
         return False
+
+
+def update_creds(updates, path=None, create=False):
+    """merge รายบัญชีลงไฟล์ล่าสุด: ถือ lock -> อ่านไฟล์สด -> แก้เฉพาะ field ของบัญชีใน updates -> เขียน atomic
+    updates = {acct_id: {field: value}} ; value None = ไม่แตะ field นั้น (เช่น guestCookie เดิมคงอยู่)
+    บัญชีที่ไม่มีในไฟล์: ข้าม (create=False) หรือสร้างใหม่ (create=True)
+    ได้ lock ไม่ทัน -> CredsLockError ; ไฟล์ JSON พัง -> ValueError (ทั้งคู่ไม่เขียน)
+    คืนจำนวน field ที่เปลี่ยนจริง (0 = ไม่เขียนไฟล์)"""
+    path = path or CREDS_FILE
+    with creds_lock(path):
+        cur = _read_json_file(path)
+        changed = 0
+        for aid, fields in (updates or {}).items():
+            entry = cur.get(aid)
+            if not isinstance(entry, dict):
+                if not create:
+                    continue
+                entry = cur[aid] = {}
+            for k, v in fields.items():
+                if v is None or entry.get(k) == v:
+                    continue
+                entry[k] = v
+                changed += 1
+        if changed:
+            _write_creds_atomic(cur, path)
+        return changed
+
+
+def try_update_creds(updates, path=None, create=False):
+    """update_creds ที่ไม่โยน exception สำหรับสคริปต์ CLI/เว็บ: บันทึกไม่สำเร็จ -> พิมพ์ [!] แจ้งผู้ใช้
+    คืน (จำนวน field ที่เปลี่ยน, ข้อความ error หรือ None)"""
+    try:
+        return update_creds(updates, path, create=create), None
+    except Exception as e:
+        err = f"{type(e).__name__}: {e}"
+        _safe_print(f"[!] บันทึก creds ไม่สำเร็จ ({os.path.basename(path or CREDS_FILE)}): {err}", flush=True)
+        return 0, err
+
+
+def changed_fields(before, after):
+    """field ที่ after ต่างจาก before (ไม่รวมค่า None) — ใช้กับโค้ดที่แก้ dict บัญชี in-place
+    เพื่อส่งเฉพาะค่าที่ตั้งใจเปลี่ยนเข้า update_creds (ไม่เอา snapshot เก่าทั้งก้อนไปทับ)"""
+    before = before or {}
+    return {k: v for k, v in (after or {}).items() if v is not None and before.get(k) != v}
 
 
 
@@ -220,13 +351,15 @@ class LGRClient:
 
     def call(self, method, path, guest_cookie=None, **kw):
         """เรียก endpoint หนึ่ง คืน (status_code, json|text). อัปเดต LF_AC อัตโนมัติเมื่อเซิร์ฟหมุน"""
-        headers = kw.pop("headers", {})
+        # copy -> ไม่แก้ dict ของผู้เรียก (เดิมใส่ Cookie/TIMESTAMP ทับลง dict ที่ส่งมา)
+        headers = dict(kw.pop("headers", None) or {})
         headers["X-LINEGAME-TIMESTAMP"] = str(int(time.time() * 1000))
         headers["Cookie"] = self._cookie(guest_cookie)
         if method.upper() == "POST" and "data" not in kw and "json" not in kw:
             headers.setdefault("Content-Type", "application/json")
             kw["data"] = "{}"
         # ผ่าน WG/SOCKS บางทีต่อไม่ติดชั่วคราว (Host unreachable / DNS ใน tunnel) -> ลองใหม่ 3 ครั้ง
+        # ReadTimeout ไม่ลองซ้ำ (คำขออาจถึงเซิร์ฟแล้ว เช่น POST รับของ) -> โยนให้ผู้เรียกตัดสินใจ
         for attempt in range(3):
             _rate_wait()
             try:
@@ -277,7 +410,15 @@ class LGRClient:
         """รับของขวัญทั้งกล่อง gift — คืน player ที่อัปเดตแล้ว"""
         return self.call("POST", "/giftbox/gift/receive/all")
 
+    def push_register(self, device_token="", device_type="ANDROID", lang="en"):
+        """ลงทะเบียน push token — สเต็ป 'หลังสร้างบัญชี' ที่ยิงผ่าน API ได้ (ไม่ต้องใช้เกม)
+        ยืนยันจากทราฟฟิกจริง: POST /push/register -> {"result":true,"version":...}
+        deviceToken ว่างได้ (บัญชีที่ยังไม่มี FCM token) — best-effort, อย่าใช้เป็น gate"""
+        return self.call("POST", "/push/register", json={
+            "deviceType": device_type, "language": lang, "deviceToken": device_token})
+
     def unclaimed_gifts(self):
+        """คืน (status, list ของ gift ที่ยังไม่รับ) ; ดึงไม่สำเร็จ -> (status, None) — None ≠ ว่าง ห้ามนับเป็น 0"""
         st, d = self.giftbox_list()
         if st != 200 or not isinstance(d, dict):
             return st, None
@@ -551,12 +692,17 @@ def collect_account(udid, lf_ac):
     badge = home.get("result", {}).get("badge", {})
     gift_badge = badge.get("GIFT", 0)
     st, before = c.unclaimed_gifts()
-    n_before = len(before or [])
+    if before is None:
+        return {"ok": False, "step": "giftbox/list", "status": st, "lf_ac_next": c.lf_ac}
+    n_before = len(before)
     st_r, resp = (200, None)
     if n_before > 0:
         st_r, resp = c.receive_all_gifts()
     st, after = c.unclaimed_gifts()
-    n_after = len(after or [])
+    if after is None:
+        return {"ok": False, "step": "giftbox/list(after)", "status": st,
+                "unclaimed_before": n_before, "receive_status": st_r, "lf_ac_next": c.lf_ac}
+    n_after = len(after)
     return {
         "ok": True,
         "rsn": home.get("result", {}).get("player", {}).get("rsn")

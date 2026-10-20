@@ -47,6 +47,16 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from lgr_api import LGRClient, parse_ruby, parse_coin, parse_tickets
+# ตัวกลางอ่าน/เขียน creds (lock ข้ามโปรเซส + atomic + .bak) — ทุกเส้นทางเขียนในไฟล์นี้ต้องผ่านชุดนี้
+from lgr_api import (
+    load_creds as _api_load_creds,
+    save_creds as _api_save_creds,
+    merge_part_creds as _api_merge_part_creds,
+    part_owner as _api_part_owner,
+    creds_lock as _api_creds_lock,
+    _read_json_file as _api_read_json_file,
+    _write_creds_atomic as _api_write_creds_atomic,
+)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -124,13 +134,19 @@ def enable_root(dev):
 _ROOT_ADBD = False
 
 
+def sh_quote(s):
+    """single-quote สำหรับ POSIX sh: a'b -> 'a'\\''b'"""
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
 def sh(cmd, device=None, timeout=30):
-    """รันเป็น root: ถ้า adbd เป็น root แล้ว สั่งตรง; ไม่งั้น fallback ไป su -c '...'"""
+    """รันเป็น root: ถ้า adbd เป็น root แล้ว สั่งตรง; ไม่งั้น fallback ไป su -c '...'
+    (เดิมห่อ '{cmd}' โดยไม่ escape -> คำสั่งที่มี ' เช่น echo '127.0.0.1 ...' ถูกตัดกลางทาง)"""
     if _ROOT_ADBD:
         return adb(["shell", cmd], device=device, timeout=timeout)
     if cmd.strip().startswith("su -c"):
         return adb(["shell", cmd], device=device, timeout=timeout)
-    return adb(["shell", f"su -c '{cmd}'"], device=device, timeout=timeout)
+    return adb(["shell", "su -c " + sh_quote(cmd)], device=device, timeout=timeout)
 
 
 def list_devices():
@@ -180,28 +196,14 @@ def dedupe_device_aliases(devices):
 
 
 def load_creds(path=None):
-    try:
-        content = open(path or CREDS, encoding="utf-8").read().strip()
-        return json.loads(content) if content else {}
-    except Exception:
-        return {}
+    """อ่านอย่างเดียว (ไฟล์ไม่มี/พัง = {}) — ใช้ตัวกลางของ lgr_api ไม่ merge part"""
+    return _api_load_creds(path or CREDS)
 
 
 def save_creds(data, path=None):
-    path = path or CREDS
-    try:
-        if os.path.exists(path):
-            import shutil
-            try:
-                shutil.copy2(path, path + ".bak")
-            except Exception:
-                pass
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
-    except Exception as e:
-        print(f"[!] บันทึก {path} ไม่สำเร็จ: {e}", flush=True)
+    """เขียนทั้งไฟล์ผ่านตัวกลาง (lock + atomic + .bak) ; คืน False ถ้าไม่ได้เขียน (แจ้งแล้ว)
+    ถ้าแก้แค่บางบัญชีให้ใช้ _api_try_update_creds แทน"""
+    return _api_save_creds(data, path or CREDS)
 
 
 def part_creds(host_port):
@@ -214,34 +216,16 @@ _MERGE_LOCK = _threading.Lock()
 
 
 def merge_parts_into_creds(part_files=None):
-    """รวม creds.partN.json เข้า creds.json (ล็อกกัน thread เขียนชนกัน และค้นหาทุก part อัตโนมัติ)"""
+    """รวม creds.partN.json เข้า creds.json ผ่าน lgr_api.merge_part_creds
+    (lock ข้ามโปรเซสของ creds.json + ของ part แต่ละไฟล์ ; ลบ part เฉพาะหลังเขียนสำเร็จ)
+    part_files=None = ทุก part ; lock หมดเวลา/ไฟล์พัง -> แจ้ง error, ไม่เขียน ไม่ลบ part"""
     with _MERGE_LOCK:
-        if part_files is None:
-            part_files = sorted(glob.glob(os.path.join(HERE, "creds.part*.json")))
-        if not part_files:
+        try:
+            merged, _ = _api_merge_part_creds(creds_path=CREDS, part_files=part_files)
+        except Exception as e:
+            print(f"[!] รวม creds.part*.json ไม่สำเร็จ (ไม่ได้เขียน/ไม่ได้ลบ part): {type(e).__name__}: {e}",
+                  flush=True)
             return len(load_creds())
-        merged = load_creds()
-        merged_count = 0
-        for pf in part_files:
-            if not os.path.exists(pf):
-                continue
-            part_data = load_creds(pf)
-            if part_data:
-                for k, v in part_data.items():
-                    if k in merged and isinstance(merged[k], dict) and isinstance(v, dict):
-                        for field, val in v.items():
-                            if val is not None or field not in merged[k]:
-                                merged[k][field] = val
-                    else:
-                        merged[k] = v
-                merged_count += 1
-            try:
-                os.remove(pf)
-            except OSError:
-                pass
-        save_creds(merged)
-        if merged_count > 0:
-            print(f"[*] อัปเดตรวมข้อมูลจาก {merged_count} ไฟล์เข้า creds.json เรียบร้อย (รวมทั้งหมด {len(merged)} บัญชี)", flush=True)
         return len(merged)
 
 
@@ -297,24 +281,46 @@ def fetch_account_info(cred, fname=None, creds_file=None):
     cred["ticket"] = info["ticket"]
     cred["level"] = info["level"]
 
-    # บันทึกข้อมูลที่อัปเดต (รวม LF_AC ล่าสุด) ลงไฟล์ creds ของจอนี้ (แยกต่อจอ = ไม่ race)
-    try:
-        all_c = load_creds(creds_file)
-        rsn = cred.get("rsn") or cred.get("udid")
-        target_keys = [k for k in (rsn, cred.get("udid")) if k]
-        for k in target_keys:
-            if k in all_c:
-                all_c[k].update(cred)
-                save_creds(all_c, creds_file)
-                break
-        else:
-            if rsn:
-                all_c[rsn] = cred
-                save_creds(all_c, creds_file)
-    except Exception:
-        pass
+    # บันทึกข้อมูลที่อัปเดต (รวม LF_AC ล่าสุด) ลงไฟล์ creds ของจอนี้ ภายใต้ lock เดียวกับ addon
+    # (addon ของจอนี้เขียนไฟล์เดียวกันพร้อมกันได้) : มี entry อยู่แล้ว -> แก้เฉพาะ field ที่ฟังก์ชันนี้ตั้ง
+    # ; ยังไม่มี -> สร้างจาก cred ; ค่า None ไม่ทับ (guestCookie เดิมคงอยู่)
+    _save_account_info(cred, creds_file)
 
     return info
+
+
+_INFO_FIELDS = ("LF_AC", "file", "ruby", "coin", "ticket", "level")
+
+
+def _save_account_info(cred, creds_file=None):
+    """หา key (rsn ก่อน แล้ว udid) + แก้ + เขียน ภายใต้ creds_lock ก้อนเดียว (addon อาจยุบ key udid->rsn ระหว่างทาง)
+    lock หมดเวลา/ไฟล์ JSON พัง -> ไม่เขียน พิมพ์แจ้ง ; คืน error (str) หรือ None"""
+    path = creds_file or CREDS
+    rsn = cred.get("rsn") or cred.get("udid")
+    if not rsn:
+        return None
+    try:
+        with _api_creds_lock(path):
+            cur = _api_read_json_file(path)
+            key = next((k for k in (rsn, cred.get("udid")) if k and isinstance(cur.get(k), dict)), None)
+            if key:
+                fields = {k: cred.get(k) for k in _INFO_FIELDS}
+            else:
+                key, fields = rsn, dict(cred)
+                cur[key] = {}
+            entry = cur[key]
+            changed = False
+            for k, v in fields.items():
+                if v is not None and entry.get(k) != v:   # None ไม่ทับ (guestCookie เดิมคงอยู่)
+                    entry[k] = v
+                    changed = True
+            if changed:
+                _api_write_creds_atomic(cur, path)
+        return None
+    except Exception as e:
+        err = f"{type(e).__name__}: {e}"
+        print(f"[!] บันทึกข้อมูลบัญชีลง {os.path.basename(path)} ไม่สำเร็จ: {err}", flush=True)
+        return err
 
 
 def extract_udid_from_xml(xml_path):
@@ -337,28 +343,105 @@ DEV_PORT = 8443   # port ฝั่งอีมูฯ (คงที่ทุก�
 _ROUTE_PORT = {}   # dev -> host port ของ mitm (ไว้ตั้ง routing ใหม่หลัง Reset IP ล้างทิ้ง)
 
 
+_ROUTE_RULE = f"OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports {DEV_PORT}"
+HOSTS = "/system/etc/hosts"
+# สำเนา hosts ชื่อเฉพาะของ capture_auto (เดิมใช้ /data/local/tmp/hosts ร่วมกับสคริปต์อื่น -> แยกเจ้าของไม่ได้)
+HOSTS_COPY = "/data/local/tmp/lgr_capture_auto_hosts"
+# dev -> set ของ resource ที่ setup_routing สร้างและยืนยันแล้ว ("reverse","hosts_copy","hosts","rule")
+# teardown_routing ถอนเฉพาะในนี้ ; setup ซ้ำ (หลัง Reset IP) ใช้ตัวนี้แยกของตัวเองจากของคนอื่น
+_ROUTE_OWNED = {}
+
+
+class RoutingConflict(RuntimeError):
+    """พบ routing/mount ที่ไม่ได้เป็นของรอบนี้ -> ไม่ลบ ไม่ตั้งทับ ให้ผู้ใช้ตรวจเอง"""
+
+
+def _hosts_mounted(dev):
+    return (" %s " % HOSTS) in (sh("cat /proc/mounts", device=dev).stdout or "")
+
+
+def _route_rule_exists(dev):
+    return sh(f"iptables -t nat -C {_ROUTE_RULE}", device=dev).returncode == 0
+
+
+def _reverse_exists(dev):
+    return f"tcp:{DEV_PORT}" in (adb(["reverse", "--list"], device=dev).stdout or "")
+
+
+def _hosts_copy_exists(dev):
+    return sh(f"test -e {HOSTS_COPY}", device=dev).returncode == 0
+
+
 def setup_routing(dev, host_port=PORT):
+    """ตั้ง reverse + hosts bind-mount + กฎ REDIRECT ; ไม่ถอด/ลบของที่มีอยู่ก่อน
+    ตรวจก่อนสร้างอะไรทั้งนั้น: เจอ resource ที่ไม่ได้อยู่ใน _ROUTE_OWNED[dev] -> RoutingConflict
+    (ของตัวเองที่ยังอยู่ = ใช้ต่อ ; ของตัวเองที่หายไป เช่นหลัง Reset IP = ตั้งใหม่)
+    บันทึก ownership หลังยืนยันว่าแต่ละขั้นสำเร็จจริง ; คืน True เมื่อครบ"""
+    owned = _ROUTE_OWNED.setdefault(dev, set())
+    present = {
+        "reverse": _reverse_exists(dev),
+        "hosts_copy": _hosts_copy_exists(dev),
+        "hosts": _hosts_mounted(dev),
+        "rule": _route_rule_exists(dev),
+    }
+    foreign = sorted(k for k, v in present.items() if v and k not in owned)
+    if foreign:
+        raise RoutingConflict(
+            f"[{dev}] พบ routing ที่ไม่ใช่ของรอบนี้ {foreign} -> ไม่ลบ/ไม่ตั้งทับ "
+            f"(ตรวจ: adb reverse tcp:{DEV_PORT}, {HOSTS_COPY}, mount {HOSTS}, iptables {_ROUTE_RULE})")
+    for k, v in present.items():                 # ของตัวเองที่หายไปแล้ว -> ไม่ถือว่าเป็นเจ้าของอีก
+        if not v:
+            owned.discard(k)
+
     _ROUTE_PORT[dev] = host_port
     print(f"[*] [{dev}] ตั้ง adb reverse (:{DEV_PORT}->host:{host_port}) + routing...", flush=True)
     adb(["reverse", f"tcp:{DEV_PORT}", f"tcp:{host_port}"], device=dev)
-    cmd = (
-        # ไม่ซ้อน: ถอด hosts ที่ mount ค้างก่อน + ลบกฎเดิมก่อนเพิ่ม (เดิม mount/กฎซ้อนกันทุกรอบ)
-        "while grep -q rangers-api /system/etc/hosts; do umount /system/etc/hosts || break; done; "
-        f"iptables -t nat -D OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports {DEV_PORT} 2>/dev/null; "
-        "cp /system/etc/hosts /data/local/tmp/hosts 2>/dev/null; "
-        f"grep -q {API_HOST} /data/local/tmp/hosts || echo '127.0.0.1 {API_HOST}' >> /data/local/tmp/hosts; "
-        "mount --bind /data/local/tmp/hosts /system/etc/hosts; "
-        f"iptables -t nat -A OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports {DEV_PORT}"
-    )
-    r = sh(cmd, device=dev)
-    if r.returncode != 0:
-        print(f"[!] routing อาจไม่สมบูรณ์ (ต้อง root): {r.stderr.strip() or r.stdout.strip()}", flush=True)
+    if _reverse_exists(dev):
+        owned.add("reverse")
+    if "hosts_copy" not in owned:
+        sh(f"cp {HOSTS} {HOSTS_COPY} && {{ grep -q {API_HOST} {HOSTS_COPY} || "
+           f"echo '127.0.0.1 {API_HOST}' >> {HOSTS_COPY}; }}", device=dev)
+        if _hosts_copy_exists(dev):
+            owned.add("hosts_copy")
+    if "hosts" not in owned and "hosts_copy" in owned:
+        sh(f"mount --bind {HOSTS_COPY} {HOSTS}", device=dev)
+        if _hosts_mounted(dev):
+            owned.add("hosts")
+    if "rule" not in owned and "hosts" in owned:
+        sh(f"iptables -t nat -A {_ROUTE_RULE}", device=dev)
+        if _route_rule_exists(dev):
+            owned.add("rule")
+    ok = {"reverse", "hosts", "rule"} <= owned
+    if not ok:
+        print(f"[!] [{dev}] routing ไม่สมบูรณ์ (ต้อง root?) ตั้งได้: {sorted(owned) or '-'}", flush=True)
+    return ok
 
 
 def teardown_routing(dev):
-    print(f"[*] [{dev}] ถอน routing/MITM คืนสภาพเดิม...", flush=True)
-    sh("umount /system/etc/hosts 2>/dev/null; iptables -t nat -F OUTPUT 2>/dev/null", device=dev)
-    adb(["reverse", "--remove-all"], device=dev)
+    """ถอนเฉพาะสิ่งที่ setup_routing บันทึก ownership ไว้ (ไม่ -F / ไม่ --remove-all / ไม่ umount ของคนอื่น)
+    แล้วตรวจซ้ำ -> คืน list ของ resource ที่ยังค้าง (ว่าง = ถอนครบ) ; ค้าง = แจ้ง ไม่ลบแบบกว้าง"""
+    owned = _ROUTE_OWNED.pop(dev, set())
+    print(f"[*] [{dev}] ถอน routing/MITM คืนสภาพเดิม (เฉพาะของรอบนี้: {sorted(owned) or '-'})...", flush=True)
+    left = []
+    if "rule" in owned:
+        sh(f"iptables -t nat -D {_ROUTE_RULE}", device=dev)
+        if _route_rule_exists(dev):
+            left.append(f"iptables -t nat {_ROUTE_RULE}")
+    if "hosts" in owned:
+        sh(f"umount {HOSTS}", device=dev)
+        if _hosts_mounted(dev):
+            left.append(f"bind-mount {HOSTS}")
+    if "hosts_copy" in owned and f"bind-mount {HOSTS}" not in left:
+        sh(f"rm -f {HOSTS_COPY}", device=dev)
+        if _hosts_copy_exists(dev):
+            left.append(HOSTS_COPY)
+    if "reverse" in owned:
+        adb(["reverse", "--remove", f"tcp:{DEV_PORT}"], device=dev)
+        if _reverse_exists(dev):
+            left.append(f"adb reverse tcp:{DEV_PORT}")
+    if left:
+        print(f"[!] [{dev}] routing ยังค้าง ต้องตรวจ/ถอนเอง: {left}", flush=True)
+    return left
 
 
 # ---------- game launch / inject ----------
@@ -611,7 +694,11 @@ def open_game_like_login(dev):
                 print(f"[!] [{dev}] Reset IP ไม่สำเร็จ ({msg}) - เปิดเกมต่อด้วย IP เดิม", flush=True)
         except Exception as exc:
             print(f"[!] [{dev}] Reset IP error: {exc}", flush=True)
-        setup_routing(dev, _ROUTE_PORT.get(dev, PORT))   # Reset IP ล้าง routing ของ mitm -> ตั้งกลับ
+        try:
+            setup_routing(dev, _ROUTE_PORT.get(dev, PORT))   # Reset IP ล้าง routing ของ mitm -> ตั้งกลับ
+        except RoutingConflict as exc:
+            print(f"[X] {exc}", flush=True)
+            return False
         login.config["wg_enabled"] = 0                   # ไม่ให้ login.py ไปยุ่ง WG ซ้ำ
     try:
         # login.py resets these per account in main_login(); this controller
@@ -948,7 +1035,7 @@ def guest_login_flow(dev):
     tap(437, 408, 1)     # Agree (3-box)
 
 
-def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
+def capture_account(dev, xml_path, timeout, use_login, creds_file=None, to_lv3=False):
     """
     จับ credential ของ 1 บัญชี:
       1) inject XML (ถ้ามี) หรือ สร้าง guest ใหม่ (guest_login_flow)
@@ -1028,9 +1115,18 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
                     break
 
         if captured_key:
-            # จับได้แล้ว: รอ 2 วิ เก็บ Set-Cookie รอบสุดท้าย แล้วปิดเกมทันที
+            # จับได้แล้ว: รอ 2 วิ เก็บ Set-Cookie รอบสุดท้าย
             time.sleep(2)
-            print("[*] จับได้แล้ว! สั่ง force-stop เกมทันที เพื่อตรึง LF_AC ไม่ให้หมุนทิ้ง", flush=True)
+            if to_lv3:
+                # --to-lv3: อย่าเพิ่ง force-stop — ปล่อยเกมเล่น tutorial ต่อจนถึง Lv3
+                # (ระหว่างเล่น เกมยิง /login เรื่อย ๆ -> capture_credential addon เขียน
+                #  LF_AC/guestCookie ใหม่ลง creds.json ให้อัตโนมัติ = ได้ guestCookie + สถานะ Lv3)
+                print("[*] จับ cred แรกได้ -> โหมด --to-lv3: เล่น tutorial ต่อ (ยังไม่ force-stop)", flush=True)
+                play_until_stop(dev)
+                time.sleep(2)
+                print("[*] จบ tutorial -> force-stop ตรึง session (Lv3)", flush=True)
+            else:
+                print("[*] จับได้แล้ว! สั่ง force-stop เกมทันที เพื่อตรึง LF_AC ไม่ให้หมุนทิ้ง", flush=True)
             force_stop_game(dev)
             creds = load_creds(creds_file)
             captured_data = creds.get(captured_key, captured_data)
@@ -1065,10 +1161,22 @@ def capture_account(dev, xml_path, timeout, use_login, creds_file=None):
 # ---------- queue batch processor ----------
 def process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_finish="move", host_port=PORT,
                       progress_events=None):
+    # จอนี้เป็นเจ้าของ part ของตัวเองตลอดการจับ -> merge แบบ glob จากโปรเซสอื่นไม่ลบ part กลางคัน
+    with _api_part_owner(part_creds(host_port)):
+        return _process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_finish,
+                                  host_port, progress_events)
+
+
+def _process_xml_queue(dev, xml_input, mitmdump, use_login, timeout, action_on_finish, host_port,
+                       progress_events):
     global _ROOT_ADBD
     _ROOT_ADBD = enable_root(dev) or _ROOT_ADBD
     creds_file = part_creds(host_port)          # ไฟล์ creds แยกต่อจอ
-    setup_routing(dev, host_port)
+    try:
+        setup_routing(dev, host_port)           # RoutingConflict -> หยุดจอนี้ (ไม่แตะของคนอื่น)
+    except Exception:
+        teardown_routing(dev)                   # ล้มกลางทาง -> ถอนเฉพาะที่ตั้งได้แล้ว
+        raise
     mitm = start_mitm(mitmdump, host_port, creds_file)
 
     success_list = []
@@ -1306,8 +1414,88 @@ class CaptureProgressWindow:
             self.root.after(100, self._poll)
 
 
+# ---------- เล่น tutorial ต่อจนถึง Lv3 (พอร์ตจาก main.py: norandom-reid) ----------
+# เปิดด้วย --to-lv3 ; ปรับค่าได้ด้วย env (ไม่ต้องแก้โค้ด)
+LV3_PLAY_TIMEOUT = int(os.environ.get("LV3_PLAY_TIMEOUT", "240"))   # เพดานเวลาเล่น/บัญชี (วิ)
+LV3_STOPS = int(os.environ.get("LV3_STOPS", "1"))                   # เจอ clearstage4 (STOP) กี่ครั้ง = พอ (จบด่าน tutorial)
+LV3_THR = float(os.environ.get("LV3_THR", "0.84"))                 # ค่า match template (0-1)
+
+# template ด่าน (ก๊อปจาก norandom-reid มาไว้ img/tut_*.png) : เจอรูปไหนก่อน = ทำ action นั้น
+# herodrag* = ลาก (swipe, coord ตายตัวจาก main.py) ; ที่เหลือ = แตะ (tap ตรงกลาง template)
+_TUT_SWIPE = {
+    "tut_herodrag.png":  ("484", "200", "503", "387"),
+    "tut_herodrag1.png": ("142", "440", "474", "191"),
+}
+_TUT_TAP = [
+    "tut_mainstage.png", "tut_start.png", "tut_stageok.png",
+    "tut_nextstage1-1.png", "tut_nextstage1.png",
+    "tut_clearstage1.png", "tut_clearstage2.png", "tut_clearstage3.png", "tut_clearstage5.png",
+    "tut_heroo1.png", "tut_okwhite.png", "tut_okgust.png", "tut_ok.png",
+    "tut_gacha.png", "tut_gachaok.png",
+]
+
+
+def play_until_stop(dev, max_seconds=None, target_stops=None, thr=None):
+    """เล่น tutorial ด้วย template-tap/swipe จนเจอ clearstage4 (STOP) ครบ target_stops ครั้ง (~จบด่าน -> Lv3).
+       ไม่ force-stop เกมให้ (ผู้เรียกจัดการต่อ). คืน True ถ้าถึง STOP ครบ, False ถ้าหมดเวลา.
+       ** v1 พอร์ตจาก main.py (norandom-reid) — thr/จำนวน STOP/เวลา ปรับได้ด้วย env (LV3_THR/LV3_STOPS/LV3_PLAY_TIMEOUT) **"""
+    max_seconds = LV3_PLAY_TIMEOUT if max_seconds is None else max_seconds
+    target_stops = LV3_STOPS if target_stops is None else target_stops
+    thr = LV3_THR if thr is None else thr
+    print(f"[play] [{dev}] เริ่มเล่น tutorial -> รอ STOP x{target_stops} (เพดาน {max_seconds}s, thr={thr})", flush=True)
+    stops = 0
+    deadline = time.time() + max_seconds
+    last_action = time.time()
+    while time.time() < deadline:
+        img = grab_screen(dev)
+        if img is None:
+            time.sleep(1.0)
+            continue
+        # STOP (จบด่าน) ตรวจก่อนเสมอ
+        ok, _, _, sc = find_template(img, "tut_clearstage4.png", thr)
+        if ok:
+            stops += 1
+            print(f"[play] [{dev}] STOP (clearstage4) #{stops} (score={sc:.2f})", flush=True)
+            last_action = time.time()
+            if stops >= target_stops:
+                print(f"[play] [{dev}] ถึงเป้า STOP x{target_stops} -> จบการเล่น", flush=True)
+                return True
+            time.sleep(6)   # ปล่อยหน้าจบด่าน/รับของเล่นให้จบก่อนไปต่อ
+            continue
+        acted = False
+        # หา swipe ก่อน (ลากฮีโร่ลงสนาม)
+        for name, (x1, y1, x2, y2) in _TUT_SWIPE.items():
+            found, _, _, _ = find_template(img, name, thr)
+            if found:
+                adb(["shell", "input", "swipe", x1, y1, x2, y2, "100"], device=dev)
+                print(f"[play] [{dev}] swipe {name} ({x1},{y1})->({x2},{y2})", flush=True)
+                acted = True
+                last_action = time.time()
+                time.sleep(1.2)
+                break
+        if acted:
+            continue
+        # แล้วค่อยหา tap (เจออันแรกในลิสต์ก่อน)
+        for name in _TUT_TAP:
+            found, cx, cy, _ = find_template(img, name, thr)
+            if found:
+                adb(["shell", "input", "tap", str(cx), str(cy)], device=dev)
+                print(f"[play] [{dev}] tap {name} ({cx},{cy})", flush=True)
+                acted = True
+                last_action = time.time()
+                time.sleep(1.5)
+                break
+        if not acted:
+            if time.time() - last_action > 30:
+                print(f"[play] [{dev}] ไม่พบปุ่ม tutorial > 30s (จอโหลด/ค้าง หรือ template ไม่ตรง) ...", flush=True)
+                last_action = time.time()
+            time.sleep(1.2)
+    print(f"[play] [{dev}] หมดเวลา {max_seconds}s — เล่นไม่ถึง STOP x{target_stops} (stops={stops})", flush=True)
+    return False
+
+
 # ---------- reroll loop (สร้าง guest ใหม่เองวน ๆ) ----------
-def reroll_loop(dev, count, mitmdump, use_login, timeout):
+def reroll_loop(dev, count, mitmdump, use_login, timeout, to_lv3=False):
     """วนสร้างบัญชี guest ใหม่เอง count รอบ:
        ล้างบัญชี -> เปิดเกม (เกมสร้าง guest ใหม่) -> ผ่านจอ auto -> ดัก creds -> pull .xml
        คืน (success_list, failed)"""
@@ -1317,14 +1505,19 @@ def reroll_loop(dev, count, mitmdump, use_login, timeout):
     if not _ROOT_ADBD:
         print("[!] ไม่ได้ root — ล้างบัญชี/สร้าง guest ใหม่อาจไม่ได้", flush=True)
 
-    setup_routing(dev)
+    try:
+        setup_routing(dev)
+    except Exception as exc:
+        print(f"[X] {exc}", flush=True)
+        teardown_routing(dev)                   # ถอนเฉพาะที่ตั้งได้แล้ว (ถ้ามี)
+        return [], count
     mitm = start_mitm(mitmdump)
     success, failed = [], 0
     try:
         for i in range(1, count + 1):
             print(f"\n===== [reroll {i}/{count}] สร้าง guest ใหม่ =====", flush=True)
             # capture_account (xml_path=None) จะ pull บัญชีเดิม -> wipe -> สร้างใหม่ ให้เอง
-            ok, key, cred = capture_account(dev, None, timeout, use_login)
+            ok, key, cred = capture_account(dev, None, timeout, use_login, to_lv3=to_lv3)
             if not ok:
                 failed += 1
                 print(f"[X] รอบ {i}: จับ credential ไม่สำเร็จ ข้าม", flush=True)
@@ -1361,6 +1554,9 @@ def main():
     ap.add_argument("--reroll", type=int, default=0, metavar="N",
                     help="โหมดรีสร้าง: วนสร้าง guest ใหม่เอง N รอบ -> creds.json + .xml (login-success/)")
     ap.add_argument("--no-gui", action="store_true", help="รันใน console โดยไม่เปิดหน้าต่าง progress")
+    ap.add_argument("--to-lv3", action="store_true",
+                    help="(reroll) หลังจับ cred แรก เล่น tutorial ต่อจนถึง Lv3 ค่อย force-stop "
+                         "(ปรับ env LV3_STOPS/LV3_THR/LV3_PLAY_TIMEOUT ได้)")
     args = ap.parse_args()
 
     mitmdump = find_mitmdump()
@@ -1389,8 +1585,9 @@ def main():
 
     # ---- โหมดรีสร้าง guest ใหม่เอง (reroll) ----
     if args.reroll and args.reroll > 0:
-        print(f"[*] โหมด REROLL: จะสร้าง guest ใหม่เอง {args.reroll} รอบ", flush=True)
-        success, failed = reroll_loop(dev, args.reroll, mitmdump, args.use_login, args.timeout)
+        print(f"[*] โหมด REROLL: จะสร้าง guest ใหม่เอง {args.reroll} รอบ"
+              + (" + เล่นถึง Lv3" if args.to_lv3 else ""), flush=True)
+        success, failed = reroll_loop(dev, args.reroll, mitmdump, args.use_login, args.timeout, to_lv3=args.to_lv3)
         print("\n" + "=" * 55, flush=True)
         print(f"สรุป REROLL: สำเร็จ {len(success)} / ล้มเหลว {failed} (จาก {args.reroll} รอบ)", flush=True)
         for key, cred, xml, info in success:
@@ -1535,9 +1732,14 @@ def main():
             _ROOT_ADBD = enable_root(d) or _ROOT_ADBD
             hp = PORT + idx
             cf = part_creds(hp)
-            setup_routing(d, hp)
-            mitm = start_mitm(mitmdump, hp, cf)
+            with _api_part_owner(cf):        # เจ้าของ part ระหว่างจับ (ดู lgr_api.part_owner)
+                _cap_one_owned(d, hp, cf)
+
+        def _cap_one_owned(d, hp, cf):
+            mitm = None
             try:
+                setup_routing(d, hp)               # RoutingConflict -> หยุดจอนี้ (finally ถอนเฉพาะของที่ตั้ง)
+                mitm = start_mitm(mitmdump, hp, cf)
                 ok, key, cred = capture_account(d, None, args.timeout, args.use_login, cf)
                 if ok:
                     info = fetch_account_info(cred, None, cf)
@@ -1551,7 +1753,8 @@ def main():
             except Exception as e:
                 print(f"[X] [{d}] error: {e}", flush=True)
             finally:
-                stop_mitm(mitm)
+                if mitm:
+                    stop_mitm(mitm)
                 teardown_routing(d)
                 try:
                     merge_parts_into_creds([cf])   # merge ทันทีที่จอนี้เสร็จ

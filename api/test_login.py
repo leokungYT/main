@@ -27,7 +27,7 @@ from lgr_api import (
     parse_coin,
     parse_tickets,
     load_creds,
-    save_creds,
+    try_update_creds,
     merge_part_creds,
     CREDS_FILE,
 )
@@ -110,19 +110,16 @@ def main():
     print(f"[*] พบทั้งหมด {len(targets)} บัญชี ใน creds.json กำลังเริ่มทดสอบล็อกอินผ่าน API...\n", flush=True)
     suc_cnt = 0
     fail_cnt = 0
-    changed = False
     for key in targets:
         cred = creds[key]
         res = login_one(key, cred)
         if res.get("ok"):
             suc_cnt += 1
-            # เก็บ LF_AC ที่หมุนใหม่กลับ
-            cred["LF_AC"] = res.pop("lf_ac_next")
-            cred["ruby"] = res.get("ruby")
-            cred["coin"] = res.get("coin")
-            cred["ticket"] = res.get("ticket")
-            cred["level"] = res.get("level")
-            changed = True
+            # เก็บ LF_AC ที่หมุนใหม่กลับ — ทีละบัญชีลงไฟล์ล่าสุด (None = ไม่แตะ field นั้น)
+            try_update_creds({key: {
+                "LF_AC": res.pop("lf_ac_next"), "ruby": res.get("ruby"), "coin": res.get("coin"),
+                "ticket": res.get("ticket"), "level": res.get("level"),
+            }}, CREDS)
             fname = res.get("file") or cred.get("file")
             file_str = f" | file={fname}" if fname and fname != "-" else ""
             print(f"[OK ] {key:<10}{file_str}: Lv {res.get('level')} | ruby={res.get('ruby')} "
@@ -130,9 +127,6 @@ def main():
         else:
             fail_cnt += 1
             print(f"[ERR] {key:<10}: {res}", flush=True)
-
-    if changed:
-        save_creds(creds, CREDS)
 
     print("\n" + "=" * 55, flush=True)
     print(f"สรุปผลการทดสอบล็อกอิน:", flush=True)

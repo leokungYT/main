@@ -38,7 +38,7 @@ from lgr_api import (
     parse_tickets,
     gacha_pick_pay,
     load_creds as _api_load_creds,
-    save_creds as _api_save_creds,
+    try_update_creds as _api_try_update_creds,
     CREDS_FILE,
 )
 from check_team import account_units_info, default_targets, match_targets
@@ -326,13 +326,14 @@ def check_account(key, targets):
     level = player.get("level") or res.get("level") or 1
     hits = match_hits(codes, targets)
 
-    _persist(key, {
+    save_err = _persist(key, {
         "LF_AC": cli.lf_ac, "ruby": ruby, "coin": coin,
         "ticket": ticket, "level": level,
     })
 
     return {
         "ok": True,
+        **({"save_err": save_err} if save_err else {}),
         "key": key,
         "rsn": player.get("rsn") or res.get("rsn") or key,
         "userName": player.get("userName"),
@@ -348,14 +349,11 @@ def check_account(key, targets):
 
 
 def _persist(key, fields):
-    """เขียนค่ากลับ creds.json แบบปลอดภัย (ไม่ทับบัญชีอื่น)"""
+    """เขียนค่ากลับ creds.json แบบปลอดภัย (ไม่ทับบัญชีอื่น): update_creds ถือ lock ข้ามโปรเซส
+    + merge เฉพาะ field ของบัญชีนี้ลงไฟล์ล่าสุด ; คืน error (str) หรือ None"""
     with _SAVE_LOCK:
-        creds = load_creds()
-        if key in creds:
-            for k, v in fields.items():
-                if v is not None:
-                    creds[key][k] = v
-            _api_save_creds(creds, CREDS_FILE)
+        _, err = _api_try_update_creds({key: fields}, CREDS_FILE)
+    return err
 
 
 def gift_account(key, missions=True):
@@ -411,8 +409,9 @@ def gift_account(key, missions=True):
     fields["ticket"] = c.ticket_count().get("total", 0)
     if c.guest_cookie_next:
         fields["guestCookie"] = c.guest_cookie_next
-    _persist(key, fields)
+    save_err = _persist(key, fields)
     return {"ok": st_r == 200, "key": key, "gifts": gifts, "missions": n_mis, "items": items,
+            **({"save_err": save_err} if save_err else {}),
             "ruby": fields.get("ruby"), "ticket": fields["ticket"],
             **({} if st_r == 200 else {"err": f"รับของไม่สำเร็จ (status {st_r})"})}
 
@@ -902,8 +901,9 @@ def gacha_pull_account(key, group_id, gacha_id, index=1, targets=None, max_pulls
     if stp == 200 and isinstance(prof, dict):
         res = prof.get("result", {})
         fields["ruby"] = parse_ruby(res, res.get("player") or {})
-    _persist(key, fields)
+    save_err = _persist(key, fields)
     return {"ok": True, "key": key, "pulls": pulls, "hit": hit,
+            **({"save_err": save_err} if save_err else {}),
             "count": len(pulls), "ruby": fields.get("ruby", cred.get("ruby", 0)), "tickets": tickets}
 
 

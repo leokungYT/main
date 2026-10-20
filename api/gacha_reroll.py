@@ -35,7 +35,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from lgr_api import (
-    LGRClient, load_creds, save_creds, parse_ruby, gacha_pick_pay, CREDS_FILE,
+    LGRClient, load_creds, try_update_creds, parse_ruby, gacha_pick_pay, CREDS_FILE,
 )
 
 try:
@@ -119,8 +119,7 @@ def main():
 
     if args.list or not (args.group and args.gacha):
         rows = list_gacha(c)
-        creds[args.id]["LF_AC"] = c.lf_ac
-        save_creds(creds, CREDS_FILE)
+        try_update_creds({args.id: {"LF_AC": c.lf_ac, "guestCookie": c.guest_cookie_next}}, CREDS_FILE)
         print(f"[*] ตู้กาชาที่ยิงได้ ({len(rows)}):")
         for gi in rows:
             cf, cost = _cost_field(gi)
@@ -179,20 +178,22 @@ def main():
                 print(f"  ★ ติดเป้า: {got} (ครั้งที่ {i+1})", flush=True)
                 break
 
-    # เก็บ LF_AC + ruby ล่าสุด
-    creds[args.id]["LF_AC"] = c.lf_ac
-    if c.guest_cookie_next:
-        creds[args.id]["guestCookie"] = c.guest_cookie_next
+    # เก็บ LF_AC + ruby ล่าสุด (เฉพาะบัญชีนี้ ลงไฟล์ล่าสุด)
+    fields = {"LF_AC": c.lf_ac, "guestCookie": c.guest_cookie_next}
     stp, prof = c.home()
     if stp == 200 and isinstance(prof, dict):
         res = prof.get("result", {})
-        creds[args.id]["ruby"] = parse_ruby(res, res.get("player") or {})
-    save_creds(creds, CREDS_FILE)
+        fields["ruby"] = parse_ruby(res, res.get("player") or {})
+        creds[args.id]["ruby"] = fields["ruby"]          # ใช้แสดงผลด้านล่าง
+    fields["LF_AC"] = c.lf_ac                            # home() อาจหมุนอีกรอบ
+    _, save_err = try_update_creds({args.id: fields}, CREDS_FILE)
 
     print("\n" + "=" * 55)
     print(f"สุ่มไป {done} ครั้ง | " + (f"★ ติดเป้า {hit['code']} ครั้งที่ {hit['pull']}" if hit
           else ("ไม่ติดเป้า" if targets else "ครบจำนวน")))
     print(f"ruby คงเหลือ: {creds[args.id].get('ruby','?')} | ตั๋วคงเหลือ: {tickets}")
+    if save_err:
+        print(f"[!] LF_AC ล่าสุดยังไม่ถูกบันทึก: {save_err}")
     print("=" * 55)
 
 
