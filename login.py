@@ -5774,7 +5774,7 @@ class RangerGearBot(threading.Thread):
         heroes = [h for h in (config.get("auto_cap_heroes") or []) if h]
         if not heroes and os.path.isdir(d):
             heroes = sorted(f for f in os.listdir(d) if f.lower().endswith((".png", ".bmp", ".jpg"))
-                            and os.path.splitext(f)[0].lower() not in ("cormfrim", "verify-math"))   # รูปยืนยัน ไม่ใช่ตัวละคร
+                            and os.path.splitext(f)[0].lower() not in ("cormfrim", "verify-math", "out"))   # รูปยืนยัน ไม่ใช่ตัวละคร
         if not heroes:
             print(f"[{self.device_id}] [AUTO-CAP] ไม่มีรูปตัวละครใน {d}/ - จบ")
             return found
@@ -5855,7 +5855,13 @@ class RangerGearBot(threading.Thread):
 
     def _auto_cap_out_and_ruby(self, found):
         """หลัง Auto-Cap: ออกจากหน้าทีมกลับ Lobby -> เช็ค Ruby/ตั๋ว -> แคปแถบบน (373,9)-(628,44) เก็บลงโฟลเดอร์"""
-        # out: กดลูกศรกลับ (มุมซ้ายบน) จนเห็น stoplogin (Lobby)
+        # out: กดปุ่ม X (img/auto-cap/out.png) ออกจากหน้าเลือกตัว ก่อน แล้วกดลูกศรกลับจนเห็น stoplogin (Lobby)
+        d = str(config.get("auto_cap_dir", "img/auto-cap")).rstrip("/\\")
+        out_img = os.path.join(d, "out.png")
+        if os.path.exists(out_img):
+            if self.wait_and_click_image(out_img, timeout=10, similarity=0.85):
+                print(f"[{self.device_id}] [AUTO-CAP] กด out แล้ว")
+                sleep(1.5)
         back = config.get("auto_cap_back_xy") or [33, 27]
         for _ in range(int(config.get("auto_cap_back_max", 6))):
             self.capture_screen()
