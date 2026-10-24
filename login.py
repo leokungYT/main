@@ -5843,6 +5843,9 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] [AUTO-CAP] กด {name} แล้วยังไม่เห็นรูปยืนยัน ({os.path.basename(verify)}) - ไม่นับ")
             if rnd < rounds:
                 self.swipe(sw[0], sw[1], sw[2], sw[3], int(sw[4]))
+                _got = sum(found.values())
+                print(f"[{self.device_id}] [AUTO-CAP] เลื่อนแล้ว {rnd}/{rounds - 1} ครั้ง | กดไปแล้ว {_got} ตัว"
+                      + (f" ({', '.join(f'{k} x{v}' for k, v in found.items())})" if found else ""))
         if found:
             print(f"[{self.device_id}] [AUTO-CAP] เจอ: " + ", ".join(f"{k} x{v}" for k, v in found.items()))
         else:
