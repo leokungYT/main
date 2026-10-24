@@ -5755,20 +5755,22 @@ class RangerGearBot(threading.Thread):
         คืน list ชื่อตัวที่เจอ (ว่าง = ไม่เจออะไรเลย) - เก็บไว้ที่ self.auto_cap_found ด้วย"""
         d = str(config.get("auto_cap_dir", "img/auto-cap")).rstrip("/\\")
         img = lambda n: os.path.join(d, n)
+        # รูปปุ่มขั้นตอน: ใช้ใน auto_cap_dir ถ้ามี ไม่มีใช้ใน img/ (findranger1/2, okfinranger, sort-by อยู่ img/)
+        step = lambda n: img(n) if os.path.exists(img(n)) else os.path.join("img", n)
         sim = float(config.get("auto_cap_similarity", 0.85))
         found = []
         self.auto_cap_found = found
         print(f"[{self.device_id}] [AUTO-CAP] เริ่ม (รูปจาก {d}/)")
 
         # 1) เข้าหน้าทีม -> รอ checkpoint-team ยืนยันว่าเข้าถูกหน้า
-        if not self.wait_and_click_image(img("myteam.png"), timeout=20, similarity=sim):
+        if not self.wait_and_click_image(step("myteam.png"), timeout=20, similarity=sim):
             print(f"[{self.device_id}] [AUTO-CAP] ไม่เจอ myteam.png - ข้าม")
             return found
         ok = False
         t_end = time.time() + 15
         while time.time() < t_end:
             self.capture_screen()
-            if self._find_in_screen(img("checkpoint-team.png"), sim):
+            if self._find_in_screen(step("checkpoint-team.png"), sim):
                 ok = True
                 break
             sleep(0.5)
@@ -5779,7 +5781,7 @@ class RangerGearBot(threading.Thread):
         # 2) กรอง + เรียงตัว
         for name in ("findranger.png", "findranger1.png", "findranger2.png", "okfinranger.png",
                      "sort-by1.png", "sort-by2.png"):
-            if not self.wait_and_click_image(img(name), timeout=15, similarity=sim):
+            if not self.wait_and_click_image(step(name), timeout=15, similarity=sim):
                 print(f"[{self.device_id}] [AUTO-CAP] ไม่เจอ {name} - หยุด")
                 return found
             sleep(0.8)
