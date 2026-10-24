@@ -5850,7 +5850,46 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [AUTO-CAP] เจอ: " + ", ".join(f"{k} x{v}" for k, v in found.items()))
         else:
             print(f"[{self.device_id}] [AUTO-CAP] เลื่อนครบ {rounds} รอบ ไม่เจอตัวที่ต้องการเลย")
+        self._auto_cap_out_and_ruby(found)
         return found
+
+    def _auto_cap_out_and_ruby(self, found):
+        """หลัง Auto-Cap: ออกจากหน้าทีมกลับ Lobby -> เช็ค Ruby/ตั๋ว -> แคปแถบบน (373,9)-(628,44) เก็บลงโฟลเดอร์"""
+        # out: กดลูกศรกลับ (มุมซ้ายบน) จนเห็น stoplogin (Lobby)
+        back = config.get("auto_cap_back_xy") or [33, 27]
+        for _ in range(int(config.get("auto_cap_back_max", 6))):
+            self.capture_screen()
+            if self._find_in_screen("img/stoplogin.png", 0.8):
+                break
+            self.tap(back[0], back[1])
+            sleep(1.5)
+        print(f"[{self.device_id}] [AUTO-CAP] ออกจากหน้าทีมแล้ว - เช็ค Ruby/ตั๋วต่อ")
+
+        ruby, ticket = self.process_check_ruby_ticket(from_lobby=True)
+        self._ruby_ticket = (ruby, ticket)
+        self._auto_cap_rt = True              # อ่านแล้ว ไม่ต้องอ่านซ้ำตอนท้าย
+
+        # แคปแถบบนหน้ากาชา เก็บลงโฟลเดอร์ (config auto_cap_crop / auto_cap_shot_dir)
+        x1, y1, x2, y2 = [int(v) for v in (config.get("auto_cap_crop") or [373, 9, 628, 44])]
+        out_dir = str(config.get("auto_cap_shot_dir", "auto-cap-out"))
+        try:
+            self.capture_screen()
+            img_c = getattr(self, "_screen_color", None)
+            if img_c is None:
+                raise RuntimeError("จับภาพจอไม่ได้")
+            os.makedirs(out_dir, exist_ok=True)
+            base = os.path.splitext(self.current_original_filename or self.device_id.replace(":", "_"))[0]
+            tag = "+".join(f"{k}x{v}" for k, v in found.items()) or "none"
+            name = f"ruby[{ruby}]+ticket[{ticket}]+{tag}+{base}.png"
+            name = re.sub(r'[\/:*?"<>|]', "_", name)
+            path = os.path.join(out_dir, name)
+            ok, buf = cv2.imencode(".png", img_c[y1:y2, x1:x2])
+            if ok:
+                with open(path, "wb") as f:   # เขียนผ่าน buffer - ชื่อไฟล์ภาษาไทย/ยาว cv2.imwrite เขียนไม่ได้
+                    f.write(buf.tobytes())
+            print(f"[{self.device_id}] [AUTO-CAP] แคป ({x1},{y1})-({x2},{y2}) เก็บที่ {path}")
+        except Exception as e:
+            print(f"[{self.device_id}] [AUTO-CAP] แคปไม่สำเร็จ: {e}")
 
     def process_swap_shop(self):
         """Standard process_swap_shop logic integrated from user snippet"""
@@ -10377,6 +10416,7 @@ class RangerGearBot(threading.Thread):
                 self._close_lobby_popups()    # ปิดป๊อปอัพอีเวนต์ที่ทับ Lobby ก่อนทำงานตาม config (check-lv / ruby / ฯลฯ)
                 if int(config.get("wg_after_login", 0) or 0):
                     self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
+                self._auto_cap_rt = False
                 if int(config.get("auto_cap", 0) or 0):
                     try:
                         self.process_auto_cap()   # ผลอยู่ที่ self.auto_cap_found
@@ -10470,7 +10510,7 @@ class RangerGearBot(threading.Thread):
                     gear_results = self.process_check_gear(current_filename, ranger_results)
 
                 # 3.5 เช็ค Ruby/ตั๋ว ตอนท้าย (หลังงานที่ใช้/ได้ ruby-ตั๋ว จบหมดแล้ว)
-                if config.get("check_ruby_ticket", 0) and not _rt_done:
+                if config.get("check_ruby_ticket", 0) and not _rt_done and not getattr(self, "_auto_cap_rt", False):
                     self.update_gui_status("Ruby/Ticket Check", "working")
                     self._ruby_ticket = self.process_check_ruby_ticket(from_lobby=False)
 
