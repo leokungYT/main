@@ -5770,10 +5770,14 @@ class RangerGearBot(threading.Thread):
             sleep(0.8)
 
         # 2) เลื่อนหา + กดทุกตัวที่ตรง
+        # auto_cap_heroes ว่าง = ใช้ทุกรูปในโฟลเดอร์ auto_cap_dir (วางรูปเพิ่มก็หาเพิ่มเอง ไม่ต้องแก้ config)
         heroes = [h for h in (config.get("auto_cap_heroes") or []) if h]
+        if not heroes and os.path.isdir(d):
+            heroes = sorted(f for f in os.listdir(d) if f.lower().endswith((".png", ".bmp", ".jpg")))
         if not heroes:
-            print(f"[{self.device_id}] [AUTO-CAP] ยังไม่ได้ตั้ง auto_cap_heroes - จบ")
+            print(f"[{self.device_id}] [AUTO-CAP] ไม่มีรูปตัวละครใน {d}/ - จบ")
             return found
+        print(f"[{self.device_id}] [AUTO-CAP] หา {len(heroes)} ตัว: {', '.join(os.path.splitext(h)[0] for h in heroes)}")
         sw = config.get("auto_cap_swipe") or [257, 455, 3, 442, 5000]
         rounds = int(config.get("auto_cap_scroll_rounds", 70))
 

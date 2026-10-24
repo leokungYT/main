@@ -1,11 +1,16 @@
 {
     "auto_cap": 1,
     "auto_cap_dir": "img/auto-cap",
-    "auto_cap_heroes": ["kappa.png", "Susuku.png", "Lelouch.png", "Yor.png"],
+    "auto_cap_heroes": [],
     "auto_cap_scroll_rounds": 70,
-    "auto_cap_swipe": [257, 455, 3, 442, 5000],
+    "auto_cap_swipe": [
+        257,
+        455,
+        3,
+        442,
+        2000
+    ],
     "auto_cap_similarity": 0.85,
-
     "first_loop": 0,
     "7day": 0,
     "check_lv": 0,
