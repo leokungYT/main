@@ -5886,7 +5886,7 @@ class RangerGearBot(threading.Thread):
 
         # 1) แคปทีมก่อนออก
         self.capture_screen()
-        team_img = _crop(config.get("auto_cap_team_crop") or [1, 250, 994, 352])
+        team_img = _crop(config.get("auto_cap_team_crop") or [4, 191, 950, 304])
 
         # 2) out
         d = str(config.get("auto_cap_dir", "img/auto-cap")).rstrip("/\\")
@@ -5921,10 +5921,21 @@ class RangerGearBot(threading.Thread):
             _write_png(os.path.join(id_dir, "ruby-check.png"), ruby_img)
             _write_png(os.path.join(id_dir, "team.png"), team_img)
             tag = "+".join(f"{k}x{v}" for k, v in found.items()) or "none"
+            xml_dst = os.path.join(id_dir, safe(f"ruby[{ruby}]+ticket[{ticket}]+{tag}+{base}") + ".xml")
+            # ไฟล์ไอดี: ดึงจากในเกมตรง ๆ (ไฟล์ต้นฉบับในคิวอาจถูกย้าย/เปลี่ยนชื่อไปแล้ว -> เคยไม่มี xml)
+            remote = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
+            tmp_r = f"/data/local/tmp/autocap_{self.device_id.replace(':', '_')}.xml"
+            tmp_l = os.path.join(tempfile.gettempdir(), f"autocap_{self.device_id.replace(':', '_')}.xml")
+            self.adb_shell(f"su -c 'cp {remote} {tmp_r}; chmod 666 {tmp_r}'", timeout=15)
+            self.adb_run([self.adb_cmd, "-s", self.device_id, "pull", tmp_r, tmp_l], timeout=20)
+            self.adb_shell(f"su -c 'rm -f {tmp_r}'", timeout=10)
             src = getattr(self, "current_xml_path", None)
-            if src and os.path.exists(src):
-                xml_name = safe(f"ruby[{ruby}]+ticket[{ticket}]+{tag}+{base}") + os.path.splitext(src)[1]
-                shutil.copy2(src, os.path.join(id_dir, xml_name))
+            if os.path.exists(tmp_l) and os.path.getsize(tmp_l) > 0:
+                shutil.move(tmp_l, xml_dst)
+            elif src and os.path.exists(src):
+                shutil.copy2(src, xml_dst)
+            else:
+                print(f"[{self.device_id}] [AUTO-CAP] ดึงไฟล์ไอดีไม่ได้ (ทั้งจากเกมและไฟล์ต้นฉบับ)")
             print(f"[{self.device_id}] [AUTO-CAP] เก็บแล้วที่ {id_dir}")
         except Exception as e:
             print(f"[{self.device_id}] [AUTO-CAP] เก็บไม่สำเร็จ: {e}")
