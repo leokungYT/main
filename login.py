@@ -5750,95 +5750,64 @@ class RangerGearBot(threading.Thread):
         return None
 
     def process_auto_cap(self):
-        """Auto-Cap (config "auto_cap"): หลังเจอ stoplogin -> เข้าหน้าทีม, กรอง+เรียงตัว,
-        เลื่อนหา "ตัวที่ต้องการ" (auto_cap_heroes เรียงจากต้องการที่สุด) เจอแล้วลากใส่ช่องทีม 5 ช่อง
-        รูปทั้งหมดอยู่ในโฟลเดอร์ auto_cap_dir (default img/auto-cap/)
-        คืน list ชื่อตัวที่เจอ (ว่าง = ไม่เจออะไรเลย) - เก็บไว้ที่ self.auto_cap_found ด้วย"""
+        """Auto-Cap (config "auto_cap") - ทำหลังเจอ stoplogin
+        1) กด findranger -> findranger1 -> findranger2 -> okfinranger -> sort-by1 -> sort-by2 -> sort-by3
+           (รูปจาก img/ รอจนกว่าจะเจอ ไม่มี timeout)
+        2) เลื่อนลิสต์ auto_cap_scroll_rounds รอบ (default 70) ทุกจอหา "รูปตัวที่ต้องการ" (auto_cap_heroes
+           จากโฟลเดอร์ auto_cap_dir) เจอที่ไหนกดตรงนั้น - เจอหลายตัวในจอเดียวกดทุกตัว
+        คืน dict {ชื่อ: จำนวนที่เจอ} (เก็บที่ self.auto_cap_found ด้วย)"""
         d = str(config.get("auto_cap_dir", "img/auto-cap")).rstrip("/\\")
-        img = lambda n: os.path.join(d, n)
-        # รูปปุ่มขั้นตอน: ใช้ใน auto_cap_dir ถ้ามี ไม่มีใช้ใน img/ (findranger1/2, okfinranger, sort-by อยู่ img/)
-        step = lambda n: img(n) if os.path.exists(img(n)) else os.path.join("img", n)
         sim = float(config.get("auto_cap_similarity", 0.85))
-        found = []
+        found = {}
         self.auto_cap_found = found
-        print(f"[{self.device_id}] [AUTO-CAP] เริ่ม (รูปจาก {d}/)")
+        print(f"[{self.device_id}] [AUTO-CAP] เริ่ม")
 
-        # 2) กรอง + เรียงตัว
+        # 1) กรอง + เรียงตัว - รอจนกว่าจะเจอทุกขั้น
         for name in ("findranger.png", "findranger1.png", "findranger2.png", "okfinranger.png",
-                     "sort-by1.png", "sort-by2.png"):
-            # หาจาก img/ และรอจนกว่าจะเจอ ไม่มี timeout (กันค้างจริงด้วยตัวจับเวลา 500 วิของบอท)
+                     "sort-by1.png", "sort-by2.png", "sort-by3.png"):
             print(f"[{self.device_id}] [AUTO-CAP] รอกด {name} ...")
             self.wait_and_click_image(os.path.join("img", name), timeout=10 ** 9, similarity=sim)
             sleep(0.8)
 
-        # 3) เลื่อนหาตัวที่ต้องการ (auto_cap_heroes เรียงจากต้องการที่สุด) เจอแล้วลากใส่ช่องทีมถัดไป
-        #    ช่องเติมตามลำดับที่เจอ: ตัวแรกที่เจอ -> hero1, ตัวถัดไป -> hero2 ... ครบ 5 ช่องแล้วหยุด
-        #    หาเฉพาะในลิสต์ตัวละครด้านล่าง (y >= auto_cap_list_top) ไม่ให้ไปเจอตัวที่ลากเข้าช่องทีมแล้ว
+        # 2) เลื่อนหา + กดทุกตัวที่ตรง
         heroes = [h for h in (config.get("auto_cap_heroes") or []) if h]
-        slots = config.get("auto_cap_slots") or [[193, 198], [347, 176], [487, 193], [638, 194], [771, 193]]
+        if not heroes:
+            print(f"[{self.device_id}] [AUTO-CAP] ยังไม่ได้ตั้ง auto_cap_heroes - จบ")
+            return found
         sw = config.get("auto_cap_swipe") or [257, 455, 3, 442, 5000]
         rounds = int(config.get("auto_cap_scroll_rounds", 70))
-        top = int(config.get("auto_cap_list_top", 260))
-        if not heroes:
-            print(f"[{self.device_id}] [AUTO-CAP] ยังไม่ได้ตั้ง auto_cap_heroes - ข้ามการหา")
-            return found
-        # ล็อคช่อง (auto_cap_lock_slots, default [1] = hero1): กดเลือกช่องนั้นก่อน แล้วห้ามลากตัวไหนไปใส่
-        locked = {int(n) for n in (config.get("auto_cap_lock_slots", []) or [])}
-        for n in sorted(locked):
-            if 1 <= n <= len(slots):
-                print(f"[{self.device_id}] [AUTO-CAP] เลือก hero{n} ก่อน แล้วล็อคช่องนี้ไว้")
-                self.tap(slots[n - 1][0], slots[n - 1][1])
-                sleep(1)
-        slots = [s for i, s in enumerate(slots, 1) if i not in locked]
-        slot_names = [f"hero{i}" for i in range(1, 6) if i not in locked]
-        if not slots:
-            print(f"[{self.device_id}] [AUTO-CAP] ล็อคทุกช่องแล้ว - ไม่มีช่องให้ลาก")
-            return found
 
-        def _find_in_list(path):
-            if self._screen is None:
-                return None
+        def _find_all(path):
+            """ทุกตำแหน่งที่รูปนี้ตรงบนจอ (ตัดตำแหน่งซ้อนกันออก)"""
             tmpl = self._get_template(path)
-            if tmpl is None:
-                return None
-            area = self._screen[top:, :]
-            if area.shape[0] < tmpl.shape[0] or area.shape[1] < tmpl.shape[1]:
-                return None
-            res = cv2.matchTemplate(area, tmpl, cv2.TM_CCOEFF_NORMED)
-            _, mx, _, loc = cv2.minMaxLoc(res)
-            if mx < sim:
-                return None
+            if tmpl is None or self._screen is None:
+                return []
+            res = cv2.matchTemplate(self._screen, tmpl, cv2.TM_CCOEFF_NORMED)
             h, w = tmpl.shape[:2]
-            return (loc[0] + w // 2, loc[1] + h // 2 + top)
+            pts = []
+            for y, x in sorted(zip(*np.where(res >= sim)), key=lambda p: -res[p[0], p[1]]):
+                cx, cy = int(x + w // 2), int(y + h // 2)
+                if all(abs(cx - px) > w // 2 or abs(cy - py) > h // 2 for px, py in pts):
+                    pts.append((cx, cy))
+            return pts
 
         for rnd in range(1, rounds + 1):
             sleep(0.8)
             self.capture_screen()
-            # จอเดียวอาจมีหลายตัว -> หาซ้ำในจอเดิมจนไม่เจอแล้วค่อยเลื่อน
-            hit = True
-            while hit and len(found) < len(slots):
-                hit = False
-                for h in heroes:                       # ลำดับความสำคัญตาม config
-                    name = os.path.splitext(os.path.basename(h))[0]
-                    if name in found:
-                        continue                       # ตัวนี้ลากเข้าทีมแล้ว (ยังโชว์ในลิสต์) - ห้ามลากซ้ำไปทับช่องอื่น
-                    pos = _find_in_list(img(h))
-                    if not pos:
-                        continue
-                    sx, sy = slots[len(found)]
-                    print(f"[{self.device_id}] [AUTO-CAP] รอบ {rnd}: เจอ {name} ที่ {pos} -> ลากไป {slot_names[len(found)]} ({sx},{sy})")
-                    self.swipe(pos[0], pos[1], sx, sy, int(config.get("auto_cap_drag_ms", 800)))
-                    found.append(name)
-                    sleep(1.2)
-                    self.capture_screen()
-                    hit = True
-                    break                              # จอเปลี่ยนแล้ว เริ่มไล่ลำดับความสำคัญใหม่
-            if len(found) >= len(slots):
-                print(f"[{self.device_id}] [AUTO-CAP] ครบ {len(slots)} ช่องแล้ว - หยุด")
-                break
-            self.swipe(sw[0], sw[1], sw[2], sw[3], int(sw[4]))
+            for h in heroes:
+                pts = _find_all(os.path.join(d, h))
+                if not pts:
+                    continue
+                name = os.path.splitext(os.path.basename(h))[0]
+                for (x, y) in pts:
+                    print(f"[{self.device_id}] [AUTO-CAP] รอบ {rnd}: เจอ {name} ที่ ({x},{y}) -> กด")
+                    self.tap(x, y)
+                    sleep(0.6)
+                found[name] = found.get(name, 0) + len(pts)
+            if rnd < rounds:
+                self.swipe(sw[0], sw[1], sw[2], sw[3], int(sw[4]))
         if found:
-            print(f"[{self.device_id}] [AUTO-CAP] เจอ ({len(found)}): {', '.join(found)}")
+            print(f"[{self.device_id}] [AUTO-CAP] เจอ: " + ", ".join(f"{k} x{v}" for k, v in found.items()))
         else:
             print(f"[{self.device_id}] [AUTO-CAP] เลื่อนครบ {rounds} รอบ ไม่เจอตัวที่ต้องการเลย")
         return found

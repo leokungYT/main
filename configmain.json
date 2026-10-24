@@ -4,10 +4,6 @@
     "auto_cap_heroes": ["kappa.png", "Susuku.png", "Lelouch.png", "Yor.png"],
     "auto_cap_scroll_rounds": 70,
     "auto_cap_swipe": [257, 455, 3, 442, 5000],
-    "auto_cap_slots": [[193, 198], [347, 176], [487, 193], [638, 194], [771, 193]],
-    "auto_cap_list_top": 260,
-    "auto_cap_lock_slots": [],
-    "auto_cap_drag_ms": 800,
     "auto_cap_similarity": 0.85,
 
     "first_loop": 0,
