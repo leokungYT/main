@@ -5797,18 +5797,22 @@ class RangerGearBot(threading.Thread):
 
         chk = config.get("auto_cap_check_offset") or [150, -74]   # ติ๊กมุมขวาบนการ์ด เทียบกับจุดกลางรูปหน้าตัว
 
+        verify = str(config.get("auto_cap_verify", "img/verify-math.png"))
+        verify_t = cv2.imread(verify, cv2.IMREAD_COLOR) if os.path.exists(verify) else None
+
         def _already_selected(x, y):
-            """การ์ดนี้ถูกเลือกไปแล้ว (ติ๊กมุมการ์ดเป็นสีแดง) -> ห้ามกดซ้ำ ไม่งั้นกลายเป็นยกเลิก
-            การ์ดเลื่อนไปซ้ายหลังปัดจอ จึงเจอตัวเดิมซ้ำได้ทุกรอบ - เช็คสีติ๊กแทนการจำตำแหน่ง
-            (ใช้ได้กับตัวชื่อเดียวกัน 2 ใบติดกันด้วย เพราะเช็คทีละใบ)"""
+            """การ์ดนี้ถูกเลือกไปแล้ว = เห็นรูป verify-math (ติ๊กแดง) ที่มุมการ์ด -> ห้ามกดซ้ำ (กดซ้ำ = ยกเลิก)
+            การ์ดเลื่อนไปซ้ายหลังปัดจอ จึงเจอตัวเดิมซ้ำได้ - เช็คทีละใบ (ตัวชื่อเดียวกัน 2 ใบติดกันก็กดครบ)"""
             img_c = getattr(self, "_screen_color", None)
             if img_c is None:
                 return False
             cx, cy = x + int(chk[0]), y + int(chk[1])
             hh, ww = img_c.shape[:2]
-            roi = img_c[max(0, cy - 14):min(hh, cy + 14), max(0, cx - 14):min(ww, cx + 14)].astype(int)
-            if roi.size == 0:
-                return False
+            roi = img_c[max(0, cy - 40):min(hh, cy + 40), max(0, cx - 40):min(ww, cx + 40)]
+            if verify_t is not None and roi.shape[0] >= verify_t.shape[0] and roi.shape[1] >= verify_t.shape[1]:
+                return float(cv2.matchTemplate(roi, verify_t, cv2.TM_CCOEFF_NORMED).max()) >= 0.8
+            # ไม่มีรูป verify-math -> ดูสีแดงแทน
+            roi = roi.astype(int)
             b, g, r = roi[..., 0], roi[..., 1], roi[..., 2]
             return int(((r > 170) & (g < 90) & (b < 90)).sum()) > 100
 
@@ -5825,8 +5829,12 @@ class RangerGearBot(threading.Thread):
                         continue                       # กดไปแล้ว (เลื่อนมาเจอซ้ำ) - ข้าม
                     print(f"[{self.device_id}] [AUTO-CAP] รอบ {rnd}: เจอ {name} ที่ ({x},{y}) -> กด")
                     self.tap(x, y)
-                    found[name] = found.get(name, 0) + 1
                     sleep(0.6)
+                    self.capture_screen()
+                    if _already_selected(x, y):    # ยืนยันด้วย verify-math ว่ากดติดแล้ว
+                        found[name] = found.get(name, 0) + 1
+                    else:
+                        print(f"[{self.device_id}] [AUTO-CAP] กด {name} แล้วยังไม่เห็น verify-math - ไม่นับ")
             if rnd < rounds:
                 self.swipe(sw[0], sw[1], sw[2], sw[3], int(sw[4]))
         if found:
