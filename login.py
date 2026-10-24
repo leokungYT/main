@@ -5882,7 +5882,9 @@ class RangerGearBot(threading.Thread):
 
         # แคปแถบบนหน้ากาชา เก็บลงโฟลเดอร์ (config auto_cap_crop / auto_cap_shot_dir)
         x1, y1, x2, y2 = [int(v) for v in (config.get("auto_cap_crop") or [373, 9, 628, 44])]
-        out_dir = str(config.get("auto_cap_shot_dir", "auto-cap-out"))
+        # เจอตัว -> math-ranger/<ตัวที่เจอ>/ (เช่น math-ranger/Lelouch+power/) ; ไม่เจอเลย -> math-ranger/none/
+        tag_dir = "+".join(sorted(found)) if found else "none"
+        out_dir = os.path.join(str(config.get("auto_cap_shot_dir", "math-ranger")), re.sub(r'[\/:*?"<>|]', "_", tag_dir))
         try:
             self.capture_screen()
             img_c = getattr(self, "_screen_color", None)
@@ -5899,6 +5901,10 @@ class RangerGearBot(threading.Thread):
                 with open(path, "wb") as f:   # เขียนผ่าน buffer - ชื่อไฟล์ภาษาไทย/ยาว cv2.imwrite เขียนไม่ได้
                     f.write(buf.tobytes())
             print(f"[{self.device_id}] [AUTO-CAP] แคป ({x1},{y1})-({x2},{y2}) เก็บที่ {path}")
+            # ก๊อปไฟล์ไอดีไว้คู่กับรูป (ไฟล์ต้นฉบับยังอยู่ที่เดิม บอทจัดการต่อตามปกติ)
+            src = getattr(self, "current_xml_path", None)
+            if src and os.path.exists(src):
+                shutil.copy2(src, os.path.join(out_dir, os.path.splitext(name)[0] + os.path.splitext(src)[1]))
         except Exception as e:
             print(f"[{self.device_id}] [AUTO-CAP] แคปไม่สำเร็จ: {e}")
 
@@ -6681,6 +6687,7 @@ class RangerGearBot(threading.Thread):
                 try:
                     # Store original filename
                     self.current_original_filename = os.path.basename(xml_file)
+                    self.current_xml_path = xml_file
                     
                     # 1. Check First Loop Process Toggle
                     current_first_loop_enabled = config.get("first_loop", True)

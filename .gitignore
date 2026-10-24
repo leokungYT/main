@@ -72,3 +72,4 @@ api/tools/wireproxy.conf
 # ผล Auto สุ่ม (.xml บัญชีจริง)
 api/output/
 auto-cap-out/
+math-ranger/
