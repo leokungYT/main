@@ -5859,8 +5859,36 @@ class RangerGearBot(threading.Thread):
         return found
 
     def _auto_cap_out_and_ruby(self, found):
-        """หลัง Auto-Cap: ออกจากหน้าทีมกลับ Lobby -> เช็ค Ruby/ตั๋ว -> แคปแถบบน (373,9)-(628,44) เก็บลงโฟลเดอร์"""
-        # out: กดปุ่ม X (img/auto-cap/out.png) ออกจากหน้าเลือกตัว ก่อน แล้วกดลูกศรกลับจนเห็น stoplogin (Lobby)
+        """หลังเลื่อนหาเสร็จ:
+        1) แคปพื้นที่ทีม (auto_cap_team_crop, default 1,250-994,352) ก่อนกด out
+        2) out: กด out.png (X) แล้วกดลูกศรกลับจนเห็น stoplogin (Lobby)
+        3) เช็ค Ruby/ตั๋ว แล้วแคปแถบบน (auto_cap_crop, default 373,9-628,44)
+        4) เก็บลง math-ranger/<ตัวที่เจอ>/<ชื่อไอดี>/ :
+             ruby-check.png, team.png, ruby[x]+ticket[y]+kappax1+ชื่อเดิม.xml"""
+        def _crop(box):
+            img_c = getattr(self, "_screen_color", None)
+            if img_c is None:
+                return None
+            hh, ww = img_c.shape[:2]
+            x1, y1, x2, y2 = [int(v) for v in box]
+            x1, x2 = max(0, min(x1, ww)), max(0, min(x2, ww))
+            y1, y2 = max(0, min(y1, hh)), max(0, min(y2, hh))
+            return img_c[y1:y2, x1:x2].copy() if x2 > x1 and y2 > y1 else None
+
+        def _write_png(path, img):
+            if img is None:
+                return False
+            ok, buf = cv2.imencode(".png", img)
+            if ok:
+                with open(path, "wb") as f:   # ผ่าน buffer - ชื่อไฟล์ภาษาไทย/ยาว cv2.imwrite เขียนไม่ได้
+                    f.write(buf.tobytes())
+            return ok
+
+        # 1) แคปทีมก่อนออก
+        self.capture_screen()
+        team_img = _crop(config.get("auto_cap_team_crop") or [1, 250, 994, 352])
+
+        # 2) out
         d = str(config.get("auto_cap_dir", "img/auto-cap")).rstrip("/\\")
         out_img = os.path.join(d, "out.png")
         if os.path.exists(out_img):
@@ -5876,37 +5904,30 @@ class RangerGearBot(threading.Thread):
             sleep(1.5)
         print(f"[{self.device_id}] [AUTO-CAP] ออกจากหน้าทีมแล้ว - เช็ค Ruby/ตั๋วต่อ")
 
+        # 3) Ruby/ตั๋ว + แคปแถบบน
         ruby, ticket = self.process_check_ruby_ticket(from_lobby=True)
         self._ruby_ticket = (ruby, ticket)
         self._auto_cap_rt = True              # อ่านแล้ว ไม่ต้องอ่านซ้ำตอนท้าย
+        self.capture_screen()
+        ruby_img = _crop(config.get("auto_cap_crop") or [373, 9, 628, 44])
 
-        # แคปแถบบนหน้ากาชา เก็บลงโฟลเดอร์ (config auto_cap_crop / auto_cap_shot_dir)
-        x1, y1, x2, y2 = [int(v) for v in (config.get("auto_cap_crop") or [373, 9, 628, 44])]
-        # เจอตัว -> math-ranger/<ตัวที่เจอ>/ (เช่น math-ranger/Lelouch+power/) ; ไม่เจอเลย -> math-ranger/none/
+        # 4) เก็บ
+        safe = lambda s: re.sub(r'[\\/:*?"<>|]', "_", s)
         tag_dir = "+".join(sorted(found)) if found else "none"
-        out_dir = os.path.join(str(config.get("auto_cap_shot_dir", "math-ranger")), re.sub(r'[\/:*?"<>|]', "_", tag_dir))
+        base = os.path.splitext(self.current_original_filename or self.device_id.replace(":", "_"))[0]
+        id_dir = os.path.join(str(config.get("auto_cap_shot_dir", "math-ranger")), safe(tag_dir), safe(base))
         try:
-            self.capture_screen()
-            img_c = getattr(self, "_screen_color", None)
-            if img_c is None:
-                raise RuntimeError("จับภาพจอไม่ได้")
-            os.makedirs(out_dir, exist_ok=True)
-            base = os.path.splitext(self.current_original_filename or self.device_id.replace(":", "_"))[0]
+            os.makedirs(id_dir, exist_ok=True)
+            _write_png(os.path.join(id_dir, "ruby-check.png"), ruby_img)
+            _write_png(os.path.join(id_dir, "team.png"), team_img)
             tag = "+".join(f"{k}x{v}" for k, v in found.items()) or "none"
-            name = f"ruby[{ruby}]+ticket[{ticket}]+{tag}+{base}.png"
-            name = re.sub(r'[\/:*?"<>|]', "_", name)
-            path = os.path.join(out_dir, name)
-            ok, buf = cv2.imencode(".png", img_c[y1:y2, x1:x2])
-            if ok:
-                with open(path, "wb") as f:   # เขียนผ่าน buffer - ชื่อไฟล์ภาษาไทย/ยาว cv2.imwrite เขียนไม่ได้
-                    f.write(buf.tobytes())
-            print(f"[{self.device_id}] [AUTO-CAP] แคป ({x1},{y1})-({x2},{y2}) เก็บที่ {path}")
-            # ก๊อปไฟล์ไอดีไว้คู่กับรูป (ไฟล์ต้นฉบับยังอยู่ที่เดิม บอทจัดการต่อตามปกติ)
             src = getattr(self, "current_xml_path", None)
             if src and os.path.exists(src):
-                shutil.copy2(src, os.path.join(out_dir, os.path.splitext(name)[0] + os.path.splitext(src)[1]))
+                xml_name = safe(f"ruby[{ruby}]+ticket[{ticket}]+{tag}+{base}") + os.path.splitext(src)[1]
+                shutil.copy2(src, os.path.join(id_dir, xml_name))
+            print(f"[{self.device_id}] [AUTO-CAP] เก็บแล้วที่ {id_dir}")
         except Exception as e:
-            print(f"[{self.device_id}] [AUTO-CAP] แคปไม่สำเร็จ: {e}")
+            print(f"[{self.device_id}] [AUTO-CAP] เก็บไม่สำเร็จ: {e}")
 
     def process_swap_shop(self):
         """Standard process_swap_shop logic integrated from user snippet"""
