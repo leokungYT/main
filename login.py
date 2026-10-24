@@ -5787,11 +5787,16 @@ class RangerGearBot(threading.Thread):
             tmpl = self._get_template(path)
             if tmpl is None or self._screen is None:
                 return []
-            res = cv2.matchTemplate(self._screen, tmpl, cv2.TM_CCOEFF_NORMED)
+            # สแกนเฉพาะพื้นที่ลิสต์การ์ด (auto_cap_scan_area = x1,y1,x2,y2) ไม่ไปเจอของนอกลิสต์
+            ax1, ay1, ax2, ay2 = [int(v) for v in (config.get("auto_cap_scan_area") or [12, 367, 774, 523])]
+            area = self._screen[ay1:ay2, ax1:ax2]
             h, w = tmpl.shape[:2]
+            if area.shape[0] < h or area.shape[1] < w:
+                return []
+            res = cv2.matchTemplate(area, tmpl, cv2.TM_CCOEFF_NORMED)
             pts = []
             for y, x in sorted(zip(*np.where(res >= sim)), key=lambda p: -res[p[0], p[1]]):
-                cx, cy = int(x + w // 2), int(y + h // 2)
+                cx, cy = int(x + w // 2 + ax1), int(y + h // 2 + ay1)
                 if all(abs(cx - px) > w // 2 or abs(cy - py) > h // 2 for px, py in pts):
                     pts.append((cx, cy))
             return pts
