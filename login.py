@@ -5784,39 +5784,60 @@ class RangerGearBot(threading.Thread):
                 return found
             sleep(0.8)
 
-        # 3) เลื่อนหาตัวที่ต้องการ เจอแล้วลากไปใส่ช่องทีมถัดไป
+        # 3) เลื่อนหาตัวที่ต้องการ (auto_cap_heroes เรียงจากต้องการที่สุด) เจอแล้วลากใส่ช่องทีมถัดไป
+        #    ช่องเติมตามลำดับที่เจอ: ตัวแรกที่เจอ -> hero1, ตัวถัดไป -> hero2 ... ครบ 5 ช่องแล้วหยุด
+        #    หาเฉพาะในลิสต์ตัวละครด้านล่าง (y >= auto_cap_list_top) ไม่ให้ไปเจอตัวที่ลากเข้าช่องทีมแล้ว
         heroes = [h for h in (config.get("auto_cap_heroes") or []) if h]
         slots = config.get("auto_cap_slots") or [[193, 198], [347, 176], [487, 193], [638, 194], [771, 193]]
         sw = config.get("auto_cap_swipe") or [257, 455, 3, 442, 5000]
-        rounds = int(config.get("auto_cap_scroll_rounds", 15))
+        rounds = int(config.get("auto_cap_scroll_rounds", 70))
+        top = int(config.get("auto_cap_list_top", 260))
         if not heroes:
             print(f"[{self.device_id}] [AUTO-CAP] ยังไม่ได้ตั้ง auto_cap_heroes - ข้ามการหา")
             return found
+
+        def _find_in_list(path):
+            if self._screen is None:
+                return None
+            tmpl = self._get_template(path)
+            if tmpl is None:
+                return None
+            area = self._screen[top:, :]
+            if area.shape[0] < tmpl.shape[0] or area.shape[1] < tmpl.shape[1]:
+                return None
+            res = cv2.matchTemplate(area, tmpl, cv2.TM_CCOEFF_NORMED)
+            _, mx, _, loc = cv2.minMaxLoc(res)
+            if mx < sim:
+                return None
+            h, w = tmpl.shape[:2]
+            return (loc[0] + w // 2, loc[1] + h // 2 + top)
+
         for rnd in range(1, rounds + 1):
             sleep(0.8)
             self.capture_screen()
-            for h in heroes:                       # เรียงจากต้องการที่สุดก่อน
-                name = os.path.splitext(h)[0]
-                if name in found:
-                    continue
-                pos = self._find_in_screen(img(h), sim)
-                if not pos:
-                    continue
-                if len(found) >= len(slots):
-                    print(f"[{self.device_id}] [AUTO-CAP] เจอ {name} แต่ช่องทีมเต็มแล้ว (จดไว้)")
+            # จอเดียวอาจมีหลายตัว -> หาซ้ำในจอเดิมจนไม่เจอแล้วค่อยเลื่อน
+            hit = True
+            while hit and len(found) < len(slots):
+                hit = False
+                for h in heroes:                       # ลำดับความสำคัญตาม config
+                    pos = _find_in_list(img(h))
+                    if not pos:
+                        continue
+                    name = os.path.splitext(os.path.basename(h))[0]
+                    sx, sy = slots[len(found)]
+                    print(f"[{self.device_id}] [AUTO-CAP] รอบ {rnd}: เจอ {name} ที่ {pos} -> ลากไป hero{len(found) + 1} ({sx},{sy})")
+                    self.swipe(pos[0], pos[1], sx, sy, int(config.get("auto_cap_drag_ms", 800)))
                     found.append(name)
-                    continue
-                sx, sy = slots[len(found)]
-                print(f"[{self.device_id}] [AUTO-CAP] รอบ {rnd}: เจอ {name} ที่ {pos} -> ลากไปช่อง {len(found) + 1} ({sx},{sy})")
-                self.swipe(pos[0], pos[1], sx, sy, int(config.get("auto_cap_drag_ms", 800)))
-                found.append(name)
-                sleep(1)
-                self.capture_screen()
-            if len(found) >= len(heroes):
-                break                                # เจอครบทุกตัวที่ต้องการแล้ว
+                    sleep(1.2)
+                    self.capture_screen()
+                    hit = True
+                    break                              # จอเปลี่ยนแล้ว เริ่มไล่ลำดับความสำคัญใหม่
+            if len(found) >= len(slots):
+                print(f"[{self.device_id}] [AUTO-CAP] ครบ {len(slots)} ช่องแล้ว - หยุด")
+                break
             self.swipe(sw[0], sw[1], sw[2], sw[3], int(sw[4]))
         if found:
-            print(f"[{self.device_id}] [AUTO-CAP] เจอ: {', '.join(found)}")
+            print(f"[{self.device_id}] [AUTO-CAP] เจอ ({len(found)}): {', '.join(found)}")
         else:
             print(f"[{self.device_id}] [AUTO-CAP] เลื่อนครบ {rounds} รอบ ไม่เจอตัวที่ต้องการเลย")
         return found
