@@ -5748,6 +5748,79 @@ class RangerGearBot(threading.Thread):
         except: pass
         return None
 
+    def process_auto_cap(self):
+        """Auto-Cap (config "auto_cap"): หลังเจอ stoplogin -> เข้าหน้าทีม, กรอง+เรียงตัว,
+        เลื่อนหา "ตัวที่ต้องการ" (auto_cap_heroes เรียงจากต้องการที่สุด) เจอแล้วลากใส่ช่องทีม 5 ช่อง
+        รูปทั้งหมดอยู่ในโฟลเดอร์ auto_cap_dir (default img/auto-cap/)
+        คืน list ชื่อตัวที่เจอ (ว่าง = ไม่เจออะไรเลย) - เก็บไว้ที่ self.auto_cap_found ด้วย"""
+        d = str(config.get("auto_cap_dir", "img/auto-cap")).rstrip("/\\")
+        img = lambda n: os.path.join(d, n)
+        sim = float(config.get("auto_cap_similarity", 0.85))
+        found = []
+        self.auto_cap_found = found
+        print(f"[{self.device_id}] [AUTO-CAP] เริ่ม (รูปจาก {d}/)")
+
+        # 1) เข้าหน้าทีม -> รอ checkpoint-team ยืนยันว่าเข้าถูกหน้า
+        if not self.wait_and_click_image(img("myteam.png"), timeout=20, similarity=sim):
+            print(f"[{self.device_id}] [AUTO-CAP] ไม่เจอ myteam.png - ข้าม")
+            return found
+        ok = False
+        t_end = time.time() + 15
+        while time.time() < t_end:
+            self.capture_screen()
+            if self._find_in_screen(img("checkpoint-team.png"), sim):
+                ok = True
+                break
+            sleep(0.5)
+        if not ok:
+            print(f"[{self.device_id}] [AUTO-CAP] ไม่เจอ checkpoint-team.png (ไม่ได้อยู่หน้าทีม) - ข้าม")
+            return found
+
+        # 2) กรอง + เรียงตัว
+        for name in ("findranger.png", "findranger1.png", "findranger2.png", "okfinranger.png",
+                     "sort-by1.png", "sort-by2.png"):
+            if not self.wait_and_click_image(img(name), timeout=15, similarity=sim):
+                print(f"[{self.device_id}] [AUTO-CAP] ไม่เจอ {name} - หยุด")
+                return found
+            sleep(0.8)
+
+        # 3) เลื่อนหาตัวที่ต้องการ เจอแล้วลากไปใส่ช่องทีมถัดไป
+        heroes = [h for h in (config.get("auto_cap_heroes") or []) if h]
+        slots = config.get("auto_cap_slots") or [[193, 198], [347, 176], [487, 193], [638, 194], [771, 193]]
+        sw = config.get("auto_cap_swipe") or [257, 455, 3, 442, 5000]
+        rounds = int(config.get("auto_cap_scroll_rounds", 15))
+        if not heroes:
+            print(f"[{self.device_id}] [AUTO-CAP] ยังไม่ได้ตั้ง auto_cap_heroes - ข้ามการหา")
+            return found
+        for rnd in range(1, rounds + 1):
+            sleep(0.8)
+            self.capture_screen()
+            for h in heroes:                       # เรียงจากต้องการที่สุดก่อน
+                name = os.path.splitext(h)[0]
+                if name in found:
+                    continue
+                pos = self._find_in_screen(img(h), sim)
+                if not pos:
+                    continue
+                if len(found) >= len(slots):
+                    print(f"[{self.device_id}] [AUTO-CAP] เจอ {name} แต่ช่องทีมเต็มแล้ว (จดไว้)")
+                    found.append(name)
+                    continue
+                sx, sy = slots[len(found)]
+                print(f"[{self.device_id}] [AUTO-CAP] รอบ {rnd}: เจอ {name} ที่ {pos} -> ลากไปช่อง {len(found) + 1} ({sx},{sy})")
+                self.swipe(pos[0], pos[1], sx, sy, int(config.get("auto_cap_drag_ms", 800)))
+                found.append(name)
+                sleep(1)
+                self.capture_screen()
+            if len(found) >= len(heroes):
+                break                                # เจอครบทุกตัวที่ต้องการแล้ว
+            self.swipe(sw[0], sw[1], sw[2], sw[3], int(sw[4]))
+        if found:
+            print(f"[{self.device_id}] [AUTO-CAP] เจอ: {', '.join(found)}")
+        else:
+            print(f"[{self.device_id}] [AUTO-CAP] เลื่อนครบ {rounds} รอบ ไม่เจอตัวที่ต้องการเลย")
+        return found
+
     def process_swap_shop(self):
         """Standard process_swap_shop logic integrated from user snippet"""
         device = self # map 'device' to 'self' for snippet compatibility
@@ -10273,6 +10346,13 @@ class RangerGearBot(threading.Thread):
                 self._close_lobby_popups()    # ปิดป๊อปอัพอีเวนต์ที่ทับ Lobby ก่อนทำงานตาม config (check-lv / ruby / ฯลฯ)
                 if int(config.get("wg_after_login", 0) or 0):
                     self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
+                if int(config.get("auto_cap", 0) or 0):
+                    try:
+                        self.process_auto_cap()   # ผลอยู่ที่ self.auto_cap_found
+                    except RestartTimeoutError:
+                        raise
+                    except Exception as _e:
+                        print(f"[{self.device_id}] [AUTO-CAP] error: {_e}")
 
                 # --- เช็คเลเวลบัญชี (config "check_lv") - อ่านครั้งเดียวตรงนี้ ---
                 #     จำเลเวลไว้เฉย ๆ แล้ว "ทำงานตาม config ต่อตามปกติ" (event/กล่อง/สุ่ม/7วัน)

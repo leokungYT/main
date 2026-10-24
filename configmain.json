@@ -1,4 +1,13 @@
 {
+    "auto_cap": 0,
+    "auto_cap_dir": "img/auto-cap",
+    "auto_cap_heroes": ["kappa.png", "Susuku.png"],
+    "auto_cap_scroll_rounds": 15,
+    "auto_cap_swipe": [257, 455, 3, 442, 5000],
+    "auto_cap_slots": [[193, 198], [347, 176], [487, 193], [638, 194], [771, 193]],
+    "auto_cap_drag_ms": 800,
+    "auto_cap_similarity": 0.85,
+
     "first_loop": 0,
     "7day": 0,
     "check_lv": 0,
