@@ -5795,6 +5795,23 @@ class RangerGearBot(threading.Thread):
                     pts.append((cx, cy))
             return pts
 
+        chk = config.get("auto_cap_check_offset") or [150, -74]   # ติ๊กมุมขวาบนการ์ด เทียบกับจุดกลางรูปหน้าตัว
+
+        def _already_selected(x, y):
+            """การ์ดนี้ถูกเลือกไปแล้ว (ติ๊กมุมการ์ดเป็นสีแดง) -> ห้ามกดซ้ำ ไม่งั้นกลายเป็นยกเลิก
+            การ์ดเลื่อนไปซ้ายหลังปัดจอ จึงเจอตัวเดิมซ้ำได้ทุกรอบ - เช็คสีติ๊กแทนการจำตำแหน่ง
+            (ใช้ได้กับตัวชื่อเดียวกัน 2 ใบติดกันด้วย เพราะเช็คทีละใบ)"""
+            img_c = getattr(self, "_screen_color", None)
+            if img_c is None:
+                return False
+            cx, cy = x + int(chk[0]), y + int(chk[1])
+            hh, ww = img_c.shape[:2]
+            roi = img_c[max(0, cy - 14):min(hh, cy + 14), max(0, cx - 14):min(ww, cx + 14)].astype(int)
+            if roi.size == 0:
+                return False
+            b, g, r = roi[..., 0], roi[..., 1], roi[..., 2]
+            return int(((r > 170) & (g < 90) & (b < 90)).sum()) > 100
+
         for rnd in range(1, rounds + 1):
             sleep(0.8)
             self.capture_screen()
@@ -5804,10 +5821,12 @@ class RangerGearBot(threading.Thread):
                     continue
                 name = os.path.splitext(os.path.basename(h))[0]
                 for (x, y) in pts:
+                    if _already_selected(x, y):
+                        continue                       # กดไปแล้ว (เลื่อนมาเจอซ้ำ) - ข้าม
                     print(f"[{self.device_id}] [AUTO-CAP] รอบ {rnd}: เจอ {name} ที่ ({x},{y}) -> กด")
                     self.tap(x, y)
+                    found[name] = found.get(name, 0) + 1
                     sleep(0.6)
-                found[name] = found.get(name, 0) + len(pts)
             if rnd < rounds:
                 self.swipe(sw[0], sw[1], sw[2], sw[3], int(sw[4]))
         if found:
