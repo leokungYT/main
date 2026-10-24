@@ -5763,22 +5763,6 @@ class RangerGearBot(threading.Thread):
         self.auto_cap_found = found
         print(f"[{self.device_id}] [AUTO-CAP] เริ่ม (รูปจาก {d}/)")
 
-        # 1) เข้าหน้าทีม -> รอ checkpoint-team ยืนยันว่าเข้าถูกหน้า
-        if not self.wait_and_click_image(step("myteam.png"), timeout=20, similarity=sim):
-            print(f"[{self.device_id}] [AUTO-CAP] ไม่เจอ myteam.png - ข้าม")
-            return found
-        ok = False
-        t_end = time.time() + 15
-        while time.time() < t_end:
-            self.capture_screen()
-            if self._find_in_screen(step("checkpoint-team.png"), sim):
-                ok = True
-                break
-            sleep(0.5)
-        if not ok:
-            print(f"[{self.device_id}] [AUTO-CAP] ไม่เจอ checkpoint-team.png (ไม่ได้อยู่หน้าทีม) - ข้าม")
-            return found
-
         # 2) กรอง + เรียงตัว
         for name in ("findranger.png", "findranger1.png", "findranger2.png", "okfinranger.png",
                      "sort-by1.png", "sort-by2.png"):
