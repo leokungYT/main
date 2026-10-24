@@ -5782,9 +5782,9 @@ class RangerGearBot(threading.Thread):
         # 2) กรอง + เรียงตัว
         for name in ("findranger.png", "findranger1.png", "findranger2.png", "okfinranger.png",
                      "sort-by1.png", "sort-by2.png"):
-            if not self.wait_and_click_image(step(name), timeout=15, similarity=sim):
-                print(f"[{self.device_id}] [AUTO-CAP] ไม่เจอ {name} - หยุด")
-                return found
+            # หาจาก img/ และรอจนกว่าจะเจอ ไม่มี timeout (กันค้างจริงด้วยตัวจับเวลา 500 วิของบอท)
+            print(f"[{self.device_id}] [AUTO-CAP] รอกด {name} ...")
+            self.wait_and_click_image(os.path.join("img", name), timeout=10 ** 9, similarity=sim)
             sleep(0.8)
 
         # 3) เลื่อนหาตัวที่ต้องการ (auto_cap_heroes เรียงจากต้องการที่สุด) เจอแล้วลากใส่ช่องทีมถัดไป
