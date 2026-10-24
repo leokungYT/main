@@ -1,5 +1,5 @@
 {
-    "auto_cap": 0,
+    "auto_cap": 1,
     "auto_cap_dir": "img/auto-cap",
     "auto_cap_heroes": ["kappa.png", "Susuku.png", "Lelouch.png", "Yor.png"],
     "auto_cap_scroll_rounds": 70,
