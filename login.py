@@ -816,6 +816,7 @@ if GUI_AVAILABLE:
             self.add_switch(scroll_frame, "แลกแต้มเขียว Leonard", "shopgacha")
             self.add_switch(scroll_frame, "สุ่มตัว (Swap Shop)", "swap_shop")
             self.add_switch(scroll_frame, "สุ่มตัว Event", "swap_shopevent")
+            self.add_switch(scroll_frame, "🧩 Auto-Cap (จัดทีมหลัง login)", "auto_cap")
             self.add_switch(scroll_frame, "⚡ หลบไก่บี้ (kaibyskip)", "kaibyskip")
             self.add_switch(scroll_frame, "⏩ ข้ามเช็คไก่บี้ (kaibycheck)", "kaibycheck")
             self.add_switch(scroll_frame, "ใช้ตั๋วทั้งหมด", "all-tiket")
