@@ -5831,7 +5831,8 @@ class RangerGearBot(threading.Thread):
         gachafix_last_seen = None
         
         stopgacha4_clicked = False
-        stopgacha4_streak = 0      # กด stopgacha4 ติดกันกี่ครั้งโดยไม่ไปต่อ (กดแล้วจอไม่เปลี่ยน)
+        stopgacha4_streak = 0      # เจอ stopgacha4 ซ้ำ ๆ ติดกันกี่รอบ (กดแล้วจอยังเป็นอันเดิม)
+        stopgacha4_prev = False    # รอบก่อนหน้าเจอ stopgacha4 ไหม - รอบไหนเป็นจออื่น = นับใหม่
         gacha3_start_time = None
         gacha3_timeout = 1.5 
         
@@ -6070,6 +6071,9 @@ class RangerGearBot(threading.Thread):
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] [SWAP] วน swap_shop เกิน {_lim:.0f} วิ ({loop_beat} รอบ) - ออกไปไฟล์ถัดไป")
                     return "random-Fail"
                 loop_beat += 1
+                if not stopgacha4_prev:
+                    stopgacha4_streak = 0             # รอบก่อนเป็นจออื่น -> ไม่ใช่ซ้ำติดกัน นับใหม่
+                stopgacha4_prev = False
                 if loop_beat % 30 == 0:
                     hb = color_score('img/gacha.png')
                     print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] [HB] ลูป swap_shop รอบ {loop_beat} | เข้าห้องสุ่มแล้ว: {found_initial_swap_shop} | seq {first_sequence_position}/{second_sequence_position} | match gacha(สี) {hb:.2f}")
@@ -6250,11 +6254,13 @@ class RangerGearBot(threading.Thread):
                     continue
                 stopgacha4_pos = find_btn2('img/stopgacha4.png')
                 if stopgacha4_pos:
+                    stopgacha4_prev = True
                     stopgacha4_streak += 1
                     if stopgacha4_streak > int(config.get("stopgacha4_max", 15)):
                         # กด stopgacha4 แล้วไม่ไปต่อเกิน 15 รอบ -> กด cancel แล้วเริ่มรอบสุ่มใหม่ (gacha3)
-                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] stopgacha4 กดต่อไม่ได้ {stopgacha4_streak - 1} รอบ - กด cancel แล้วเริ่ม gacha3 ใหม่")
+                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] เจอ stopgacha4 ซ้ำติดกัน {stopgacha4_streak - 1} รอบ (จอไม่ไปไหน) - กด cancel แล้วเริ่ม gacha3 ใหม่")
                         stopgacha4_streak = 0
+                        stopgacha4_prev = False
                         cancel_pos = find_btn2('img/cancel.png')
                         if cancel_pos:
                             device.tap(cancel_pos[0][0], cancel_pos[0][1])
