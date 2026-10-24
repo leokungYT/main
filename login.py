@@ -5783,7 +5783,7 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [AUTO-CAP] ยังไม่ได้ตั้ง auto_cap_heroes - ข้ามการหา")
             return found
         # ล็อคช่อง (auto_cap_lock_slots, default [1] = hero1): กดเลือกช่องนั้นก่อน แล้วห้ามลากตัวไหนไปใส่
-        locked = {int(n) for n in (config.get("auto_cap_lock_slots", [1]) or [])}
+        locked = {int(n) for n in (config.get("auto_cap_lock_slots", []) or [])}
         for n in sorted(locked):
             if 1 <= n <= len(slots):
                 print(f"[{self.device_id}] [AUTO-CAP] เลือก hero{n} ก่อน แล้วล็อคช่องนี้ไว้")
@@ -5819,10 +5819,12 @@ class RangerGearBot(threading.Thread):
             while hit and len(found) < len(slots):
                 hit = False
                 for h in heroes:                       # ลำดับความสำคัญตาม config
+                    name = os.path.splitext(os.path.basename(h))[0]
+                    if name in found:
+                        continue                       # ตัวนี้ลากเข้าทีมแล้ว (ยังโชว์ในลิสต์) - ห้ามลากซ้ำไปทับช่องอื่น
                     pos = _find_in_list(img(h))
                     if not pos:
                         continue
-                    name = os.path.splitext(os.path.basename(h))[0]
                     sx, sy = slots[len(found)]
                     print(f"[{self.device_id}] [AUTO-CAP] รอบ {rnd}: เจอ {name} ที่ {pos} -> ลากไป {slot_names[len(found)]} ({sx},{sy})")
                     self.swipe(pos[0], pos[1], sx, sy, int(config.get("auto_cap_drag_ms", 800)))
