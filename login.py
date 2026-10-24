@@ -5831,6 +5831,7 @@ class RangerGearBot(threading.Thread):
         gachafix_last_seen = None
         
         stopgacha4_clicked = False
+        stopgacha4_streak = 0      # กด stopgacha4 ติดกันกี่ครั้งโดยไม่ไปต่อ (กดแล้วจอไม่เปลี่ยน)
         gacha3_start_time = None
         gacha3_timeout = 1.5 
         
@@ -6197,6 +6198,7 @@ class RangerGearBot(threading.Thread):
                         return "backup_complete"
                 gacha3_pos = find_cond('img/gacha3.png')
                 if gacha3_pos:
+                    stopgacha4_streak = 0
                     if gacha3_start_time is None: gacha3_start_time = current_time
                     else:
                         if current_time - gacha3_start_time >= 0.1:
@@ -6248,6 +6250,22 @@ class RangerGearBot(threading.Thread):
                     continue
                 stopgacha4_pos = find_btn2('img/stopgacha4.png')
                 if stopgacha4_pos:
+                    stopgacha4_streak += 1
+                    if stopgacha4_streak > int(config.get("stopgacha4_max", 15)):
+                        # กด stopgacha4 แล้วไม่ไปต่อเกิน 15 รอบ -> กด cancel แล้วเริ่มรอบสุ่มใหม่ (gacha3)
+                        print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] stopgacha4 กดต่อไม่ได้ {stopgacha4_streak - 1} รอบ - กด cancel แล้วเริ่ม gacha3 ใหม่")
+                        stopgacha4_streak = 0
+                        cancel_pos = find_btn2('img/cancel.png')
+                        if cancel_pos:
+                            device.tap(cancel_pos[0][0], cancel_pos[0][1])
+                        else:
+                            device.adb_run([device.adb_cmd, "-s", device.device_id, "shell", "input", "keyevent", "4"])
+                        sleep(1.5)
+                        first_sequence_position = 0
+                        second_sequence_position = 0
+                        gacha3_start_time = None
+                        current_image_start_time = time.time()
+                        continue
                     stopgacha4_clicked = True
                     stopgacha4_last_position = stopgacha4_pos[0]
                     stopgacha4_last_seen = current_time
@@ -6277,6 +6295,7 @@ class RangerGearBot(threading.Thread):
                         if safe_tap(stopgacha6_pos[0][0], stopgacha6_pos[0][1], "stopgacha6 (1)", 0, 0, 0) == "gachaout_found": return "random-Fail"
                         if safe_tap(stopgacha6_pos[0][0], stopgacha6_pos[0][1], "stopgacha6 (2)", 0, 0, 0.3) == "gachaout_found": return "random-Fail"
                         check_and_count_swapgacha1(by_press=True)   # นับรอบ - หยุดตอนจะกดรอบถัดไป (ข้างบน)
+                        stopgacha4_streak = 0                        # ไปต่อได้แล้ว
                 current_hash = get_image_hash(adb_img)
                 if current_hash == last_image_hash:
                     if current_time - last_image_time >= 1800:
