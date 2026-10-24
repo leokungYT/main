@@ -5773,7 +5773,8 @@ class RangerGearBot(threading.Thread):
         # auto_cap_heroes ว่าง = ใช้ทุกรูปในโฟลเดอร์ auto_cap_dir (วางรูปเพิ่มก็หาเพิ่มเอง ไม่ต้องแก้ config)
         heroes = [h for h in (config.get("auto_cap_heroes") or []) if h]
         if not heroes and os.path.isdir(d):
-            heroes = sorted(f for f in os.listdir(d) if f.lower().endswith((".png", ".bmp", ".jpg")))
+            heroes = sorted(f for f in os.listdir(d) if f.lower().endswith((".png", ".bmp", ".jpg"))
+                            and os.path.splitext(f)[0].lower() not in ("cormfrim", "verify-math"))   # รูปยืนยัน ไม่ใช่ตัวละคร
         if not heroes:
             print(f"[{self.device_id}] [AUTO-CAP] ไม่มีรูปตัวละครใน {d}/ - จบ")
             return found
@@ -5797,7 +5798,12 @@ class RangerGearBot(threading.Thread):
 
         chk = config.get("auto_cap_check_offset") or [150, -74]   # ติ๊กมุมขวาบนการ์ด เทียบกับจุดกลางรูปหน้าตัว
 
-        verify = str(config.get("auto_cap_verify", "img/verify-math.png"))
+        verify = str(config.get("auto_cap_verify", "") or "")
+        if not verify:                       # รูปติ๊กแดงยืนยันว่าการ์ดถูกเลือกแล้ว: ของผู้ใช้ใน auto-cap ก่อน
+            for _v in (os.path.join(d, "cormfrim.png"), os.path.join(d, "verify-math.png"), "img/verify-math.png"):
+                if os.path.exists(_v):
+                    verify = _v
+                    break
         verify_t = cv2.imread(verify, cv2.IMREAD_COLOR) if os.path.exists(verify) else None
 
         def _already_selected(x, y):
@@ -5834,7 +5840,7 @@ class RangerGearBot(threading.Thread):
                     if _already_selected(x, y):    # ยืนยันด้วย verify-math ว่ากดติดแล้ว
                         found[name] = found.get(name, 0) + 1
                     else:
-                        print(f"[{self.device_id}] [AUTO-CAP] กด {name} แล้วยังไม่เห็น verify-math - ไม่นับ")
+                        print(f"[{self.device_id}] [AUTO-CAP] กด {name} แล้วยังไม่เห็นรูปยืนยัน ({os.path.basename(verify)}) - ไม่นับ")
             if rnd < rounds:
                 self.swipe(sw[0], sw[1], sw[2], sw[3], int(sw[4]))
         if found:
