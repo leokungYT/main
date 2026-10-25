@@ -2049,13 +2049,32 @@ def _device_identity_snapshot(adb_cmd, device_id):
         (["cat", "/sys/class/net/wlan0/address"], "wifi_mac"),
         (["cat", "/sys/class/net/eth0/address"], "eth_mac"),
     ]
+    # วลี error ของ adb เอง (ไม่ได้ขึ้นต้น "error:" ทุกครั้ง เช่น "adb.exe: device '...' not found")
+    # -> เครื่องตาย/ต่อไม่ติด: อย่าเก็บข้อความ error เป็นค่า fingerprint และเลิกเช็คที่เหลือทันที
+    adb_err = ("error:", "device offline", "not found", "no devices",
+               "cannot connect", "device unauthorized", "closed",
+               # shell error ของคำสั่งในเครื่อง (เช่น cat eth0 ที่อีมูไม่มี) — กันค่า error
+               # เหมือนกันข้ามเครื่องจน dedupe จับผิดว่าเป็น alias เดียวกันแล้วตัดจอทิ้ง
+               "no such file", "permission denied", "not a directory")
+
+    def _is_adb_err(s):
+        s = s.lower()
+        return any(p in s for p in adb_err)
+
     for cmd, key in checks:
         try:
             proc = subprocess.run([adb_cmd, "-s", device_id, "shell", *cmd],
                                   capture_output=True, text=True, timeout=8)
-            out = _fp_value((proc.stdout or "") + (proc.stderr or ""))
-            if out and not out.startswith("error:") and out != "null":
+            raw = (proc.stdout or "") + (proc.stderr or "")
+            # alias ค้าง (เช่น MuMu โผล่ 2 พอร์ต) ผ่าน filter "device" แต่ shell ตอบ transport error
+            # -> break กัน 6×8s=48s ซ้อนกันจนดูเหมือนแฮงก์ + ไม่ให้ error ปนเข้า fingerprint
+            if _is_adb_err(raw):
+                break
+            out = _fp_value(raw)
+            if out and out != "null" and not _is_adb_err(out):
                 vals[key] = out
+        except subprocess.TimeoutExpired:
+            break   # เครื่องตาย/ไม่ตอบ -> หยุดเลย ไม่ต้องรอ timeout อีก 5 คำสั่ง
         except Exception:
             pass
     return vals
