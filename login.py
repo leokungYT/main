@@ -824,6 +824,7 @@ if GUI_AVAILABLE:
             self.auto_cap_rounds.insert(0, str(self.cfg.get("auto_cap_scroll_rounds", 70)))
             self.auto_cap_rounds.pack(side="left", padx=5)
             ctk.CTkLabel(_ac_frame, text="ครั้ง", anchor="w").pack(side="left")
+            self.add_switch(scroll_frame, "   ↳ 📸 cab-sell (แคปทั้งจอ + รวมรูป ruby/ตั๋ว)", "cab-sell")
             self.add_switch(scroll_frame, "⚡ หลบไก่บี้ (kaibyskip)", "kaibyskip")
             self.add_switch(scroll_frame, "⏩ ข้ามเช็คไก่บี้ (kaibycheck)", "kaibycheck")
             self.add_switch(scroll_frame, "ใช้ตั๋วทั้งหมด", "all-tiket")
@@ -5895,9 +5896,13 @@ class RangerGearBot(threading.Thread):
                     f.write(buf.tobytes())
             return ok
 
-        # 1) แคปทีมก่อนออก
+        # 1) แคปทีมก่อนออก (cab-sell = 1 -> แคปทั้งหน้าจอ แล้วรวมกับรูป ruby-check ตอนท้าย)
         self.capture_screen()
-        team_img = _crop(config.get("auto_cap_team_crop") or [4, 191, 950, 304])
+        cab_sell = int(config.get("cab-sell", 0) or 0)
+        if cab_sell and getattr(self, "_screen_color", None) is not None:
+            team_img = self._screen_color.copy()
+        else:
+            team_img = _crop(config.get("auto_cap_team_crop") or [4, 191, 950, 304])
 
         # 2) out
         d = str(config.get("auto_cap_dir", "img/auto-cap")).rstrip("/\\")
@@ -5936,6 +5941,12 @@ class RangerGearBot(threading.Thread):
             os.makedirs(id_dir, exist_ok=True)
             _write_png(lp(os.path.join(id_dir, "ruby-check.png")), ruby_img)
             _write_png(lp(os.path.join(id_dir, "team.png")), team_img)
+            if cab_sell and team_img is not None and ruby_img is not None:
+                # รวมรูป: แปะแถบ ruby/ตั๋ว ทับแถบ ruby/ทอง มุมขวาบนของภาพทั้งหน้าจอ (auto_cap_merge_box)
+                mx1, my1, mx2, my2 = [int(v) for v in (config.get("auto_cap_merge_box") or [605, 8, 895, 48])]
+                merged = team_img.copy()
+                merged[my1:my2, mx1:mx2] = cv2.resize(ruby_img, (mx2 - mx1, my2 - my1), interpolation=cv2.INTER_CUBIC)
+                _write_png(lp(os.path.join(id_dir, "merged.png")), merged)
             tag = "+".join(f"{k}x{v}" for k, v in found.items()) or "none"
             xml_dst = lp(os.path.join(id_dir, safe(f"ruby[{ruby}]+ticket[{ticket}]+{tag}+{base}") + ".xml"))
             # ไฟล์ไอดี: ดึงจากในเกมตรง ๆ (ไฟล์ต้นฉบับในคิวอาจถูกย้าย/เปลี่ยนชื่อไปแล้ว -> เคยไม่มี xml)

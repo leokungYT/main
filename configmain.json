@@ -1,5 +1,6 @@
 {
     "auto_cap": 1,
+    "cab-sell": 1,
     "auto_cap_dir": "img/auto-cap",
     "auto_cap_heroes": [],
     "auto_cap_scroll_rounds": 70,
@@ -15,8 +16,8 @@
     "7day": 0,
     "check_lv": 0,
     "check_ruby_ticket": 0,
-    "shopgacha": 1,
-    "swap_shop": 1,
+    "shopgacha": 0,
+    "swap_shop": 0,
     "swap_shopevent": 0,
     "kaibyskip": 1,
     "kaibycheck": 0,
@@ -32,7 +33,7 @@
     "pos_cache": 1,
     "channels_img": 1,
     "box_settings": {
-        "first_round": 1,
+        "first_round": 0,
         "second_round": 0
     },
     "channel": "ch2",
