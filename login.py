@@ -5915,13 +5915,18 @@ class RangerGearBot(threading.Thread):
         safe = lambda s: re.sub(r'[\\/:*?"<>|]', "_", s)
         tag_dir = "+".join(sorted(found)) if found else "none"
         base = os.path.splitext(self.current_original_filename or self.device_id.replace(":", "_"))[0]
+        # ตัดหัวชื่อที่บอทเคยเติมไว้ (เช่น "Suzaku+-ruby[19]+ticket[3]+") ไม่ให้ชื่อยาวซ้ำซ้อน
+        base = re.sub(r'^(?:[^+\[\]]*\+-?)?(?:ruby\[[^\]]*\]\+)?(?:ticket\[[^\]]*\]\+)?', "", base) or base
         id_dir = os.path.join(str(config.get("auto_cap_shot_dir", "math-ranger")), safe(tag_dir), safe(base))
+        # path ยาวเกิน 260 ตัว (ชื่อไอดียาว) Windows เขียนไฟล์ไม่ได้ -> ไฟล์ใช้ path แบบยาว (\\?\ นำหน้า)
+        _bs = chr(92)
+        lp = (lambda x: _bs * 2 + "?" + _bs + os.path.abspath(x)) if os.name == "nt" else (lambda x: x)
         try:
             os.makedirs(id_dir, exist_ok=True)
-            _write_png(os.path.join(id_dir, "ruby-check.png"), ruby_img)
-            _write_png(os.path.join(id_dir, "team.png"), team_img)
+            _write_png(lp(os.path.join(id_dir, "ruby-check.png")), ruby_img)
+            _write_png(lp(os.path.join(id_dir, "team.png")), team_img)
             tag = "+".join(f"{k}x{v}" for k, v in found.items()) or "none"
-            xml_dst = os.path.join(id_dir, safe(f"ruby[{ruby}]+ticket[{ticket}]+{tag}+{base}") + ".xml")
+            xml_dst = lp(os.path.join(id_dir, safe(f"ruby[{ruby}]+ticket[{ticket}]+{tag}+{base}") + ".xml"))
             # ไฟล์ไอดี: ดึงจากในเกมตรง ๆ (ไฟล์ต้นฉบับในคิวอาจถูกย้าย/เปลี่ยนชื่อไปแล้ว -> เคยไม่มี xml)
             remote = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
             tmp_r = f"/data/local/tmp/autocap_{self.device_id.replace(':', '_')}.xml"
@@ -5936,7 +5941,7 @@ class RangerGearBot(threading.Thread):
                 shutil.copy2(src, xml_dst)
             else:
                 print(f"[{self.device_id}] [AUTO-CAP] ดึงไฟล์ไอดีไม่ได้ (ทั้งจากเกมและไฟล์ต้นฉบับ)")
-            print(f"[{self.device_id}] [AUTO-CAP] เก็บแล้วที่ {id_dir}")
+            print(f"[{self.device_id}] [AUTO-CAP] เก็บแล้วที่ {id_dir} (xml: {'มี' if os.path.exists(xml_dst) else 'ไม่มี'})")
         except Exception as e:
             print(f"[{self.device_id}] [AUTO-CAP] เก็บไม่สำเร็จ: {e}")
 
