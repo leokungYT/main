@@ -817,6 +817,13 @@ if GUI_AVAILABLE:
             self.add_switch(scroll_frame, "สุ่มตัว (Swap Shop)", "swap_shop")
             self.add_switch(scroll_frame, "สุ่มตัว Event", "swap_shopevent")
             self.add_switch(scroll_frame, "🧩 Auto-Cap (จัดทีมหลัง login)", "auto_cap")
+            _ac_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            _ac_frame.pack(fill="x", padx=40, pady=(0, 4))
+            ctk.CTkLabel(_ac_frame, text="↳ จำนวนเลื่อนหาตัว:", anchor="w", width=150).pack(side="left")
+            self.auto_cap_rounds = ctk.CTkEntry(_ac_frame, width=60)
+            self.auto_cap_rounds.insert(0, str(self.cfg.get("auto_cap_scroll_rounds", 70)))
+            self.auto_cap_rounds.pack(side="left", padx=5)
+            ctk.CTkLabel(_ac_frame, text="ครั้ง", anchor="w").pack(side="left")
             self.add_switch(scroll_frame, "⚡ หลบไก่บี้ (kaibyskip)", "kaibyskip")
             self.add_switch(scroll_frame, "⏩ ข้ามเช็คไก่บี้ (kaibycheck)", "kaibycheck")
             self.add_switch(scroll_frame, "ใช้ตั๋วทั้งหมด", "all-tiket")
@@ -1132,6 +1139,10 @@ if GUI_AVAILABLE:
                 if "auto_trade" not in self.cfg:
                     self.cfg["auto_trade"] = {}
                 self.cfg["auto_trade"]["enabled"] = 1 if self.auto_trade_enabled.get() else 0
+                try:
+                    self.cfg["auto_cap_scroll_rounds"] = max(1, int(self.auto_cap_rounds.get()))
+                except Exception:
+                    self.cfg["auto_cap_scroll_rounds"] = 70
                 try:
                     self.cfg["auto_trade"]["swap_shop1"] = int(self.auto_trade_shop1.get())
                 except:
