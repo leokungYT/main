@@ -2604,6 +2604,12 @@ def find_adb_executable():
 
 _MUMU_MANAGER_CACHE = None
 
+# รีสตาร์ทจอค้าง (HUNG) - กันรีสตาร์ทรัว ๆ ทั้งเครื่อง
+_hung_lock = threading.Lock()
+_hung_last_restart = 0.0          # เวลาที่สั่งรีสตาร์ทจอล่าสุด (จอไหนก็ได้)
+_hung_timeout_seen = {}           # device_id -> เวลาที่ screencap timeout ล่าสุด
+
+
 def find_mumu_manager():
     """หา path ของ MuMuManager.exe (วิธีเดียวกับ pes) - ลองข้างๆ adb ก่อน แล้วค่อยไล่ตาม install ทั่วไป"""
     global _MUMU_MANAGER_CACHE
@@ -6312,7 +6318,6 @@ class RangerGearBot(threading.Thread):
                     if _no_img == 15:
                         print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] [SWAP] แคปจอไม่ได้ 15 รอบ - รีสตาร์ทจอ MuMu")
                         try:
-                            device._hung_restart_t = 0
                             device._restart_hung_instance()
                         except Exception as _e:
                             print(f"[SWAP] รีสตาร์ทจอไม่สำเร็จ: {_e}")
@@ -7364,7 +7369,6 @@ class RangerGearBot(threading.Thread):
             self._offline_n = getattr(self, "_offline_n", 0) + 1
             if self._offline_n >= 2:
                 self._offline_n = 0
-                self._hung_restart_t = 0
                 try:
                     self._restart_hung_instance()
                 except Exception as e:
@@ -8139,6 +8143,7 @@ class RangerGearBot(threading.Thread):
             if "timed out" in str(e):
                 self._adb_slow_until = time.time() + float(config.get("adb_backoff_sec", 60))
             if "timed out" in str(e):
+                _hung_timeout_seen[self.device_id] = time.time()
                 self._cap_timeouts = getattr(self, "_cap_timeouts", 0) + 1
                 if self._cap_timeouts >= int(config.get("hung_restart_after", 6)):
                     self._cap_timeouts = 0
@@ -8149,9 +8154,21 @@ class RangerGearBot(threading.Thread):
         เดิมบอทวนรอ timeout ไม่จบ จอนั้นทำงานไม่ได้จนกว่าจะปิดเปิดเอง (config hung_restart_after=0 ปิด)"""
         if not int(config.get("hung_restart_after", 6) or 0):
             return
+        global _hung_last_restart
         now = time.time()
-        if now - getattr(self, "_hung_restart_t", 0) < 300:
-            return                                # เพิ่งรีไป รอ 5 นาทีก่อนรีซ้ำ
+        if now - getattr(self, "_hung_restart_t", 0) < float(config.get("hung_device_cooldown", 600)):
+            return                                # จอนี้เพิ่งรีไป (รวมช่วงกำลังบูต) - ยังไม่รีซ้ำ
+        # หลายจอ timeout พร้อมกัน = เครื่องโหลดหนัก/adb แย่งกัน ไม่ใช่จอค้าง -> รีสตาร์ทยิ่งทำให้หนักขึ้น ไม่รี
+        _busy = sum(1 for t in list(_hung_timeout_seen.values()) if now - t < 60)
+        if _busy >= int(config.get("hung_overload_devices", 3)):
+            print(f"[{self.device_id}] [HUNG] {_busy} จอ timeout พร้อมกัน = เครื่องโหลดหนัก ไม่รีสตาร์ทจอ")
+            return
+        # ทั้งเครื่องรีสตาร์ทได้ทีละจอ และเว้นระยะ hung_global_gap (default 180s)
+        with _hung_lock:
+            if now - _hung_last_restart < float(config.get("hung_global_gap", 180)):
+                print(f"[{self.device_id}] [HUNG] เพิ่งรีสตาร์ทจออื่นไป - รอคิวก่อน")
+                return
+            _hung_last_restart = now
         self._hung_restart_t = now
         idx = None
         try:
