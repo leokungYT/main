@@ -827,6 +827,19 @@ if GUI_AVAILABLE:
             self.add_switch(scroll_frame, "   ↳ 📸 cab-sell (แคปทั้งจอ + รวมรูป ruby/ตั๋ว)", "cab-sell")
             self.add_switch(scroll_frame, "⚡ หลบไก่บี้ (kaibyskip)", "kaibyskip")
             self.add_switch(scroll_frame, "⏩ ข้ามเช็คไก่บี้ (kaibycheck)", "kaibycheck")
+            self.add_switch(scroll_frame, "🎮 เล่นด่าน 30 (play30)", "play30")
+            self.add_switch(scroll_frame, "🎮 เล่นด่าน 100 (play100)", "play100")
+            self.add_switch(scroll_frame, "🎮 เล่นด่าน 150 (play150)", "play150")
+            self.add_switch(scroll_frame, "🎡 login-kaiby (wheel / raid-boss หลัง event)", "login-kaiby")
+            _lk_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+            _lk_frame.pack(fill="x", padx=40, pady=(0, 4))
+            ctk.CTkLabel(_lk_frame, text="↳ หาต่อ(วิ) / รอรูป(วิ) / กด wheel3:", anchor="w", width=200).pack(side="left")
+            self.login_kaiby_entries = {}
+            for _key, _default in (("login_kaiby_idle_sec", 15), ("login_kaiby_step_timeout", 0), ("login_kaiby_wheel_taps", 20)):
+                _e = ctk.CTkEntry(_lk_frame, width=45)
+                _e.insert(0, str(self.cfg.get(_key, _default)))
+                _e.pack(side="left", padx=3)
+                self.login_kaiby_entries[_key] = (_e, _default)
             self.add_switch(scroll_frame, "ใช้ตั๋วทั้งหมด", "all-tiket")
             self.add_switch(scroll_frame, "ระบบ Link", "link")
             self.add_switch(scroll_frame, "🎯 ทำเควส (Mission)", "misson")
@@ -1144,6 +1157,11 @@ if GUI_AVAILABLE:
                     self.cfg["auto_cap_scroll_rounds"] = max(1, int(self.auto_cap_rounds.get()))
                 except Exception:
                     self.cfg["auto_cap_scroll_rounds"] = 70
+                for _key, (_e, _default) in self.login_kaiby_entries.items():
+                    try:
+                        self.cfg[_key] = max(0 if _key == "login_kaiby_step_timeout" else 1, int(_e.get()))
+                    except Exception:
+                        self.cfg[_key] = _default
                 try:
                     self.cfg["auto_trade"]["swap_shop1"] = int(self.auto_trade_shop1.get())
                 except:
@@ -4163,6 +4181,8 @@ class RangerGearBot(threading.Thread):
         ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
         ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
         คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
+        if getattr(self, "_wg_past_login", False):
+            return False   # ผ่าน stoplogin แล้ว - เลิกสลับ IP (กด RETRY แบบเดิม)
         if int(config.get("wg_lock", 1) or 0) and not force_switch:
             return False   # wg_lock: ไม่ปิด/สลับ VPN ตอนเน็ตหลุด -> กด RETRY แบบเดิม
         if not int(config.get("wg_enabled", 1) or 0):
@@ -6819,6 +6839,11 @@ class RangerGearBot(threading.Thread):
                             ui_stats.update_hero("❌ ไก่บี้")
                             self.update_gui_status("Kaiby Detected", "error")
                             self.first_loop_done = False
+                        elif status == "no_kaiby":
+                            self.handle_no_kaiby(xml_file)
+                            ui_stats.update(processed=ui_stats.processed_files + 1)
+                            self.update_gui_status("No kaiby", "idle")
+                            self.first_loop_done = False
                         elif status == "lv_sorted":
                             self.handle_level_sorted(xml_file)
                             ui_stats.update(processed=ui_stats.processed_files + 1)
@@ -6840,6 +6865,11 @@ class RangerGearBot(threading.Thread):
                                 self.handle_success(xml_file)
                                 ui_stats.update(success=ui_stats.success_count + 1, processed=ui_stats.processed_files + 1)
                                 self.update_gui_status("Completed (recovered)", "idle")
+                            elif _rec == "no_kaiby":
+                                self.handle_no_kaiby(xml_file)
+                                ui_stats.update(processed=ui_stats.processed_files + 1)
+                                self.update_gui_status("No kaiby (recover)", "idle")
+                                self.first_loop_done = False
                             elif _rec == "kaiby":
                                 self.handle_kaiby(xml_file)
                                 ui_stats.update_hero("❌ ไก่บี้")
@@ -7026,7 +7056,30 @@ class RangerGearBot(threading.Thread):
     # =========================================================
     # File Handling
     # =========================================================
+    def handle_no_kaiby(self, file_path):
+        """ไม่เจอ verify-kaiby ก่อนเริ่ม misson -> ส่งออก no-kaiby/ ชื่อเดิม"""
+        dst_dir = "no-kaiby"
+        os.makedirs(dst_dir, exist_ok=True)
+        dst = os.path.join(dst_dir, os.path.basename(file_path))
+        try:
+            shutil.move(file_path, dst)
+            print(f"[{self.device_id}] Moved to {dst_dir}: {os.path.basename(file_path)}")
+        except Exception as e:
+            print(f"[{self.device_id}] Move error ({dst_dir}): {e}")
+
     def handle_success(self, file_path):
+        # เล่นด่าน 30/100/150 (play30/100/150) จบในรอบนี้ -> ส่งออก play-stage30-100-150/ ชื่อเดิม
+        if getattr(self, "_play_stage_done", False):
+            self._play_stage_done = False      # ใช้ครั้งเดียวต่อไฟล์
+            dst_dir = "play-stage30-100-150"
+            os.makedirs(dst_dir, exist_ok=True)
+            dst = os.path.join(dst_dir, os.path.basename(file_path))
+            try:
+                shutil.move(file_path, dst)
+                print(f"[{self.device_id}] Moved to {dst_dir}: {os.path.basename(file_path)}")
+                return
+            except Exception as e:
+                print(f"[{self.device_id}] Move error ({dst_dir}): {e}")
         # อ่านเลเวลมาได้ในรอบนี้ -> คัดลงโฟลเดอร์ตามเลเวลแทน login-success
         # (งานตาม config ทั้งหมดทำจบไปก่อนหน้านี้แล้ว)
         if getattr(self, "_account_level", None) is not None:
@@ -10000,6 +10053,8 @@ class RangerGearBot(threading.Thread):
         loop_count = 0
         status = "unknown"
         event_passed = False  # หลังเจอ event.png แล้วหยุดเช็ค fixok
+        self._wg_past_login = False   # ไอดีใหม่ -> กลับมาสลับ IP ได้จนกว่าจะผ่าน stoplogin
+        self._play_stage_done = False  # ไอดีใหม่ -> ยังไม่ได้เล่นด่าน
         login_idle_loops = 0
         self._login_loop_start = time.time()       # จับเวลาเป็นวินาที (ไม่นับรอบ - บอทเร็วขึ้นแล้วรอบสั้นมาก)
         self._login_ui_seen_ts = time.time()
@@ -10507,6 +10562,7 @@ class RangerGearBot(threading.Thread):
 
 
                 print(f"[{self.device_id}] Login successful! (stoplogin detected)")
+                self._wg_past_login = True   # ผ่าน stoplogin แล้ว ไม่สลับ IP อีก
                 self._wg_ok()
                 self._wg_auth_fail = 0
                 self._close_lobby_popups()    # ปิดป๊อปอัพอีเวนต์ที่ทับ Lobby ก่อนทำงานตาม config (check-lv / ruby / ฯลฯ)
@@ -10520,6 +10576,29 @@ class RangerGearBot(threading.Thread):
                         raise
                     except Exception as _e:
                         print(f"[{self.device_id}] [AUTO-CAP] error: {_e}")
+                if any(int(config.get(k, 0) or 0) for k in ("play30", "play100", "play150")):
+                    # ยืนยันก่อนเริ่ม misson: ต้องเจอ verify-kaiby ใน play_stage_verify_sec (default 10s)
+                    # ไม่เจอ -> จบไอดีนี้เลย ส่งไฟล์ไป no-kaiby/ ชื่อเดิม แล้วเริ่มไอดีใหม่
+                    self.capture_screen()
+                    if not self._login_kaiby_wait_click(
+                            "img/auto-play-stage/verify-kaiby.png",
+                            float(config.get("play_stage_verify_sec", 10)), 0.8, tap=False):
+                        print(f"[{self.device_id}] [PLAY-STAGE] ไม่เจอ verify-kaiby - จบไอดีนี้ ส่งไป no-kaiby/")
+                        self.clear_and_restart()
+                        return "no_kaiby"
+                    print(f"[{self.device_id}] [PLAY-STAGE] เจอ verify-kaiby - ยืนยันแล้ว เริ่ม misson")
+                    try:
+                        self.process_auto_play_stage()
+                        self._play_stage_done = True   # ตอนจบไฟล์ handle_success ส่งออก play-stage30-100-150/
+                    except RestartTimeoutError:
+                        raise
+                    except self._PSNoKaiby:
+                        print(f"[{self.device_id}] [PLAY-STAGE] ด่าน 30 เกิน "
+                              f"{config.get('play_stage30_timeout', 60)}s - clear app ส่งไป no-kaiby/")
+                        self.clear_and_restart()
+                        return "no_kaiby"
+                    except Exception as _e:
+                        print(f"[{self.device_id}] [PLAY-STAGE] error: {_e}")
 
                 # --- เช็คเลเวลบัญชี (config "check_lv") - อ่านครั้งเดียวตรงนี้ ---
                 #     จำเลเวลไว้เฉย ๆ แล้ว "ทำงานตาม config ต่อตามปกติ" (event/กล่อง/สุ่ม/7วัน)
@@ -10674,38 +10753,30 @@ class RangerGearBot(threading.Thread):
             # Event / Popups -> กด event แล้วรัว BACK จนเจอ cancel.png หรือ stoplogin.png (Triple Back Mode)
             if self.exists_in_cache("img/event.png"):
                 event_passed = True
-                print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
-                self.click("img/event.png")
-                sleep(1)
-                
-                back_press_count = 0
-                while True:
-                    # BACK ทีละ event_back_step ครั้ง (default 1) แล้วรอ event_back_wait วิ (default 0.8) ให้เกมปิดป๊อปอัพทัน
-                    # (เดิมรัว 3 ครั้ง/0.3 วิ - กดเลยไปเจอหน้า "ออกจากเกม?" แล้ววน event -> back -> cancel ไม่จบ)
-                    _step = max(1, int(config.get("event_back_step", 1) or 1))
-                    for _ in range(_step):
-                        self.adb_shell("input keyevent KEYCODE_BACK")
-                    back_press_count += _step
-                    print(f"[{self.device_id}] [EVENT] Back x{_step} (Total: {back_press_count})")
-                    
-                    sleep(float(config.get("event_back_wait", 0.8)))
+                self._event_back_spam()
+
+                # เช็ค event ซ้ำ - เจออีกก็รัว BACK อีก จนกว่าจะไม่เจอ event ติดกัน event_clear_sec (default 5s)
+                clear_sec = float(config.get("event_clear_sec", 5))
+                quiet_since = time.time()
+                while time.time() - quiet_since < clear_sec:
                     self.capture_screen()
-                    
-                    # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด
+                    if self.exists_in_cache("img/event.png"):
+                        self._event_back_spam()
+                        quiet_since = time.time()
+                        continue
                     if self.exists_in_cache("img/cancel.png"):
-                        print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
+                        print(f"[{self.device_id}] [EVENT] เจอ cancel.png ระหว่างรอ - กด cancel")
                         self.click("img/cancel.png")
-                        sleep(float(config.get("event_after_cancel_wait", 2.0)))   # รอป๊อปอัพถัดไปขึ้นก่อน ไม่งั้นกด event ไม่ทัน
-                        break
-                    
-                    if self.exists_in_cache("img/stoplogin.png"):
-                        print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
-                        break
-                        
-                    if back_press_count >= 30: # ป้องกันลูปค้าง (สูงสุด 30 ครั้ง)
-                        print(f"[{self.device_id}] [EVENT] Max BACK presses reached (30), continuing...")
-                        break
-                
+                        sleep(1)
+                        quiet_since = time.time()
+                        continue
+                    sleep(0.5)
+                print(f"[{self.device_id}] [EVENT] ไม่เจอ event {clear_sec:.0f}s แล้ว - จบขั้น event")
+
+                # login-kaiby = 1 -> หลังรัว BACK ของ event แล้ว เคลียร์หน้า wheel / raid-boss ที่เด้งขึ้นมา
+                if config.get("login-kaiby", 0) == 1:
+                    self._login_kaiby_flow()
+
                 continue
 
             
@@ -10720,6 +10791,473 @@ class RangerGearBot(threading.Thread):
                 return status
         
         return status
+
+    # ===== Auto play stage 30/100/150 (พอร์ตจาก mumu-login-kaiby/auto-playstage30-100-150.py) =====
+    # config: play30 / play100 / play150 = 1 -> เข้าภารกิจแล้วเล่นด่านนั้น 1 รอบ (รูปอยู่ img/auto-play-stage/)
+
+    class _PSRestart(Exception):
+        """เจอ fixstage ระหว่างเล่นด่าน -> เคลียร์แล้วกลับไปวนหา misson ใหม่"""
+
+    class _PSNoKaiby(Exception):
+        """ด่าน 30 เริ่มรบไม่ได้ใน play_stage30_timeout (60s) -> เลเวลไม่ถึง: clear app + ส่ง no-kaiby/"""
+
+    def _ps_check_deadline(self):
+        dl = getattr(self, "_ps_deadline", None)
+        if dl and time.time() > dl:
+            self._ps_deadline = None
+            raise self._PSNoKaiby()
+
+    def _ps_check_fixstage(self):
+        """เจอ img/login-kaiby/fixstage/fixstage1 -> รัว ESC จนเจอ cancel -> กด cancel -> โยน _PSRestart
+        (ใช้จอที่ capture ไว้แล้ว ไม่ capture ใหม่)"""
+        if not getattr(self, "_ps_active", False):
+            return
+        if self._find_in_screen(self._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp"), 0.8) is None:
+            return
+        print(f"[{self.device_id}] [PLAY-STAGE] เจอ fixstage1 - รัว ESC จนเจอ cancel")
+        n = 0
+        while True:
+            self.last_activity_time = time.time()
+            self.adb_shell("input keyevent KEYCODE_ESCAPE")
+            n += 1
+            sleep(float(config.get("event_back_wait", 0.8)))
+            self.capture_screen()
+            if self.exists_in_cache("img/cancel.png"):
+                print(f"[{self.device_id}] [PLAY-STAGE] ESC {n} ครั้ง เจอ cancel - กด แล้ววนหา misson ใหม่")
+                self.click("img/cancel.png")
+                sleep(1)
+                break
+        raise self._PSRestart()
+
+    def _ps_find(self, name):
+        sim = float(config.get("play_stage_similarity", 0.9))
+        return self._find_in_screen(f"img/auto-play-stage/{name}.png", sim)
+
+    def _ps_tap_if(self, name, wait=1.0):
+        pos = self._ps_find(name)
+        if pos is None:
+            return False
+        print(f"[{self.device_id}] [PLAY-STAGE] กด {name}")
+        self.tap(*pos)
+        sleep(wait)
+        return True
+
+    def _ps_play_stage(self):
+        """หลังกดด่านแล้ว: กดเริ่ม/auto/x2/เคลียร์/รับของ วนไปจนเจอ backmisson1 (กลับหน้าภารกิจ) = จบ 1 ด่าน"""
+        groups = ["stagefree1", "stagecancel",
+                  "stageNext", "stageStart", "auto", "x2",
+                  *[f"stageclear{i}" for i in range(1, 10)],
+                  "fixstage", "fixstage1", "fixstage2", "stageok",
+                  "item1", "item2", "item3", "item4"]
+        back_streak = 0   # กด backmisson ติดกันกี่ครั้งแล้ว
+        while True:
+            self.last_activity_time = time.time()   # ด่านเล่นนาน ไม่ให้ safety 500s รีสตาร์ท
+            self.capture_screen()
+            self._ps_check_fixstage()
+            if self._ps_tap_if("stageget"):
+                self.capture_screen()
+                self._ps_tap_if("stageokk")
+                continue
+            hits = [p for p in (self._ps_find(n) for n in groups) if p is not None]
+            if hits:
+                back_streak = 0
+                for p in hits:
+                    self.tap(*p)
+                    sleep(0.5)
+                sleep(1)
+                continue
+            if self.exists_in_cache("img/event.png"):
+                # event มาบังทำให้ backmisson ไปต่อไม่ได้ -> รัว BACK ปิด event ก่อน แล้วค่อยกลับมากด backmisson ใหม่
+                self._event_back_spam()
+                back_streak = 0
+                continue
+            if self._ps_tap_if("backmisson"):
+                back_streak += 1
+                if back_streak >= int(config.get("play_stage_back_stuck", 3)):
+                    # กด backmisson ซ้ำแล้วไม่ไปไหน -> แวะหา event/cancel 5 วิ
+                    print(f"[{self.device_id}] [PLAY-STAGE] กด backmisson {back_streak} ครั้งไม่ไปต่อ - แวะหา event")
+                    end = time.time() + 5
+                    while time.time() < end:
+                        self.capture_screen()
+                        if self.exists_in_cache("img/event.png"):
+                            self._event_back_spam()
+                            break
+                        if self.exists_in_cache("img/cancel.png"):
+                            self.click("img/cancel.png")
+                            sleep(1)
+                            break
+                        sleep(0.5)
+                    back_streak = 0
+                continue
+            if self._ps_tap_if("backmisson1"):
+                print(f"[{self.device_id}] [PLAY-STAGE] จบด่าน กลับหน้าภารกิจ")
+                return
+            sleep(2)
+
+    def _ps_wait_tap(self, name, loop=True, max_clicks=5):
+        """แบบ process_sequence ของ play150/checkstage.py: รอจนเจอ (ไม่มี timeout) แล้วกด
+        loop=True = กดซ้ำจนรูปหาย (สูงสุด max_clicks)"""
+        path = f"img/auto-play-stage/{name}.png"
+        self._login_kaiby_wait_click(path, 0, 0.8)
+        clicks = 1
+        while loop and clicks < max_clicks:
+            sleep(0.6)
+            self.capture_screen()
+            pos = self._find_in_screen(path, 0.8)
+            if pos is None:
+                break
+            self.tap(*pos)
+            clicks += 1
+
+    def _ps_buyhelp_battle(self):
+        """flow buyhelp (พอร์ตจาก play150/checkstage.py handle_battle_31 + handle_finish_31):
+        side -> buyhelp -> startnew -> รัว tap ตัวละคร + ใช้ item จนเจอ win -> กดรับของจนกลับแผนที่"""
+        self._ps_wait_tap("next")
+        self._ps_wait_tap("side")
+        self._ps_wait_tap("buyhelp", loop=False)
+        self._ps_wait_tap("startnew")
+        self._ps_deadline = None   # เริ่มรบได้แล้ว - เลิกจับเวลาด่าน 30
+
+        print(f"[{self.device_id}] [PLAY-STAGE] เริ่มรบ - tap รัว")
+        hero_coords = [(278, 521), (384, 514), (483, 508), (582, 515), (683, 517), (146, 483)]
+        chain = " & ".join(f"input tap {x} {y}" for x, y in hero_coords) + " & wait"
+        for _ in range(6):
+            self.adb_shell(chain)
+            sleep(0.1)
+        for _ in range(5):
+            self.tap(50, 43)
+            sleep(0.1)
+
+        stop = threading.Event()
+        burst = " & ".join(f"input tap {x} {y}" for x, y in [(50, 43)] * 3 + hero_coords) + " & wait"
+
+        def _spam():
+            while not stop.is_set():
+                try:
+                    self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", burst], timeout=10)
+                except Exception:
+                    pass
+                stop.wait(0.15)
+
+        t = threading.Thread(target=_spam, daemon=True)
+        t.start()
+        try:
+            while True:
+                self.last_activity_time = time.time()
+                self.capture_screen()
+                self._ps_check_fixstage()
+                for i in range(1, 5):
+                    pos = self._find_in_screen(f"img/auto-play-stage/useitem{i}.png", 0.8)
+                    if pos is not None:
+                        self.tap(*pos)
+                        sleep(1)
+                self.capture_screen()
+                if self._find_in_screen("img/auto-play-stage/win.png", 0.8) is not None:
+                    print(f"[{self.device_id}] [PLAY-STAGE] WIN!")
+                    break
+                sleep(0.5)
+        finally:
+            stop.set()
+            t.join(timeout=5)
+
+        # รับของหลังชนะ - กดไปเรื่อย ๆ จนกลับมาเห็นแผนที่ (side / buyhelp) หรือครบ 60 วิ
+        rewards = ["clear1", "clear2", "clear3", "clearok", "clear lv", "clearstop", "okpuzzle", "itemstage",
+                   "nextstage", "nextnew"]
+        end = time.time() + 60
+        while time.time() < end:
+            self.last_activity_time = time.time()
+            self.capture_screen()
+            self._ps_check_fixstage()
+            hit = False
+            for n in rewards:
+                pos = self._find_in_screen(f"img/auto-play-stage/{n}.png", 0.8)
+                if pos is not None:
+                    self.tap(*pos)
+                    hit = True
+                    sleep(0.4)
+                    break
+            if not hit:
+                if any(self._find_in_screen(f"img/auto-play-stage/{n}.png", 0.8) is not None
+                       for n in ("side", "buyhelp")):
+                    break
+                sleep(0.5)
+        print(f"[{self.device_id}] [PLAY-STAGE] รับของจบ")
+
+    def process_auto_play_stage(self):
+        """เล่นด่าน 30/100/150 ตาม config - เจอ fixstage1 ตรงไหนก็ตาม -> ESC จนเจอ cancel แล้ววนหา misson ใหม่
+        (ด่านที่เล่นจบแล้วไม่เล่นซ้ำ)"""
+        wanted = [s for s in ("30", "100", "150") if int(config.get(f"play{s}", 0) or 0)]
+        done = set()
+        print(f"[{self.device_id}] [PLAY-STAGE] เริ่ม - ด่านที่จะเล่น: {', '.join(wanted)}")
+        self._ps_active = True
+        self._ps_deadline = None
+        try:
+            while True:
+                try:
+                    self._ps_mission_loop(wanted, done)
+                    break
+                except self._PSRestart:
+                    self._ps_deadline = None   # วนหา misson ใหม่ -> เริ่มจับเวลาด่าน 30 ใหม่ตอนกด missonstage30
+                    continue
+            if done:
+                self._ps_claim_rewards()
+        finally:
+            self._ps_active = False
+            self._ps_deadline = None
+        print(f"[{self.device_id}] [PLAY-STAGE] จบ - เล่นแล้ว: {', '.join(sorted(done, key=int)) or '-'}")
+
+    def _ps_claim_rewards(self):
+        """เล่นครบแล้ว -> กลับไปหน้าภารกิจ (misson1 -> misson2 -> misson3) แล้วกด stageget -> stageok รับรางวัล
+        จบเมื่อไม่มีอะไรให้กดติดกัน play_stage_claim_idle วิ (default 10)"""
+        idle = float(config.get("play_stage_claim_idle", 10))
+        print(f"[{self.device_id}] [PLAY-STAGE] เล่นครบ - กลับไป misson3 รับรางวัล (stageget)")
+        quiet_since = time.time()
+        tapped = set()
+        while time.time() - quiet_since < idle:
+            self.last_activity_time = time.time()
+            self.capture_screen()
+            try:
+                self._ps_check_fixstage()
+            except self._PSRestart:
+                quiet_since = time.time()
+                continue
+            if self._ps_tap_if("stageget"):
+                self.capture_screen()
+                self._ps_tap_if("stageok") or self._ps_tap_if("stageokk")
+                quiet_since = time.time()
+                continue
+            # misson แต่ละปุ่มกดได้ครั้งเดียว (กันปุ่มที่ค้างโชว์อยู่ทำให้วนไม่จบ)
+            for m in ("misson1", "misson2", "misson3"):
+                if m not in tapped and self._ps_tap_if(m, 2):
+                    tapped.add(m)
+                    quiet_since = time.time()
+                    break
+            else:
+                sleep(0.5)
+        print(f"[{self.device_id}] [PLAY-STAGE] รับรางวัลจบ")
+
+    def _ps_mission_loop(self, wanted, done):
+        """misson1 -> misson2 -> misson3 -> หา missonstageXX (ไม่เลื่อนหน้าจอ) -> stageXX -> เล่นด่าน
+        เล่นครบทุกด่านที่เปิดไว้ใน config แล้วจบ / ไม่เจอด่านที่เหลือติดกัน play_stage_idle_sec (default 45) -> จบ"""
+        idle_sec = float(config.get("play_stage_idle_sec", 45))
+        idle_since = time.time()
+        while len(done) < len(wanted):
+            self.last_activity_time = time.time()
+            self.capture_screen()
+            self._ps_check_fixstage()
+
+            if self._ps_tap_if("stageget"):
+                self.capture_screen()
+                self._ps_tap_if("stageok")
+                idle_since = time.time()
+                continue
+            if (self._ps_tap_if("misson1", 2) or self._ps_tap_if("misson2", 2)
+                    or self._ps_tap_if("misson3", 2)):
+                idle_since = time.time()
+                continue
+
+            played = False
+            sim = float(config.get("play_stage_similarity", 0.9))
+            for s in wanted:
+                if s in done or not self._ps_tap_if(f"missonstage{s}", 3):
+                    continue
+                if s == "30":
+                    # ด่าน 30 ต้องเริ่มรบได้ภายใน 60s ไม่งั้นถือว่าเลเวลไม่ถึง -> no-kaiby
+                    self._ps_deadline = time.time() + float(config.get("play_stage30_timeout", 60))
+                # อยู่หน้าแผนที่แล้ว - ห้ามปัดจอ รอจนเจอปุ่มด่าน (ไม่มี timeout)
+                if s == "150":
+                    # ด่าน 150: กด num147 -> กด fix-backstage147 (ครั้งเดียว) -> แล้วค่อยหาด่าน 150
+                    self._login_kaiby_wait_click("img/auto-play-stage/num147.bmp", 0, sim)
+                    sleep(2)
+                    print(f"[{self.device_id}] [PLAY-STAGE] กด num147 แล้ว - หา fix-backstage147")
+                    # รอ stage150 - ระหว่างนั้นเจอ fix-backstage147 กดแค่ครั้งเดียว แล้วไปหาด่าน 150 ต่อเลย
+                    _fb = self._login_kaiby_img("img/auto-play-stage/fix-backstage147.bmp")
+                    _s150 = self._login_kaiby_img("img/auto-play-stage/stage150.png")
+                    # กดแล้วยังไม่เจอ stage150 ครบ 15 วิ -> กด fix-backstage147 อีกรอบ
+                    _retry = float(config.get("play_stage_fixback_retry", 15))
+                    _last_fb = None
+                    while True:
+                        self.last_activity_time = time.time()
+                        self.capture_screen()
+                        self._ps_check_fixstage()
+                        if self._find_in_screen(_s150, sim) is not None:
+                            break
+                        if _last_fb is None or time.time() - _last_fb >= _retry:
+                            _pos = self._find_in_screen(_fb, sim)
+                            if _pos is not None:
+                                _again = "" if _last_fb is None else f" (อีกรอบ - ไม่เจอด่าน 150 ครบ {_retry:.0f}s)"
+                                print(f"[{self.device_id}] [PLAY-STAGE] กด fix-backstage147{_again} - ไปหาด่าน 150")
+                                self.tap(*_pos)
+                                _last_fb = time.time()
+                                sleep(2)
+                                continue
+                        sleep(0.5)
+                # กดปุ่มด่าน -> next -> buyhelp -> startnew -> ยิงรัว
+                self._login_kaiby_wait_click(f"img/auto-play-stage/stage{s}.png", 0, sim)
+                sleep(1)
+                print(f"[{self.device_id}] [PLAY-STAGE] เล่นด่าน {s}")
+                if s == "100":
+                    # ด่าน 100: ก่อนกด next ต้องกด fix-stage100-1 -> ... -> fix-stage100-5 ก่อน
+                    for i in range(1, 6):
+                        self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", 0, sim)
+                        sleep(1)
+                self._ps_buyhelp_battle()
+                if s == "30":
+                    # ด่าน 30 จบ -> แวะหา fix-nextstage30 -> fix-nextstage30ok (เจอกด / ไม่เจอใน 10 วิข้าม)
+                    # -> กลับหน้าภารกิจด้วย flow เดิม
+                    _fx_sec = float(config.get("play_stage_fixnext_sec", 10))
+                    if self._login_kaiby_wait_click("img/auto-play-stage/fix-nextstage30.png", _fx_sec, sim):
+                        sleep(1)
+                        if self._login_kaiby_wait_click("img/auto-play-stage/fix-nextstage30ok.png", _fx_sec, sim):
+                            sleep(1)
+                self._ps_play_stage()   # เก็บของที่เหลือ แล้วกลับหน้าภารกิจ (backmisson1)
+                done.add(s)   # นับว่าเสร็จเมื่อเล่นจบจริงเท่านั้น
+                played = True
+                break
+            if played or len(done) >= len(wanted):
+                idle_since = time.time()
+                continue
+
+            # ไม่เลื่อนหน้าจอแล้ว - รออยู่กับที่ ไม่เจอด่านที่เหลือติดกัน play_stage_idle_sec -> จบ
+            if time.time() - idle_since >= idle_sec:
+                print(f"[{self.device_id}] [PLAY-STAGE] ไม่เจอด่านที่เหลือ {idle_sec:.0f}s - จบ")
+                break
+            sleep(1)
+
+    def _event_back_spam(self):
+        """กด event.png แล้วรัว BACK จนเจอ cancel.png (กด) หรือ stoplogin.png (Triple Back Mode)"""
+        print(f"[{self.device_id}] [EVENT] Detected event.png, clicking and starting Triple Back spam...")
+        self.click("img/event.png")
+        sleep(1)
+
+        back_press_count = 0
+        while True:
+            # BACK ทีละ event_back_step ครั้ง (default 1) แล้วรอ event_back_wait วิ (default 0.8) ให้เกมปิดป๊อปอัพทัน
+            # (เดิมรัว 3 ครั้ง/0.3 วิ - กดเลยไปเจอหน้า "ออกจากเกม?" แล้ววน event -> back -> cancel ไม่จบ)
+            _step = max(1, int(config.get("event_back_step", 1) or 1))
+            for _ in range(_step):
+                self.adb_shell("input keyevent KEYCODE_BACK")
+            back_press_count += _step
+            print(f"[{self.device_id}] [EVENT] Back x{_step} (Total: {back_press_count})")
+
+            sleep(float(config.get("event_back_wait", 0.8)))
+            self.capture_screen()
+
+            # ถ้าเจอ cancel.png หรือ stoplogin.png ให้หยุด
+            if self.exists_in_cache("img/cancel.png"):
+                print(f"[{self.device_id}] [EVENT] Found cancel.png, clicking...")
+                self.click("img/cancel.png")
+                sleep(float(config.get("event_after_cancel_wait", 2.0)))   # รอป๊อปอัพถัดไปขึ้นก่อน ไม่งั้นกด event ไม่ทัน
+                break
+
+            if self.exists_in_cache("img/stoplogin.png"):
+                print(f"[{self.device_id}] [EVENT] Found stoplogin.png, breaking loop.")
+                break
+
+            if back_press_count >= 30: # ป้องกันลูปค้าง (สูงสุด 30 ครั้ง)
+                print(f"[{self.device_id}] [EVENT] Max BACK presses reached (30), continuing...")
+                break
+
+    @staticmethod
+    def _login_kaiby_img(path):
+        """img/login-kaiby/<โฟลเดอร์>/<ชื่อ>.bmp -> ใช้ไฟล์ที่มีจริงในโฟลเดอร์ (.bmp / .png / .jpg)"""
+        stem = os.path.splitext(path)[0]
+        for ext in (".bmp", ".png", ".jpg"):
+            if os.path.exists(stem + ext):
+                return stem + ext
+        return path
+
+    def _login_kaiby_wait_click(self, path, timeout=0, similarity=0.8, tap=True):
+        """รอจนเจอรูปแล้วกด - คืนตำแหน่งที่กด หรือ None ถ้าหมดเวลา (timeout <= 0 = รอจนเจอ ไม่มี timeout)
+        tap=False = รอดูเฉย ๆ ไม่กด"""
+        path = self._login_kaiby_img(path)
+        start = time.time()
+        next_log = start + 30
+        while timeout <= 0 or time.time() < start + timeout:
+            self.last_activity_time = time.time()   # กำลังรอขั้นถัดไป - ไม่ให้ safety 500s รีสตาร์ท
+            self.capture_screen()
+            self._ps_check_fixstage()
+            self._ps_check_deadline()
+            pos = self._find_in_screen(path, similarity)
+            if pos is not None:
+                if tap:
+                    self.tap(*pos)
+                return pos
+            if time.time() >= next_log:
+                print(f"[{self.device_id}] [LOGIN-KAIBY] ยังรอ {path} ({time.time() - start:.0f}s)")
+                next_log += 30
+            sleep(0.5)
+        print(f"[{self.device_id}] [LOGIN-KAIBY] หมดเวลา {timeout:.0f}s ไม่เจอ {path}")
+        return None
+
+    def _login_kaiby_flow(self):
+        """img/login-kaiby: เจอทางเลือกไหนทำทางนั้น (wheel / raid-boss)
+        ทำซ้ำได้เรื่อย ๆ จนกว่าจะไม่เจออะไรเลยติดกัน login_kaiby_idle_sec (default 15s) -> กลับไปทำตาม config"""
+        base = "img/login-kaiby"
+        idle_sec = float(config.get("login_kaiby_idle_sec", 15))
+        step_timeout = float(config.get("login_kaiby_step_timeout", 0))   # 0 = รอจนเจอ
+        deadline = time.time() + idle_sec
+        # checkpoint: ต้องเจอ stoplogin ค้างต่อเนื่อง login_kaiby_stoplogin_sec (default 5s) ก่อน ห้ามลัด
+        hold_sec = float(config.get("login_kaiby_stoplogin_sec", 5))
+        _gate_timeout = float(config.get("login_kaiby_stoplogin_timeout", 0))   # 0 = รอจนเจอ ไม่มี timeout
+        wait_until = time.time() + _gate_timeout if _gate_timeout > 0 else float("inf")
+        seen_since = None
+        while True:
+            self.last_activity_time = time.time()   # กำลังรอ checkpoint อยู่ - ไม่ให้ safety 500s รีสตาร์ท
+            self.capture_screen()
+            if self.exists_in_cache("img/event.png"):
+                # event เด้งมาบัง stoplogin -> รัว BACK ปิดก่อน แล้วนับ 5 วิใหม่
+                self._event_back_spam()
+                seen_since = None
+                continue
+            if self.exists_in_cache("img/stoplogin.png", similarity=0.8):
+                seen_since = seen_since or time.time()
+                if time.time() - seen_since >= hold_sec:
+                    print(f"[{self.device_id}] [LOGIN-KAIBY] stoplogin ค้าง {hold_sec:.0f}s แล้ว - เริ่มหา wheel/raid-boss")
+                    break
+            else:
+                seen_since = None
+            if time.time() > wait_until:
+                print(f"[{self.device_id}] [LOGIN-KAIBY] ไม่เจอ stoplogin ค้าง {hold_sec:.0f}s - ข้าม login-kaiby")
+                return
+            sleep(0.5)
+
+        # เริ่มได้เฉพาะขั้นแรก (wheel1 หรือ raid-boss1 - อันไหนขึ้นก่อนก็ได้) แล้วไล่ตามลำดับ ห้ามข้ามขั้น
+        deadline = time.time() + idle_sec
+        while time.time() < deadline:
+            self.capture_screen()
+
+            # 1) wheel1 -> wheel2 -> wheel3 -> กดตำแหน่ง wheel3 รัว ๆ -> back
+            if self.exists_in_cache(self._login_kaiby_img(f"{base}/wheel/wheel1.bmp"), similarity=0.8):
+                print(f"[{self.device_id}] [LOGIN-KAIBY] เจอ wheel1 - เริ่มทำ wheel")
+                self._login_kaiby_wait_click(f"{base}/wheel/wheel1.bmp", step_timeout)
+                sleep(1)
+                if self._login_kaiby_wait_click(f"{base}/wheel/wheel2.bmp", step_timeout):
+                    sleep(1)
+                    pos = self._login_kaiby_wait_click(f"{base}/wheel/wheel3.bmp", step_timeout)
+                    if pos:
+                        taps = int(config.get("login_kaiby_wheel_taps", 20))
+                        for _ in range(taps):
+                            self.tap(*pos)
+                            sleep(0.3)
+                        print(f"[{self.device_id}] [LOGIN-KAIBY] กด wheel3 รัว {taps} ครั้งแล้ว - กด back")
+                        self._login_kaiby_wait_click(f"{base}/wheel/back.bmp", step_timeout)
+                        sleep(1)
+                deadline = time.time() + idle_sec
+                continue
+
+            # 2) เจอ checkpoint-rainboss ก่อน -> raid-boss1 -> ... -> raid-boss6
+            if self.exists_in_cache(self._login_kaiby_img(f"{base}/raid-boss/checkpoint-rainboss.bmp"), similarity=0.8):
+                print(f"[{self.device_id}] [LOGIN-KAIBY] เจอ checkpoint-rainboss - เริ่มทำ raid-boss")
+                for i in range(1, 7):
+                    if not self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout):
+                        break
+                    sleep(1)
+                deadline = time.time() + idle_sec
+                continue
+
+            sleep(0.5)
+        print(f"[{self.device_id}] [LOGIN-KAIBY] ไม่เจอ wheel/raid-boss {idle_sec:.0f}s - ทำงานตาม config ต่อ")
 
     # ===== ported from ranger-gear.py (core screen/click/popup helpers) =====
 
