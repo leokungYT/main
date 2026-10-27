@@ -5433,8 +5433,12 @@ class RangerGearBot(threading.Thread):
                 # เจอป้าย SPECIAL STAGE (fixstage1 = อยู่หน้า Lobby ไม่ใช่ในร้าน) -> รัว ESC จนเจอ cancel -> กด cancel
                 # แล้วเข้าร้านใหม่ (เหมือนที่ play stage ทำตอนเจอ fixstage1)
                 _fs = device._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp")
-                if rounds % 6 == 5 and device._find_in_screen(_fs, 0.8) is not None:
-                    print(f"[{device.device_id}] เจอ SPECIAL STAGE (fixstage1) ระหว่างรอจอสุ่ม - รัว ESC จนเจอ cancel")
+                _fs_pos = device._find_in_screen(_fs, 0.8) if rounds % 6 == 5 else None
+                if _fs_pos is not None:
+                    # กดเข้า SPECIAL STAGE ก่อน (ปิด tutorial/ป๊อปอัพที่ค้าง) แล้วค่อยรัว ESC ออกจนเจอ cancel
+                    print(f"[{device.device_id}] เจอ SPECIAL STAGE (fixstage1) ระหว่างรอจอสุ่ม - กดเข้าไปก่อน แล้วรัว ESC จนเจอ cancel")
+                    device.tap(*_fs_pos)
+                    sleep(3)
                     for _n in range(40):
                         device.last_activity_time = time.time()
                         device.adb_shell("input keyevent KEYCODE_ESCAPE")
