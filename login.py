@@ -10658,8 +10658,8 @@ class RangerGearBot(threading.Thread):
                         return "no_kaiby"
                     print(f"[{self.device_id}] [PLAY-STAGE] เจอ verify-kaiby - ยืนยันแล้ว เริ่ม misson")
                     try:
-                        self.process_auto_play_stage()
-                        self._play_stage_done = True   # ตอนจบไฟล์ handle_success ส่งออก play-stage30-100-150/
+                        # ส่งออก play-stage30-100-150/ เฉพาะเล่นได้จริงอย่างน้อย 1 ด่าน (ไม่เจอด่านเลย = ไฟล์ไปทางปกติ)
+                        self._play_stage_done = bool(self.process_auto_play_stage())
                     except RestartTimeoutError:
                         raise
                     except self._PSNoKaiby:
@@ -11146,6 +11146,7 @@ class RangerGearBot(threading.Thread):
             self._ps_active = False
             self._ps_deadline = None
         print(f"[{self.device_id}] [PLAY-STAGE] จบ - เล่นแล้ว: {', '.join(sorted(done, key=int)) or '-'}")
+        return done
 
     def _ps_claim_rewards(self):
         """รับรางวัล: (backmisson มาแล้ว) -> misson1 -> misson2 -> misson3 -> stageget -> OK (stageok/stageokk)
