@@ -10903,9 +10903,13 @@ class RangerGearBot(threading.Thread):
         (ใช้จอที่ capture ไว้แล้ว ไม่ capture ใหม่)"""
         if not getattr(self, "_ps_active", False):
             return
-        if self._find_in_screen(self._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp"), 0.8) is None:
+        # fixstage1 / specialstage (หลุดเข้าหน้า Special Stage) -> ทำแบบเดียวกัน
+        hit = next((n for n in ("fixstage1", "specialstage")
+                    if self._find_in_screen(self._login_kaiby_img(f"img/login-kaiby/fixstage/{n}.bmp"), 0.8) is not None),
+                   None)
+        if hit is None:
             return
-        print(f"[{self.device_id}] [PLAY-STAGE] เจอ fixstage1 - รัว ESC จนเจอ cancel")
+        print(f"[{self.device_id}] [PLAY-STAGE] เจอ {hit} - รัว ESC จนเจอ cancel")
         n = 0
         while True:
             self.last_activity_time = time.time()
