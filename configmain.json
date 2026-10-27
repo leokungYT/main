@@ -41,7 +41,7 @@
     "pos_cache": 1,
     "channels_img": 0,
     "box_settings": {
-        "first_round": 0,
+        "first_round": 1,
         "second_round": 0
     },
     "channel": "ch2",
