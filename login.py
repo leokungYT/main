@@ -11313,7 +11313,19 @@ class RangerGearBot(threading.Thread):
                         self._login_kaiby_wait_click(
                             f"img/auto-play-stage/fix-stage100-{i}.bmp", 0, sim, nudge=_nd100,
                             retap=f"img/auto-play-stage/fix-stage100-{i - 1}.bmp" if i > 1 else None)
-                        sleep(1)
+                        sleep(1.5)
+                        if i == 1:
+                            continue   # ปุ่มลูกศรวนกดแล้วยังอยู่บนจอ - ไม่ต้องเช็คซ้ำ
+                        # กดแล้วต้องหายไป (x1 -> x5 ...) - ยังอยู่ = กดไม่ติด (เกมยังเปลี่ยนหน้าไม่ทัน) -> กดซ้ำ สูงสุด 5 ครั้ง
+                        _fp = self._login_kaiby_img(f"img/auto-play-stage/fix-stage100-{i}.bmp")
+                        for _try in range(5):
+                            self.capture_screen()
+                            _pos = self._find_in_screen(_fp, sim)
+                            if _pos is None:
+                                break
+                            print(f"[{self.device_id}] [PLAY-STAGE] fix-stage100-{i} ยังอยู่ - กดซ้ำ ({_try + 1})")
+                            self.tap(*_pos)
+                            sleep(1.5)
                 self._ps_buyhelp_battle()
                 if s == "30":
                     # ด่าน 30 จบ -> แวะหา fix-nextstage30 -> fix-nextstage30ok (เจอกด / ไม่เจอใน 10 วิข้าม)
