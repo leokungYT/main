@@ -5430,7 +5430,22 @@ class RangerGearBot(threading.Thread):
                     device.click(f'img/{_sk}', similarity=0.85)
                     sleep(1)
                     continue
-                # กด Skip แล้วเกมเด้งกลับหน้า Lobby (เห็นไอคอน gacha) -> เข้าร้านใหม่: gacha.png -> shopgacha1.png
+                # เจอป้าย SPECIAL STAGE (fixstage1 = อยู่หน้า Lobby ไม่ใช่ในร้าน) -> รัว ESC จนเจอ cancel -> กด cancel
+                # แล้วเข้าร้านใหม่ (เหมือนที่ play stage ทำตอนเจอ fixstage1)
+                _fs = device._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp")
+                if rounds % 6 == 5 and device._find_in_screen(_fs, 0.8) is not None:
+                    print(f"[{device.device_id}] เจอ SPECIAL STAGE (fixstage1) ระหว่างรอจอสุ่ม - รัว ESC จนเจอ cancel")
+                    for _n in range(40):
+                        device.last_activity_time = time.time()
+                        device.adb_shell("input keyevent KEYCODE_ESCAPE")
+                        sleep(float(config.get("event_back_wait", 0.8)))
+                        device.capture_screen()
+                        if device.exists_in_cache("img/cancel.png"):
+                            print(f"[{device.device_id}] ESC {_n + 1} ครั้ง เจอ cancel - กด")
+                            device.click("img/cancel.png")
+                            sleep(1)
+                            break
+                    device.capture_screen()
                 if rounds % 6 == 5 and device.exists_in_cache('img/gacha.png', similarity=0.8):
                     print(f"[{device.device_id}] กลับมาหน้า Lobby ระหว่างรอจอสุ่ม - เข้าร้านใหม่ (gacha -> shopgacha1)")
                     device.click('img/gacha.png', similarity=0.8)
@@ -10915,13 +10930,9 @@ class RangerGearBot(threading.Thread):
         (ใช้จอที่ capture ไว้แล้ว ไม่ capture ใหม่)"""
         if not getattr(self, "_ps_active", False):
             return
-        # fixstage1 / specialstage (หลุดเข้าหน้า Special Stage) -> ทำแบบเดียวกัน
-        hit = next((n for n in ("fixstage1", "specialstage")
-                    if self._find_in_screen(self._login_kaiby_img(f"img/login-kaiby/fixstage/{n}.bmp"), 0.8) is not None),
-                   None)
-        if hit is None:
+        if self._find_in_screen(self._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp"), 0.8) is None:
             return
-        print(f"[{self.device_id}] [PLAY-STAGE] เจอ {hit} - รัว ESC จนเจอ cancel")
+        print(f"[{self.device_id}] [PLAY-STAGE] เจอ fixstage1 - รัว ESC จนเจอ cancel")
         n = 0
         while True:
             self.last_activity_time = time.time()
