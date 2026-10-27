@@ -10915,6 +10915,28 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] [PLAY-STAGE] ไม่เจอ stageok หลังกด stageget - ไปต่อ")
         return False
 
+    def _raid_escape(self):
+        """หลุดมาค้างหน้า Event Raid (มี tutorial กบชี้ RANK REWARD) นอก flow login-kaiby
+        ยืนยันว่าเป็นหน้า raid ด้วย back.bmp + raid-boss3 (ปุ่ม RANK REWARD) พร้อมกัน (กันสับสนกับปุ่ม back หน้าอื่น)
+        -> raid-boss3 -> 4 -> 5 -> 6 (ขั้นละ 3 วิ ไม่เจอข้าม) -> กด back ออก"""
+        base = "img/login-kaiby/raid-boss"
+        back = self._login_kaiby_img(f"{base}/back.bmp")
+        if (self._find_in_screen(back, 0.8) is None
+                or self._find_in_screen(self._login_kaiby_img(f"{base}/raid-boss3.bmp"), 0.8) is None):
+            return False
+        print(f"[{self.device_id}] เจอหน้า Event Raid ค้าง - ทำ raid-boss3..6 แล้วกด back ออก")
+        for i in range(3, 7):
+            if self._login_kaiby_wait_click(f"{base}/raid-boss{i}.bmp", 3):
+                sleep(1)
+        for _ in range(5):
+            self.capture_screen()
+            pos = self._find_in_screen(back, 0.8)
+            if pos is None:
+                break
+            self.tap(*pos)
+            sleep(2)
+        return True
+
     def _tap_skip(self):
         """บทพูด tutorial (กบ Leonard ...) บังจอ -> กด Skip ก่อน ไม่งั้นกดอะไรก็ไม่ติด (เช่น misson1 วนไม่หยุด)"""
         for n in ("distskip", "step3skip"):
@@ -10928,7 +10950,7 @@ class RangerGearBot(threading.Thread):
     def _ps_cancel_first(self):
         """ระหว่างเล่น stage: เจอ cancel.png -> กด cancel ก่อนเสมอ (กดผิดเปิดป๊อปอัพอื่น) แล้วค่อยทำ step ต่อ
         คืน True = กด cancel ไปแล้ว (ควร capture ใหม่ก่อนหาอย่างอื่น)"""
-        if self._tap_skip():
+        if self._tap_skip() or self._raid_escape():
             return True
         if not getattr(self, "_ps_active", False) or not self.exists_in_cache("img/cancel.png"):
             return False
