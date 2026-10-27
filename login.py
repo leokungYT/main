@@ -380,7 +380,7 @@ def _wg_generate_more(wg_dir, want, dev=""):
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
         else:
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
-                            _wg_machine_no(),
+                            int(config.get("wg_machine", 0) or 0),
                             str(config.get("wg_account", "") or "").strip() or None,
                             int(config.get("wg_total_machines", 30) or 30))
         return len(_wg_list_configs(wg_dir)) > before
@@ -442,7 +442,7 @@ def _wg_replace_blocked(conf, dev=""):
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
         else:
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
-                            _wg_machine_no(),
+                            int(config.get("wg_machine", 0) or 0),
                             str(config.get("wg_account", "") or "").strip() or None,
                             int(config.get("wg_total_machines", 30) or 30))
     except Exception as e:
@@ -614,33 +614,6 @@ class RestartTimeoutError(BaseException):
     ไปทำไฟล์ถัดไปได้ตามที่ตั้งใจไว้แต่แรก
     """
     pass
-
-
-def _wg_machine_no():
-    """เลขเครื่องสำหรับแบ่งเซิร์ฟเวอร์ VPN (กุญแจเดียวกันหลายเครื่อง ห้ามใช้เซิร์ฟเวอร์ซ้ำกัน)
-    configmain.json อยู่ใน git -> ทุกเครื่องได้ wg_machine เท่ากันหมด = ชนกัน -> หาเลขจากชื่อ Tailscale เอง
-    (desktop-gu126p1-12.xxx.ts.net -> 12) ; wg_machine_auto = 0 หรือหาไม่ได้ -> ใช้ wg_machine ใน config"""
-    global _WG_MACHINE_CACHE
-    try:
-        return _WG_MACHINE_CACHE
-    except NameError:
-        pass
-    n = int(config.get("wg_machine", 0) or 0)
-    if int(config.get("wg_machine_auto", 1) or 0):
-        try:
-            import json as _json
-            exe = r"C:\Program Files\Tailscale	ailscale.exe"
-            r = subprocess.run([exe if os.path.exists(exe) else "tailscale", "status", "--self", "--json"],
-                               capture_output=True, timeout=10)
-            name = str(_json.loads(r.stdout or b"{}").get("Self", {}).get("DNSName", "")).split(".")[0]
-            m = re.search(r"-(\d+)$", name)
-            if m:
-                n = int(m.group(1))
-                print(f"[WG] เลขเครื่องจาก Tailscale ({name}) = {n}")
-        except Exception as e:
-            print(f"[WG] หาเลขเครื่องจาก Tailscale ไม่ได้ ({e}) - ใช้ wg_machine={n}")
-    _WG_MACHINE_CACHE = n
-    return n
 
 
 def _fetch_wg_key():
@@ -11788,21 +11761,7 @@ if __name__ == "__main__":
                 try: os.remove(os.path.join(_wgd, ".managed"))
                 except OSError: pass
                 print("[WG-GEN] wg/ ยังไม่มีไฟล์ IP - สร้างให้ก่อนเริ่มบอท...")
-            _mach = _wg_machine_no()   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
-            # เลขเครื่องเปลี่ยน -> ไฟล์ IP เดิมเป็นช่วงเซิร์ฟเวอร์ของเครื่องอื่น (ชนกัน) -> ลบทิ้งสร้างใหม่ตามช่วงตัวเอง
-            _mk = os.path.join(_wgd, ".machine")
-            try:
-                _prev = open(_mk, encoding="utf-8").read().strip()
-            except OSError:
-                _prev = ""
-            if _prev != str(_mach):
-                os.makedirs(_wgd, exist_ok=True)
-                for _f in glob.glob(os.path.join(_wgd, "*.conf")) + glob.glob(os.path.join(_wgd, ".claims", "*")):
-                    try: os.remove(_f)
-                    except OSError: pass
-                with open(_mk, "w", encoding="utf-8") as _fh:
-                    _fh.write(str(_mach))
-                print(f"[WG-GEN] เลขเครื่องเปลี่ยน ({_prev or '-'} -> {_mach}) - ล้างไฟล์ IP เก่า สร้างช่วงเซิร์ฟเวอร์ของเครื่องนี้ใหม่")
+            _mach = int(config.get("wg_machine", 0) or 0)   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
             _per = int(config.get("wg_per_machine", 0) or 0) or (len(devices) + int(config.get("wg_gen_spare", 2)))
             wg_gen.generate(_per, config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")), _mach,
                             str(config.get("wg_account", "") or "").strip() or None,   # เลือกบัญชี: wg_accounts/<ชื่อ>/
@@ -11834,7 +11793,7 @@ if __name__ == "__main__":
                     _sh.copy2(kf, tmp)
                 print(f"[WG-GEN] ครบ {mins:.0f} นาที - สร้าง IP ชุดใหม่ {per} ไฟล์...")
                 wg_gen.generate(per, config.get("wg_gen_countries") or None, tmp,
-                                _wg_machine_no(),
+                                int(config.get("wg_machine", 0) or 0),
                                 str(config.get("wg_account", "") or "").strip() or None,
                                 int(config.get("wg_total_machines", 30) or 30))
                 fresh = _glob.glob(os.path.join(tmp, "*.conf"))
@@ -11880,7 +11839,7 @@ if __name__ == "__main__":
                     acc = str(config.get("wg_account", "") or "").strip() or None
                     print(f"[WG-GEN] wg/ ไม่มีไฟล์ IP เลย - รัน wg_gen สร้างใหม่ {per} ไฟล์ (บัญชี {acc or '-'})...")
                     wg_gen.generate(per, config.get("wg_gen_countries") or None, wg_dir,
-                                    _wg_machine_no(), acc,
+                                    int(config.get("wg_machine", 0) or 0), acc,
                                     int(config.get("wg_total_machines", 30) or 30))
                     print(f"[WG-GEN] ตอนนี้มี {len(_glob.glob(os.path.join(wg_dir, '*.conf')))} ไฟล์ใน wg/")
             except Exception as e:
