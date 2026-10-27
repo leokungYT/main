@@ -5440,9 +5440,13 @@ class RangerGearBot(threading.Thread):
                     print(f"[{device.device_id}] เจอ SPECIAL STAGE (fixstage1) ระหว่างรอจอสุ่ม - กดเข้าไป แล้วหา outesc")
                     device.tap(*_fs_pos)
                     _oe = device._login_kaiby_img("img/auto-play-stage/outesc.bmp")
-                    _oe_end = time.time() + 10
+                    # รอ outesc ไม่มี timeout (เจอเมื่อไหร่ค่อยรัว ESC)
                     _oe_hit = False
-                    while time.time() < _oe_end:
+                    _oe_n = 0
+                    while True:
+                        _oe_n += 1
+                        if _oe_n % 60 == 0:
+                            print(f"[{device.device_id}] ยังรอ outesc ({_oe_n // 2} วิ)")
                         device.last_activity_time = time.time()
                         device.capture_screen()
                         if device._find_in_screen(_oe, 0.8) is not None:
