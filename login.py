@@ -10916,6 +10916,16 @@ class RangerGearBot(threading.Thread):
         sim = float(config.get("play_stage_similarity", 0.9))
         return self._find_in_screen(f"img/auto-play-stage/{name}.png", sim)
 
+    def _ps_cancel_first(self):
+        """ระหว่างเล่น stage: เจอ cancel.png -> กด cancel ก่อนเสมอ (กดผิดเปิดป๊อปอัพอื่น) แล้วค่อยทำ step ต่อ
+        คืน True = กด cancel ไปแล้ว (ควร capture ใหม่ก่อนหาอย่างอื่น)"""
+        if not getattr(self, "_ps_active", False) or not self.exists_in_cache("img/cancel.png"):
+            return False
+        print(f"[{self.device_id}] [PLAY-STAGE] เจอ cancel - กด cancel ก่อน แล้วทำ step ต่อ")
+        self.click("img/cancel.png")
+        sleep(1)
+        return True
+
     def _ps_tap_if(self, name, wait=1.0):
         pos = self._ps_find(name)
         if pos is None:
@@ -10937,6 +10947,8 @@ class RangerGearBot(threading.Thread):
             self.last_activity_time = time.time()   # ด่านเล่นนาน ไม่ให้ safety 500s รีสตาร์ท
             self.capture_screen()
             self._ps_check_fixstage()
+            if self._ps_cancel_first():
+                continue
             if self._ps_tap_if("stageget"):
                 self.capture_screen()
                 self._ps_tap_if("stageokk")
@@ -10986,6 +10998,9 @@ class RangerGearBot(threading.Thread):
         while time.time() - quiet_since < idle:
             self.last_activity_time = time.time()
             self.capture_screen()
+            if self._ps_cancel_first():
+                quiet_since = time.time()
+                continue
             if self.exists_in_cache("img/event.png"):
                 self._event_back_spam()
                 quiet_since = time.time()
@@ -11015,6 +11030,8 @@ class RangerGearBot(threading.Thread):
         while loop and clicks < max_clicks:
             sleep(0.6)
             self.capture_screen()
+            if self._ps_cancel_first():
+                break
             pos = self._find_in_screen(path, 0.8)
             if pos is None:
                 break
@@ -11080,6 +11097,8 @@ class RangerGearBot(threading.Thread):
             self.last_activity_time = time.time()
             self.capture_screen()
             self._ps_check_fixstage()
+            if self._ps_cancel_first():
+                continue
             hit = False
             for n in rewards:
                 pos = self._find_in_screen(f"img/auto-play-stage/{n}.png", 0.8)
@@ -11134,6 +11153,9 @@ class RangerGearBot(threading.Thread):
             except self._PSRestart:
                 quiet_since = time.time()
                 continue
+            if self._ps_cancel_first():
+                quiet_since = time.time()
+                continue
             if self._ps_tap_if("stageget"):
                 self.capture_screen()
                 self._ps_tap_if("stageok") or self._ps_tap_if("stageokk")
@@ -11163,6 +11185,8 @@ class RangerGearBot(threading.Thread):
             self.last_activity_time = time.time()
             self.capture_screen()
             self._ps_check_fixstage()
+            if self._ps_cancel_first():
+                continue
 
             # โฟกัสหลัง misson3: ไม่กด stageget/misson อื่นเลย ยกเว้นไม่เจอด่านติดกัน focus_sec -> เลิกโฟกัส
             if focus_since is not None and time.time() - focus_since >= focus_sec:
@@ -11342,6 +11366,8 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
             self._ps_check_fixstage()
             self._ps_check_deadline()
+            if self._ps_cancel_first():
+                continue
             pos = self._find_in_screen(path, similarity)
             if pos is not None:
                 if tap:
