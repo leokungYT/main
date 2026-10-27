@@ -11076,7 +11076,15 @@ class RangerGearBot(threading.Thread):
             played = False
             sim = float(config.get("play_stage_similarity", 0.9))
             for s in wanted:
-                if s in done or not self._ps_tap_if(f"missonstage{s}", 3):
+                if s in done:
+                    continue
+                # ยืนยันด่านก่อน: ต้องเจอ verify-stageXX.bmp ถึงจะกด missonstageXX (กันกดมั่วผิดด่าน)
+                # เจอพร้อมกันหลายด่าน -> ทำด่านแรกที่เจอตามลำดับ 30 -> 100 -> 150 ทีละด่าน
+                if self._find_in_screen(self._login_kaiby_img(f"img/auto-play-stage/verify-stage{s}.bmp"),
+                                        sim) is None:
+                    continue
+                print(f"[{self.device_id}] [PLAY-STAGE] เจอ verify-stage{s} - ยืนยันด่าน {s}")
+                if not self._ps_tap_if(f"missonstage{s}", 3):
                     continue
                 if s == "30":
                     # ด่าน 30 ต้องเริ่มรบได้ภายใน 60s ไม่งั้นถือว่าเลเวลไม่ถึง -> no-kaiby
