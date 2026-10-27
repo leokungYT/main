@@ -10904,15 +10904,21 @@ class RangerGearBot(threading.Thread):
         return self._find_in_screen(f"img/auto-play-stage/{name}.png", sim)
 
     def _ps_after_stageget(self):
-        """กด stageget แล้ว -> แวะหา stageok (หรือ stageokk) สูงสุด play_stage_getok_sec วิ (10) เจอกด ไม่เจอก็ไปต่อ"""
+        """กด stageget แล้ว -> แวะหา okreward.bmp สูงสุด play_stage_getok_sec วิ (10) เจอกด ไม่เจอก็ไปต่อ"""
+        path = "img/auto-play-stage/okreward.bmp"
+        sim = float(config.get("play_stage_similarity", 0.9))
         end = time.time() + float(config.get("play_stage_getok_sec", 10))
         while time.time() < end:
             self.last_activity_time = time.time()
             self.capture_screen()
-            if self._ps_tap_if("stageok") or self._ps_tap_if("stageokk"):
+            pos = self._find_in_screen(path, sim)
+            if pos is not None:
+                print(f"[{self.device_id}] [PLAY-STAGE] กด okreward")
+                self.tap(*pos)
+                sleep(1)
                 return True
             sleep(0.5)
-        print(f"[{self.device_id}] [PLAY-STAGE] ไม่เจอ stageok หลังกด stageget - ไปต่อ")
+        print(f"[{self.device_id}] [PLAY-STAGE] ไม่เจอ okreward หลังกด stageget - ไปต่อ")
         return False
 
     def _raid_escape(self):
