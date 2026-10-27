@@ -11385,15 +11385,17 @@ class RangerGearBot(threading.Thread):
                 return stem + ext
         return path
 
-    def _login_kaiby_wait_click(self, path, timeout=0, similarity=0.8, tap=True, nudge=None):
+    def _login_kaiby_wait_click(self, path, timeout=0, similarity=0.8, tap=True, nudge=None, escape=None):
         """รอจนเจอรูปแล้วกด - คืนตำแหน่งที่กด หรือ None ถ้าหมดเวลา (timeout <= 0 = รอจนเจอ ไม่มี timeout)
         tap=False = รอดูเฉย ๆ ไม่กด
+        escape=(path, sec) = รูปนี้ค้างต่อเนื่องครบ sec วิ -> กดแล้วคืน "escape" (เลิกรอ)
         nudge=(x, y) = ไม่เจอนานทุก login_kaiby_nudge_sec วิ -> แตะจุดนี้ 1 ครั้ง (ข้ามกล่องข้อความ tutorial ที่บังอยู่)"""
         path = self._login_kaiby_img(path)
         start = time.time()
         next_log = start + 30
         _nudge_every = float(config.get("login_kaiby_nudge_sec", 8))
         next_nudge = start + _nudge_every
+        esc_seen = None
         while timeout <= 0 or time.time() < start + timeout:
             self.last_activity_time = time.time()   # กำลังรอขั้นถัดไป - ไม่ให้ safety 500s รีสตาร์ท
             self.capture_screen()
@@ -11406,6 +11408,16 @@ class RangerGearBot(threading.Thread):
                 if tap:
                     self.tap(*pos)
                 return pos
+            if escape:
+                _epos = self._find_in_screen(self._login_kaiby_img(escape[0]), similarity)
+                if _epos is None:
+                    esc_seen = None
+                elif esc_seen is None:
+                    esc_seen = time.time()
+                elif time.time() - esc_seen >= escape[1]:
+                    print(f"[{self.device_id}] [LOGIN-KAIBY] {os.path.basename(escape[0])} ค้าง {escape[1]:.0f}s - กดแล้วเลิกรอ")
+                    self.tap(*_epos)
+                    return "escape"
             if nudge and time.time() >= next_nudge:
                 print(f"[{self.device_id}] [LOGIN-KAIBY] ไม่เจอ {os.path.basename(path)} - แตะข้าม tutorial {nudge}")
                 self.tap(*nudge)
@@ -11479,7 +11491,14 @@ class RangerGearBot(threading.Thread):
                 for i in range(1, 7):
                     # หน้า Event Raid มีกบ tutorial บัง (Win the competition...) -> แตะกล่องข้อความให้ไปต่อ
                     _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
-                    if not self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout, nudge=_nd):
+                    # back.bmp ค้างครบ 20s -> กด back แล้วจบ raid-boss เลย
+                    _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout, nudge=_nd,
+                                                      escape=(f"{base}/raid-boss/back.bmp",
+                                                              float(config.get("login_kaiby_raid_back_sec", 20))))
+                    if _r is None:
+                        break
+                    if _r == "escape":
+                        print(f"[{self.device_id}] [LOGIN-KAIBY] จบ raid-boss (กด back)")
                         break
                     sleep(1)
                 deadline = time.time() + idle_sec
