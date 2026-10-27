@@ -11728,7 +11728,6 @@ if __name__ == "__main__":
         try:
             import wg_gen
             _wgd = str(config.get("wg_dir", "wg"))
-            _fetch_wg_key()
             if not glob.glob(os.path.join(_wgd, "*.conf")):
                 # ครั้งแรก/ไฟล์หมด: wg/ ว่าง -> สร้าง IP ก่อนเริ่มงานเสมอ (.managed ค้างจาก remote ทำให้ wg_gen ไม่ยอมสร้าง)
                 os.makedirs(_wgd, exist_ok=True)
