@@ -10925,28 +10925,22 @@ class RangerGearBot(threading.Thread):
         """หลุดมาค้างหน้า Event Raid (มี tutorial กบชี้ RANK REWARD) นอก flow login-kaiby
         ยืนยันว่าเป็นหน้า raid ด้วย back.bmp + raid-boss3 (ปุ่ม RANK REWARD) พร้อมกัน (กันสับสนกับปุ่ม back หน้าอื่น)
         -> raid-boss3 -> 4 -> 5 -> 6 (ขั้นละ 3 วิ ไม่เจอข้าม) -> กด back ออก"""
-        if getattr(self, "_raid_escaping", False):
-            return False   # กำลังทำอยู่ (wait_click ข้างในเรียกกลับมาที่นี่) - กันวนซ้อน
         base = "img/login-kaiby/raid-boss"
         back = self._login_kaiby_img(f"{base}/back.bmp")
         if (self._find_in_screen(back, 0.8) is None
                 or self._find_in_screen(self._login_kaiby_img(f"{base}/raid-boss3.bmp"), 0.8) is None):
             return False
         print(f"[{self.device_id}] เจอหน้า Event Raid ค้าง - ทำ raid-boss3..6 แล้วกด back ออก")
-        self._raid_escaping = True
-        try:
-            for i in range(3, 7):
-                if self._login_kaiby_wait_click(f"{base}/raid-boss{i}.bmp", 3):
-                    sleep(1)
-            for _ in range(5):
-                self.capture_screen()
-                pos = self._find_in_screen(back, 0.8)
-                if pos is None:
-                    break
-                self.tap(*pos)
-                sleep(2)
-        finally:
-            self._raid_escaping = False
+        for i in range(3, 7):
+            if self._login_kaiby_wait_click(f"{base}/raid-boss{i}.bmp", 3):
+                sleep(1)
+        for _ in range(5):
+            self.capture_screen()
+            pos = self._find_in_screen(back, 0.8)
+            if pos is None:
+                break
+            self.tap(*pos)
+            sleep(2)
         return True
 
     def _tap_skip(self):
