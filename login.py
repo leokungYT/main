@@ -615,6 +615,11 @@ class RestartTimeoutError(BaseException):
     """
     pass
 
+
+class WGNotUpError(RestartTimeoutError):
+    """ต่อ VPN ไม่ขึ้น (wg_required) - ไม่ใช่ความผิดของไฟล์ -> คืนไฟล์กลับคิว ไม่ส่ง login-failed"""
+    pass
+
 class SimpleUIStats:
     def __init__(self):
         self.total_files = 0
@@ -4554,7 +4559,7 @@ class RangerGearBot(threading.Thread):
             self._wg_bad = set()            # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
             _real_sleep(5)
         print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น {tries} รอบ - รีสตาร์ทไฟล์นี้แทนการเข้าเกมด้วยเน็ตบ้าน")
-        raise RestartTimeoutError("wg_required: VPN not up")
+        raise WGNotUpError("wg_required: VPN not up")
 
     def _wg_setup(self, conf):
         pkg, name = self.WG_PKG, self.WG_TUNNEL
@@ -6827,14 +6832,24 @@ class RangerGearBot(threading.Thread):
                         # 3. Login
                         self.update_gui_status("Logging in...")
                         login_start_time = time.time()
+                        self._fixid_fail = False
                         try:
                             status = self.main_login(injected_file)
+                        except WGNotUpError:
+                            status = "wg_retry"
+                            print(f"[{self.device_id}] VPN ไม่ขึ้น - คืนไฟล์กลับคิว (ไม่ส่ง login-failed)")
+                            self.clear_and_restart()
                         except RestartTimeoutError:
                             status = "timeout"
                             print(f"[{self.device_id}] Caught 500s Timeout!")
                             self.clear_and_restart()
                         
-                        if status == "success":
+                        if status == "wg_retry":
+                            # ไฟล์ยังอยู่ที่เดิม ปล่อย lock ข้างล่าง แล้วพักก่อนลองใหม่ (รอใส่ไฟล์ .conf / VPN กลับมา)
+                            self.update_gui_status("VPN not up - retry", "error")
+                            self.first_loop_done = False
+                            sleep(30)
+                        elif status == "success":
                             ui_stats.record_login_time(time.time() - login_start_time)
                             self.handle_success(xml_file)
                             ui_stats.update(success=ui_stats.success_count + 1, processed=ui_stats.processed_files + 1)
@@ -6885,16 +6900,21 @@ class RangerGearBot(threading.Thread):
                                 ui_stats.update(random_fail=ui_stats.random_fail_count + 1)
                                 self.update_gui_status("Random/Gacha (recover)", "error")
                                 self.first_loop_done = False
+                            elif not getattr(self, "_fixid_fail", False):
+                                self._requeue_not_fixid(status)
                             else:
                                 self.handle_failure(xml_file)
                                 ui_stats.update(fail=ui_stats.fail_count + 1)
                                 self.update_gui_status("Failed", "error")
                                 self.first_loop_done = False
                         else:
-                            print(f"[{self.device_id}] Status: {status}. Moving to next.")
-                            self.handle_failure(xml_file)
-                            ui_stats.update(fail=ui_stats.fail_count + 1)
-                            self.update_gui_status(f"Error: {status}", "error")
+                            if not getattr(self, "_fixid_fail", False):
+                                self._requeue_not_fixid(status)
+                            else:
+                                print(f"[{self.device_id}] Status: {status}. Moving to next.")
+                                self.handle_failure(xml_file)
+                                ui_stats.update(fail=ui_stats.fail_count + 1)
+                                self.update_gui_status(f"Error: {status}", "error")
                     else:
                         print(f"[{self.device_id}] Injection failed for {xml_file}")
                         self.handle_dead_file(xml_file) # Move to failed if we can't even inject
@@ -7061,6 +7081,13 @@ class RangerGearBot(threading.Thread):
     # =========================================================
     # File Handling
     # =========================================================
+    def _requeue_not_fixid(self, status):
+        """ล้มเหลวแต่ไม่ใช่ fixid ครบเงื่อนไข -> ไม่ส่ง login-failed, ไฟล์อยู่ที่เดิมให้ลองใหม่"""
+        print(f"[{self.device_id}] Status: {status} (ไม่ใช่ fixid ครบ) - คืนไฟล์กลับคิว ไม่ส่ง login-failed")
+        self.update_gui_status(f"Retry: {status}", "error")
+        self.first_loop_done = False
+        sleep(5)
+
     def handle_no_kaiby(self, file_path):
         """ไม่เจอ verify-kaiby ก่อนเริ่ม misson -> ส่งออก no-kaiby/ ชื่อเดิม"""
         dst_dir = "no-kaiby"
@@ -9075,6 +9102,7 @@ class RangerGearBot(threading.Thread):
                         # === fixid1.png → failed ทันที ===
                         if self.exists_in_cache("img/fixid1.png", similarity=0.95):
                             print(f"[{self.device_id}] Found fixid1.png! -> login-failed immediately")
+                            self._fixid_fail = True   # ครบเงื่อนไข fixid -> ส่ง login-failed ได้
                             return "failed"
 
                         # === เจอ fixid.png -> เริ่ม loop: fixok -> refresh -> check ===
@@ -9084,6 +9112,7 @@ class RangerGearBot(threading.Thread):
                             
                             if fixid_count >= max_fixid_retries:
                                 print(f"[{self.device_id}] fixid limit reached ({max_fixid_retries} times)! Sending to login-failed...")
+                                self._fixid_fail = True   # ครบเงื่อนไข fixid -> ส่ง login-failed ได้
                                 self._wg_strike("fixid ครบ")
                                 return "failed"
                             
@@ -10170,6 +10199,7 @@ class RangerGearBot(threading.Thread):
             # === fixid1.png → failed ทันที ===
             if self.exists_in_cache("img/fixid1.png", similarity=0.95):
                 print(f"[{self.device_id}] Found fixid1.png! -> login-failed immediately")
+                self._fixid_fail = True   # ครบเงื่อนไข fixid -> ส่ง login-failed ได้
                 self._login_fixid_count = 0
                 return "failed"
 
@@ -10194,6 +10224,7 @@ class RangerGearBot(threading.Thread):
                     
                     if self._login_fixid_count >= 15:
                         print(f"[{self.device_id}] fixid limit reached (15 times)! Failing...")
+                        self._fixid_fail = True   # ครบเงื่อนไข fixid -> ส่ง login-failed ได้
                         self._wg_auth_failed()
                         self._wg_strike("fixid ครบ 15")
                         self._login_fixid_count = 0
