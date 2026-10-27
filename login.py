@@ -10921,21 +10921,9 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] [PLAY-STAGE] ไม่เจอ okreward หลังกด stageget - ไปต่อ")
         return False
 
-    def _tap_skip(self):
-        """บทพูด tutorial (กบ Leonard ...) บังจอ -> กด Skip ก่อน ไม่งั้นกดอะไรก็ไม่ติด (เช่น misson1 วนไม่หยุด)"""
-        for n in ("distskip", "step3skip"):
-            if self.exists_in_cache(f"img/{n}.png", similarity=0.85):
-                print(f"[{self.device_id}] เจอ Skip ({n}) - กด Skip")
-                self.click(f"img/{n}.png", similarity=0.85)
-                sleep(1.5)
-                return True
-        return False
-
     def _ps_cancel_first(self):
         """ระหว่างเล่น stage: เจอ cancel.png -> กด cancel ก่อนเสมอ (กดผิดเปิดป๊อปอัพอื่น) แล้วค่อยทำ step ต่อ
         คืน True = กด cancel ไปแล้ว (ควร capture ใหม่ก่อนหาอย่างอื่น)"""
-        if self._tap_skip():
-            return True
         if not getattr(self, "_ps_active", False) or not self.exists_in_cache("img/cancel.png"):
             return False
         print(f"[{self.device_id}] [PLAY-STAGE] เจอ cancel - กด cancel ก่อน แล้วทำ step ต่อ")
@@ -11426,7 +11414,7 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
             self._ps_check_fixstage()
             self._ps_check_deadline()
-            if self._ps_cancel_first() or self._tap_skip() or self._cancel_stuck():
+            if self._ps_cancel_first() or self._cancel_stuck():
                 continue
             pos = self._find_in_screen(path, similarity)
             if pos is not None:
