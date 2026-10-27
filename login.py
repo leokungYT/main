@@ -10256,19 +10256,6 @@ class RangerGearBot(threading.Thread):
                 try:
                     self._login_fixid_count += 1
                     print(f"[{self.device_id}] Found fixid.png ({self._login_fixid_count}/15), fixok -> refresh -> check...")
-                    # Authentication failed ซ้ำทุก wg_fixid_switch_every (3) ครั้ง = LINE ไม่รับ IP นี้ -> ทิ้ง IP สร้างใหม่
-                    # (ตัวนับ fixid ไม่รีเซ็ต - ครบ 15 ยังส่ง login-failed ตามเดิม)
-                    _every = int(config.get("wg_fixid_switch_every", 3) or 0)
-                    if (_every and self._login_fixid_count < 15 and self._login_fixid_count % _every == 0
-                            and int(config.get("wg_enabled", 1) or 0)):
-                        print(f"[{self.device_id}] [WG] fixid {self._login_fixid_count} ครั้งบน IP นี้ - สร้าง IP ใหม่แล้วลองต่อ")
-                        _cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
-                        if _cur:
-                            self._wg_down()
-                            self._wg_failover(_cur, confirmed=True)
-                        if self._wg_request_net_recover("Authentication failed", switch_now=True):
-                            sleep(2)
-                            continue
                     
                     if self._login_fixid_count >= 15:
                         print(f"[{self.device_id}] fixid limit reached (15 times)! Failing...")
