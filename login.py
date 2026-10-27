@@ -10926,6 +10926,22 @@ class RangerGearBot(threading.Thread):
         sleep(1)
         return True
 
+    def _cancel_stuck(self):
+        """จุดที่ไม่กด cancel ทันที (login-kaiby / ระหว่างรบ): cancel ค้างอยู่ครบ cancel_stuck_sec (15) วิ -> กดเลย"""
+        if not self.exists_in_cache("img/cancel.png"):
+            self._cancel_seen = None
+            return False
+        if getattr(self, "_cancel_seen", None) is None:
+            self._cancel_seen = time.time()
+            return False
+        if time.time() - self._cancel_seen < float(config.get("cancel_stuck_sec", 15)):
+            return False
+        print(f"[{self.device_id}] เจอ cancel ค้างนาน - กด cancel")
+        self.click("img/cancel.png")
+        self._cancel_seen = None
+        sleep(1)
+        return True
+
     def _ps_tap_if(self, name, wait=1.0):
         pos = self._ps_find(name)
         if pos is None:
@@ -11081,6 +11097,7 @@ class RangerGearBot(threading.Thread):
                         self.tap(*pos)
                         sleep(1)
                 self.capture_screen()
+                self._cancel_stuck()
                 if self._find_in_screen("img/auto-play-stage/win.png", 0.8) is not None:
                     print(f"[{self.device_id}] [PLAY-STAGE] WIN!")
                     break
@@ -11366,7 +11383,7 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
             self._ps_check_fixstage()
             self._ps_check_deadline()
-            if self._ps_cancel_first():
+            if self._ps_cancel_first() or self._cancel_stuck():
                 continue
             pos = self._find_in_screen(path, similarity)
             if pos is not None:
