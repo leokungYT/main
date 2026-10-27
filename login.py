@@ -11307,8 +11307,12 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [PLAY-STAGE] เล่นด่าน {s}")
                 if s == "100":
                     # ด่าน 100: ก่อนกด next ต้องกด fix-stage100-1 -> ... -> fix-stage100-5 ก่อน
+                    # มีกบ tutorial (multiplier) บัง -> ไม่เจอ step ถัดไปทุก 8s: แตะกล่องข้อความ + กด step ก่อนหน้าซ้ำ
+                    _nd100 = tuple(config.get("play_stage100_nudge", [530, 270]))
                     for i in range(1, 6):
-                        self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", 0, sim)
+                        self._login_kaiby_wait_click(
+                            f"img/auto-play-stage/fix-stage100-{i}.bmp", 0, sim, nudge=_nd100,
+                            retap=f"img/auto-play-stage/fix-stage100-{i - 1}.bmp" if i > 1 else None)
                         sleep(1)
                 self._ps_buyhelp_battle()
                 if s == "30":
@@ -11376,10 +11380,11 @@ class RangerGearBot(threading.Thread):
                 return stem + ext
         return path
 
-    def _login_kaiby_wait_click(self, path, timeout=0, similarity=0.8, tap=True, nudge=None, escape=None):
+    def _login_kaiby_wait_click(self, path, timeout=0, similarity=0.8, tap=True, nudge=None, escape=None, retap=None):
         """รอจนเจอรูปแล้วกด - คืนตำแหน่งที่กด หรือ None ถ้าหมดเวลา (timeout <= 0 = รอจนเจอ ไม่มี timeout)
         tap=False = รอดูเฉย ๆ ไม่กด
         escape=(path, sec) = รูปนี้ค้างต่อเนื่องครบ sec วิ -> กดแล้วคืน "escape" (เลิกรอ)
+        retap = รูปของ step ก่อนหน้า: ตอน nudge ถ้ายังเห็นอยู่ (กดแล้วไม่ติดเพราะ tutorial บัง) -> กดซ้ำ
         nudge=(x, y) = ไม่เจอนานทุก login_kaiby_nudge_sec วิ -> แตะจุดนี้ 1 ครั้ง (ข้ามกล่องข้อความ tutorial ที่บังอยู่)"""
         path = self._login_kaiby_img(path)
         start = time.time()
@@ -11413,6 +11418,13 @@ class RangerGearBot(threading.Thread):
             if nudge and time.time() >= next_nudge:
                 print(f"[{self.device_id}] [LOGIN-KAIBY] ไม่เจอ {os.path.basename(path)} - แตะข้าม tutorial {nudge}")
                 self.tap(*nudge)
+                if retap:
+                    sleep(1)
+                    self.capture_screen()
+                    _rp = self._find_in_screen(self._login_kaiby_img(retap), similarity)
+                    if _rp is not None:
+                        print(f"[{self.device_id}] [LOGIN-KAIBY] กด {os.path.basename(retap)} ซ้ำ (ครั้งก่อนไม่ติด)")
+                        self.tap(*_rp)
                 next_nudge = time.time() + _nudge_every
             if time.time() >= next_log:
                 print(f"[{self.device_id}] [LOGIN-KAIBY] ยังรอ {path} ({time.time() - start:.0f}s)")
