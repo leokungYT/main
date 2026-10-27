@@ -11156,40 +11156,56 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] [PLAY-STAGE] จบ - เล่นแล้ว: {', '.join(sorted(done, key=int)) or '-'}")
 
     def _ps_claim_rewards(self):
-        """เล่นครบแล้ว -> กลับไปหน้าภารกิจ (misson1 -> misson2 -> misson3) แล้วกด stageget -> stageok รับรางวัล
-        จบเมื่อไม่มีอะไรให้กดติดกัน play_stage_claim_idle วิ (default 10)"""
+        """รับรางวัล: (backmisson มาแล้ว) -> misson1 -> misson2 -> misson3 -> stageget -> OK (stageok/stageokk)
+        จบได้ทางเดียว: กด misson3 แล้ว ไม่เจอ stageget ติดกัน play_stage_claim_idle วิ (default 10)
+        ยังไม่ถึง misson3 แล้วไม่เจออะไรเลย -> ทำ backmisson ใหม่แล้ววนต่อ (ไม่จบ)"""
         idle = float(config.get("play_stage_claim_idle", 10))
-        print(f"[{self.device_id}] [PLAY-STAGE] เล่นครบ - กลับไป misson3 รับรางวัล (stageget)")
+        print(f"[{self.device_id}] [PLAY-STAGE] กลับไป misson3 รับรางวัล (stageget)")
         quiet_since = time.time()
         tapped = set()
-        while time.time() - quiet_since < idle:
+        while True:
             self.last_activity_time = time.time()
             self.capture_screen()
             try:
                 self._ps_check_fixstage()
             except self._PSRestart:
+                tapped.clear()
                 quiet_since = time.time()
                 continue
             if self._ps_cancel_first():
                 quiet_since = time.time()
                 continue
+            # ป๊อปอัพ "You've got a reward!" -> กด OK ทุกรอบที่เห็น (เดิมเช็คแค่ทันทีหลัง stageget เลยค้าง)
+            if self._ps_tap_if("stageok") or self._ps_tap_if("stageokk"):
+                quiet_since = time.time()
+                continue
             if self._ps_tap_if("stageget"):
-                self.capture_screen()
-                self._ps_tap_if("stageok") or self._ps_tap_if("stageokk")
                 quiet_since = time.time()
                 continue
             # misson แต่ละปุ่มกดได้ครั้งเดียว (กันปุ่มที่ค้างโชว์อยู่ทำให้วนไม่จบ)
+            hit = False
             for m in ("misson1", "misson2", "misson3"):
-                if m == "misson1" and not self._ps_not_myteam():
-                    quiet_since = time.time()
+                if m == "misson1" and m not in tapped and not self._ps_not_myteam():
+                    hit = True
                     break
                 if m not in tapped and self._ps_tap_if(m, 2):
                     tapped.add(m)
-                    quiet_since = time.time()
+                    hit = True
                     break
-            else:
-                sleep(0.5)
-        print(f"[{self.device_id}] [PLAY-STAGE] รับรางวัลจบ")
+            if hit:
+                quiet_since = time.time()
+                continue
+            if time.time() - quiet_since >= idle:
+                if "misson3" in tapped:
+                    break   # กด misson3 แล้วไม่มี stageget เหลือ = รับครบ
+                # ยังไปไม่ถึง misson3 -> กลับหน้าภารกิจด้วย backmisson ใหม่ แล้วเริ่ม misson1 ใหม่
+                print(f"[{self.device_id}] [PLAY-STAGE] ยังไม่ถึง misson3 - ทำ backmisson ใหม่")
+                self._ps_back_to_mission()
+                tapped.clear()
+                quiet_since = time.time()
+                continue
+            sleep(0.5)
+        print(f"[{self.device_id}] [PLAY-STAGE] รับรางวัลจบ (หลัง misson3 ไม่เจอ stageget แล้ว)")
 
     def _ps_mission_loop(self, wanted, done):
         """misson1 -> misson2 -> misson3 -> หา missonstageXX (ไม่เลื่อนหน้าจอ) -> stageXX -> เล่นด่าน
