@@ -11057,35 +11057,45 @@ class RangerGearBot(threading.Thread):
         """misson1 -> misson2 -> misson3 -> หา missonstageXX (ไม่เลื่อนหน้าจอ) -> stageXX -> เล่นด่าน
         เล่นครบทุกด่านที่เปิดไว้ใน config แล้วจบ / ไม่เจอด่านที่เหลือติดกัน play_stage_idle_sec (default 45) -> จบ"""
         idle_sec = float(config.get("play_stage_idle_sec", 45))
+        focus_sec = float(config.get("play_stage_focus_sec", 15))
         idle_since = time.time()
+        focus_since = None   # กด misson3 แล้ว -> โฟกัสกดแค่ verify-stageXX เท่านั้น
         while len(done) < len(wanted):
             self.last_activity_time = time.time()
             self.capture_screen()
             self._ps_check_fixstage()
 
-            if self._ps_tap_if("stageget"):
-                self.capture_screen()
-                self._ps_tap_if("stageok")
-                idle_since = time.time()
-                continue
-            if (self._ps_tap_if("misson1", 2) or self._ps_tap_if("misson2", 2)
-                    or self._ps_tap_if("misson3", 2)):
-                idle_since = time.time()
-                continue
+            # โฟกัสหลัง misson3: ไม่กด stageget/misson อื่นเลย ยกเว้นไม่เจอด่านติดกัน focus_sec -> เลิกโฟกัส
+            if focus_since is not None and time.time() - focus_since >= focus_sec:
+                focus_since = None
+            if focus_since is None:
+                if self._ps_tap_if("stageget"):
+                    self.capture_screen()
+                    self._ps_tap_if("stageok")
+                    idle_since = time.time()
+                    continue
+                if self._ps_tap_if("misson1", 2) or self._ps_tap_if("misson2", 2):
+                    idle_since = time.time()
+                    continue
+                if self._ps_tap_if("misson3", 2):
+                    idle_since = focus_since = time.time()
+                    continue
 
             played = False
             sim = float(config.get("play_stage_similarity", 0.9))
             for s in wanted:
                 if s in done:
                     continue
-                # ยืนยันด่านก่อน: ต้องเจอ verify-stageXX.bmp ถึงจะกด missonstageXX (กันกดมั่วผิดด่าน)
+                # กดด่านด้วย verify-stageXX.bmp เท่านั้น (verify-stage30 = ด่าน 30 ...) กันกดมั่วผิดด่าน
                 # เจอพร้อมกันหลายด่าน -> ทำด่านแรกที่เจอตามลำดับ 30 -> 100 -> 150 ทีละด่าน
-                if self._find_in_screen(self._login_kaiby_img(f"img/auto-play-stage/verify-stage{s}.bmp"),
-                                        sim) is None:
+                _vpos = self._find_in_screen(
+                    self._login_kaiby_img(f"img/auto-play-stage/verify-stage{s}.bmp"), sim)
+                if _vpos is None:
                     continue
-                print(f"[{self.device_id}] [PLAY-STAGE] เจอ verify-stage{s} - ยืนยันด่าน {s}")
-                if not self._ps_tap_if(f"missonstage{s}", 3):
-                    continue
+                print(f"[{self.device_id}] [PLAY-STAGE] เจอ verify-stage{s} - กดด่าน {s}")
+                self.tap(*_vpos)
+                sleep(3)
+                focus_since = None
                 if s == "30":
                     # ด่าน 30 ต้องเริ่มรบได้ภายใน 60s ไม่งั้นถือว่าเลเวลไม่ถึง -> no-kaiby
                     self._ps_deadline = time.time() + float(config.get("play_stage30_timeout", 60))
@@ -11126,6 +11136,14 @@ class RangerGearBot(threading.Thread):
                     for i in range(1, 6):
                         self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", 0, sim)
                         sleep(1)
+                elif s == "150":
+                    # ด่าน 150: ใช้ flow เดียวกับด่าน 100 แต่แต่ละรูปรอ 15s - เจอกด / ไม่เจอข้ามไปรูปถัดไป
+                    _fx = float(config.get("play_stage150_fix_timeout", 15))
+                    for i in range(1, 6):
+                        if self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", _fx, sim):
+                            sleep(1)
+                        else:
+                            print(f"[{self.device_id}] [PLAY-STAGE] ด่าน 150: ไม่เจอ fix-stage100-{i} ใน {_fx:.0f}s - ข้าม")
                 self._ps_buyhelp_battle()
                 if s == "30":
                     # ด่าน 30 จบ -> แวะหา fix-nextstage30 -> fix-nextstage30ok (เจอกด / ไม่เจอใน 10 วิข้าม)
