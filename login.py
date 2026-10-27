@@ -5422,6 +5422,14 @@ class RangerGearBot(threading.Thread):
                 if stop_hit('shopgachastop1.png'):
                     print(f"[{device.device_id}] พบ shopgachastop1.png ระหว่างรอจอสุ่ม - จบ shop gacha")
                     return finish_shopgacha()
+                # ไปต่อไม่ได้เพราะบทพูด tutorial บัง -> กด Skip ไปเรื่อย ๆ จนกว่าจะไม่เจอ
+                _sk = next((n for n in ('distskip.png', 'step3skip.png')
+                            if device.exists_in_cache(f'img/{n}', similarity=0.85)), None)
+                if _sk:
+                    print(f"[{device.device_id}] เจอ {_sk} ระหว่างรอจอสุ่ม - กด Skip")
+                    device.click(f'img/{_sk}', similarity=0.85)
+                    sleep(1)
+                    continue
                 rounds += 1
                 if rounds % 20 == 0:
                     s0 = device._get_similarity_score('img/waitgacha.png')
