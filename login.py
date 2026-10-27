@@ -4346,6 +4346,12 @@ class RangerGearBot(threading.Thread):
         lim = int(config.get("wg_failover_after", 2))
         print(f"[{self.device_id}] [WG] เข้าเกมไม่ได้ ({reason}) บน {os.path.basename(cur)} - ครั้งที่ {strikes[cur]}/{lim}")
         self._block_evidence(reason, cur)
+        if any(k in str(reason) for k in ("fixid", "login failed")):
+            # LINE ไม่รับ IP นี้ -> ทิ้งเลย สร้าง IP ใหม่มาแทน (ตัวใหม่จะโดนเทสตอนต่อ VPN รอบหน้า)
+            strikes[cur] = 0
+            self._wg_down()
+            self._wg_failover(cur, confirmed=True)
+            return True
         if strikes[cur] >= lim:
             self._wg_down()
             self._wg_failover(cur)
@@ -4362,11 +4368,12 @@ class RangerGearBot(threading.Thread):
         script = chr(10).join([
             "command -v curl >/dev/null 2>&1 || { echo 'P NA NA'; rm -f " + sh + "; exit 0; }",
             "R=0",
+            "H=$(curl -s -m 8 https://api.ipify.org)",
             "if ip -o link | grep -q ' tun0'; then ip rule add pref 10500 uidrange 0-0 lookup tun0 2>/dev/null && R=1; fi",
             "IP=$(curl -s -m 8 https://api.ipify.org)",
             "C=$(curl -s -m 12 -o /dev/null -w '%{http_code}' https://rangers-api.line-apps.com/v12.3/home)",
             "[ $R = 1 ] && ip rule del pref 10500",
-            "echo \"P ${IP:--} ${C:-000}\"",
+            "echo \"P ${IP:--} ${C:-000} ${H:--}\"",
             f"rm -f {sh}",
             "",
         ])
@@ -4377,6 +4384,7 @@ class RangerGearBot(threading.Thread):
         for line in (r.stdout or b"").decode("utf-8", "ignore").splitlines():
             if line.startswith("P "):
                 parts = line.split()
+                self._probe_home_ip = parts[3] if len(parts) > 3 else "-"   # IP เน็ตบ้าน (ยิงก่อนเข้า tunnel)
                 return parts[1], parts[2]
         return "-", "000"
 
@@ -4507,6 +4515,11 @@ class RangerGearBot(threading.Thread):
                 if code == "NA" or ip in ("-", "", "NA"):
                     print(f"[{self.device_id}] [WG] ทดสอบเซิร์ฟเวอร์เกมไม่ได้บนเครื่องนี้ (IP {ip}) - ข้ามการทดสอบ เข้าเกมเลย")
                     code = "skip"
+                home = getattr(self, "_probe_home_ip", "-")
+                if code != "skip" and (not self._wg_is_up() or (home not in ("-", "") and ip == home)):
+                    # tunnel ไม่ได้พาออกจริง (IP ขาออก = เน็ตบ้าน) -> ถือว่า IP นี้ใช้ไม่ได้ สร้างใหม่
+                    print(f"[{self.device_id}] [WG] เทสแล้ว IP ขาออก {ip} = เน็ตบ้าน (VPN ไม่ได้พาออกจริง) - สร้าง IP ใหม่")
+                    code = "000"
                 if code in ("000", "403", "429") and not int(config.get("wg_lock", 1) or 0):   # wg_lock: โดน block ก็ใช้ต่อ
                     print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมไม่รับ IP {ip} ({os.path.basename(conf)}, code {code}) - สลับเซิร์ฟเวอร์")
                     self._wg_down()
