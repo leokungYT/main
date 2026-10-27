@@ -11795,10 +11795,7 @@ if __name__ == "__main__":
                 _prev = open(_mk, encoding="utf-8").read().strip()
             except OSError:
                 _prev = ""
-            if _prev != str(_mach) and os.path.exists(os.path.join(_wgd, ".managed")):
-                with open(_mk, "w", encoding="utf-8") as _fh:   # ไฟล์จาก server (แบ่งกุญแจ/เซิร์ฟเวอร์ไว้แล้ว) ห้ามล้าง
-                    _fh.write(str(_mach))
-            elif _prev != str(_mach):
+            if _prev != str(_mach):
                 os.makedirs(_wgd, exist_ok=True)
                 for _f in glob.glob(os.path.join(_wgd, "*.conf")) + glob.glob(os.path.join(_wgd, ".claims", "*")):
                     try: os.remove(_f)
