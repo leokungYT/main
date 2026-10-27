@@ -10924,7 +10924,16 @@ class RangerGearBot(threading.Thread):
     def _ps_cancel_first(self):
         """ระหว่างเล่น stage: เจอ cancel.png -> กด cancel ก่อนเสมอ (กดผิดเปิดป๊อปอัพอื่น) แล้วค่อยทำ step ต่อ
         คืน True = กด cancel ไปแล้ว (ควร capture ใหม่ก่อนหาอย่างอื่น)"""
-        if not getattr(self, "_ps_active", False) or not self.exists_in_cache("img/cancel.png"):
+        if not getattr(self, "_ps_active", False):
+            return False
+        # ป๊อปอัพ "You've got a reward!" ค้าง (กด stageget ไปแล้วแต่ OK ขึ้นช้า/หลุดรอบ) -> กด okreward ทุก step
+        _ok = self._find_in_screen("img/auto-play-stage/okreward.bmp", float(config.get("play_stage_similarity", 0.9)))
+        if _ok is not None:
+            print(f"[{self.device_id}] [PLAY-STAGE] กด okreward")
+            self.tap(*_ok)
+            sleep(1)
+            return True
+        if not self.exists_in_cache("img/cancel.png"):
             return False
         print(f"[{self.device_id}] [PLAY-STAGE] เจอ cancel - กด cancel ก่อน แล้วทำ step ต่อ")
         self.click("img/cancel.png")
