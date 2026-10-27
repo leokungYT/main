@@ -616,6 +616,28 @@ class RestartTimeoutError(BaseException):
     pass
 
 
+def _fetch_wg_key():
+    """เครื่องบอตไม่มีกุญแจ Windscribe -> ดึงจากเครื่องหลักผ่าน Tailscale (wg_key_server.py)
+    กุญแจไม่ขึ้น git (repo public) - วิ่งในวง Tailscale ส่วนตัวเท่านั้น"""
+    url = str(config.get("wg_key_url", "http://100.80.76.47:8765/key.conf") or "").strip()
+    acc = str(config.get("wg_account", "") or "").strip() or "account1"
+    acc_dir = os.path.join(os.path.dirname(os.path.abspath(str(config.get("wg_dir", "wg")))), "wg_accounts", acc)
+    if not url or glob.glob(os.path.join(acc_dir, "*.conf")):
+        return
+    try:
+        import urllib.request
+        data = urllib.request.urlopen(url, timeout=10).read()
+        if b"PrivateKey" not in data:
+            print(f"[WG-KEY] ได้ข้อมูลจาก {url} แต่ไม่ใช่ไฟล์กุญแจ")
+            return
+        os.makedirs(acc_dir, exist_ok=True)
+        with open(os.path.join(acc_dir, "key.conf"), "wb") as f:
+            f.write(data)
+        print(f"[WG-KEY] ดึงกุญแจ Windscribe จากเครื่องหลักแล้ว -> {acc_dir}")
+    except Exception as e:
+        print(f"[WG-KEY] ดึงกุญแจจาก {url} ไม่ได้ ({e}) - เช็คว่าเครื่องหลักรัน wg_key_server.py + Tailscale เปิดอยู่")
+
+
 class WGNotUpError(RestartTimeoutError):
     """ต่อ VPN ไม่ขึ้น (wg_required) - ไม่ใช่ความผิดของไฟล์ -> คืนไฟล์กลับคิว ไม่ส่ง login-failed"""
     pass
@@ -11569,6 +11591,7 @@ if __name__ == "__main__":
         try:
             import wg_gen
             _wgd = str(config.get("wg_dir", "wg"))
+            _fetch_wg_key()
             if not glob.glob(os.path.join(_wgd, "*.conf")):
                 # ครั้งแรก/ไฟล์หมด: wg/ ว่าง -> สร้าง IP ก่อนเริ่มงานเสมอ (.managed ค้างจาก remote ทำให้ wg_gen ไม่ยอมสร้าง)
                 os.makedirs(_wgd, exist_ok=True)
