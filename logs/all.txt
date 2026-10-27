@@ -11193,3 +11193,34 @@
 [2026-10-27 19:31:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
 [2026-10-27 19:31:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
 [2026-10-27 19:31:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:32:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:32:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:32:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:32:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:33:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:33:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:33:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:33:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:34:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:34:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:34:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:34:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:35:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:35:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:35:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:35:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:36:09] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:36:09] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:36:39] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-27 19:36:39] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-27 19:37:01] Traceback (most recent call last):
+[2026-10-27 19:37:01]   File "c:\Users\Administrator\Downloads\LGR\login.py", line 11690, in <module>
+[2026-10-27 19:37:01]     if int(config.get("wg_enabled", 1) or 0) and float(config.get("wg_regen_every_min", 0) or 0) > 0:
+[2026-10-27 19:37:01]             ^^^^^^^^^^^^^^
+[2026-10-27 19:37:01]   File "C:\Program Files\Python311\Lib\site-packages\customtkinter\windows\ctk_tk.py", line 165, in mainloop
+[2026-10-27 19:37:01]     super().mainloop(*args, **kwargs)
+[2026-10-27 19:37:01]   File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 1485, in mainloop
+[2026-10-27 19:37:01]     self.tk.mainloop(n)
+[2026-10-27 19:37:01]   File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 1943, in __call__
+[2026-10-27 19:37:01]     def __call__(self, *args):
+[2026-10-27 19:37:01] KeyboardInterrupt
