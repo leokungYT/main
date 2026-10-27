@@ -5430,6 +5430,18 @@ class RangerGearBot(threading.Thread):
                     device.click(f'img/{_sk}', similarity=0.85)
                     sleep(1)
                     continue
+                # กด Skip แล้วเกมเด้งกลับหน้า Lobby (เห็นไอคอน gacha) -> เข้าร้านใหม่: gacha.png -> shopgacha1.png
+                if rounds % 6 == 5 and device.exists_in_cache('img/gacha.png', similarity=0.8):
+                    print(f"[{device.device_id}] กลับมาหน้า Lobby ระหว่างรอจอสุ่ม - เข้าร้านใหม่ (gacha -> shopgacha1)")
+                    device.click('img/gacha.png', similarity=0.8)
+                    sleep(2)
+                    for _ in range(10):
+                        device.capture_screen()
+                        if device.exists_in_cache('img/shopgacha1.png', similarity=0.8):
+                            device.click('img/shopgacha1.png', similarity=0.8)
+                            sleep(1)
+                            break
+                        sleep(1)
                 rounds += 1
                 if rounds % 20 == 0:
                     s0 = device._get_similarity_score('img/waitgacha.png')
