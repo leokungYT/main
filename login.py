@@ -11469,7 +11469,7 @@ class RangerGearBot(threading.Thread):
         # เริ่มได้เฉพาะขั้นแรก (wheel1 หรือ raid-boss1 - อันไหนขึ้นก่อนก็ได้) แล้วไล่ตามลำดับ ห้ามข้ามขั้น
         deadline = time.time() + idle_sec
         _rb_back = self._login_kaiby_img(f"{base}/raid-boss/back.bmp")
-        _rb_sec = float(config.get("login_kaiby_raid_back_sec", 20))
+        _rb_sec = float(config.get("login_kaiby_raid_back_sec", 5))
         _rb_since = None
         while time.time() < deadline or _rb_since is not None:
             self.last_activity_time = time.time()
@@ -11513,7 +11513,7 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache(self._login_kaiby_img(f"{base}/raid-boss/checkpoint-rainboss.bmp"), similarity=0.8):
                 print(f"[{self.device_id}] [LOGIN-KAIBY] เจอ checkpoint-rainboss - เริ่มทำ raid-boss")
                 _back = f"{base}/raid-boss/back.bmp"
-                _back_sec = float(config.get("login_kaiby_raid_back_sec", 20))
+                _back_sec = float(config.get("login_kaiby_raid_back_sec", 5))
                 self._esc_seen = None
                 _escaped = False
                 for i in range(1, 7):
@@ -11522,7 +11522,7 @@ class RangerGearBot(threading.Thread):
                     # back.bmp ค้างครบ 20s -> กด back แล้วจบ raid-boss เลย
                     # หลังกด raid-boss2 แล้ว: นับ back.bmp ค้างต่อเนื่องตลอด ครบ 20s -> กด back แล้ว break ออกเลย
                     _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout, nudge=_nd,
-                                                      escape=(_back, _back_sec) if i >= 3 else None)
+                                                      escape=(_back, _back_sec))
                     if _r is None:
                         break
                     if _r == "escape":
@@ -11531,22 +11531,10 @@ class RangerGearBot(threading.Thread):
                         break
                     sleep(1)
                 if not _escaped:
-                    # ทำครบ raid-boss6 แล้วยังค้างหน้า Event Raid -> รอ back ค้างครบ 20s แล้วกดออก (รอสูงสุด 60s)
-                    _end = time.time() + _back_sec * 3
-                    while time.time() < _end:
-                        self.last_activity_time = time.time()
-                        self.capture_screen()
-                        _bp = self._find_in_screen(self._login_kaiby_img(_back), 0.8)
-                        if _bp is None:
-                            self._esc_seen = None
-                        elif self._esc_seen is None:
-                            self._esc_seen = time.time()
-                        elif time.time() - self._esc_seen >= _back_sec:
-                            print(f"[{self.device_id}] [LOGIN-KAIBY] back.bmp ค้าง {_back_sec:.0f}s หลัง raid-boss - กด back จบ raid-boss")
-                            self.tap(*_bp)
-                            sleep(2)
-                            break
-                        sleep(0.5)
+                    # ทำครบ raid-boss6 แล้ว -> กด back.bmp ออกจากหน้า Event Raid ทันที (เจอเมื่อไหร่กดเลย รอสูงสุด 20s)
+                    print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss ครบแล้ว - กด back")
+                    if self._login_kaiby_wait_click(_back, _back_sec):
+                        sleep(2)
                 deadline = time.time() + idle_sec
                 continue
 
