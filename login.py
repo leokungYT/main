@@ -11104,6 +11104,14 @@ class RangerGearBot(threading.Thread):
                     # ด่าน 150: กด num147 -> กด fix-backstage147 (ครั้งเดียว) -> แล้วค่อยหาด่าน 150
                     self._login_kaiby_wait_click("img/auto-play-stage/num147.bmp", 0, sim)
                     sleep(2)
+                    # หลัง num147: ใช้ flow ก่อน next ของด่าน 100 (fix-stage100-1..5) แต่ละรูปรอ 15s
+                    # เจอกด / ไม่เจอข้ามไปรูปถัดไป
+                    _fx = float(config.get("play_stage150_fix_timeout", 15))
+                    for i in range(1, 6):
+                        if self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", _fx, sim):
+                            sleep(1)
+                        else:
+                            print(f"[{self.device_id}] [PLAY-STAGE] ด่าน 150: ไม่เจอ fix-stage100-{i} ใน {_fx:.0f}s - ข้าม")
                     print(f"[{self.device_id}] [PLAY-STAGE] กด num147 แล้ว - หา fix-backstage147")
                     # รอ stage150 - ระหว่างนั้นเจอ fix-backstage147 กดแค่ครั้งเดียว แล้วไปหาด่าน 150 ต่อเลย
                     _fb = self._login_kaiby_img("img/auto-play-stage/fix-backstage147.bmp")
@@ -11117,6 +11125,12 @@ class RangerGearBot(threading.Thread):
                         self._ps_check_fixstage()
                         if self._find_in_screen(_s150, sim) is not None:
                             break
+                        # มีป๊อปอัพบังทำให้กด fix-backstage147 ไม่ได้ -> เจอ cancel กดเลย
+                        if self.exists_in_cache("img/cancel.png"):
+                            print(f"[{self.device_id}] [PLAY-STAGE] เจอ cancel ระหว่างหา fix-backstage147 - กด cancel")
+                            self.click("img/cancel.png")
+                            sleep(1)
+                            continue
                         if _last_fb is None or time.time() - _last_fb >= _retry:
                             _pos = self._find_in_screen(_fb, sim)
                             if _pos is not None:
@@ -11136,14 +11150,6 @@ class RangerGearBot(threading.Thread):
                     for i in range(1, 6):
                         self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", 0, sim)
                         sleep(1)
-                elif s == "150":
-                    # ด่าน 150: ใช้ flow เดียวกับด่าน 100 แต่แต่ละรูปรอ 15s - เจอกด / ไม่เจอข้ามไปรูปถัดไป
-                    _fx = float(config.get("play_stage150_fix_timeout", 15))
-                    for i in range(1, 6):
-                        if self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", _fx, sim):
-                            sleep(1)
-                        else:
-                            print(f"[{self.device_id}] [PLAY-STAGE] ด่าน 150: ไม่เจอ fix-stage100-{i} ใน {_fx:.0f}s - ข้าม")
                 self._ps_buyhelp_battle()
                 if s == "30":
                     # ด่าน 30 จบ -> แวะหา fix-nextstage30 -> fix-nextstage30ok (เจอกด / ไม่เจอใน 10 วิข้าม)
