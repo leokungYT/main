@@ -6855,6 +6855,7 @@ class RangerGearBot(threading.Thread):
                         self.update_gui_status("Logging in...")
                         login_start_time = time.time()
                         self._fixid_fail = False
+                        self._fixid_bad_file = False
                         try:
                             status = self.main_login(injected_file)
                         except WGNotUpError:
@@ -6897,7 +6898,8 @@ class RangerGearBot(threading.Thread):
                             self.first_loop_done = False
                         elif status == "failed":
                             _rec = None
-                            if config.get("recover_failed", 1) and not getattr(self, "_recovering", False):
+                            if (config.get("recover_failed", 1) and not getattr(self, "_recovering", False)
+                                    and not getattr(self, "_fixid_bad_file", False)):
                                 self._recovering = True
                                 try:
                                     _rec = self._recover_failed_id(xml_file)
@@ -10073,6 +10075,7 @@ class RangerGearBot(threading.Thread):
         self._fixid_seen = False
         self._wg_net_hits = 0
         self._wg_recover_n = 0       # โควตาเคลียร์แอป+ปิด/เปิด VPN เมื่อเจอ Unstable network (ต่อไอดี)
+        self._fixid_switch_n = 0     # Authentication failed กี่ครั้งแล้วในไอดีนี้ (เกิน 10 = ไฟล์เสีย)
         self._ruby_ticket = None     # ค่า ruby/ตั๋วของไอดีก่อน ห้ามติดมาไอดีนี้
         self._account_level = None   # เลเวลของไอดีก่อน (ถ้าไอดีก่อนจบแบบ fail/timeout) ห้ามใช้คัดไอดีนี้
 
@@ -10231,6 +10234,16 @@ class RangerGearBot(threading.Thread):
                 self._fixokk_start_time = None
                 # กด OK ปิด popup ก่อนเลย (ไม่ต้องรอคิว auth) แล้วค่อยไปหา refresh
                 self._click_fixid_ok()
+                # Authentication failed ซ้ำเกิน wg_fixid_max_switch (10) ครั้งในไอดีนี้ (เปลี่ยน IP แล้วก็ยังโดน)
+                # = ไฟล์เสีย -> ข้ามไฟล์นี้ ส่ง login-failed
+                self._fixid_switch_n = getattr(self, "_fixid_switch_n", 0) + 1
+                if self._fixid_switch_n > int(config.get("wg_fixid_max_switch", 10)):
+                    print(f"[{self.device_id}] Authentication failed เกิน {self._fixid_switch_n - 1} ครั้ง (เปลี่ยน IP แล้วยังโดน) "
+                          f"- นับว่าไฟล์เสีย ส่ง login-failed")
+                    self._fixid_fail = True
+                    self._fixid_bad_file = True   # ข้ามขั้นกู้ไฟล์ (recover) ส่ง login-failed เลย
+                    self._login_fixid_count = 0
+                    return "failed"
                 # Authentication failed ตอนต่อ VPN = IP นี้โดนบล็อก -> ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (วนไปเรื่อย ๆ)
                 if (int(config.get("wg_fixid_switch", 1) or 0)
                         and self._wg_request_net_recover("Authentication failed", switch_now=True)):
