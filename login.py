@@ -5439,16 +5439,24 @@ class RangerGearBot(threading.Thread):
                     print(f"[{device.device_id}] เจอ SPECIAL STAGE (fixstage1) ระหว่างรอจอสุ่ม - กดเข้าไปก่อน แล้วรัว ESC จนเจอ cancel")
                     device.tap(*_fs_pos)
                     sleep(3)
-                    for _n in range(40):
+                    # รัว ESC ไม่จำกัดจนกว่าจะเจอ cancel (กด) หรือ stoplogin (หยุด)
+                    _n = 0
+                    while True:
                         device.last_activity_time = time.time()
                         device.adb_shell("input keyevent KEYCODE_ESCAPE")
-                        sleep(float(config.get("event_back_wait", 0.8)))
+                        _n += 1
+                        sleep(0.5)
                         device.capture_screen()
                         if device.exists_in_cache("img/cancel.png"):
-                            print(f"[{device.device_id}] ESC {_n + 1} ครั้ง เจอ cancel - กด")
+                            print(f"[{device.device_id}] ESC {_n} ครั้ง เจอ cancel - กด")
                             device.click("img/cancel.png")
                             sleep(1)
                             break
+                        if device.exists_in_cache("img/stoplogin.png", similarity=0.8):
+                            print(f"[{device.device_id}] ESC {_n} ครั้ง เจอ stoplogin - หยุด")
+                            break
+                        if _n % 20 == 0:
+                            print(f"[{device.device_id}] รัว ESC แล้ว {_n} ครั้ง ยังไม่เจอ cancel/stoplogin")
                     device.capture_screen()
                 if rounds % 6 == 5 and device.exists_in_cache('img/gacha.png', similarity=0.8):
                     print(f"[{device.device_id}] กลับมาหน้า Lobby ระหว่างรอจอสุ่ม - เข้าร้านใหม่ (gacha -> shopgacha1)")
