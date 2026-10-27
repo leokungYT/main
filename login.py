@@ -11328,12 +11328,15 @@ class RangerGearBot(threading.Thread):
                 return stem + ext
         return path
 
-    def _login_kaiby_wait_click(self, path, timeout=0, similarity=0.8, tap=True):
+    def _login_kaiby_wait_click(self, path, timeout=0, similarity=0.8, tap=True, nudge=None):
         """รอจนเจอรูปแล้วกด - คืนตำแหน่งที่กด หรือ None ถ้าหมดเวลา (timeout <= 0 = รอจนเจอ ไม่มี timeout)
-        tap=False = รอดูเฉย ๆ ไม่กด"""
+        tap=False = รอดูเฉย ๆ ไม่กด
+        nudge=(x, y) = ไม่เจอนานทุก login_kaiby_nudge_sec วิ -> แตะจุดนี้ 1 ครั้ง (ข้ามกล่องข้อความ tutorial ที่บังอยู่)"""
         path = self._login_kaiby_img(path)
         start = time.time()
         next_log = start + 30
+        _nudge_every = float(config.get("login_kaiby_nudge_sec", 8))
+        next_nudge = start + _nudge_every
         while timeout <= 0 or time.time() < start + timeout:
             self.last_activity_time = time.time()   # กำลังรอขั้นถัดไป - ไม่ให้ safety 500s รีสตาร์ท
             self.capture_screen()
@@ -11344,6 +11347,10 @@ class RangerGearBot(threading.Thread):
                 if tap:
                     self.tap(*pos)
                 return pos
+            if nudge and time.time() >= next_nudge:
+                print(f"[{self.device_id}] [LOGIN-KAIBY] ไม่เจอ {os.path.basename(path)} - แตะข้าม tutorial {nudge}")
+                self.tap(*nudge)
+                next_nudge = time.time() + _nudge_every
             if time.time() >= next_log:
                 print(f"[{self.device_id}] [LOGIN-KAIBY] ยังรอ {path} ({time.time() - start:.0f}s)")
                 next_log += 30
@@ -11411,7 +11418,9 @@ class RangerGearBot(threading.Thread):
             if self.exists_in_cache(self._login_kaiby_img(f"{base}/raid-boss/checkpoint-rainboss.bmp"), similarity=0.8):
                 print(f"[{self.device_id}] [LOGIN-KAIBY] เจอ checkpoint-rainboss - เริ่มทำ raid-boss")
                 for i in range(1, 7):
-                    if not self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout):
+                    # หน้า Event Raid มีกบ tutorial บัง (Win the competition...) -> แตะกล่องข้อความให้ไปต่อ
+                    _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
+                    if not self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout, nudge=_nd):
                         break
                     sleep(1)
                 deadline = time.time() + idle_sec
