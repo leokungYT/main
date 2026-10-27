@@ -10903,6 +10903,18 @@ class RangerGearBot(threading.Thread):
         sim = float(config.get("play_stage_similarity", 0.9))
         return self._find_in_screen(f"img/auto-play-stage/{name}.png", sim)
 
+    def _ps_after_stageget(self):
+        """กด stageget แล้ว -> แวะหา stageok (หรือ stageokk) สูงสุด play_stage_getok_sec วิ (10) เจอกด ไม่เจอก็ไปต่อ"""
+        end = time.time() + float(config.get("play_stage_getok_sec", 10))
+        while time.time() < end:
+            self.last_activity_time = time.time()
+            self.capture_screen()
+            if self._ps_tap_if("stageok") or self._ps_tap_if("stageokk"):
+                return True
+            sleep(0.5)
+        print(f"[{self.device_id}] [PLAY-STAGE] ไม่เจอ stageok หลังกด stageget - ไปต่อ")
+        return False
+
     def _tap_skip(self):
         """บทพูด tutorial (กบ Leonard ...) บังจอ -> กด Skip ก่อน ไม่งั้นกดอะไรก็ไม่ติด (เช่น misson1 วนไม่หยุด)"""
         for n in ("distskip", "step3skip"):
@@ -10969,8 +10981,7 @@ class RangerGearBot(threading.Thread):
             if self._ps_cancel_first():
                 continue
             if self._ps_tap_if("stageget"):
-                self.capture_screen()
-                self._ps_tap_if("stageokk")
+                self._ps_after_stageget()
                 continue
             hits = [p for p in (self._ps_find(n) for n in groups) if p is not None]
             if hits:
@@ -11185,6 +11196,7 @@ class RangerGearBot(threading.Thread):
                 quiet_since = time.time()
                 continue
             if self._ps_tap_if("stageget"):
+                self._ps_after_stageget()
                 quiet_since = time.time()
                 continue
             # misson แต่ละปุ่มกดได้ครั้งเดียว (กันปุ่มที่ค้างโชว์อยู่ทำให้วนไม่จบ)
@@ -11231,8 +11243,7 @@ class RangerGearBot(threading.Thread):
                 focus_since = None
             if focus_since is None:
                 if self._ps_tap_if("stageget"):
-                    self.capture_screen()
-                    self._ps_tap_if("stageok")
+                    self._ps_after_stageget()
                     idle_since = time.time()
                     continue
                 if not self._ps_not_myteam():
