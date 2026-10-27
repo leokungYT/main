@@ -11467,8 +11467,27 @@ class RangerGearBot(threading.Thread):
 
         # เริ่มได้เฉพาะขั้นแรก (wheel1 หรือ raid-boss1 - อันไหนขึ้นก่อนก็ได้) แล้วไล่ตามลำดับ ห้ามข้ามขั้น
         deadline = time.time() + idle_sec
-        while time.time() < deadline:
+        _rb_back = self._login_kaiby_img(f"{base}/raid-boss/back.bmp")
+        _rb_sec = float(config.get("login_kaiby_raid_back_sec", 20))
+        _rb_since = None
+        while time.time() < deadline or _rb_since is not None:
+            self.last_activity_time = time.time()
             self.capture_screen()
+
+            # 0) ค้างหน้า Event Raid (back.bmp ค้างครบ 20s) ไม่ว่าจะมาจากขั้นไหน -> กด back ออก
+            #    ยังเห็น back อยู่ตอนหมดเวลา idle -> รอให้ครบ 20s ก่อน ไม่ปล่อยไปทำงานอื่นทั้งที่ค้างหน้านี้
+            _bp = self._find_in_screen(_rb_back, 0.8)
+            if _bp is None:
+                _rb_since = None
+            elif _rb_since is None:
+                _rb_since = time.time()
+            elif time.time() - _rb_since >= _rb_sec:
+                print(f"[{self.device_id}] [LOGIN-KAIBY] back.bmp (Event Raid) ค้าง {_rb_sec:.0f}s - กด back")
+                self.tap(*_bp)
+                _rb_since = None
+                sleep(2)
+                deadline = time.time() + idle_sec
+                continue
 
             # 1) wheel1 -> wheel2 -> wheel3 -> กดตำแหน่ง wheel3 รัว ๆ -> back
             if self.exists_in_cache(self._login_kaiby_img(f"{base}/wheel/wheel1.bmp"), similarity=0.8):
