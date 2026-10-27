@@ -10977,6 +10977,35 @@ class RangerGearBot(threading.Thread):
                 return
             sleep(2)
 
+    def _ps_back_to_mission(self):
+        """flow backmisson แบบจำกัดเวลา: กด backmisson ไปเรื่อย ๆ จนเจอ backmisson1 (หน้าภารกิจ)
+        ไม่เจออะไรเลยติดกัน play_stage_back_idle วิ (default 10) = อยู่หน้าภารกิจอยู่แล้ว -> ไปต่อ"""
+        idle = float(config.get("play_stage_back_idle", 10))
+        quiet_since = time.time()
+        print(f"[{self.device_id}] [PLAY-STAGE] กลับหน้าภารกิจ (backmisson) เพื่อรับของ")
+        while time.time() - quiet_since < idle:
+            self.last_activity_time = time.time()
+            self.capture_screen()
+            if self.exists_in_cache("img/event.png"):
+                self._event_back_spam()
+                quiet_since = time.time()
+                continue
+            if self._ps_tap_if("backmisson1"):
+                return
+            if self._ps_tap_if("backmisson"):
+                quiet_since = time.time()
+                continue
+            sleep(0.5)
+
+    def _ps_not_myteam(self):
+        """กันกด misson1 ตอนค้างหน้า My Team: เจอ myteam -> กด BACK ออกก่อน ; คืน False = ยังไม่พร้อมกด"""
+        if self._ps_find("myteam") is not None:
+            print(f"[{self.device_id}] [PLAY-STAGE] อยู่หน้า My Team - กด BACK ออกก่อนกด misson1")
+            self.adb_shell("input keyevent KEYCODE_BACK")
+            sleep(1.5)
+            return False
+        return True
+
     def _ps_wait_tap(self, name, loop=True, max_clicks=5):
         """แบบ process_sequence ของ play150/checkstage.py: รอจนเจอ (ไม่มี timeout) แล้วกด
         loop=True = กดซ้ำจนรูปหาย (สูงสุด max_clicks)"""
@@ -11082,8 +11111,9 @@ class RangerGearBot(threading.Thread):
                 except self._PSRestart:
                     self._ps_deadline = None   # วนหา misson ใหม่ -> เริ่มจับเวลาด่าน 30 ใหม่ตอนกด missonstage30
                     continue
-            if done:
-                self._ps_claim_rewards()
+            # หาด่านไม่เจอ/เล่นครบ -> กลับหน้าภารกิจด้วย backmisson เสมอ แล้วรับของ (ไม่เจอ stageget ค่อยจบ)
+            self._ps_back_to_mission()
+            self._ps_claim_rewards()
         finally:
             self._ps_active = False
             self._ps_deadline = None
@@ -11111,6 +11141,9 @@ class RangerGearBot(threading.Thread):
                 continue
             # misson แต่ละปุ่มกดได้ครั้งเดียว (กันปุ่มที่ค้างโชว์อยู่ทำให้วนไม่จบ)
             for m in ("misson1", "misson2", "misson3"):
+                if m == "misson1" and not self._ps_not_myteam():
+                    quiet_since = time.time()
+                    break
                 if m not in tapped and self._ps_tap_if(m, 2):
                     tapped.add(m)
                     quiet_since = time.time()
@@ -11140,7 +11173,20 @@ class RangerGearBot(threading.Thread):
                     self._ps_tap_if("stageok")
                     idle_since = time.time()
                     continue
-                if self._ps_tap_if("misson1", 2) or self._ps_tap_if("misson2", 2):
+                if not self._ps_not_myteam():
+                    continue
+                if self._ps_tap_if("misson1", 2):
+                    # กด misson1 ซ้ำหลายครั้งแล้วไม่ไปไหน = ค้างหน้าอื่น (เช่น My Team) -> BACK ออก
+                    self._ps_m1_streak = getattr(self, "_ps_m1_streak", 0) + 1
+                    if self._ps_m1_streak >= int(config.get("play_stage_m1_stuck", 4)):
+                        print(f"[{self.device_id}] [PLAY-STAGE] กด misson1 {self._ps_m1_streak} ครั้งไม่ไปต่อ - กด BACK ออกจากหน้านี้")
+                        self.adb_shell("input keyevent KEYCODE_BACK")
+                        sleep(1.5)
+                        self._ps_m1_streak = 0
+                    idle_since = time.time()
+                    continue
+                self._ps_m1_streak = 0
+                if self._ps_tap_if("misson2", 2):
                     idle_since = time.time()
                     continue
                 if self._ps_tap_if("misson3", 2):
