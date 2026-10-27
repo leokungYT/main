@@ -10982,6 +10982,10 @@ class RangerGearBot(threading.Thread):
         sleep(1)
         return True
 
+    def _ps_back_wait(self):
+        """backmisson กดเร็วไปเกมยังเปลี่ยนหน้าไม่ทัน -> กดพลาด : รอหลังกด play_stage_back_wait วิ (default 2.5)"""
+        return float(config.get("play_stage_back_wait", 2.5))
+
     def _ps_tap_if(self, name, wait=1.0):
         pos = self._ps_find(name)
         if pos is None:
@@ -11022,7 +11026,7 @@ class RangerGearBot(threading.Thread):
                 self._event_back_spam()
                 back_streak = 0
                 continue
-            if self._ps_tap_if("backmisson"):
+            if self._ps_tap_if("backmisson", self._ps_back_wait()):
                 back_streak += 1
                 if back_streak >= int(config.get("play_stage_back_stuck", 3)):
                     # กด backmisson ซ้ำแล้วไม่ไปไหน -> แวะหา event/cancel 5 วิ
@@ -11040,7 +11044,7 @@ class RangerGearBot(threading.Thread):
                         sleep(0.5)
                     back_streak = 0
                 continue
-            if self._ps_tap_if("backmisson1"):
+            if self._ps_tap_if("backmisson1", self._ps_back_wait()):
                 print(f"[{self.device_id}] [PLAY-STAGE] จบด่าน กลับหน้าภารกิจ")
                 return
             sleep(2)
@@ -11061,9 +11065,9 @@ class RangerGearBot(threading.Thread):
                 self._event_back_spam()
                 quiet_since = time.time()
                 continue
-            if self._ps_tap_if("backmisson1"):
+            if self._ps_tap_if("backmisson1", self._ps_back_wait()):
                 return
-            if self._ps_tap_if("backmisson"):
+            if self._ps_tap_if("backmisson", self._ps_back_wait()):
                 quiet_since = time.time()
                 continue
             sleep(0.5)
