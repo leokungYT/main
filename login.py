@@ -11386,7 +11386,6 @@ class RangerGearBot(threading.Thread):
         next_log = start + 30
         _nudge_every = float(config.get("login_kaiby_nudge_sec", 8))
         next_nudge = start + _nudge_every
-        esc_seen = None
         while timeout <= 0 or time.time() < start + timeout:
             self.last_activity_time = time.time()   # กำลังรอขั้นถัดไป - ไม่ให้ safety 500s รีสตาร์ท
             self.capture_screen()
@@ -11400,12 +11399,14 @@ class RangerGearBot(threading.Thread):
                     self.tap(*pos)
                 return pos
             if escape:
+                # นับต่อเนื่องข้าม step (self._esc_seen) - ล้างตอนรูปหายเท่านั้น
                 _epos = self._find_in_screen(self._login_kaiby_img(escape[0]), similarity)
                 if _epos is None:
-                    esc_seen = None
-                elif esc_seen is None:
-                    esc_seen = time.time()
-                elif time.time() - esc_seen >= escape[1]:
+                    self._esc_seen = None
+                elif getattr(self, "_esc_seen", None) is None:
+                    self._esc_seen = time.time()
+                elif time.time() - self._esc_seen >= escape[1]:
+                    self._esc_seen = None
                     print(f"[{self.device_id}] [LOGIN-KAIBY] {os.path.basename(escape[0])} ค้าง {escape[1]:.0f}s - กดแล้วเลิกรอ")
                     self.tap(*_epos)
                     return "escape"
@@ -11479,19 +11480,41 @@ class RangerGearBot(threading.Thread):
             # 2) เจอ checkpoint-rainboss ก่อน -> raid-boss1 -> ... -> raid-boss6
             if self.exists_in_cache(self._login_kaiby_img(f"{base}/raid-boss/checkpoint-rainboss.bmp"), similarity=0.8):
                 print(f"[{self.device_id}] [LOGIN-KAIBY] เจอ checkpoint-rainboss - เริ่มทำ raid-boss")
+                _back = f"{base}/raid-boss/back.bmp"
+                _back_sec = float(config.get("login_kaiby_raid_back_sec", 20))
+                self._esc_seen = None
+                _escaped = False
                 for i in range(1, 7):
                     # หน้า Event Raid มีกบ tutorial บัง (Win the competition...) -> แตะกล่องข้อความให้ไปต่อ
                     _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
                     # back.bmp ค้างครบ 20s -> กด back แล้วจบ raid-boss เลย
+                    # หลังกด raid-boss2 แล้ว: นับ back.bmp ค้างต่อเนื่องตลอด ครบ 20s -> กด back แล้ว break ออกเลย
                     _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout, nudge=_nd,
-                                                      escape=(f"{base}/raid-boss/back.bmp",
-                                                              float(config.get("login_kaiby_raid_back_sec", 20))))
+                                                      escape=(_back, _back_sec) if i >= 3 else None)
                     if _r is None:
                         break
                     if _r == "escape":
                         print(f"[{self.device_id}] [LOGIN-KAIBY] จบ raid-boss (กด back)")
+                        _escaped = True
                         break
                     sleep(1)
+                if not _escaped:
+                    # ทำครบ raid-boss6 แล้วยังค้างหน้า Event Raid -> รอ back ค้างครบ 20s แล้วกดออก (รอสูงสุด 60s)
+                    _end = time.time() + _back_sec * 3
+                    while time.time() < _end:
+                        self.last_activity_time = time.time()
+                        self.capture_screen()
+                        _bp = self._find_in_screen(self._login_kaiby_img(_back), 0.8)
+                        if _bp is None:
+                            self._esc_seen = None
+                        elif self._esc_seen is None:
+                            self._esc_seen = time.time()
+                        elif time.time() - self._esc_seen >= _back_sec:
+                            print(f"[{self.device_id}] [LOGIN-KAIBY] back.bmp ค้าง {_back_sec:.0f}s หลัง raid-boss - กด back จบ raid-boss")
+                            self.tap(*_bp)
+                            sleep(2)
+                            break
+                        sleep(0.5)
                 deadline = time.time() + idle_sec
                 continue
 
