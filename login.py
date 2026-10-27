@@ -5435,28 +5435,42 @@ class RangerGearBot(threading.Thread):
                 _fs = device._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp")
                 _fs_pos = device._find_in_screen(_fs, 0.8) if rounds % 6 == 5 else None
                 if _fs_pos is not None:
-                    # กดเข้า SPECIAL STAGE ก่อน (ปิด tutorial/ป๊อปอัพที่ค้าง) แล้วค่อยรัว ESC ออกจนเจอ cancel
-                    print(f"[{device.device_id}] เจอ SPECIAL STAGE (fixstage1) ระหว่างรอจอสุ่ม - กดเข้าไปก่อน แล้วรัว ESC จนเจอ cancel")
+                    # กดเข้า SPECIAL STAGE ก่อน -> รอ outesc (ข้อความ "Special Stages," ของ tutorial) สูงสุด 10 วิ
+                    # เจอ outesc ค่อยรัว ESC ; ไม่เจอ = ไม่ต้องรัว
+                    print(f"[{device.device_id}] เจอ SPECIAL STAGE (fixstage1) ระหว่างรอจอสุ่ม - กดเข้าไป แล้วหา outesc")
                     device.tap(*_fs_pos)
-                    sleep(3)
-                    # รัว ESC ไม่จำกัดจนกว่าจะเจอ cancel (กด) หรือ stoplogin (หยุด)
-                    _n = 0
-                    while True:
+                    _oe = device._login_kaiby_img("img/auto-play-stage/outesc.bmp")
+                    _oe_end = time.time() + 10
+                    _oe_hit = False
+                    while time.time() < _oe_end:
                         device.last_activity_time = time.time()
-                        device.adb_shell("input keyevent KEYCODE_ESCAPE")
-                        _n += 1
-                        sleep(0.5)
                         device.capture_screen()
-                        if device.exists_in_cache("img/cancel.png"):
-                            print(f"[{device.device_id}] ESC {_n} ครั้ง เจอ cancel - กด")
-                            device.click("img/cancel.png")
-                            sleep(1)
+                        if device._find_in_screen(_oe, 0.8) is not None:
+                            _oe_hit = True
                             break
-                        if device.exists_in_cache("img/stoplogin.png", similarity=0.8):
-                            print(f"[{device.device_id}] ESC {_n} ครั้ง เจอ stoplogin - หยุด")
-                            break
-                        if _n % 20 == 0:
-                            print(f"[{device.device_id}] รัว ESC แล้ว {_n} ครั้ง ยังไม่เจอ cancel/stoplogin")
+                        sleep(0.5)
+                    if not _oe_hit:
+                        print(f"[{device.device_id}] ไม่เจอ outesc ใน 10 วิ - ไม่รัว ESC")
+                    else:
+                        print(f"[{device.device_id}] เจอ outesc - รัว ESC จนเจอ cancel/stoplogin")
+                        # รัว ESC ไม่จำกัดจนกว่าจะเจอ cancel (กด) หรือ stoplogin (หยุด)
+                        _n = 0
+                        while True:
+                            device.last_activity_time = time.time()
+                            device.adb_shell("input keyevent KEYCODE_ESCAPE")
+                            _n += 1
+                            sleep(0.5)
+                            device.capture_screen()
+                            if device.exists_in_cache("img/cancel.png"):
+                                print(f"[{device.device_id}] ESC {_n} ครั้ง เจอ cancel - กด")
+                                device.click("img/cancel.png")
+                                sleep(1)
+                                break
+                            if device.exists_in_cache("img/stoplogin.png", similarity=0.8):
+                                print(f"[{device.device_id}] ESC {_n} ครั้ง เจอ stoplogin - หยุด")
+                                break
+                            if _n % 20 == 0:
+                                print(f"[{device.device_id}] รัว ESC แล้ว {_n} ครั้ง ยังไม่เจอ cancel/stoplogin")
                     device.capture_screen()
                 if rounds % 6 == 5 and device.exists_in_cache('img/gacha.png', similarity=0.8):
                     print(f"[{device.device_id}] กลับมาหน้า Lobby ระหว่างรอจอสุ่ม - เข้าร้านใหม่ (gacha -> shopgacha1)")
