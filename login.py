@@ -4062,12 +4062,24 @@ class RangerGearBot(threading.Thread):
         cool = {} if getattr(self, "_wg_ignore_cool", False) else _wg_cooldown_load(wg_dir)
         bad |= {c for c in confs if _wg_endpoint(c) in cool}
         if int(config.get("wg_random", 1) or 0):
-            # สุ่ม IP เอาเลย ใช้ซ้ำกับจออื่นได้ (ไม่ต้องจอง) - เลี่ยงตัวที่เพิ่งพัง/โดนพักถ้ายังมีตัวอื่นเหลือ
+            # สุ่ม IP เอาเลย: สุ่มจากตัวที่ยังไม่มีจออื่นจองก่อน ถ้าไม่เหลือก็ใช้ซ้ำกับจออื่น
+            # เลี่ยงตัวที่เพิ่งพัง/โดนพักถ้ายังมีตัวอื่นเหลือ
             import random
             cur = getattr(self, "_wg_rand_conf", None)
             if cur in confs and cur not in bad:
                 return cur
-            self._wg_rand_conf = random.choice([c for c in confs if c not in bad] or confs)
+            ok = [c for c in confs if c not in bad] or confs
+            free = [c for c in ok if _owner(c) in (None, self.device_id)]
+            random.shuffle(free)
+            for p in free:
+                try:
+                    with open(os.path.join(claim_dir, os.path.basename(p) + ".lock"), "w", encoding="utf-8") as f:
+                        f.write(self.device_id)
+                except Exception:
+                    pass
+                self._wg_rand_conf = p
+                return p
+            self._wg_rand_conf = random.choice(ok)
             return self._wg_rand_conf
         # จำกัดจำนวนจอต่อเซิร์ฟเวอร์เดียวกัน (IP ขาออกเดียวกัน) ; 0 = ไม่จำกัด
         max_ip = int(config.get("wg_max_per_ip", 0) or 0)
@@ -11889,9 +11901,11 @@ if __name__ == "__main__":
                 os.makedirs(_wgd, exist_ok=True)
                 _old = glob.glob(os.path.join(_wgd, "*.conf"))
                 _kp = os.path.join(_wgd, "keypair.txt")
-                if _old and not os.path.exists(_kp):
+                # server (RemoteFileManager) เพิ่งส่งไฟล์มา (.managed) -> ใช้กุญแจจาก server เป็นกุญแจของเครื่องนี้ (ทับของเก่า)
+                if _old and (os.path.exists(os.path.join(_wgd, ".managed")) or not os.path.exists(_kp)):
                     try:
                         shutil.copyfile(_old[0], _kp)
+                        print(f"[WG-GEN] เก็บกุญแจของเครื่องจาก {os.path.basename(_old[0])} -> keypair.txt")
                     except OSError:
                         pass
                 for _f in _old + glob.glob(os.path.join(_wgd, ".claims", "*")) + [os.path.join(_wgd, ".managed")]:
@@ -11905,10 +11919,14 @@ if __name__ == "__main__":
                 except OSError: pass
                 print("[WG-GEN] wg/ ยังไม่มีไฟล์ IP - สร้างให้ก่อนเริ่มบอท...")
             _mach = int(config.get("wg_machine", 0) or 0)   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
-            _per = int(config.get("wg_per_machine", 0) or 0) or (len(devices) + int(config.get("wg_gen_spare", 2)))
-            wg_gen.generate(_per, config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")), _mach,
-                            str(config.get("wg_account", "") or "").strip() or None,   # เลือกบัญชี: wg_accounts/<ชื่อ>/
-                            int(config.get("wg_total_machines", 30) or 30))
+            _per = max(int(config.get("wg_per_machine", 0) or 0), len(devices) + int(config.get("wg_gen_spare", 2)))
+            if os.path.exists(os.path.join(_wgd, "keypair.txt")):
+                # มีกุญแจของเครื่องเอง (จาก server) -> ใช้กุญแจนี้ ไม่ใช้กุญแจรวมใน wg_accounts/ (ซ้ำกับเครื่องอื่น)
+                wg_gen.generate(_per, config.get("wg_gen_countries") or None, _wgd, 0, "", 0)
+            else:
+                wg_gen.generate(_per, config.get("wg_gen_countries") or None, _wgd, _mach,
+                                str(config.get("wg_account", "") or "").strip() or None,   # เลือกบัญชี: wg_accounts/<ชื่อ>/
+                                int(config.get("wg_total_machines", 30) or 30))
         except Exception as e:
             print(f"[WG-GEN] สร้างไฟล์อัตโนมัติไม่สำเร็จ: {e}")
 
