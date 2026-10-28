@@ -400,7 +400,7 @@ def _wg_generate_more(wg_dir, want, dev=""):
                 f_dst.write(f_src.read())
         print(f"[{dev}] [WG] ไฟล์ VPN ว่างไม่พอ - สร้างเซิร์ฟเวอร์ใหม่เพิ่ม (มี {before} -> {want})")
         import wg_gen
-        if managed:
+        if managed or os.path.exists(kp):   # มีกุญแจของเครื่อง (จาก server) -> ใช้อันนี้ ไม่ใช้กุญแจรวม wg_accounts/
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, _wg_machine_no(wg_dir), "", 0, managed_ok=True)
         else:
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
@@ -461,7 +461,7 @@ def _wg_replace_blocked(conf, dev=""):
                 pass
         print(f"[{dev}] [WG] ลบ {', '.join(os.path.basename(c) for c in gone)} (เกมบล็อก IP {ep}) - สร้างเซิร์ฟเวอร์ใหม่มาแทน")
         import wg_gen
-        if managed:
+        if managed or os.path.exists(kp):   # มีกุญแจของเครื่อง (จาก server) -> ใช้อันนี้ ไม่ใช้กุญแจรวม wg_accounts/
             # เครื่องที่รับไฟล์จาก server: ใช้กุญแจเดิมของเครื่อง (keypair.txt) สร้างเซิร์ฟเวอร์ใหม่ที่ยังไม่มีในเครื่อง
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, _wg_machine_no(wg_dir), "", 0, managed_ok=True)
         else:
