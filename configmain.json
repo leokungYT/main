@@ -44,7 +44,7 @@
         "first_round": 1,
         "second_round": 0
     },
-    "channel": "ch2",
+    "channel": "ch1",
     "max-gacha": 4,
     "lv_threshold": 4,
     "lv_low_dir": "lv-under5",
