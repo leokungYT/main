@@ -4622,7 +4622,12 @@ class RangerGearBot(threading.Thread):
             _c = self._wg_conf_for_device()
             _why = ("ไม่มีไฟล์ .conf ใน " + str(config.get("wg_dir", "wg")) + "/") if not _c else ("ใช้ " + os.path.basename(_c) + " แต่ tunnel ไม่ขึ้น")
             print(f"[{self.device_id}] [WG] VPN ยังไม่ขึ้น ({n}/{tries}) - {_why} - ลองใหม่...")
-            self._wg_bad = set()            # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
+            if _c:
+                # ไฟล์นี้ต่อไม่ขึ้น -> รอบหน้าสุ่มไฟล์อื่น (ไม่วนไฟล์เดิม 10 รอบ) ; เสียหมดทุกไฟล์ก็สุ่มจากทั้งหมดใหม่
+                self.__dict__.setdefault("_wg_bad", set()).add(_c)
+                self._wg_rand_conf = None
+            else:
+                self._wg_bad = set()        # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
             _real_sleep(5)
         print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น {tries} รอบ - รีสตาร์ทไฟล์นี้แทนการเข้าเกมด้วยเน็ตบ้าน")
         raise WGNotUpError("wg_required: VPN not up")
@@ -11933,9 +11938,17 @@ if __name__ == "__main__":
                         print(f"[WG-GEN] เก็บกุญแจของเครื่องจาก {os.path.basename(_old[0])} -> keypair.txt")
                     except OSError:
                         pass
-                for _f in _old + glob.glob(os.path.join(_wgd, ".claims", "*")) + [os.path.join(_wgd, ".managed")]:
+                for _f in (_old + glob.glob(os.path.join(_wgd, ".claims", "*")) + glob.glob(os.path.join(_wgd, ".split", "*"))
+                           + [os.path.join(_wgd, ".managed")]):
                     try: os.remove(_f)
                     except OSError: pass
+                # wg.txt (config แบบวางรวมไฟล์เดียว) ค้างอยู่ -> ทุกจอได้ไฟล์เดิมซ้ำ ๆ ; เก็บสำรองไว้ ไม่ใช้
+                if os.path.exists(os.path.join(_wgd, "wg.txt")):
+                    try:
+                        os.replace(os.path.join(_wgd, "wg.txt"), os.path.join(_wgd, "wg.txt.bak"))
+                        print("[WG-GEN] ย้าย wg/wg.txt -> wg.txt.bak (ไม่ใช้แล้ว)")
+                    except OSError:
+                        pass
                 print(f"[WG-GEN] ล้างไฟล์ IP ใน wg/ ทิ้ง {len(_old)} ไฟล์ - สร้างใหม่")
             if not glob.glob(os.path.join(_wgd, "*.conf")):
                 # ครั้งแรก/ไฟล์หมด: wg/ ว่าง -> สร้าง IP ก่อนเริ่มงานเสมอ (.managed ค้างจาก remote ทำให้ wg_gen ไม่ยอมสร้าง)
