@@ -356,6 +356,30 @@ def _wg_endpoint(conf):
     return os.path.basename(conf)
 
 
+def _wg_machine_no(wg_dir=None):
+    """เลขเครื่องสำหรับแบ่งช่วงเซิร์ฟเวอร์ (กันชนกับเครื่องอื่นที่ใช้กุญแจเดียวกัน)
+    ใช้เลขที่ server (RemoteFileManager) แจกมาก่อน - server เขียนไว้ใน wg/.managed -> จำไว้ที่ wg/machine.txt
+    (.managed โดนลบตอนล้าง wg/) ; ยังไม่เคยได้จาก server -> ใช้ wg_machine ใน config"""
+    wg_dir = wg_dir or str(config.get("wg_dir", "wg"))
+    mt = os.path.join(wg_dir, "machine.txt")
+    try:
+        with open(os.path.join(wg_dir, ".managed"), encoding="utf-8") as f:
+            n = f.read().strip()
+        if n.isdigit() and int(n) > 0:
+            with open(mt, "w", encoding="utf-8") as f:
+                f.write(n)
+    except OSError:
+        pass
+    try:
+        with open(mt, encoding="utf-8") as f:
+            n = f.read().strip()
+        if n.isdigit() and int(n) > 0:
+            return int(n)
+    except OSError:
+        pass
+    return int(config.get("wg_machine", 0) or 0)
+
+
 def _wg_generate_more(wg_dir, want, dev=""):
     """สร้างไฟล์เซิร์ฟเวอร์เพิ่มให้มี want ไฟล์ (ล็อกให้สร้างทีละจอ) - คืน True ถ้ามีไฟล์เพิ่มจริง"""
     os.makedirs(wg_dir, exist_ok=True)   # โฟลเดอร์หาย -> สร้างไฟล์ล็อกไม่ได้ แล้วเลิกเงียบ ๆ
@@ -377,10 +401,10 @@ def _wg_generate_more(wg_dir, want, dev=""):
         print(f"[{dev}] [WG] ไฟล์ VPN ว่างไม่พอ - สร้างเซิร์ฟเวอร์ใหม่เพิ่ม (มี {before} -> {want})")
         import wg_gen
         if managed:
-            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, _wg_machine_no(wg_dir), "", 0, managed_ok=True)
         else:
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
-                            int(config.get("wg_machine", 0) or 0),
+                            _wg_machine_no(),
                             str(config.get("wg_account", "") or "").strip() or None,
                             int(config.get("wg_total_machines", 30) or 30))
         return len(_wg_list_configs(wg_dir)) > before
@@ -439,10 +463,10 @@ def _wg_replace_blocked(conf, dev=""):
         import wg_gen
         if managed:
             # เครื่องที่รับไฟล์จาก server: ใช้กุญแจเดิมของเครื่อง (keypair.txt) สร้างเซิร์ฟเวอร์ใหม่ที่ยังไม่มีในเครื่อง
-            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
+            wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, _wg_machine_no(wg_dir), "", 0, managed_ok=True)
         else:
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
-                            int(config.get("wg_machine", 0) or 0),
+                            _wg_machine_no(),
                             str(config.get("wg_account", "") or "").strip() or None,
                             int(config.get("wg_total_machines", 30) or 30))
     except Exception as e:
@@ -11895,6 +11919,7 @@ if __name__ == "__main__":
         try:
             import wg_gen
             _wgd = str(config.get("wg_dir", "wg"))
+            _wg_machine_no(_wgd)   # จำเลขเครื่องจาก server (.managed) ก่อนล้าง wg/
             if int(config.get("wg_clear_on_start", 1) or 0):
                 # เริ่มบอททุกครั้ง: ล้างไฟล์ IP ใน wg/ ทิ้งหมด (รวม .managed ที่ทำให้ไม่ยอมสร้างเอง) แล้วสร้างใหม่
                 # เก็บกุญแจไว้ก่อนลบ (keypair.txt) -> ไฟล์จาก server ก็ยังสร้างใหม่ได้ด้วยกุญแจเดิมของเครื่อง
@@ -11918,11 +11943,11 @@ if __name__ == "__main__":
                 try: os.remove(os.path.join(_wgd, ".managed"))
                 except OSError: pass
                 print("[WG-GEN] wg/ ยังไม่มีไฟล์ IP - สร้างให้ก่อนเริ่มบอท...")
-            _mach = int(config.get("wg_machine", 0) or 0)   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
+            _mach = _wg_machine_no(_wgd)   # เลขเครื่องจาก server (ไม่มี -> wg_machine ใน config) 0 = ปิด
             _per = max(int(config.get("wg_per_machine", 0) or 0), len(devices) + int(config.get("wg_gen_spare", 2)))
             if os.path.exists(os.path.join(_wgd, "keypair.txt")):
                 # มีกุญแจของเครื่องเอง (จาก server) -> ใช้กุญแจนี้ ไม่ใช้กุญแจรวมใน wg_accounts/ (ซ้ำกับเครื่องอื่น)
-                wg_gen.generate(_per, config.get("wg_gen_countries") or None, _wgd, 0, "", 0)
+                wg_gen.generate(_per, config.get("wg_gen_countries") or None, _wgd, _mach, "", 0)
             else:
                 wg_gen.generate(_per, config.get("wg_gen_countries") or None, _wgd, _mach,
                                 str(config.get("wg_account", "") or "").strip() or None,   # เลือกบัญชี: wg_accounts/<ชื่อ>/
@@ -11954,7 +11979,7 @@ if __name__ == "__main__":
                     _sh.copy2(kf, tmp)
                 print(f"[WG-GEN] ครบ {mins:.0f} นาที - สร้าง IP ชุดใหม่ {per} ไฟล์...")
                 wg_gen.generate(per, config.get("wg_gen_countries") or None, tmp,
-                                int(config.get("wg_machine", 0) or 0),
+                                _wg_machine_no(),
                                 str(config.get("wg_account", "") or "").strip() or None,
                                 int(config.get("wg_total_machines", 30) or 30))
                 fresh = _glob.glob(os.path.join(tmp, "*.conf"))
@@ -12000,7 +12025,7 @@ if __name__ == "__main__":
                     acc = str(config.get("wg_account", "") or "").strip() or None
                     print(f"[WG-GEN] wg/ ไม่มีไฟล์ IP เลย - รัน wg_gen สร้างใหม่ {per} ไฟล์ (บัญชี {acc or '-'})...")
                     wg_gen.generate(per, config.get("wg_gen_countries") or None, wg_dir,
-                                    int(config.get("wg_machine", 0) or 0), acc,
+                                    _wg_machine_no(), acc,
                                     int(config.get("wg_total_machines", 30) or 30))
                     print(f"[WG-GEN] ตอนนี้มี {len(_glob.glob(os.path.join(wg_dir, '*.conf')))} ไฟล์ใน wg/")
             except Exception as e:
