@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.4.8"
+BOT_VERSION = "3.5.1"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -89,6 +89,142 @@ def _always_on_enabled():
         return bool(int(globals().get("config", {}).get("always_on", 0) or 0))
     except Exception:
         return False
+
+
+# ============================================================
+# ASN BLACKLIST — ตัดผู้ให้บริการ IP ทั้งเจ้าออกจาก pool
+#   log: ทุก IP ที่ WG หมุนจาก whiskergalaxy.com (Windscribe/Datapacket ASN)
+#   โดนตีตราแล้ว - สลับใน pool เดียวกัน = วนในแบล็กลิสต์เดียว
+#   แก้: ตัดชื่อเจ้าของ ASN ออกจาก pool, สร้างแต่เซิร์ฟที่ไม่อยู่ใน blacklist
+# ============================================================
+# ASN endpoint hostname ส่วนที่โดนเกมแบนทั้งก้อน (เซิร์ฟตอบ 401 ที่ probe แต่ login = Authentication failed)
+# เพิ่มชื่อลงที่นี่เมื่อเจอเพิ่ม - ไฟล์ wg/*.conf ที่ endpoint match จะไม่ถูกเลือก
+_ASN_BLACKLIST = {
+    "whiskergalaxy.com",     # Windscribe/Datapacket - log ยืนยัน Authentication failed ทุก country
+    # "nordvpn.com",         # ถ้าใช้แล้วเจอซ้ำ ปลดคอมเมนต์
+}
+
+
+def _conf_in_asn_blacklist(conf_path):
+    """ไฟล์ .conf นี้ชี้ไป ASN ที่ blacklist ไหม - อ่าน endpoint แล้วเช็กสาย hostname"""
+    try:
+        ep = _wg_endpoint(conf_path) or ""
+    except Exception:
+        return False
+    ep_lower = ep.lower()
+    # อ่าน comment ในไฟล์ด้วย กัน endpoint เป็น IP ไม่ใช่ hostname
+    try:
+        with open(conf_path, "r", encoding="utf-8") as f:
+            body = f.read().lower()
+    except Exception:
+        body = ""
+    for bad in _ASN_BLACKLIST:
+        if bad in ep_lower or bad in body:
+            return True
+    return False
+
+
+def _prune_blacklisted_confs(wg_dir):
+    """ลบไฟล์ wg/*.conf ที่ชี้ไป ASN blacklist ออกทั้งหมด - เรียกก่อนเริ่มรอบใหม่"""
+    try:
+        confs = _wg_list_configs(wg_dir)
+    except Exception:
+        return 0
+    gone = 0
+    for c in confs:
+        if _conf_in_asn_blacklist(c):
+            try:
+                os.remove(c)
+                gone += 1
+                print(f"[ASN] ลบ {os.path.basename(c)} - อยู่ใน ASN blacklist")
+            except OSError:
+                pass
+    return gone
+
+
+# ============================================================
+# AUTH-FAIL CHURN — Authentication failed ไม่ใช่ IP block
+#   fixokk popup = login server ปฏิเสธ device/cookie combo
+#   สลับ WG ไม่ช่วย เพราะทุก IP ใน blacklisted ASN ก็เจอเหมือนกัน
+#   แก้: churn fingerprint + replay บน IP เดิม 2 ครั้ง ก่อนค่อยสลับ WG
+# ============================================================
+def _auth_fail_action():
+    """config auth_fail_action: 'churn' | 'swap_wg' (default churn)
+    churn = fingerprint rotate + retry IP เดิม 2 ครั้งก่อนสลับ WG
+    swap_wg = พฤติกรรมเก่า (สลับ WG ทันที)"""
+    return str(globals().get("config", {}).get("auth_fail_action", "churn") or "churn").lower()
+
+
+# ============================================================
+# MOBILE NETWORK SPOOF — ปลอมให้ MuMu รายงานว่าใช้ 4G/LTE
+#   เซิร์ฟเช็ก ConnectivityManager.getActiveNetworkInfo().getType()
+#   TYPE_WIFI = 1 (default ของ MuMu) -> เซิร์ฟรู้ว่าไม่ใช่มือถือ
+#   TYPE_MOBILE = 0 -> เซิร์ฟคิดว่าเล่นผ่าน SIM data
+#   ยิง settings + prop ก่อน login ทุกครั้ง (idempotent)
+# ============================================================
+def _mobile_spoof_enabled():
+    try:
+        return bool(int(globals().get("config", {}).get("mobile_spoof", 1) or 0))
+    except Exception:
+        return False
+
+
+# ============================================================
+# BLIND MODE — ปิดตาบอตไม่ให้ตรวจ auth-fail
+#   เซิร์ฟปฏิเสธจริง client เห็น error -> บอตเดิมจะสลับ WG วนไม่จบ
+#   โหมดนี้: บอตไม่ detect fixokk/fixid/Authentication failed เลย
+#            MITM เขียน response เป็น OK + Frida ซ่อน popup -> หน้าเกมเดินต่อ
+#   ใช้คู่กับ no_proxy_mode=1 ที่เน็ตบ้าน IP เดียว
+# ============================================================
+def _blind_mode():
+    try:
+        return bool(int(globals().get("config", {}).get("blind_mode", 0) or 0))
+    except Exception:
+        return False
+
+
+def _spoof_mobile_network(adb_cmd, device_id):
+    """ตั้ง system prop ให้ Android รายงานตัวเองว่าเป็น mobile data
+    - gsm.operator.alpha = ชื่อ carrier (AIS/TRUE-H/DTAC)
+    - gsm.operator.numeric = MCC+MNC (ไทย: 520xx)
+    - gsm.network.type = LTE
+    - net.hostname = android-xxxx (เลียน device จริง)
+    - ro.telephony.default_network = 9 (LTE/CDMA)
+    MuMu ส่วนใหญ่ไม่มี SIM จริง -> ปลอม prop อย่างเดียวพอ เพราะเกมอ่าน prop ไม่ได้เช็กฮาร์ดแวร์"""
+    if not _mobile_spoof_enabled():
+        return
+    # เลือก carrier แบบ deterministic ต่อ device_id -> จอเดียวกันได้ carrier เดิมเสมอ
+    carriers = [
+        ("AIS",         "52003"),   # AIS 1-2-Call
+        ("TRUE-H",      "52004"),   # TrueMove H
+        ("dtac",        "52005"),   # DTAC
+        ("CAT",         "52001"),   # CAT (NT)
+    ]
+    pick = carriers[int(_hashlib.sha1(device_id.encode()).hexdigest(), 16) % len(carriers)]
+    alpha, numeric = pick
+    cmds = [
+        # SIM state - LOADED/READY = มี SIM
+        ["shell", "setprop", "gsm.sim.state", "READY"],
+        ["shell", "setprop", "gsm.sim.operator.alpha", alpha],
+        ["shell", "setprop", "gsm.sim.operator.numeric", numeric],
+        ["shell", "setprop", "gsm.sim.operator.iso-country", "th"],
+        # network registered
+        ["shell", "setprop", "gsm.operator.alpha", alpha],
+        ["shell", "setprop", "gsm.operator.numeric", numeric],
+        ["shell", "setprop", "gsm.operator.iso-country", "th"],
+        ["shell", "setprop", "gsm.network.type", "LTE"],
+        ["shell", "setprop", "gsm.operator.isroaming", "false"],
+        # default data network = LTE (TelephonyManager.NETWORK_TYPE_LTE = 13)
+        ["shell", "setprop", "ro.telephony.default_network", "9"],
+        # บังคับ ConnectivityManager รายงาน TYPE_MOBILE
+        ["shell", "settings", "put", "global", "preferred_network_mode", "9"],
+        ["shell", "settings", "put", "global", "mobile_data", "1"],
+    ]
+    for c in cmds:
+        try:
+            subprocess.run([*adb_cmd, *c], capture_output=True, timeout=5, check=False)
+        except Exception:
+            pass
 
 
 # ============================================================
@@ -4712,6 +4848,8 @@ class RangerGearBot(threading.Thread):
     def _wg_auth_failed(self):
         """Authentication failed (fixid) ตอนต่อ VPN -> ด่าน login ของ LINE ไม่รับ IP ของ VPN
         เจอครบ wg_auth_fallback ไอดี (default 2) -> ปิด VPN ของจอนี้ไปจนปิดบอท ใช้เน็ตบ้านแทน (0 = ไม่ปิด)"""
+        if self._check_blind("wg_auth_failed"):
+            return None
         if int(config.get("wg_lock", 1) or 0):
             return None   # wg_lock: ไม่ปิด VPN แม้ login ไม่ผ่าน
         if not int(config.get("wg_enabled", 1) or 0) or not getattr(self, "_wg_conf_applied", None):
@@ -4726,10 +4864,53 @@ class RangerGearBot(threading.Thread):
             self._wg_down()
             print(f"[{self.device_id}] [WG] ด่าน login LINE ไม่รับ IP VPN - ปิด VPN จอนี้ ใช้เน็ตบ้านแทน (จนกว่าจะเปิดบอทใหม่)")
 
+    def _check_blind(self, where=""):
+        """blind_mode: ปิดตาบอตไม่ให้ตีความ auth-fail / fixokk / Authentication failed
+        เรียกก่อน _wg_strike/_wg_auth_failed - ถ้า blind=1 คืน True = skip action
+        บอตจะเดินผ่าน popup error เหมือนไม่มี, MITM/Frida รับผิดชอบที่หน้าแทน"""
+        if _blind_mode():
+            print(f"[{self.device_id}] [BLIND] skip auth-fail path ({where}) - MITM/Frida คุมที่หน้าแทน")
+            return True
+        return False
+
+    def _auth_churn_retry(self):
+        """Authentication failed = login server ปฏิเสธ device/cookie - ไม่ใช่ IP block
+        หมุน fingerprint (Android ID + GAID + GMS stop) + airplane bounce + rety บน IP เดิม
+        สะสม _auth_churn_n ครั้ง - เกิน auth_churn_max (2) ค่อยยอมสลับ WG"""
+        self._auth_churn_n = getattr(self, "_auth_churn_n", 0) + 1
+        lim = int(config.get("auth_churn_max", 2) or 2)
+        print(f"[{self.device_id}] [AUTH-CHURN] Authentication failed ({self._auth_churn_n}/{lim}) - "
+              f"หมุน device fingerprint + replay IP เดิม")
+        try:
+            _churn_device_fingerprint(self.adb_cmd, self.device_id)
+            _airplane_bounce(self.adb_cmd, self.device_id, hold=5.0)
+        except Exception as e:
+            print(f"[{self.device_id}] [AUTH-CHURN] skip churn: {e}")
+        # clear เกม app state บางส่วน (ไม่ล้างทั้ง data กันโดน relogin จาก guest)
+        try:
+            subprocess.run([*self.adb_cmd, "-s", self.device_id, "shell", "am",
+                            "force-stop", "com.linecorp.LGRGS"],
+                           capture_output=True, timeout=8, check=False)
+        except Exception:
+            pass
+        if self._auth_churn_n >= lim:
+            # churn ครบแล้วยังไม่ผ่าน -> ยอมสลับ WG (ของเดิม)
+            self._auth_churn_n = 0
+            return False
+        return True   # retry IP เดิม
+
     def _wg_strike(self, reason, now_switch=False):
         """จอนี้เข้าเกมไม่ได้บนเซิร์ฟเวอร์ VPN ปัจจุบัน 1 ครั้ง (Unstable network / fixid ครบ / LINE GAME ค้าง /
         จอดำ / login failed) - ครบ wg_failover_after (2) ครั้งบนเซิร์ฟเวอร์เดิม -> เลิกใช้ แล้วจองเซิร์ฟเวอร์อื่น
-        (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว"""
+        (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว
+
+        auth-fail churn: Authentication failed ไม่ใช่ IP block - log ยืนยัน code 401 ผ่าน probe
+        แต่ login reject -> หมุน fingerprint + replay IP เดิมก่อนค่อยสลับ WG"""
+        # Authentication failed path: churn ก่อน swap
+        if _auth_fail_action() == "churn" and any(k in str(reason) for k in (
+                "Authentication failed", "fixid", "login failed")):
+            if self._auth_churn_retry():
+                return False   # retry IP เดิม ไม่ switch
         if int(config.get("wg_lock", 1) or 0):
             # wg_lock: ใช้ IP เดิมต่อไป - ยกเว้นค้างหน้า LINE GAME ซ้ำ (LINE ไม่รับ IP นี้ = ไม่มีทางเข้าเกมได้)
             if not any(k in str(reason) for k in ("LINE GAME", "fixid", "login failed")):   # fixid/login failed ครบ = LINE ไม่รับ IP นี้ -> สลับด้วย
@@ -4899,6 +5080,15 @@ class RangerGearBot(threading.Thread):
             return
         if not int(config.get("wg_enabled", 1) or 0) or getattr(self, "_wg_off", False):
             return
+        # กัน ASN blacklist เผาเวลา: ลบไฟล์ที่ชี้ไปผู้ให้บริการที่โดนทั้ง ASN ก่อนเลือก
+        try:
+            wg_dir = str(config.get("wg_dir", "wg"))
+            n = _prune_blacklisted_confs(wg_dir)
+            if n:
+                print(f"[{self.device_id}] [ASN] ลบไฟล์ WG ที่อยู่ใน blacklist {n} ไฟล์ - "
+                      f"wg_gen จะสร้างชดเชยในรอบนี้")
+        except Exception:
+            pass
         conf = self._wg_conf_for_device()
         if not conf and not getattr(self, "_wg_down_done", False):
             # ไม่ได้ไฟล์รอบนี้ แต่ tunnel เก่าจากรอบก่อนยังค้าง (อาจใช้กุญแจชนกับจออื่น) -> ปิดทิ้ง
@@ -4969,13 +5159,15 @@ class RangerGearBot(threading.Thread):
         ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
         ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
         if int(config.get("no_proxy_mode", 0) or 0):
-            # no_proxy_mode: 5 ชั้นก่อน login บน IP เดิม
-            #   1) _bypass_arm: mitm rewrite 403/1052/1055 -> 200 + Frida flip blocked flag
-            #   2) _ip_meter_gate: ชน cap -> รอให้หลุดหน้าต่าง (safety net ถ้า mitm ยิงไม่ติด)
-            #   3) _churn_device_fingerprint: Android ID / GAID / GMS reset
-            #   4) _airplane_bounce: ตัด socket เกม + หมุน session server-side
-            #   5) _login_pace: jitter ก่อนยิง
+            # no_proxy_mode: 6 ชั้นก่อน login บน IP เดิม
+            #   1) _spoof_mobile_network: ปลอม prop ให้รายงาน TYPE_MOBILE + carrier TH
+            #   2) _bypass_arm: mitm rewrite + Frida flip
+            #   3) _ip_meter_gate: ชน cap -> รอให้หลุดหน้าต่าง
+            #   4) _churn_device_fingerprint: Android ID / GAID / GMS reset
+            #   5) _airplane_bounce: ตัด socket เกม + หมุน session server-side
+            #   6) _login_pace: jitter ก่อนยิง
             try:
+                _spoof_mobile_network(self.adb_cmd, self.device_id)
                 _bypass_arm(self.adb_cmd, self.device_id)
             except Exception as e:
                 print(f"[{self.device_id}] [BYPASS] skip: {e}")
