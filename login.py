@@ -11875,6 +11875,21 @@ if __name__ == "__main__":
         try:
             import wg_gen
             _wgd = str(config.get("wg_dir", "wg"))
+            if int(config.get("wg_clear_on_start", 1) or 0):
+                # เริ่มบอททุกครั้ง: ล้างไฟล์ IP ใน wg/ ทิ้งหมด (รวม .managed ที่ทำให้ไม่ยอมสร้างเอง) แล้วสร้างใหม่
+                # เก็บกุญแจไว้ก่อนลบ (keypair.txt) -> ไฟล์จาก server ก็ยังสร้างใหม่ได้ด้วยกุญแจเดิมของเครื่อง
+                os.makedirs(_wgd, exist_ok=True)
+                _old = glob.glob(os.path.join(_wgd, "*.conf"))
+                _kp = os.path.join(_wgd, "keypair.txt")
+                if _old and not os.path.exists(_kp):
+                    try:
+                        shutil.copyfile(_old[0], _kp)
+                    except OSError:
+                        pass
+                for _f in _old + glob.glob(os.path.join(_wgd, ".claims", "*")) + [os.path.join(_wgd, ".managed")]:
+                    try: os.remove(_f)
+                    except OSError: pass
+                print(f"[WG-GEN] ล้างไฟล์ IP ใน wg/ ทิ้ง {len(_old)} ไฟล์ - สร้างใหม่")
             if not glob.glob(os.path.join(_wgd, "*.conf")):
                 # ครั้งแรก/ไฟล์หมด: wg/ ว่าง -> สร้าง IP ก่อนเริ่มงานเสมอ (.managed ค้างจาก remote ทำให้ wg_gen ไม่ยอมสร้าง)
                 os.makedirs(_wgd, exist_ok=True)
