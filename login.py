@@ -280,7 +280,14 @@ def _ensure_mitm_running():
         if not os.path.exists(script):
             print(f"[MITM] ไม่เจอสคริปต์ {script} - ข้าม")
             return False
-        exe = globals().get("config", {}).get("mitmdump_exe", "mitmdump")
+        exe = globals().get("config", {}).get("mitmdump_exe", "")
+        # fallback: อ่าน bypass_paths.json ที่ setup_bypass.bat เซฟไว้
+        if not exe or exe == "mitmdump":
+            try:
+                with open("bypass_paths.json", "r", encoding="utf-8") as f:
+                    exe = _json.load(f).get("mitmdump_exe", "") or "mitmdump"
+            except Exception:
+                exe = "mitmdump"
         try:
             # transparent + script + ssl ignore cert errors ของ emulator CA
             _MITM_PROC[0] = subprocess.Popen(
