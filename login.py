@@ -4061,6 +4061,14 @@ class RangerGearBot(threading.Thread):
         # เซิร์ฟเวอร์ (IP ขาออก) ที่จอไหนก็ตามเพิ่งโดน block -> พักไว้ wg_cooldown_hours ชม. ทุกจอเลี่ยง
         cool = {} if getattr(self, "_wg_ignore_cool", False) else _wg_cooldown_load(wg_dir)
         bad |= {c for c in confs if _wg_endpoint(c) in cool}
+        if int(config.get("wg_random", 1) or 0):
+            # สุ่ม IP เอาเลย ใช้ซ้ำกับจออื่นได้ (ไม่ต้องจอง) - เลี่ยงตัวที่เพิ่งพัง/โดนพักถ้ายังมีตัวอื่นเหลือ
+            import random
+            cur = getattr(self, "_wg_rand_conf", None)
+            if cur in confs and cur not in bad:
+                return cur
+            self._wg_rand_conf = random.choice([c for c in confs if c not in bad] or confs)
+            return self._wg_rand_conf
         # จำกัดจำนวนจอต่อเซิร์ฟเวอร์เดียวกัน (IP ขาออกเดียวกัน) ; 0 = ไม่จำกัด
         max_ip = int(config.get("wg_max_per_ip", 0) or 0)
         if max_ip > 0:
