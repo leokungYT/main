@@ -252,8 +252,6 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
         cc = loc.get("country_code", "")
         if not loc.get("status", 1) or cc in exclude:
             continue
-        if cc not in order and not machine:
-            continue                        # โหมดเครื่องเดียว: เอาเฉพาะประเทศที่เลือก
         for g in loc.get("groups") or []:
             if not g.get("wg_pubkey") or not g.get("wg_endpoint") or not g.get("nodes"):
                 continue
@@ -262,11 +260,22 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
             groups.append((order.get(cc, len(order)), cc, g))
     # เรียงแบบตายตัว (ทุกเครื่องได้ลำดับเดียวกัน) -> แบ่งช่วงต่อเครื่องได้ไม่ชน
     groups.sort(key=lambda x: (x[0], x[1], int(x[2].get("id") or 0)))
+    every = groups
     if machine:
         start = ((machine - 1) * want) % max(1, len(groups))
         groups = (groups[start:] + groups[:start])[:want]
-        print(f"[WG-GEN] เครื่องที่ {machine}: ใช้เซิร์ฟเวอร์ลำดับ {start + 1}-{start + len(groups)} จาก {len(groups) and len(groups)}")
+        print(f"[WG-GEN] เครื่องที่ {machine}: ใช้เซิร์ฟเวอร์ลำดับ {start + 1}-{start + len(groups)} จาก {len(every)}")
+    else:
+        groups = [x for x in groups if x[1] in order]   # โหมดเครื่องเดียว: เอาเฉพาะประเทศที่เลือกก่อน
     groups = [x for x in groups if x[2]["wg_pubkey"] not in used]
+    if len(confs) + len(groups) < want:
+        # ช่วงของเครื่อง/ประเทศที่เลือกหมดแล้ว (โดนบล็อก/ใช้ไปแล้ว) -> สร้างต่อจากเซิร์ฟเวอร์ที่เหลือทั้งหมดเอง
+        # ไม่ปล่อยให้จอค้าง "ไม่มีไฟล์ .conf" (เสี่ยงชนเครื่องอื่นกุญแจเดียวกันบ้าง ดีกว่าไม่มี IP)
+        picked = {id(x[2]) for x in groups}
+        extra = [x for x in every if id(x[2]) not in picked and x[2]["wg_pubkey"] not in used]
+        if extra:
+            print(f"[WG-GEN] เซิร์ฟเวอร์ในช่วงที่กำหนดไม่พอ - ขยายไปเซิร์ฟเวอร์อื่นอีก {len(extra)} ตัว")
+        groups += extra
 
     made = 0
     port = tpl.get("Endpoint", ":443").rsplit(":", 1)[-1] or "443"
