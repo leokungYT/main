@@ -11,7 +11,373 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.4.4"
+BOT_VERSION = "3.4.8"
+
+# no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
+#   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
+#   configmain.json "login_min_gap_sec": 45 -> เว้นระยะระหว่าง login บนบอตเดียวกัน (กันเซิร์ฟฟลายจาก IP เดียว)
+#   เมื่อเปิด: fingerprint = IP + udid + UA คงที่, จังหวะยิงเท่านั้นที่ป้องกันแบน
+def _no_proxy_mode():
+    try:
+        return bool(int(globals().get("config", {}).get("no_proxy_mode", 0) or 0))
+    except Exception:
+        return False
+
+
+# ============================================================
+# IP-METER BYPASS — เซิร์ฟนับ (IP, login_count, window)
+#   ชน cap -> block หน้าเข้าเกม (API cookie ยังใช้ได้ แต่ UI client เข้าไม่ได้)
+#   ปลดโดย: นับ login per-IP ลง state, เว้นช่วงให้หลุดหน้าต่าง, สลับ fingerprint
+#           ที่ไม่ผูกบัญชี (Android ID / build.prop / FCM / GAID) + airplane toggle
+#           churn session token ของเกม - IP เดิม แต่ "เครื่อง" ใหม่ในสายตา server
+# ============================================================
+import json as _json
+import hashlib as _hashlib
+import random as _random
+
+_IP_METER_PATH = "ip_meter.json"
+_IP_METER_LOCK = _threading.Lock() if False else None
+try:
+    import threading as _threading2
+    _IP_METER_LOCK = _threading2.Lock()
+except Exception:
+    pass
+
+# สูตร cap ต่อหน้าต่าง (ชน -> block หน้าเกม)
+_IP_WINDOWS = [(3600, 3), (6 * 3600, 8), (24 * 3600, 20)]
+
+
+# ============================================================
+# ALWAYS-ON 24/7 — ลูปไม่หยุด + IP pool rotation
+#   รันบอตค้างไว้ 24 ชม. ไม่มีช่วงเฉย ๆ
+#   โควตา IP เดียว = 20/วัน -> 1 บัญชียิงทุก ~70 นาที = พอ
+#   หลายบัญชี หรือยิงถี่กว่านั้น -> ต้องมี IP pool (wg/)
+#   ลูป: หา (บัญชี, IP) ที่ว่าง -> login -> cooldown ตามสูตร -> วนใหม่
+# ============================================================
+
+
+def _pool_pick_ip(wg_dir="wg"):
+    """เลือก IP จาก wg/ pool ที่ 'ใกล้ว่างสุด' (รอน้อยสุด)
+    คืน (conf_path, endpoint_ip, wait_seconds). ถ้าว่างทันที wait=0.
+    ไม่มีไฟล์เลย -> คืน (None, 'local', wait=per-IP cap ปัจจุบัน)"""
+    confs = _wg_list_configs(wg_dir) if "_wg_list_configs" in globals() else []
+    if not confs:
+        return None, "local", _ip_meter_cap_wait("local")
+    best = None
+    for c in confs:
+        try:
+            ep = _wg_endpoint(c)
+        except Exception:
+            ep = os.path.basename(c)
+        w = _ip_meter_cap_wait(ep)
+        if best is None or w < best[2]:
+            best = (c, ep, w)
+        if w <= 0:
+            return c, ep, 0
+    return best
+
+
+def _always_on_cycle_delay():
+    """ระยะหยุดระหว่างรอบลูปใหญ่ - ไม่ให้ busy loop
+    base 60s + jitter 0-30s (เลียน user เปิดแอปแวบ ๆ)"""
+    base = float(globals().get("config", {}).get("always_on_cycle_sec", 60) or 60)
+    return base + _random.uniform(0, base * 0.5)
+
+
+def _always_on_enabled():
+    try:
+        return bool(int(globals().get("config", {}).get("always_on", 0) or 0))
+    except Exception:
+        return False
+
+
+# ============================================================
+# MITM + FRIDA BYPASS — ตัดเซ็นเซอร์ที่เซิร์ฟ ไม่สนใจ IP
+#   เซิร์ฟคืน 403/1052/1055 -> mitmdump เขียนทับเป็น 200 ก่อนถึงเกม
+#   client อ่าน flag ipBlocked/deviceBlocked -> Frida flip เป็น false
+#   เปิดครั้งเดียวต่อเครื่อง bot, แชร์ให้ทุกจอ (listen port เดียว)
+# ============================================================
+_MITM_PROC = [None]
+_MITM_LOCK = _threading2.Lock() if "_threading2" in globals() else None
+
+
+def _mitm_enabled():
+    try:
+        return bool(int(globals().get("config", {}).get("mitm_bypass", 0) or 0))
+    except Exception:
+        return False
+
+
+def _frida_enabled():
+    try:
+        return bool(int(globals().get("config", {}).get("frida_bypass", 0) or 0))
+    except Exception:
+        return False
+
+
+def _mitm_script_path():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "api", "lgr_mitm.py")
+
+
+def _frida_script_path():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "api", "lgr_frida.js")
+
+
+def _mitm_port():
+    try:
+        return int(globals().get("config", {}).get("mitm_port", 8888) or 8888)
+    except Exception:
+        return 8888
+
+
+def _ensure_mitm_running():
+    """เปิด mitmdump ครั้งเดียวต่อโปรเซสบอต - ทุกจอชี้ proxy เข้าพอร์ตเดียวกัน
+    ปิดบอต = mitmdump ถูก kill ตาม (child process ของบอต)"""
+    if not _mitm_enabled():
+        return False
+    lock = _MITM_LOCK or _threading2.Lock()
+    with lock:
+        if _MITM_PROC[0] and _MITM_PROC[0].poll() is None:
+            return True
+        script = _mitm_script_path()
+        port = _mitm_port()
+        if not os.path.exists(script):
+            print(f"[MITM] ไม่เจอสคริปต์ {script} - ข้าม")
+            return False
+        exe = globals().get("config", {}).get("mitmdump_exe", "mitmdump")
+        try:
+            # transparent + script + ssl ignore cert errors ของ emulator CA
+            _MITM_PROC[0] = subprocess.Popen(
+                [exe, "-s", script, "--listen-port", str(port),
+                 "--set", "block_global=false",
+                 "--set", "ssl_insecure=true",
+                 "--set", "console_eventlog_verbosity=warn"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=0x08000000 if os.name == "nt" else 0)
+            _real_sleep(2.0)
+            if _MITM_PROC[0].poll() is None:
+                print(f"[MITM] mitmdump up on :{port}")
+                return True
+            print("[MITM] mitmdump ออกเองทันที - เช็ก mitmproxy ติดตั้งหรือยัง (pip install mitmproxy)")
+            return False
+        except FileNotFoundError:
+            print(f"[MITM] ไม่เจอ {exe} - pip install mitmproxy หรือระบุ mitmdump_exe ใน config")
+            return False
+
+
+def _emu_set_proxy(adb_cmd, device_id, port):
+    """ชี้อีมูไป mitmdump บน host - 10.0.2.2 = host-loopback จาก emulator"""
+    host = "10.0.2.2"
+    cmds = [
+        ["shell", "settings", "put", "global", "http_proxy", f"{host}:{port}"],
+        ["shell", "settings", "put", "global", "https_proxy", f"{host}:{port}"],
+    ]
+    for c in cmds:
+        try:
+            subprocess.run([*adb_cmd, *c], capture_output=True, timeout=6, check=False)
+        except Exception:
+            pass
+
+
+def _emu_clear_proxy(adb_cmd, device_id):
+    for c in (["shell", "settings", "put", "global", "http_proxy", ":0"],
+              ["shell", "settings", "delete", "global", "http_proxy"],
+              ["shell", "settings", "delete", "global", "https_proxy"]):
+        try:
+            subprocess.run([*adb_cmd, *c], capture_output=True, timeout=6, check=False)
+        except Exception:
+            pass
+
+
+def _ensure_frida_server(adb_cmd):
+    """push frida-server เข้าอีมูถ้ายังไม่รัน - ไฟล์วาง tools/frida-server (user ดาวน์โหลดเอง)
+    skip ถ้าไม่มีไฟล์ หรือ server รันอยู่แล้ว"""
+    r = subprocess.run([*adb_cmd, "shell", "pgrep", "-f", "frida-server"],
+                       capture_output=True, timeout=6)
+    if r.returncode == 0 and r.stdout.strip():
+        return True
+    local = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "frida-server")
+    if not os.path.exists(local):
+        print("[FRIDA] ไม่เจอ tools/frida-server - ดาวน์โหลด android-arm64 build จาก github.com/frida/frida/releases")
+        return False
+    subprocess.run([*adb_cmd, "push", local, "/data/local/tmp/frida-server"],
+                   capture_output=True, timeout=30, check=False)
+    subprocess.run([*adb_cmd, "shell", "chmod", "755", "/data/local/tmp/frida-server"],
+                   capture_output=True, timeout=6, check=False)
+    subprocess.Popen([*adb_cmd, "shell", "/data/local/tmp/frida-server", "&"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _real_sleep(1.5)
+    return True
+
+
+def _frida_attach(device_id):
+    """ยิง frida script เข้าเกม - spawn mode ทันที process_name=com.linecorp.LGRGS
+    ต้องมี frida-tools: pip install frida-tools"""
+    if not _frida_enabled():
+        return
+    script = _frida_script_path()
+    if not os.path.exists(script):
+        print(f"[FRIDA] ไม่เจอ {script} - ข้าม")
+        return
+    pkg = globals().get("config", {}).get("game_pkg", "com.linecorp.LGRGS")
+    try:
+        subprocess.Popen(
+            ["frida", "-U", "-f", pkg, "-l", script, "--no-pause",
+             "--device", device_id, "--runtime=v8"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=0x08000000 if os.name == "nt" else 0)
+        print(f"[FRIDA] attached {pkg} on {device_id}")
+    except FileNotFoundError:
+        print("[FRIDA] ไม่เจอ frida CLI - pip install frida-tools")
+
+
+def _bypass_arm(adb_cmd, device_id):
+    """เรียกก่อน login ทุกครั้ง - ติด mitm proxy + Frida ให้อีมูนี้
+    idempotent: mitm ถูกเปิดครั้งเดียว, proxy ถูกตั้งซ้ำได้ไม่พัง"""
+    if _mitm_enabled():
+        if _ensure_mitm_running():
+            _emu_set_proxy(adb_cmd, device_id, _mitm_port())
+    if _frida_enabled():
+        _ensure_frida_server(adb_cmd)
+        _frida_attach(device_id)
+
+
+def _ip_meter_load():
+    try:
+        with open(_IP_METER_PATH, "r", encoding="utf-8") as f:
+            return _json.load(f)
+    except Exception:
+        return {}
+
+
+def _ip_meter_save(d):
+    tmp = _IP_METER_PATH + f".{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(d, f)
+        os.replace(tmp, _IP_METER_PATH)
+    except Exception:
+        try: os.remove(tmp)
+        except Exception: pass
+
+
+def _current_public_ip():
+    """ดึง public IP ของเครื่องนี้ - ใช้แยก bucket per-IP ใน state file
+    (ปิดได้ด้วย ip_meter_endpoint = "" ใน config -> ใช้ 'local' เป็นคีย์แทน)"""
+    url = str(globals().get("config", {}).get("ip_meter_endpoint", "https://api.ipify.org") or "")
+    if not url:
+        return "local"
+    try:
+        import urllib.request as _ur
+        with _ur.urlopen(url, timeout=6) as r:
+            ip = r.read().decode("ascii").strip()
+            if ip and len(ip) <= 45:
+                return ip
+    except Exception:
+        pass
+    return "local"
+
+
+def _ip_meter_cap_wait(ip):
+    """ชน cap หน้าต่างไหน -> คืนวินาทีที่ต้องรอให้หลุดหน้าต่างนั้น (เอามากที่สุด). 0 = ยิงได้"""
+    with _IP_METER_LOCK or _threading2.Lock():
+        d = _ip_meter_load()
+        hist = [t for t in d.get(ip, []) if t > time.time() - 48 * 3600]
+        now = time.time()
+        max_wait = 0.0
+        for window, cap in _IP_WINDOWS:
+            recent = [t for t in hist if t > now - window]
+            if len(recent) >= cap:
+                oldest = min(recent)
+                wait = (oldest + window) - now
+                if wait > max_wait:
+                    max_wait = wait
+        return max_wait
+
+
+def _ip_meter_mark(ip):
+    with _IP_METER_LOCK or _threading2.Lock():
+        d = _ip_meter_load()
+        hist = [t for t in d.get(ip, []) if t > time.time() - 48 * 3600]
+        hist.append(time.time())
+        d[ip] = hist
+        _ip_meter_save(d)
+
+
+def _ip_meter_gate():
+    """เรียกก่อน login ทุกครั้ง: ถ้าชน cap -> รอจนหลุด แล้ว mark login ครั้งนี้"""
+    if not _no_proxy_mode() and not int(globals().get("config", {}).get("ip_meter_force", 0) or 0):
+        return
+    ip = _current_public_ip()
+    wait = _ip_meter_cap_wait(ip)
+    if wait > 0:
+        mins = wait / 60.0
+        print(f"[IP-METER] IP {ip} ชน cap - รอ {mins:.1f} นาทีให้หลุดหน้าต่าง")
+        _real_sleep(min(wait + 5, 3 * 3600))   # เพดาน 3 ชม. ต่อครั้ง ไม่ให้บอตค้างยาว
+    _ip_meter_mark(ip)
+
+
+# ---------- fingerprint churn per-login (ไม่ผูกบัญชี) ----------
+def _churn_device_fingerprint(adb_cmd, device_id):
+    """ยิง build.prop ที่เกมเช็ก, Android ID, GAID, FCM เผาใหม่ก่อน login
+    เซิร์ฟเห็น (IP เดิม) แต่ (device signature ใหม่) -> ไม่เข้า counter เครื่องเดิม
+    ของพวกนี้ไม่ผูก account - เปลี่ยนได้ทุก login ไม่กระทบ cookie/udid"""
+    if not int(globals().get("config", {}).get("fp_churn", 1) or 0):
+        return
+    # Android ID 16 hex - ค่าที่ /settings_secure เก็บ, แอปอ่านผ่าน Settings.Secure.ANDROID_ID
+    new_aid = _hashlib.sha1(f"{device_id}:{time.time()}:{_random.random()}".encode()).hexdigest()[:16]
+    cmds = [
+        ["shell", "settings", "put", "secure", "android_id", new_aid],
+        # GAID (Google Advertising ID) reset - ของผูก ad tracking ไม่ผูก game account
+        ["shell", "settings", "put", "secure", "advertising_id", _uuid4_lower()],
+        # รีสตาร์ท media stack เพื่อให้ FCM token หมุน (บางเกมอ่าน FCM เป็น device key)
+        ["shell", "am", "force-stop", "com.google.android.gms"],
+    ]
+    for c in cmds:
+        try:
+            subprocess.run([*adb_cmd, *c], capture_output=True, timeout=8, check=False)
+        except Exception:
+            pass
+
+
+def _uuid4_lower():
+    import uuid as _u
+    return str(_u.uuid4())
+
+
+# ---------- airplane toggle: churn เซสชันเกม + DHCP lease ของอีมู ----------
+def _airplane_bounce(adb_cmd, device_id, hold=4.0):
+    """เปิด-ปิด airplane mode: เกมเสีย socket -> ตัด session server-side,
+    อีมู renew DHCP ใน NAT อาจได้ internal ip ใหม่ (public ip เดิมถ้าไม่สลับ VPN)
+    - ทำให้ (session_id, device_boot_id) ใหม่ แม้ public IP เดิม"""
+    if not int(globals().get("config", {}).get("airplane_bounce", 1) or 0):
+        return
+    try:
+        subprocess.run([*adb_cmd, "shell", "cmd", "connectivity", "airplane-mode", "enable"],
+                       capture_output=True, timeout=6, check=False)
+        _real_sleep(hold)
+        subprocess.run([*adb_cmd, "shell", "cmd", "connectivity", "airplane-mode", "disable"],
+                       capture_output=True, timeout=6, check=False)
+        _real_sleep(3.5)  # รอ network กลับมา
+    except Exception:
+        pass
+
+
+_LAST_LOGIN_T = [0.0]
+def _login_pace():
+    """เว้นช่วงระหว่าง login ของบอตเดียวกัน - IP เดียวยิงถี่ = เซิร์ฟมองเป็น bot แน่นอน
+    ค่าเริ่มต้น 45s ปรับได้ด้วย login_min_gap_sec; โหมดสลับ IP ไม่ต้องเพราะ IP เปลี่ยนทุกครั้ง"""
+    if not _no_proxy_mode():
+        return
+    try:
+        gap = float(globals().get("config", {}).get("login_min_gap_sec", 45) or 0)
+    except Exception:
+        gap = 45.0
+    import random as _r
+    wait = (_LAST_LOGIN_T[0] + gap + _r.uniform(0, gap * 0.3)) - time.time()
+    if wait > 0:
+        _real_sleep(wait)
+    _LAST_LOGIN_T[0] = time.time()
 
 # ลดการแย่งชิง CPU สำหรับ OpenCV เมื่อรันหลายเครื่องพร้อมกัน
 cv2.setNumThreads(1)
@@ -308,6 +674,9 @@ def _windscribe_status():
 def ensure_windscribe_bootstrap():
     """ต่อ Windscribe ตอนเปิดบอต (ถ้าเปิด windscribe_autostart) - ไม่สำเร็จก็ยังรันบอทต่อ"""
     cfg = _read_main_config()
+    if int(cfg.get("no_proxy_mode", 0) or 0):
+        print("[NO-PROXY] no_proxy_mode=1 - ข้าม Windscribe/WG ทั้งหมด ใช้ IP เครื่องตรง ๆ")
+        return
     if not int(cfg.get("windscribe_autostart", 0) or 0):
         return
     if int(cfg.get("wg_enabled", 1) or 0):
@@ -4525,6 +4894,9 @@ class RangerGearBot(threading.Thread):
 
     def _ensure_wireguard(self):
         """ต่อ WireGuard ในอีมูฯ จอนี้ (เรียกก่อนเปิดเกมทุกครั้ง - ต่ออยู่แล้วจะข้ามเร็ว)"""
+        if int(config.get("no_proxy_mode", 0) or 0):
+            self._wg_off = True
+            return
         if not int(config.get("wg_enabled", 1) or 0) or getattr(self, "_wg_off", False):
             return
         conf = self._wg_conf_for_device()
@@ -4596,6 +4968,25 @@ class RangerGearBot(threading.Thread):
         """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
         ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
         ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
+        if int(config.get("no_proxy_mode", 0) or 0):
+            # no_proxy_mode: 5 ชั้นก่อน login บน IP เดิม
+            #   1) _bypass_arm: mitm rewrite 403/1052/1055 -> 200 + Frida flip blocked flag
+            #   2) _ip_meter_gate: ชน cap -> รอให้หลุดหน้าต่าง (safety net ถ้า mitm ยิงไม่ติด)
+            #   3) _churn_device_fingerprint: Android ID / GAID / GMS reset
+            #   4) _airplane_bounce: ตัด socket เกม + หมุน session server-side
+            #   5) _login_pace: jitter ก่อนยิง
+            try:
+                _bypass_arm(self.adb_cmd, self.device_id)
+            except Exception as e:
+                print(f"[{self.device_id}] [BYPASS] skip: {e}")
+            _ip_meter_gate()
+            try:
+                _churn_device_fingerprint(self.adb_cmd, self.device_id)
+                _airplane_bounce(self.adb_cmd, self.device_id)
+            except Exception as e:
+                print(f"[{self.device_id}] [FP-CHURN] skip: {e}")
+            _login_pace()
+            return
         if not int(config.get("wg_enabled", 1) or 0):
             return
         if not int(config.get("wg_required", 0) or 0):   # 0 = VPN ไม่ขึ้นก็เล่นต่อด้วยเน็ตบ้าน (แบบเดิม)
@@ -6925,6 +7316,21 @@ class RangerGearBot(threading.Thread):
                     if not hasattr(self, '_last_wait_log') or time.time() - self._last_wait_log > 60:
                         print(f"[{self.device_id}] File queue empty. Waiting for new files...")
                         self._last_wait_log = time.time()
+                    # always_on: คิวว่าง -> บังคับรีไซเคิลไฟล์เสร็จกลับคิวทันที ไม่รอ cooldown ปกติ
+                    # รัน 24/7 ไม่เสียเวลาเฉย ๆ: login-success/7day-check/login-failed -> queue
+                    if _always_on_enabled():
+                        try:
+                            global _last_recycle_ts, _last_7day_recycle_ts
+                            _last_recycle_ts = 0.0
+                            _last_7day_recycle_ts = 0.0
+                            if "recycle_failed_into_queue" in globals():
+                                recycle_failed_into_queue()
+                            if "recycle_7day_into_queue" in globals():
+                                recycle_7day_into_queue()
+                            if "recycle_success_into_queue" in globals():
+                                recycle_success_into_queue()
+                        except Exception as e:
+                            print(f"[{self.device_id}] [ALWAYS-ON] recycle error: {e}")
                     sleep(10)
                     continue
                 
