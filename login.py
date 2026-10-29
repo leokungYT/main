@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.7.6"
+BOT_VERSION = "3.7.8"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11634,21 +11634,59 @@ class RangerGearBot(threading.Thread):
         else:
             print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เริ่ม flow100 (ไม่รอ checkpoint)")
         _tap_xy = tuple(config.get("play_flow100_tap", [777, 475]))
-        _taps = int(config.get("play_flow100_tap_count", 5))
-        _tap_wait = float(config.get("play_flow100_tap_wait", 1.5))
-        for n in range(1, _taps + 1):
-            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: กด {_tap_xy} ({n}/{_taps})")
+        _step_sim = float(config.get("play_flow100_step_sim", 0.8))
+        _step_wait = float(config.get("play_flow100_step_wait", 10))   # ค้างครบกี่วินาที = re-tap
+        _step_max_retry = int(config.get("play_flow100_step_max_retry", 5))   # กันลูปไม่จบ 1 ภาพ
+        _initial_scan = float(config.get("play_flow100_step_scan_sec", 5))   # รอดูภาพโผล่ครั้งแรกกี่วิ ไม่โผล่ = ข้าม
+        for i in range(1, 6):
+            _img = self._login_kaiby_img(f"img/auto-play-stage/fix-stage100-{i}.bmp")
+            # รอให้ภาพโผล่ก่อน (เผื่อ animation ค่อย ๆ เข้า) - ไม่โผล่ใน _initial_scan วิ = ข้ามไป i+1
+            _scan_deadline = time.time() + _initial_scan
+            _seen = False
+            while time.time() < _scan_deadline:
+                self.capture_screen()
+                if self._find_in_screen(_img, _step_sim) is not None:
+                    _seen = True
+                    break
+                sleep(0.5)
+            if not _seen:
+                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{i} ไม่โผล่ใน {_initial_scan:.0f}s - ข้าม")
+                continue
+            # กดครั้งแรก - แล้วนับถอยหลัง _step_wait วิ ถ้ายังเจออยู่ = กดอีกรอบ (วนสูงสุด _step_max_retry)
+            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ fix-stage100-{i} - กด {_tap_xy}")
             self.tap(*_tap_xy)
-            sleep(_tap_wait)
+            for _retry in range(_step_max_retry):
+                _hold_start = time.time()
+                _still = True
+                # นับถอยหลัง _step_wait วิ - log ทุก 2 วิ, ระหว่างนั้นถ้าภาพหาย = ไปต่อ
+                while time.time() - _hold_start < _step_wait:
+                    _remain = _step_wait - (time.time() - _hold_start)
+                    print(f"[{self.device_id}] [PLAY-STAGE] {tag}: รอ fix-stage100-{i} หาย ({_remain:.0f}s)")
+                    sleep(2)
+                    self.capture_screen()
+                    if self._find_in_screen(_img, _step_sim) is None:
+                        _still = False
+                        break
+                if not _still:
+                    print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{i} หายแล้ว - ไปต่อ")
+                    break
+                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{i} ยังค้างครบ {_step_wait:.0f}s - กดซ้ำ (retry {_retry + 1}/{_step_max_retry})")
+                self.tap(*_tap_xy)
+            else:
+                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{i} ไม่หายครบ {_step_max_retry} รอบ - ข้ามไปต่อ")
         return True
 
-    _FLOW100_CP_VARIANTS = ("checkpoint-flow100.bmp", "checkpoint-flow100v2.bmp", "checkpoint-flow100v3.bmp")
+    _FLOW100_CP_STEMS = ("checkpoint-flow100", "checkpoint-flow100v2", "checkpoint-flow100v3")
 
     def _ps_flow100_cp_hit(self, sim):
-        """สแกน checkpoint-flow100 ทุก variant (v, v2, v3) - เจอตัวใดตัวหนึ่งคืนชื่อ, ไม่เจอคืน None"""
-        for _name in self._FLOW100_CP_VARIANTS:
-            if self._find_in_screen(self._login_kaiby_img(f"img/auto-play-stage/{_name}"), sim) is not None:
-                return _name
+        """สแกน checkpoint-flow100 ทุก variant (v/v2/v3) ทั้ง .bmp และ .png + ลดเกณฑ์เป็น play_flow100_cp_sim (default 0.75)
+        เจอตัวใดตัวหนึ่งคืนชื่อ, ไม่เจอคืน None"""
+        _cp_sim = float(config.get("play_flow100_cp_sim", 0.75))
+        _use = min(sim, _cp_sim)
+        for _stem in self._FLOW100_CP_STEMS:
+            for _ext in (".bmp", ".png"):
+                if self._find_in_screen(self._login_kaiby_img(f"img/auto-play-stage/{_stem}{_ext}"), _use) is not None:
+                    return f"{_stem}{_ext}"
         return None
 
     def _ps_float_flow100_check(self):
