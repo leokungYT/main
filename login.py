@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.7.4"
+BOT_VERSION = "3.7.6"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11618,20 +11618,19 @@ class RangerGearBot(threading.Thread):
         คืน True = flow100 ทำงานจริง / False = gated แต่หา checkpoint ไม่เจอ"""
         if gated:
             _cp_to = float(config.get("play_flow100_checkpoint_timeout", 30))
-            _cp_img = self._login_kaiby_img("img/auto-play-stage/checkpoint-flow100.bmp")
             _deadline = time.time() + _cp_to
-            _hit = False
+            _hit_name = None
             while time.time() < _deadline:
                 self.capture_screen()
                 self._ps_check_fixstage()
-                if self._find_in_screen(_cp_img, sim) is not None:
-                    _hit = True
+                _hit_name = self._ps_flow100_cp_hit(sim)
+                if _hit_name is not None:
                     break
                 sleep(0.5)
-            if not _hit:
-                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ไม่เจอ checkpoint-flow100 ใน {_cp_to:.0f}s - ข้าม flow100")
+            if _hit_name is None:
+                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ไม่เจอ checkpoint-flow100 (v/v2/v3) ใน {_cp_to:.0f}s - ข้าม flow100")
                 return False
-            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ checkpoint-flow100 - เริ่ม flow100")
+            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ {_hit_name} - เริ่ม flow100")
         else:
             print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เริ่ม flow100 (ไม่รอ checkpoint)")
         _tap_xy = tuple(config.get("play_flow100_tap", [777, 475]))
@@ -11643,8 +11642,17 @@ class RangerGearBot(threading.Thread):
             sleep(_tap_wait)
         return True
 
+    _FLOW100_CP_VARIANTS = ("checkpoint-flow100.bmp", "checkpoint-flow100v2.bmp", "checkpoint-flow100v3.bmp")
+
+    def _ps_flow100_cp_hit(self, sim):
+        """สแกน checkpoint-flow100 ทุก variant (v, v2, v3) - เจอตัวใดตัวหนึ่งคืนชื่อ, ไม่เจอคืน None"""
+        for _name in self._FLOW100_CP_VARIANTS:
+            if self._find_in_screen(self._login_kaiby_img(f"img/auto-play-stage/{_name}"), sim) is not None:
+                return _name
+        return None
+
     def _ps_float_flow100_check(self):
-        """ขั้น play_stage: เจอ checkpoint-flow100 ลอยที่ไหนก็ตาม -> break ทุกอย่าง เริ่ม flow100 ทันที
+        """ขั้น play_stage: เจอ checkpoint-flow100 (v/v2/v3) ลอยที่ไหนก็ตาม -> break ทุกอย่าง เริ่ม flow100 ทันที
         ใช้ _ps_in_flow100 กันซ้อน (ไม่ให้ flow100 เรียกตัวเอง)
         เรียกจากทุก tick ของ _login_kaiby_wait_click + loop ที่รอ fix-backstage147/stage150"""
         if not getattr(self, "_ps_active", False):
@@ -11652,10 +11660,10 @@ class RangerGearBot(threading.Thread):
         if getattr(self, "_ps_in_flow100", False):
             return
         _sim = float(config.get("play_stage_similarity", 0.9))
-        _img = self._login_kaiby_img("img/auto-play-stage/checkpoint-flow100.bmp")
-        if self._find_in_screen(_img, _sim) is None:
+        _hit = self._ps_flow100_cp_hit(_sim)
+        if _hit is None:
             return
-        print(f"[{self.device_id}] [PLAY-STAGE] เจอ checkpoint-flow100 ลอยกลางงาน - break มาทำ flow100 เลย")
+        print(f"[{self.device_id}] [PLAY-STAGE] เจอ {_hit} ลอยกลางงาน - break มาทำ flow100 เลย")
         self._ps_in_flow100 = True
         try:
             self._ps_flow100(_sim, "float", gated=False)
@@ -11691,12 +11699,14 @@ class RangerGearBot(threading.Thread):
                 _seen[i] = _now
                 continue
             if _now - _first >= _retry_sec:
-                print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i} ลอยค้างครบ {_retry_sec:.0f}s - nudge {_nd} + tap ซ้ำ x{_n_taps}")
+                _rb_fixed = config.get("login_kaiby_raid_boss_fixed_tap", {"3": [621, 365], "5": [747, 230]})
+                _xy = _rb_fixed.get(str(i), _pos)
+                print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i} ลอยค้างครบ {_retry_sec:.0f}s - nudge {_nd} + tap พิกัดตายตัว {_xy} x{_n_taps}")
                 # กดกบ tutorial ก่อนกันบัง
                 self.tap(*_nd)
                 sleep(0.3)
                 for _t in range(_n_taps):
-                    self.tap(*_pos)
+                    self.tap(*_xy)
                     sleep(_tap_gap)
                 _seen[i] = _now + _cool   # cool-down กันกดถี่
 
@@ -12074,7 +12084,6 @@ class RangerGearBot(threading.Thread):
         _progress_since = time.time()
         _done_mark = len(done)
         _sim_float = float(config.get("play_stage_similarity", 0.9))
-        _cp_flow100_img = self._login_kaiby_img("img/auto-play-stage/checkpoint-flow100.bmp")
         while len(done) < len(wanted):
             # หา hard cap: ไม่มี done เพิ่มใน hard_sec วิ -> จบลูป
             if len(done) > _done_mark:
@@ -12083,9 +12092,10 @@ class RangerGearBot(threading.Thread):
             if time.time() - _progress_since >= hard_sec:
                 print(f"[{self.device_id}] [PLAY-STAGE] ไม่มีด่านเล่นเพิ่ม {hard_sec:.0f}s - จบ (เหลือ: {','.join(s for s in wanted if s not in done)})")
                 break
-            # float: เจอ checkpoint-flow100 ที่ไหนในขั้น mission -> ยิง flow100 taps เลย (กันหลุด tutorial)
-            if self._find_in_screen(_cp_flow100_img, _sim_float) is not None:
-                print(f"[{self.device_id}] [PLAY-STAGE] เจอ checkpoint-flow100 ลอย - ยิง flow100 ทันที")
+            # float: เจอ checkpoint-flow100 (v/v2/v3) ที่ไหนในขั้น mission -> ยิง flow100 taps เลย
+            _mf_hit = self._ps_flow100_cp_hit(_sim_float)
+            if _mf_hit is not None:
+                print(f"[{self.device_id}] [PLAY-STAGE] เจอ {_mf_hit} ลอย - ยิง flow100 ทันที")
                 self._ps_flow100(_sim_float, "float", gated=False)
                 idle_since = time.time()
                 continue
@@ -12411,18 +12421,26 @@ class RangerGearBot(threading.Thread):
                 self._raid_float_base = base
                 self._raid_float_seen = {}
                 try:
+                    _rb_fixed = config.get("login_kaiby_raid_boss_fixed_tap", {"3": [621, 365], "5": [747, 230]})
                     for i in range(1, 7):
                         # หน้า Event Raid มีกบ tutorial บัง (Win the competition...) -> แตะกล่องข้อความให้ไปต่อ
                         _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
-                        # raid-boss3 / raid-boss5 กดไม่ติดบ่อย -> ไม่มี timeout + ลด similarity (รอจนกดได้จริง)
+                        # raid-boss3 / raid-boss5 กดไม่ติดบ่อย -> ไม่มี timeout + ลด similarity + กดพิกัดตายตัวแทน
                         if i in (3, 5):
                             _rb_to = 0   # 0 = ไม่มี timeout รอจนกว่าจะเจอ
                             _rb_sim = float(config.get("login_kaiby_raid_boss35_sim", 0.65))
+                            _rb_tap = False
                         else:
                             _rb_to = step_timeout
                             _rb_sim = 0.8   # default ของ wait_click
-                        _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", _rb_to, _rb_sim, nudge=_nd,
+                            _rb_tap = True
+                        _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", _rb_to, _rb_sim, tap=_rb_tap, nudge=_nd,
                                                           escape=(_back, _back_sec))
+                        if _r is not None and _r != "escape" and i in (3, 5):
+                            _xy = _rb_fixed.get(str(i))
+                            if _xy:
+                                print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i}: เจอรูป -> กดพิกัดตายตัว {_xy}")
+                                self.tap(*_xy)
                         if _r is None:
                             break
                         if _r == "escape":
