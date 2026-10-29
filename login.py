@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.6.6"
+BOT_VERSION = "3.6.8"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -12077,33 +12077,32 @@ class RangerGearBot(threading.Thread):
 
             played = False
             sim = float(config.get("play_stage_similarity", 0.9))
-            # บังคับกด: หาด่านแรกที่ยังเหลือใน wanted - หา verify-stage{s} ไม่เจอครบ force_sec วิ
-            # -> ตบพิกัดตายตัว play_stage_force_tap[s] (ปุ่ม GO) แทน
-            _force_sec = float(config.get("play_stage_force_sec", 15))
-            _force_tap = config.get("play_stage_force_tap", {"30": [1180, 215], "100": [1180, 215], "150": [1180, 375]})
-            _first_pending = next((s for s in wanted if s not in done), None)
-            if _first_pending is not None and focus_since is not None:
-                _skip_track = getattr(self, "_ps_skip_track", {})
-                _skip_track.setdefault(_first_pending, time.time())
-                if time.time() - _skip_track[_first_pending] >= _force_sec:
-                    _xy = _force_tap.get(str(_first_pending))
-                    if _xy:
-                        print(f"[{self.device_id}] [PLAY-STAGE] หา verify-stage{_first_pending} ไม่เจอครบ {_force_sec:.0f}s - บังคับกด {_xy}")
-                        self.tap(*_xy)
-                        sleep(2)
-                        _skip_track[_first_pending] = time.time()   # reset ให้นับใหม่ถ้ายังไม่ไป
-                    else:
-                        print(f"[{self.device_id}] [PLAY-STAGE] หา verify-stage{_first_pending} ไม่เจอครบ {_force_sec:.0f}s + ไม่มีพิกัดบังคับ - ข้าม")
-                        done.add(_first_pending)
-                        _skip_track.pop(_first_pending, None)
-                self._ps_skip_track = _skip_track
+            # go-stage = ปุ่ม GO เช็คพอยท์: เจอ -> ตรวจ verify-stage{s} จริงจัง -> เจอตรงกับ wanted ค่อยกด go-stage
+            _go_sim = float(config.get("play_stage_go_sim", 0.85))
+            _ver_sim = float(config.get("play_stage_verify_sim", 0.75))
+            _row_tol = int(config.get("play_stage_verify_row_tol", 60))   # verify อยู่แถวเดียวกับ go-stage (ต่าง y ไม่เกินนี้)
+            _go_list = self._find_all_in_screen(
+                self._login_kaiby_img("img/auto-play-stage/go-stage.bmp"), _go_sim)
             for s in wanted:
                 if s in done:
                     continue
-                # กดด่านด้วย verify-stageXX.bmp เท่านั้น (verify-stage30 = ด่าน 30 ...) กันกดมั่วผิดด่าน
-                # เจอพร้อมกันหลายด่าน -> ทำด่านแรกที่เจอตามลำดับ 30 -> 100 -> 150 ทีละด่าน
-                _vpos = self._find_in_screen(
-                    self._login_kaiby_img(f"img/auto-play-stage/verify-stage{s}.bmp"), sim)
+                _vpos = None
+                if _go_list:
+                    # มี go-stage บนจอ -> จับคู่กับ verify-stage{s} ที่อยู่แถวเดียวกัน
+                    _vraw = self._find_all_in_screen(
+                        self._login_kaiby_img(f"img/auto-play-stage/verify-stage{s}.bmp"), _ver_sim)
+                    for _vx, _vy, _vsc in _vraw:
+                        for _gx, _gy, _gsc in _go_list:
+                            if abs(_vy - _gy) <= _row_tol:
+                                print(f"[{self.device_id}] [PLAY-STAGE] go-stage จับคู่ verify-stage{s} (verify score {_vsc:.2f}) - กด GO ({_gx},{_gy})")
+                                _vpos = (_gx, _gy)
+                                break
+                        if _vpos is not None:
+                            break
+                if _vpos is None:
+                    # fallback เดิม: ไม่มี go-stage บนจอ หา verify-stage{s} ตรง ๆ แล้วกดตรงนั้น
+                    _vpos = self._find_in_screen(
+                        self._login_kaiby_img(f"img/auto-play-stage/verify-stage{s}.bmp"), sim)
                 if _vpos is None:
                     continue
                 print(f"[{self.device_id}] [PLAY-STAGE] เจอ verify-stage{s} - กดด่าน {s}")
