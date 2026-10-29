@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.5.4"
+BOT_VERSION = "3.5.5"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11632,9 +11632,14 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ไม่เจอ checkpoint-flow100 ใน {_cp_to:.0f}s - ข้าม flow100")
             return
         print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ checkpoint-flow100 - เริ่ม flow100")
+        _tap_xy = tuple(config.get("play_flow100_tap", [777, 475]))
         _fr_done = False   # fixreplay กดครั้งเดียวต่อ flow100 - ตอนเจอ step ที่หา fix-stage100 ไม่เจอครั้งแรก
         for i in range(1, 6):
-            if self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", _fx, sim, nudge=_nd):
+            # เจอ fix-stage100-i -> ไม่กดที่รูป แต่กดพิกัดตายตัว _tap_xy แทน
+            _fs_pos = self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", _fx, sim, tap=False, nudge=_nd)
+            if _fs_pos:
+                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ fix-stage100-{i} - กด {_tap_xy}")
+                self.tap(*_tap_xy)
                 sleep(1)
                 continue
             print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ไม่เจอ fix-stage100-{i} ใน {_fx:.0f}s - ข้าม")
