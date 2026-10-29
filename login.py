@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.5.3"
+BOT_VERSION = "3.5.4"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -12024,16 +12024,8 @@ class RangerGearBot(threading.Thread):
                 if not self._ps_not_myteam():
                     continue
                 if self._ps_tap_if("misson1", 2):
-                    # กด misson1 ซ้ำหลายครั้งแล้วไม่ไปไหน = ค้างหน้าอื่น (เช่น My Team) -> BACK ออก
-                    self._ps_m1_streak = getattr(self, "_ps_m1_streak", 0) + 1
-                    if self._ps_m1_streak >= int(config.get("play_stage_m1_stuck", 4)):
-                        print(f"[{self.device_id}] [PLAY-STAGE] กด misson1 {self._ps_m1_streak} ครั้งไม่ไปต่อ - กด BACK ออกจากหน้านี้")
-                        self.adb_shell("input keyevent KEYCODE_BACK")
-                        sleep(1.5)
-                        self._ps_m1_streak = 0
                     idle_since = time.time()
                     continue
-                self._ps_m1_streak = 0
                 if self._ps_tap_if("misson2", 2):
                     idle_since = time.time()
                     continue
