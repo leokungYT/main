@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.5.8"
+BOT_VERSION = "3.6.0"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11613,11 +11613,9 @@ class RangerGearBot(threading.Thread):
             raise self._PSNoKaiby()
 
     def _ps_flow100(self, sim, tag):
-        """flow100: รอ checkpoint-flow100 ก่อน เจอแล้วค่อยกด fix-stage100-1..5
+        """flow100: รอ checkpoint-flow100 ก่อน เจอแล้วกด _tap_xy รัว _taps ครั้ง (ทะลุ tutorial)
         ไม่เจอ checkpoint ใน timeout -> ข้ามทั้ง flow (ไม่กดอะไรเลย)"""
         _cp_to = float(config.get("play_flow100_checkpoint_timeout", 15))
-        _nd = tuple(config.get("play_stage100_nudge", [530, 270]))
-        _fx = float(config.get("play_stage150_fix_timeout", 15))
         _cp_img = self._login_kaiby_img("img/auto-play-stage/checkpoint-flow100.bmp")
         _deadline = time.time() + _cp_to
         _hit = False
@@ -11633,26 +11631,41 @@ class RangerGearBot(threading.Thread):
             return
         print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ checkpoint-flow100 - เริ่ม flow100")
         _tap_xy = tuple(config.get("play_flow100_tap", [777, 475]))
-        _fr_done = False   # fixreplay กดครั้งเดียวต่อ flow100 - ตอนเจอ step ที่หา fix-stage100 ไม่เจอครั้งแรก
-        for i in range(1, 6):
-            # เจอ fix-stage100-i -> ไม่กดที่รูป แต่กดพิกัดตายตัว _tap_xy แทน
-            _fs_pos = self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", _fx, sim, tap=False, nudge=_nd)
-            if _fs_pos:
-                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ fix-stage100-{i} - กด {_tap_xy}")
-                self.tap(*_tap_xy)
-                sleep(1)
+        _taps = int(config.get("play_flow100_tap_count", 5))
+        _tap_wait = float(config.get("play_flow100_tap_wait", 1.5))
+        # เจอ checkpoint แล้วไม่รอ fix-stage100-i - กด _tap_xy รัว _taps ครั้งเลย (ทะลุ tutorial repeat/multiplier)
+        for n in range(1, _taps + 1):
+            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: กด {_tap_xy} ({n}/{_taps})")
+            self.tap(*_tap_xy)
+            sleep(_tap_wait)
+
+    def _raid_float_check(self):
+        """ขั้น raid-boss: เจอ raid-boss3/raid-boss5 ลอยอยู่บนจอต่อเนื่องครบ retry_sec = กดซ้ำ 1 ครั้ง
+        เรียกจากทุก tick ของ _login_kaiby_wait_click ตอน _raid_float_active=True"""
+        if not getattr(self, "_raid_float_active", False):
+            return
+        _retry_sec = float(config.get("login_kaiby_raid_boss_retry_sec", 7))
+        _base = getattr(self, "_raid_float_base", "img/login-kaiby")
+        _sim = float(config.get("login_kaiby_raid_float_sim", 0.8))
+        _seen = getattr(self, "_raid_float_seen", None)
+        if _seen is None:
+            _seen = {}
+            self._raid_float_seen = _seen
+        _now = time.time()
+        for i in (3, 5):
+            _img = self._login_kaiby_img(f"{_base}/raid-boss/raid-boss{i}.bmp")
+            _pos = self._find_in_screen(_img, _sim)
+            if _pos is None:
+                _seen.pop(i, None)
                 continue
-            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ไม่เจอ fix-stage100-{i} ใน {_fx:.0f}s - ข้าม")
-            if not _fr_done:
-                _fr_done = True
-                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ค้างที่ fix-stage100-{i} - กด fixreplay 1 รอบ แล้วไปต่อ")
-                self.capture_screen()
-                _fr_pos = self._find_in_screen(self._login_kaiby_img("img/auto-play-stage/fixreplay.bmp"), sim)
-                if _fr_pos is not None:
-                    self.tap(*_fr_pos)
-                    sleep(1.5)
-                else:
-                    print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ไม่เจอ fixreplay บนจอ - ข้าม")
+            _first = _seen.get(i)
+            if _first is None:
+                _seen[i] = _now
+                continue
+            if _now - _first >= _retry_sec:
+                print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i} ลอยค้างครบ {_retry_sec:.0f}s - กดซ้ำ")
+                self.tap(*_pos)
+                _seen[i] = _now + 1.0   # หน่วงกันกดถี่
 
     def _ps_check_fixstage(self):
         """เจอ img/login-kaiby/fixstage/fixstage1 -> รัว ESC จนเจอ cancel -> กด cancel -> โยน _PSRestart
@@ -12198,6 +12211,7 @@ class RangerGearBot(threading.Thread):
             self.last_activity_time = time.time()   # กำลังรอขั้นถัดไป - ไม่ให้ safety 500s รีสตาร์ท
             self.capture_screen()
             self._ps_check_fixstage()
+            self._raid_float_check()
             self._ps_check_deadline()
             if self._ps_cancel_first() or self._cancel_stuck():
                 continue
@@ -12318,30 +12332,26 @@ class RangerGearBot(threading.Thread):
                 _back_sec = float(config.get("login_kaiby_raid_back_sec", 5))
                 self._esc_seen = None
                 _escaped = False
-                for i in range(1, 7):
-                    # หน้า Event Raid มีกบ tutorial บัง (Win the competition...) -> แตะกล่องข้อความให้ไปต่อ
-                    _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
-                    # back.bmp ค้างครบ 20s -> กด back แล้วจบ raid-boss เลย
-                    # หลังกด raid-boss2 แล้ว: นับ back.bmp ค้างต่อเนื่องตลอด ครบ 20s -> กด back แล้ว break ออกเลย
-                    _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout, nudge=_nd,
-                                                      escape=(_back, _back_sec))
-                    if _r is None:
-                        break
-                    if _r == "escape":
-                        print(f"[{self.device_id}] [LOGIN-KAIBY] จบ raid-boss (กด back)")
-                        _escaped = True
-                        break
-                    # raid-boss3 / raid-boss5 บางทีกดไม่ติด (tutorial บัง) -> ค้างครบ retry_sec ยังเห็นปุ่มเดิม = กดซ้ำ 1 รอบ
-                    if i in (3, 5):
-                        _rb = self._login_kaiby_img(f"{base}/raid-boss/raid-boss{i}.bmp")
-                        _retry_sec = float(config.get("login_kaiby_raid_boss_retry_sec", 7))
-                        sleep(_retry_sec)
-                        self.capture_screen()
-                        _again = self._find_in_screen(_rb, 0.8)
-                        if _again is not None:
-                            print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i} ค้างครบ {_retry_sec:.0f}s - กดซ้ำ")
-                            self.tap(*_again)
-                    sleep(1)
+                # เปิด float-check: ทุก tick ของ wait_click จะสแกน raid-boss3/raid-boss5 ลอย ๆ ถ้าค้างครบ 7s -> กดซ้ำ
+                self._raid_float_active = True
+                self._raid_float_base = base
+                self._raid_float_seen = {}
+                try:
+                    for i in range(1, 7):
+                        # หน้า Event Raid มีกบ tutorial บัง (Win the competition...) -> แตะกล่องข้อความให้ไปต่อ
+                        _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
+                        _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout, nudge=_nd,
+                                                          escape=(_back, _back_sec))
+                        if _r is None:
+                            break
+                        if _r == "escape":
+                            print(f"[{self.device_id}] [LOGIN-KAIBY] จบ raid-boss (กด back)")
+                            _escaped = True
+                            break
+                        sleep(1)
+                finally:
+                    self._raid_float_active = False
+                    self._raid_float_seen = {}
                 if not _escaped:
                     # ทำครบ raid-boss6 แล้ว -> กด back.bmp ออกจากหน้า Event Raid ทันที (เจอเมื่อไหร่กดเลย รอสูงสุด 20s)
                     print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss ครบแล้ว - กด back")
