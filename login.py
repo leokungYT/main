@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.8.3"
+BOT_VERSION = "3.8.4"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11643,10 +11643,13 @@ class RangerGearBot(threading.Thread):
         _priority_imgs = {_pi: self._login_kaiby_img(f"img/auto-play-stage/fix-stage100-{_pi}.bmp") for _pi in _priority_ids}
 
         def _bash_priority():
-            """เจอ fix-stage100-{priority_ids} บนจอ -> กดก่อนเสมอ จนกว่าจะหายทุกตัว (ไม่ไปต่อถ้ายังค้างจริง ๆ)"""
+            """เจอ fix-stage100-{priority_ids} บนจอ -> กดก่อนเสมอ จนกว่าจะหายทุกตัว
+            ติดกัน _stuck_threshold ครั้งบน -id เดียวกัน -> ลองกด cancel / next (fallback) เพื่อปลดล็อก"""
             _bashed = 0
             _max = int(config.get("play_flow100_priority_max", 40))
             _gap = float(config.get("play_flow100_priority_gap", 1.5))
+            _stuck_threshold = int(config.get("play_flow100_priority_stuck", 5))
+            _same_streak = {}   # {priority_id: ติดกันกี่ครั้ง}
             while _bashed < _max:
                 self.capture_screen()
                 _hit_pi = None
@@ -11661,8 +11664,33 @@ class RangerGearBot(threading.Thread):
                     if _bashed:
                         print(f"[{self.device_id}] [PLAY-STAGE] {tag}: priority ({','.join(f'-{p}' for p in _priority_ids)}) หายหมดแล้ว (bash {_bashed} ครั้ง) - ไปต่อ")
                     return
+                _same_streak[_hit_pi] = _same_streak.get(_hit_pi, 0) + 1
+                # streak คงที่ครบ threshold -> ลอง fallback (cancel/next) หนึ่งรอบ แล้ว reset streak
+                if _same_streak[_hit_pi] >= _stuck_threshold:
+                    print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{_hit_pi} ค้างกด {_stuck_threshold} ครั้งไม่หาย - ลอง fallback cancel/next")
+                    _fb_hit = False
+                    for _fb_name in ("cancel", "fix-nextstage30", "fix-nextstage30ok", "stageNext"):
+                        for _ext in (".png", ".bmp"):
+                            _fp = self._find_in_screen(self._login_kaiby_img(f"img/auto-play-stage/{_fb_name}{_ext}"), _step_sim)
+                            if _fp is None:
+                                _fp = self._find_in_screen(f"img/{_fb_name}{_ext}", _step_sim)
+                            if _fp is not None:
+                                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fallback - เจอ {_fb_name}{_ext} - กด {_fp}")
+                                self.tap(*_fp)
+                                _fb_hit = True
+                                break
+                        if _fb_hit:
+                            break
+                    if not _fb_hit:
+                        _nx = tuple(config.get("play_flow100_next_tap", [714, 679]))
+                        print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fallback - ไม่เจอ cancel/next รูป -> กดพิกัดปุ่ม NEXT ตายตัว {_nx}")
+                        self.tap(*_nx)
+                    _same_streak[_hit_pi] = 0
+                    _bashed += 1
+                    sleep(_gap)
+                    continue
                 _xy = _hit_pos if _use_img_pos else _fallback_xy
-                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: PRIORITY - เจอ fix-stage100-{_hit_pi} ค้าง - กด {_xy} ({_bashed + 1}/{_max})")
+                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: PRIORITY - เจอ fix-stage100-{_hit_pi} ค้าง - กด {_xy} ({_bashed + 1}/{_max}, streak {_same_streak[_hit_pi]}/{_stuck_threshold})")
                 self.tap(*_xy)
                 _bashed += 1
                 sleep(_gap)
