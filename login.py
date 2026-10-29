@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.7.3"
+BOT_VERSION = "3.7.4"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11617,7 +11617,7 @@ class RangerGearBot(threading.Thread):
         เจอ checkpoint (หรือ gated=False) -> กด _tap_xy รัว _taps ครั้ง (ทะลุ tutorial)
         คืน True = flow100 ทำงานจริง / False = gated แต่หา checkpoint ไม่เจอ"""
         if gated:
-            _cp_to = float(config.get("play_flow100_checkpoint_timeout", 15))
+            _cp_to = float(config.get("play_flow100_checkpoint_timeout", 30))
             _cp_img = self._login_kaiby_img("img/auto-play-stage/checkpoint-flow100.bmp")
             _deadline = time.time() + _cp_to
             _hit = False
@@ -11642,6 +11642,25 @@ class RangerGearBot(threading.Thread):
             self.tap(*_tap_xy)
             sleep(_tap_wait)
         return True
+
+    def _ps_float_flow100_check(self):
+        """ขั้น play_stage: เจอ checkpoint-flow100 ลอยที่ไหนก็ตาม -> break ทุกอย่าง เริ่ม flow100 ทันที
+        ใช้ _ps_in_flow100 กันซ้อน (ไม่ให้ flow100 เรียกตัวเอง)
+        เรียกจากทุก tick ของ _login_kaiby_wait_click + loop ที่รอ fix-backstage147/stage150"""
+        if not getattr(self, "_ps_active", False):
+            return
+        if getattr(self, "_ps_in_flow100", False):
+            return
+        _sim = float(config.get("play_stage_similarity", 0.9))
+        _img = self._login_kaiby_img("img/auto-play-stage/checkpoint-flow100.bmp")
+        if self._find_in_screen(_img, _sim) is None:
+            return
+        print(f"[{self.device_id}] [PLAY-STAGE] เจอ checkpoint-flow100 ลอยกลางงาน - break มาทำ flow100 เลย")
+        self._ps_in_flow100 = True
+        try:
+            self._ps_flow100(_sim, "float", gated=False)
+        finally:
+            self._ps_in_flow100 = False
 
     def _raid_float_check(self):
         """ขั้น raid-boss: เจอ raid-boss3/raid-boss5 ลอยอยู่บนจอต่อเนื่องครบ retry_sec
@@ -11972,6 +11991,7 @@ class RangerGearBot(threading.Thread):
         self._ps_deadline = None
         self._ps_fix100_done = False   # flow ด่าน 100 ทำได้ครั้งเดียวต่อไอดี
         self._ps_skip_track = {}   # หา verify-stage{s} ไม่เจอครบ skip_sec -> ข้ามด่าน
+        self._ps_in_flow100 = False   # กันซ้อน: flow100 กำลังทำอยู่ -> float check ข้าม
         try:
             while True:
                 try:
@@ -12264,6 +12284,7 @@ class RangerGearBot(threading.Thread):
             self.last_activity_time = time.time()   # กำลังรอขั้นถัดไป - ไม่ให้ safety 500s รีสตาร์ท
             self.capture_screen()
             self._ps_check_fixstage()
+            self._ps_float_flow100_check()
             self._raid_float_check()
             self._ps_check_deadline()
             if self._ps_cancel_first() or self._cancel_stuck():
