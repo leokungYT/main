@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.5.6"
+BOT_VERSION = "3.5.8"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11934,6 +11934,7 @@ class RangerGearBot(threading.Thread):
         self._ps_active = True
         self._ps_deadline = None
         self._ps_fix100_done = False   # flow ด่าน 100 ทำได้ครั้งเดียวต่อไอดี
+        self._ps_scroll_since = None   # mission panel scroll - ปัดเพื่อเปิดด่าน 100/150
         try:
             while True:
                 try:
@@ -12116,9 +12117,24 @@ class RangerGearBot(threading.Thread):
                 break
             if played or len(done) >= len(wanted):
                 idle_since = time.time()
+                self._ps_scroll_since = None
                 continue
 
-            # ไม่เลื่อนหน้าจอแล้ว - รออยู่กับที่ ไม่เจอด่านที่เหลือติดกัน play_stage_idle_sec -> จบ
+            # ไม่เจอ verify ด่านที่เหลือ -> ปัด mission panel ขึ้น (ด่าน 100/150 อยู่ล่าง) ทุก play_stage_scroll_every วิ
+            # เงื่อนไข: โฟกัสหลัง misson3 (focus_since set) และยังมีด่านเหลือ
+            if focus_since is not None and len(done) < len(wanted):
+                _scroll_every = float(config.get("play_stage_scroll_every", 4))
+                _last = getattr(self, "_ps_scroll_since", None)
+                if _last is None or time.time() - _last >= _scroll_every:
+                    _sw = config.get("play_stage_scroll_swipe", [900, 500, 900, 220, 400])
+                    _x1, _y1, _x2, _y2, _dur = _sw
+                    print(f"[{self.device_id}] [PLAY-STAGE] ไม่เจอด่านที่เหลือ - ปัด mission panel ({_x1},{_y1})->({_x2},{_y2})")
+                    self.adb_shell(f"input swipe {_x1} {_y1} {_x2} {_y2} {_dur}")
+                    self._ps_scroll_since = time.time()
+                    sleep(0.5)
+                    continue
+
+            # ไม่เจอด่านที่เหลือติดกัน play_stage_idle_sec -> จบ
             if time.time() - idle_since >= idle_sec:
                 print(f"[{self.device_id}] [PLAY-STAGE] ไม่เจอด่านที่เหลือ {idle_sec:.0f}s - จบ")
                 break
@@ -12315,15 +12331,15 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] [LOGIN-KAIBY] จบ raid-boss (กด back)")
                         _escaped = True
                         break
-                    # raid-boss5 บางทีกดไม่ติด (tutorial บัง) -> ค้างครบ 5s ยังเห็นปุ่มเดิม = กดซ้ำ 1 รอบ
-                    if i == 5:
-                        _rb5 = self._login_kaiby_img(f"{base}/raid-boss/raid-boss5.bmp")
-                        _retry_sec = float(config.get("login_kaiby_raid_boss5_retry_sec", 5))
+                    # raid-boss3 / raid-boss5 บางทีกดไม่ติด (tutorial บัง) -> ค้างครบ retry_sec ยังเห็นปุ่มเดิม = กดซ้ำ 1 รอบ
+                    if i in (3, 5):
+                        _rb = self._login_kaiby_img(f"{base}/raid-boss/raid-boss{i}.bmp")
+                        _retry_sec = float(config.get("login_kaiby_raid_boss_retry_sec", 7))
                         sleep(_retry_sec)
                         self.capture_screen()
-                        _again = self._find_in_screen(_rb5, 0.8)
+                        _again = self._find_in_screen(_rb, 0.8)
                         if _again is not None:
-                            print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss5 ค้างครบ {_retry_sec:.0f}s - กดซ้ำ")
+                            print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i} ค้างครบ {_retry_sec:.0f}s - กดซ้ำ")
                             self.tap(*_again)
                     sleep(1)
                 if not _escaped:
