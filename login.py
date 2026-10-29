@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.5.1"
+BOT_VERSION = "3.5.3"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11612,6 +11612,43 @@ class RangerGearBot(threading.Thread):
             self._ps_deadline = None
             raise self._PSNoKaiby()
 
+    def _ps_flow100(self, sim, tag):
+        """flow100: รอ checkpoint-flow100 ก่อน เจอแล้วค่อยกด fix-stage100-1..5
+        ไม่เจอ checkpoint ใน timeout -> ข้ามทั้ง flow (ไม่กดอะไรเลย)"""
+        _cp_to = float(config.get("play_flow100_checkpoint_timeout", 15))
+        _nd = tuple(config.get("play_stage100_nudge", [530, 270]))
+        _fx = float(config.get("play_stage150_fix_timeout", 15))
+        _cp_img = self._login_kaiby_img("img/auto-play-stage/checkpoint-flow100.bmp")
+        _deadline = time.time() + _cp_to
+        _hit = False
+        while time.time() < _deadline:
+            self.capture_screen()
+            self._ps_check_fixstage()
+            if self._find_in_screen(_cp_img, sim) is not None:
+                _hit = True
+                break
+            sleep(0.5)
+        if not _hit:
+            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ไม่เจอ checkpoint-flow100 ใน {_cp_to:.0f}s - ข้าม flow100")
+            return
+        print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ checkpoint-flow100 - เริ่ม flow100")
+        _fr_done = False   # fixreplay กดครั้งเดียวต่อ flow100 - ตอนเจอ step ที่หา fix-stage100 ไม่เจอครั้งแรก
+        for i in range(1, 6):
+            if self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", _fx, sim, nudge=_nd):
+                sleep(1)
+                continue
+            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ไม่เจอ fix-stage100-{i} ใน {_fx:.0f}s - ข้าม")
+            if not _fr_done:
+                _fr_done = True
+                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ค้างที่ fix-stage100-{i} - กด fixreplay 1 รอบ แล้วไปต่อ")
+                self.capture_screen()
+                _fr_pos = self._find_in_screen(self._login_kaiby_img("img/auto-play-stage/fixreplay.bmp"), sim)
+                if _fr_pos is not None:
+                    self.tap(*_fr_pos)
+                    sleep(1.5)
+                else:
+                    print(f"[{self.device_id}] [PLAY-STAGE] {tag}: ไม่เจอ fixreplay บนจอ - ข้าม")
+
     def _ps_check_fixstage(self):
         """เจอ img/login-kaiby/fixstage/fixstage1 -> รัว ESC จนเจอ cancel -> กด cancel -> โยน _PSRestart
         (ใช้จอที่ capture ไว้แล้ว ไม่ capture ใหม่)"""
@@ -12024,17 +12061,11 @@ class RangerGearBot(threading.Thread):
                     self._ps_deadline = time.time() + float(config.get("play_stage30_timeout", 60))
                 # อยู่หน้าแผนที่แล้ว - ห้ามปัดจอ รอจนเจอปุ่มด่าน (ไม่มี timeout)
                 if s == "150":
-                    # ด่าน 150: กด num147 -> กด fix-backstage147 (ครั้งเดียว) -> แล้วค่อยหาด่าน 150
+                    # ด่าน 150: กด num147 -> flow100 (gated by checkpoint-flow100) -> fix-backstage147 -> หาด่าน 150
                     self._login_kaiby_wait_click("img/auto-play-stage/num147.bmp", 0, sim)
                     sleep(2)
-                    # หลัง num147: ใช้ flow ก่อน next ของด่าน 100 (fix-stage100-1..5) แต่ละรูปรอ 15s
-                    # เจอกด / ไม่เจอข้ามไปรูปถัดไป
-                    _fx = float(config.get("play_stage150_fix_timeout", 15))
-                    for i in range(1, 6):
-                        if self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", _fx, sim):
-                            sleep(1)
-                        else:
-                            print(f"[{self.device_id}] [PLAY-STAGE] ด่าน 150: ไม่เจอ fix-stage100-{i} ใน {_fx:.0f}s - ข้าม")
+                    # หลัง num147: flow100 ที่ด่าน 147 - เจอ checkpoint-flow100 ค่อยกด fix-stage100-1..5
+                    self._ps_flow100(sim, "ด่าน 147")
                     print(f"[{self.device_id}] [PLAY-STAGE] กด num147 แล้ว - หา fix-backstage147")
                     # รอ stage150 - ระหว่างนั้นเจอ fix-backstage147 กดแค่ครั้งเดียว แล้วไปหาด่าน 150 ต่อเลย
                     _fb = self._login_kaiby_img("img/auto-play-stage/fix-backstage147.bmp")
@@ -12069,13 +12100,10 @@ class RangerGearBot(threading.Thread):
                 sleep(1)
                 print(f"[{self.device_id}] [PLAY-STAGE] เล่นด่าน {s}")
                 if s == "100" and not getattr(self, "_ps_fix100_done", False):
-                    # ด่าน 100: ก่อนกด next กด fix-stage100-1 -> ... -> 5 ทีละขั้น ขั้นละครั้งเดียว
+                    # ด่าน 100: flow100 - รอ checkpoint-flow100 ก่อน เจอแล้วค่อยกด fix-stage100-1..5
                     # ทำ flow นี้ครั้งเดียวต่อไอดี (วนกลับมาด่าน 100 อีกไม่ทำซ้ำ - กันกดซ้ำไม่หยุด)
                     self._ps_fix100_done = True
-                    _nd100 = tuple(config.get("play_stage100_nudge", [530, 270]))
-                    for i in range(1, 6):
-                        self._login_kaiby_wait_click(f"img/auto-play-stage/fix-stage100-{i}.bmp", 0, sim, nudge=_nd100)
-                        sleep(1.5)
+                    self._ps_flow100(sim, "ด่าน 100")
                 self._ps_buyhelp_battle()
                 if s == "30":
                     # ด่าน 30 จบ -> แวะหา fix-nextstage30 -> fix-nextstage30ok (เจอกด / ไม่เจอใน 10 วิข้าม)
