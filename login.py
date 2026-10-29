@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.6.8"
+BOT_VERSION = "3.7.0"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11695,7 +11695,17 @@ class RangerGearBot(threading.Thread):
 
     def _ps_find(self, name):
         sim = float(config.get("play_stage_similarity", 0.9))
-        return self._find_in_screen(f"img/auto-play-stage/{name}.png", sim)
+        # ลองหลายไฟล์: name.png, name.bmp, name2.bmp/png, name3.bmp/png (ปุ่มเดียวกันหลายธีม/สีเช่น stageget เขียว/เหลือง)
+        for _ext in (".png", ".bmp"):
+            _pos = self._find_in_screen(f"img/auto-play-stage/{name}{_ext}", sim)
+            if _pos is not None:
+                return _pos
+        for _n in (2, 3, 4):
+            for _ext in (".bmp", ".png"):
+                _pos = self._find_in_screen(f"img/auto-play-stage/{name}{_n}{_ext}", sim)
+                if _pos is not None:
+                    return _pos
+        return None
 
     def _ps_after_stageget(self):
         """กด stageget แล้ว -> แวะหา okreward.bmp สูงสุด play_stage_getok_sec วิ (10) เจอกด ไม่เจอก็ไปต่อ"""
@@ -12117,9 +12127,11 @@ class RangerGearBot(threading.Thread):
                     # ด่าน 150: กด num147 -> flow100 (gated by checkpoint-flow100) -> fix-backstage147 -> หาด่าน 150
                     self._login_kaiby_wait_click("img/auto-play-stage/num147.bmp", 0, sim)
                     sleep(2)
-                    # หลัง num147: ลอง gated ก่อน (เจอ checkpoint-flow100 = ยิง taps) - ไม่เจอใน timeout = ยิง blind taps
+                    # หลัง num147: gated flow100 - เจอ checkpoint-flow100 ยิง taps / ไม่เจอใน timeout -> กด BACK ไปหาด่าน 150 ต่อ
                     if not self._ps_flow100(sim, "ด่าน 147", gated=True):
-                        self._ps_flow100(sim, "ด่าน 147", gated=False)
+                        print(f"[{self.device_id}] [PLAY-STAGE] ด่าน 147: ไม่มี flow100 - กด BACK ออก ไปหาด่าน 150")
+                        self.adb_shell("input keyevent KEYCODE_BACK")
+                        sleep(2)
                     print(f"[{self.device_id}] [PLAY-STAGE] กด num147 แล้ว - หา fix-backstage147")
                     # รอ stage150 - ระหว่างนั้นเจอ fix-backstage147 กดแค่ครั้งเดียว แล้วไปหาด่าน 150 ต่อเลย
                     _fb = self._login_kaiby_img("img/auto-play-stage/fix-backstage147.bmp")
