@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.6.1"
+BOT_VERSION = "3.6.2"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11949,6 +11949,7 @@ class RangerGearBot(threading.Thread):
         self._ps_active = True
         self._ps_deadline = None
         self._ps_fix100_done = False   # flow ด่าน 100 ทำได้ครั้งเดียวต่อไอดี
+        self._ps_skip_track = {}   # หา verify-stage{s} ไม่เจอครบ skip_sec -> ข้ามด่าน
         try:
             while True:
                 try:
@@ -12055,6 +12056,17 @@ class RangerGearBot(threading.Thread):
 
             played = False
             sim = float(config.get("play_stage_similarity", 0.9))
+            # หาด่านแรกที่ยังเหลือใน wanted (ตามลำดับ 30 -> 100 -> 150) -> นับเวลาค้าง ถ้าไม่เจอครบ skip_sec = ข้ามไปด่านถัดไป
+            _skip_sec = float(config.get("play_stage_skip_sec", 20))
+            _first_pending = next((s for s in wanted if s not in done), None)
+            if _first_pending is not None and focus_since is not None:
+                _skip_track = getattr(self, "_ps_skip_track", {})
+                _skip_track.setdefault(_first_pending, time.time())
+                if time.time() - _skip_track[_first_pending] >= _skip_sec:
+                    print(f"[{self.device_id}] [PLAY-STAGE] หา verify-stage{_first_pending} ไม่เจอครบ {_skip_sec:.0f}s - ข้ามไปด่านถัดไป")
+                    done.add(_first_pending)
+                    _skip_track.pop(_first_pending, None)
+                self._ps_skip_track = _skip_track
             for s in wanted:
                 if s in done:
                     continue
@@ -12127,6 +12139,7 @@ class RangerGearBot(threading.Thread):
                             sleep(1)
                 self._ps_play_stage()   # เก็บของที่เหลือ แล้วกลับหน้าภารกิจ (backmisson1)
                 done.add(s)   # นับว่าเสร็จเมื่อเล่นจบจริงเท่านั้น
+                self._ps_skip_track = {}   # เล่นด่านจบ 1 ด่าน -> รีเซ็ตตัวจับเวลา skip สำหรับด่านถัดไป
                 played = True
                 break
             if played or len(done) >= len(wanted):
