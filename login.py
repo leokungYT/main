@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.5.5"
+BOT_VERSION = "3.5.6"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -12315,6 +12315,16 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] [LOGIN-KAIBY] จบ raid-boss (กด back)")
                         _escaped = True
                         break
+                    # raid-boss5 บางทีกดไม่ติด (tutorial บัง) -> ค้างครบ 5s ยังเห็นปุ่มเดิม = กดซ้ำ 1 รอบ
+                    if i == 5:
+                        _rb5 = self._login_kaiby_img(f"{base}/raid-boss/raid-boss5.bmp")
+                        _retry_sec = float(config.get("login_kaiby_raid_boss5_retry_sec", 5))
+                        sleep(_retry_sec)
+                        self.capture_screen()
+                        _again = self._find_in_screen(_rb5, 0.8)
+                        if _again is not None:
+                            print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss5 ค้างครบ {_retry_sec:.0f}s - กดซ้ำ")
+                            self.tap(*_again)
                     sleep(1)
                 if not _escaped:
                     # ทำครบ raid-boss6 แล้ว -> กด back.bmp ออกจากหน้า Event Raid ทันที (เจอเมื่อไหร่กดเลย รอสูงสุด 20s)
