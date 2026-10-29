@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.8.6"
+BOT_VERSION = "3.8.7"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -12578,17 +12578,20 @@ class RangerGearBot(threading.Thread):
                 _back_sec = float(config.get("login_kaiby_raid_back_sec", 5))
                 self._esc_seen = None
                 _escaped = False
-                # เปิด float-check: ทุก tick ของ wait_click จะสแกน raid-boss3/raid-boss5 ลอย ๆ ถ้าค้างครบ 7s -> กดซ้ำ
-                self._raid_float_active = True
-                self._raid_float_base = base
+                # raid-boss3/5 ถูก tutorial บัง matchTemplate ไม่ติด -> ข้ามไป ใช้พิกัดคงที่หลัง raid-boss2/4 แทน
+                # ลำดับ: raid-boss1 -> raid-boss2 -> delay+tap(689,363) -> raid-boss4 -> delay+tap(757,232) -> raid-boss6
+                _rb2_delay = float(config.get("login_kaiby_raid_boss2_delay", 8))
+                _rb2_xy = tuple(config.get("login_kaiby_raid_boss2_xy", [689, 363]))
+                _rb4_delay = float(config.get("login_kaiby_raid_boss4_delay", 8))
+                _rb4_xy = tuple(config.get("login_kaiby_raid_boss4_xy", [757, 232]))
+                self._raid_float_active = False
                 self._raid_float_seen = {}
                 try:
-                    for i in range(1, 7):
+                    for i in (1, 2, 4, 6):
                         # หน้า Event Raid มีกบ tutorial บัง (Win the competition...) -> แตะกล่องข้อความให้ไปต่อ
                         _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
                         # ทุก step ไม่มี timeout - กดตามลำดับ ห้ามข้าม จนกว่าจะเจอ (ออกได้ทางเดียวคือ back.bmp ค้างครบ -> escape)
-                        _rb_sim = float(config.get("login_kaiby_raid_boss35_sim", 0.65)) if i in (3, 5) else 0.8
-                        _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", 0, _rb_sim, nudge=_nd,
+                        _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", 0, 0.8, nudge=_nd,
                                                           escape=(_back, _back_sec))
                         if _r is None:
                             break
@@ -12596,6 +12599,16 @@ class RangerGearBot(threading.Thread):
                             print(f"[{self.device_id}] [LOGIN-KAIBY] จบ raid-boss (กด back)")
                             _escaped = True
                             break
+                        # หลัง raid-boss2 -> รอ 8s แล้วยิงพิกัด raid-boss3 ตรง ๆ (ไม่ scan เพราะโดนบัง)
+                        if i == 2:
+                            print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss2 ติด - รอ {_rb2_delay:.0f}s แล้วแตะพิกัด raid-boss3 {_rb2_xy}")
+                            sleep(_rb2_delay)
+                            self.tap(*_rb2_xy)
+                        # หลัง raid-boss4 -> รอ 8s แล้วยิงพิกัด raid-boss5 ตรง ๆ
+                        elif i == 4:
+                            print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss4 ติด - รอ {_rb4_delay:.0f}s แล้วแตะพิกัด raid-boss5 {_rb4_xy}")
+                            sleep(_rb4_delay)
+                            self.tap(*_rb4_xy)
                         sleep(1)
                 finally:
                     self._raid_float_active = False
