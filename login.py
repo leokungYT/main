@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.6.5"
+BOT_VERSION = "3.6.6"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11967,14 +11967,6 @@ class RangerGearBot(threading.Thread):
             self._ps_active = False
             self._ps_deadline = None
         print(f"[{self.device_id}] [PLAY-STAGE] จบ - เล่นแล้ว: {', '.join(sorted(done, key=int)) or '-'}")
-        # เล่นไม่ครบตาม wanted (เช่น หา verify-stage100/150 ไม่เจอ) -> ปิดแอพทิ้ง
-        _missing = [s for s in wanted if s not in done]
-        if _missing:
-            print(f"[{self.device_id}] [PLAY-STAGE] ด่านที่เล่นไม่ได้: {', '.join(_missing)} - force-stop แอพ")
-            try:
-                self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"], timeout=15)
-            except Exception as _e:
-                print(f"[{self.device_id}] [PLAY-STAGE] force-stop ล้มเหลว: {_e}")
         return done
 
     def _ps_claim_rewards(self):
@@ -12085,16 +12077,25 @@ class RangerGearBot(threading.Thread):
 
             played = False
             sim = float(config.get("play_stage_similarity", 0.9))
-            # หาด่านแรกที่ยังเหลือใน wanted (ตามลำดับ 30 -> 100 -> 150) -> นับเวลาค้าง ถ้าไม่เจอครบ skip_sec = ข้ามไปด่านถัดไป
-            _skip_sec = float(config.get("play_stage_skip_sec", 20))
+            # บังคับกด: หาด่านแรกที่ยังเหลือใน wanted - หา verify-stage{s} ไม่เจอครบ force_sec วิ
+            # -> ตบพิกัดตายตัว play_stage_force_tap[s] (ปุ่ม GO) แทน
+            _force_sec = float(config.get("play_stage_force_sec", 15))
+            _force_tap = config.get("play_stage_force_tap", {"30": [1180, 215], "100": [1180, 215], "150": [1180, 375]})
             _first_pending = next((s for s in wanted if s not in done), None)
             if _first_pending is not None and focus_since is not None:
                 _skip_track = getattr(self, "_ps_skip_track", {})
                 _skip_track.setdefault(_first_pending, time.time())
-                if time.time() - _skip_track[_first_pending] >= _skip_sec:
-                    print(f"[{self.device_id}] [PLAY-STAGE] หา verify-stage{_first_pending} ไม่เจอครบ {_skip_sec:.0f}s - ข้ามไปด่านถัดไป")
-                    done.add(_first_pending)
-                    _skip_track.pop(_first_pending, None)
+                if time.time() - _skip_track[_first_pending] >= _force_sec:
+                    _xy = _force_tap.get(str(_first_pending))
+                    if _xy:
+                        print(f"[{self.device_id}] [PLAY-STAGE] หา verify-stage{_first_pending} ไม่เจอครบ {_force_sec:.0f}s - บังคับกด {_xy}")
+                        self.tap(*_xy)
+                        sleep(2)
+                        _skip_track[_first_pending] = time.time()   # reset ให้นับใหม่ถ้ายังไม่ไป
+                    else:
+                        print(f"[{self.device_id}] [PLAY-STAGE] หา verify-stage{_first_pending} ไม่เจอครบ {_force_sec:.0f}s + ไม่มีพิกัดบังคับ - ข้าม")
+                        done.add(_first_pending)
+                        _skip_track.pop(_first_pending, None)
                 self._ps_skip_track = _skip_track
             for s in wanted:
                 if s in done:
