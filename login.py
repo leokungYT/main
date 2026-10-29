@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.8.4"
+BOT_VERSION = "3.8.5"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11696,9 +11696,30 @@ class RangerGearBot(threading.Thread):
                 sleep(_gap)
             print(f"[{self.device_id}] [PLAY-STAGE] {tag}: priority ({','.join(f'-{p}' for p in _priority_ids)}) ยังค้างครบ {_max} รอบ bash - ยอมไปต่อ")
 
+        _cancel_next_tap = tuple(config.get("play_flow100_next_tap", [714, 679]))
+        _cancel_sim = float(config.get("play_flow100_cancel_sim", 0.8))
+
+        def _try_cancel_shortcut():
+            """หลัง fix-stage100-1 หาย -> ถ้าเจอ cancel บนจอ: กด cancel -> กด NEXT -> สั่งข้ามเหลือทั้งหมดไปทำ buyhelp"""
+            self.capture_screen()
+            _cp = self._find_in_screen(self._login_kaiby_img("img/cancel.png"), _cancel_sim)
+            if _cp is None:
+                _cp = self._find_in_screen("img/cancel.png", _cancel_sim)
+            if _cp is None:
+                return False
+            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: หลัง fix-stage100-1 - เจอ cancel {_cp} - กด cancel + NEXT -> ข้ามไป buyhelp")
+            self.tap(*_cp)
+            sleep(1.0)
+            self.tap(*_cancel_next_tap)
+            sleep(1.0)
+            return True
+
         for i in range(1, 6):
             # ก่อนทำ step ไหนก็ตาม - เจอ priority บนจอ ให้บี้มันก่อน
             _bash_priority()
+            # หลังบี้ -1 หาย -> เจอ cancel ขึ้นมา = ข้าม flow100 ที่เหลือ ไปทำ buyhelp เลย
+            if _try_cancel_shortcut():
+                return True
             _img = self._login_kaiby_img(f"img/auto-play-stage/fix-stage100-{i}.bmp")
             # รอให้ภาพโผล่ก่อน (เผื่อ animation ค่อย ๆ เข้า) - ไม่โผล่ใน _initial_scan วิ = ข้ามไป i+1
             _scan_deadline = time.time() + _initial_scan
