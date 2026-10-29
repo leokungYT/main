@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.7.0"
+BOT_VERSION = "3.7.3"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11644,13 +11644,18 @@ class RangerGearBot(threading.Thread):
         return True
 
     def _raid_float_check(self):
-        """ขั้น raid-boss: เจอ raid-boss3/raid-boss5 ลอยอยู่บนจอต่อเนื่องครบ retry_sec = กดซ้ำ 1 ครั้ง
+        """ขั้น raid-boss: เจอ raid-boss3/raid-boss5 ลอยอยู่บนจอต่อเนื่องครบ retry_sec
+        -> นัดกบ tutorial ก่อน (nudge) -> กด raid-boss ซ้ำ _n_taps ครั้ง (กันกดไม่ติด)
         เรียกจากทุก tick ของ _login_kaiby_wait_click ตอน _raid_float_active=True"""
         if not getattr(self, "_raid_float_active", False):
             return
         _retry_sec = float(config.get("login_kaiby_raid_boss_retry_sec", 7))
         _base = getattr(self, "_raid_float_base", "img/login-kaiby")
         _sim = float(config.get("login_kaiby_raid_float_sim", 0.8))
+        _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
+        _n_taps = int(config.get("login_kaiby_raid_boss_retry_taps", 3))
+        _tap_gap = float(config.get("login_kaiby_raid_boss_retry_gap", 0.25))
+        _cool = float(config.get("login_kaiby_raid_boss_retry_cool", 2.0))
         _seen = getattr(self, "_raid_float_seen", None)
         if _seen is None:
             _seen = {}
@@ -11667,9 +11672,14 @@ class RangerGearBot(threading.Thread):
                 _seen[i] = _now
                 continue
             if _now - _first >= _retry_sec:
-                print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i} ลอยค้างครบ {_retry_sec:.0f}s - กดซ้ำ")
-                self.tap(*_pos)
-                _seen[i] = _now + 1.0   # หน่วงกันกดถี่
+                print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i} ลอยค้างครบ {_retry_sec:.0f}s - nudge {_nd} + tap ซ้ำ x{_n_taps}")
+                # กดกบ tutorial ก่อนกันบัง
+                self.tap(*_nd)
+                sleep(0.3)
+                for _t in range(_n_taps):
+                    self.tap(*_pos)
+                    sleep(_tap_gap)
+                _seen[i] = _now + _cool   # cool-down กันกดถี่
 
     def _ps_check_fixstage(self):
         """เจอ img/login-kaiby/fixstage/fixstage1 -> รัว ESC จนเจอ cancel -> กด cancel -> โยน _PSRestart
@@ -12065,14 +12075,16 @@ class RangerGearBot(threading.Thread):
             if self._ps_cancel_first():
                 continue
 
+            # TOP PRIORITY: เจอ stageget ที่ไหนก็กดก่อน + ทำ _ps_after_stageget ทันที (ก่อนทุกอย่าง รวมถึง focus)
+            if self._ps_tap_if("stageget"):
+                self._ps_after_stageget()
+                idle_since = time.time()
+                continue
+
             # โฟกัสหลัง misson3: ไม่กด stageget/misson อื่นเลย ยกเว้นไม่เจอด่านติดกัน focus_sec -> เลิกโฟกัส
             if focus_since is not None and time.time() - focus_since >= focus_sec:
                 focus_since = None
             if focus_since is None:
-                if self._ps_tap_if("stageget"):
-                    self._ps_after_stageget()
-                    idle_since = time.time()
-                    continue
                 if not self._ps_not_myteam():
                     continue
                 if self._ps_tap_if("misson1", 2):
@@ -12381,7 +12393,14 @@ class RangerGearBot(threading.Thread):
                     for i in range(1, 7):
                         # หน้า Event Raid มีกบ tutorial บัง (Win the competition...) -> แตะกล่องข้อความให้ไปต่อ
                         _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
-                        _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", step_timeout, nudge=_nd,
+                        # raid-boss3 / raid-boss5 กดไม่ติดบ่อย -> ไม่มี timeout + ลด similarity (รอจนกดได้จริง)
+                        if i in (3, 5):
+                            _rb_to = 0   # 0 = ไม่มี timeout รอจนกว่าจะเจอ
+                            _rb_sim = float(config.get("login_kaiby_raid_boss35_sim", 0.65))
+                        else:
+                            _rb_to = step_timeout
+                            _rb_sim = 0.8   # default ของ wait_click
+                        _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", _rb_to, _rb_sim, nudge=_nd,
                                                           escape=(_back, _back_sec))
                         if _r is None:
                             break
