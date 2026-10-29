@@ -12056,3 +12056,62 @@
 [2026-10-29 19:02:29]   File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 1943, in __call__
 [2026-10-29 19:02:29]     def __call__(self, *args):
 [2026-10-29 19:02:29] KeyboardInterrupt
+[2026-10-30 00:59:51] ============================================
+[2026-10-30 00:59:51]   Cloudflare WARP + norandom-reid Bot
+[2026-10-30 00:59:51] ============================================
+[2026-10-30 00:59:51] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-10-30 00:59:51] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-10-30 00:59:51] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-10-30 00:59:51] === Auto Ranger+Gear Script v3.7.8 ===
+[2026-10-30 00:59:51] [VERSION] v3.7.8 | ไฟล์แก้ล่าสุด 2026-10-30 00:51
+[2026-10-30 00:59:51] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-30 00:59:51] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-30 00:59:51] [CLEANUP] Removed 2 stale .lock file(s)
+[2026-10-30 00:59:51] [CLEANUP] Removed old shared_stats.json
+[2026-10-30 00:59:51] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-10-30 00:59:52] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-10-30 00:59:52] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-10-30 00:59:54] --- [ADB] Auto-scanning 101 ports (5555-5755 odd) ---
+[2026-10-30 00:59:56] [ADB] Port scan found 1 device(s): 127.0.0.1:5563
+[2026-10-30 00:59:56] --- Scan Complete ---
+[2026-10-30 01:00:01] [NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)
+[2026-10-30 01:00:01] [WARN] VPN บนเครื่องหลักเปิดอยู่: Tailscale - ทำเน็ต/adb ของอีมูแกว่งได้ ถ้าไม่ได้ใช้ให้ปิดก่อนรันบอท
+[2026-10-30 01:00:01] [INFO] Connected Devices (1): 127.0.0.1:5563
+[2026-10-30 01:00:01] [NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม (1 จอ)...
+[2026-10-30 01:00:06] [NET-RESET] 127.0.0.1:5563: ไม่มี VPN ค้าง | เน็ต: ใช้ได้
+[2026-10-30 01:00:06] [NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง 30 วิ ก่อนเริ่มทำงาน...
+[2026-10-30 01:00:36] [WG-GEN] ล้างไฟล์ IP ใน wg/ ทิ้ง 15 ไฟล์ - สร้างใหม่
+[2026-10-30 01:00:36] [WG-GEN] wg/ ยังไม่มีไฟล์ IP - สร้างให้ก่อนเริ่มบอท...
+[2026-10-30 01:00:36] [WG-GEN] ใช้ Key Pair จาก keypair.txt | มีอยู่แล้ว 0 ไฟล์ ต้องการ 15 | เครื่องที่ 1
+[2026-10-30 01:00:36] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-10-30 01:00:37] [WG-GEN] เครื่องที่ 1: ใช้เซิร์ฟเวอร์ลำดับ 1-15 จาก 196
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] + Windscribe-Jakarta-Ancol-WG.conf  (ID cgk-416-wg.whiskergalaxy.com)
+[2026-10-30 01:00:37] [WG-GEN] สร้างเพิ่ม 15 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/
+[2026-10-30 01:00:40] [INFO] Pre-loading OCR model...
+[2026-10-30 01:00:50] [INFO] Loading EasyOCR model (first time only)...
+[2026-10-30 01:00:50] Using CPU. Note: This module is much faster with a GPU.
+[2026-10-30 01:00:55] [OK] EasyOCR model loaded!
+[2026-10-30 01:00:55] [OK] OCR model loaded.
+[2026-10-30 01:00:55] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-10-30 01:00:55] [FILE] Found 3 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-10-30 01:00:55] [FILE] คิวรวมทั้งหมด 3 ไฟล์ (backup + input-id)
+[2026-10-30 01:00:55] [32m[START] Launching GUI Mode...[0m
+[2026-10-30 01:00:57] [GUI] Launched Successfully. Waiting for manual start.
+[2026-10-30 01:00:57] [GUI] cloud_fast_start=1 - จะเริ่มบอทอัตโนมัติใน 2.0 วินาที
+[2026-10-30 01:01:02] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-10-30 01:01:02] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-10-30 01:01:07] [GUI] Shutting down... Killing background processes.

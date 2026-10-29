@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.7.8"
+BOT_VERSION = "3.8.3"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -11633,26 +11633,58 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ {_hit_name} - เริ่ม flow100")
         else:
             print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เริ่ม flow100 (ไม่รอ checkpoint)")
-        _tap_xy = tuple(config.get("play_flow100_tap", [777, 475]))
+        _fallback_xy = tuple(config.get("play_flow100_tap", [777, 475]))
         _step_sim = float(config.get("play_flow100_step_sim", 0.8))
         _step_wait = float(config.get("play_flow100_step_wait", 10))   # ค้างครบกี่วินาที = re-tap
         _step_max_retry = int(config.get("play_flow100_step_max_retry", 5))   # กันลูปไม่จบ 1 ภาพ
         _initial_scan = float(config.get("play_flow100_step_scan_sec", 5))   # รอดูภาพโผล่ครั้งแรกกี่วิ ไม่โผล่ = ข้าม
+        _use_img_pos = bool(config.get("play_flow100_tap_image", True))   # กดที่พิกัดรูป (True) หรือพิกัดคงที่ (False)
+        _priority_ids = list(config.get("play_flow100_priority_ids", [1, 4]))   # ภาพเน้นพิเศษ - เจอตรงไหนบี้ก่อน
+        _priority_imgs = {_pi: self._login_kaiby_img(f"img/auto-play-stage/fix-stage100-{_pi}.bmp") for _pi in _priority_ids}
+
+        def _bash_priority():
+            """เจอ fix-stage100-{priority_ids} บนจอ -> กดก่อนเสมอ จนกว่าจะหายทุกตัว (ไม่ไปต่อถ้ายังค้างจริง ๆ)"""
+            _bashed = 0
+            _max = int(config.get("play_flow100_priority_max", 40))
+            _gap = float(config.get("play_flow100_priority_gap", 1.5))
+            while _bashed < _max:
+                self.capture_screen()
+                _hit_pi = None
+                _hit_pos = None
+                for _pi in _priority_ids:
+                    _p = self._find_in_screen(_priority_imgs[_pi], _step_sim)
+                    if _p is not None:
+                        _hit_pi = _pi
+                        _hit_pos = _p
+                        break
+                if _hit_pi is None:
+                    if _bashed:
+                        print(f"[{self.device_id}] [PLAY-STAGE] {tag}: priority ({','.join(f'-{p}' for p in _priority_ids)}) หายหมดแล้ว (bash {_bashed} ครั้ง) - ไปต่อ")
+                    return
+                _xy = _hit_pos if _use_img_pos else _fallback_xy
+                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: PRIORITY - เจอ fix-stage100-{_hit_pi} ค้าง - กด {_xy} ({_bashed + 1}/{_max})")
+                self.tap(*_xy)
+                _bashed += 1
+                sleep(_gap)
+            print(f"[{self.device_id}] [PLAY-STAGE] {tag}: priority ({','.join(f'-{p}' for p in _priority_ids)}) ยังค้างครบ {_max} รอบ bash - ยอมไปต่อ")
+
         for i in range(1, 6):
+            # ก่อนทำ step ไหนก็ตาม - เจอ priority บนจอ ให้บี้มันก่อน
+            _bash_priority()
             _img = self._login_kaiby_img(f"img/auto-play-stage/fix-stage100-{i}.bmp")
             # รอให้ภาพโผล่ก่อน (เผื่อ animation ค่อย ๆ เข้า) - ไม่โผล่ใน _initial_scan วิ = ข้ามไป i+1
             _scan_deadline = time.time() + _initial_scan
-            _seen = False
+            _pos = None
             while time.time() < _scan_deadline:
                 self.capture_screen()
-                if self._find_in_screen(_img, _step_sim) is not None:
-                    _seen = True
+                _pos = self._find_in_screen(_img, _step_sim)
+                if _pos is not None:
                     break
                 sleep(0.5)
-            if not _seen:
+            if _pos is None:
                 print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{i} ไม่โผล่ใน {_initial_scan:.0f}s - ข้าม")
                 continue
-            # กดครั้งแรก - แล้วนับถอยหลัง _step_wait วิ ถ้ายังเจออยู่ = กดอีกรอบ (วนสูงสุด _step_max_retry)
+            _tap_xy = _pos if _use_img_pos else _fallback_xy
             print(f"[{self.device_id}] [PLAY-STAGE] {tag}: เจอ fix-stage100-{i} - กด {_tap_xy}")
             self.tap(*_tap_xy)
             for _retry in range(_step_max_retry):
@@ -11664,13 +11696,28 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [PLAY-STAGE] {tag}: รอ fix-stage100-{i} หาย ({_remain:.0f}s)")
                     sleep(2)
                     self.capture_screen()
-                    if self._find_in_screen(_img, _step_sim) is None:
+                    # ระหว่างรอ i ให้เช็ค priority (ไม่รวม i ปัจจุบัน) เสมอ - เจอ = หยุดรอแล้วบี้ priority ก่อน
+                    _pri_hit = None
+                    for _pi in _priority_ids:
+                        if _pi == i:
+                            continue
+                        if self._find_in_screen(_priority_imgs[_pi], _step_sim) is not None:
+                            _pri_hit = _pi
+                            break
+                    if _pri_hit is not None:
+                        print(f"[{self.device_id}] [PLAY-STAGE] {tag}: PRIORITY - fix-stage100-{_pri_hit} โผล่ระหว่างรอ -{i} - กลับไปบี้ก่อน")
+                        _bash_priority()
+                        _still = False
+                        break
+                    _pos = self._find_in_screen(_img, _step_sim)
+                    if _pos is None:
                         _still = False
                         break
                 if not _still:
                     print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{i} หายแล้ว - ไปต่อ")
                     break
-                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{i} ยังค้างครบ {_step_wait:.0f}s - กดซ้ำ (retry {_retry + 1}/{_step_max_retry})")
+                _tap_xy = _pos if _use_img_pos and _pos is not None else _fallback_xy
+                print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{i} ยังค้างครบ {_step_wait:.0f}s - กดซ้ำ {_tap_xy} (retry {_retry + 1}/{_step_max_retry})")
                 self.tap(*_tap_xy)
             else:
                 print(f"[{self.device_id}] [PLAY-STAGE] {tag}: fix-stage100-{i} ไม่หายครบ {_step_max_retry} รอบ - ข้ามไปต่อ")
@@ -11737,14 +11784,12 @@ class RangerGearBot(threading.Thread):
                 _seen[i] = _now
                 continue
             if _now - _first >= _retry_sec:
-                _rb_fixed = config.get("login_kaiby_raid_boss_fixed_tap", {"3": [621, 365], "5": [747, 230]})
-                _xy = _rb_fixed.get(str(i), _pos)
-                print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i} ลอยค้างครบ {_retry_sec:.0f}s - nudge {_nd} + tap พิกัดตายตัว {_xy} x{_n_taps}")
+                print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i} ลอยค้างครบ {_retry_sec:.0f}s - nudge {_nd} + tap พิกัดรูป {_pos} x{_n_taps}")
                 # กดกบ tutorial ก่อนกันบัง
                 self.tap(*_nd)
                 sleep(0.3)
                 for _t in range(_n_taps):
-                    self.tap(*_xy)
+                    self.tap(*_pos)
                     sleep(_tap_gap)
                 _seen[i] = _now + _cool   # cool-down กันกดถี่
 
@@ -12459,26 +12504,13 @@ class RangerGearBot(threading.Thread):
                 self._raid_float_base = base
                 self._raid_float_seen = {}
                 try:
-                    _rb_fixed = config.get("login_kaiby_raid_boss_fixed_tap", {"3": [621, 365], "5": [747, 230]})
                     for i in range(1, 7):
                         # หน้า Event Raid มีกบ tutorial บัง (Win the competition...) -> แตะกล่องข้อความให้ไปต่อ
                         _nd = tuple(config.get("login_kaiby_raid_nudge", [550, 190]))
-                        # raid-boss3 / raid-boss5 กดไม่ติดบ่อย -> ไม่มี timeout + ลด similarity + กดพิกัดตายตัวแทน
-                        if i in (3, 5):
-                            _rb_to = 0   # 0 = ไม่มี timeout รอจนกว่าจะเจอ
-                            _rb_sim = float(config.get("login_kaiby_raid_boss35_sim", 0.65))
-                            _rb_tap = False
-                        else:
-                            _rb_to = step_timeout
-                            _rb_sim = 0.8   # default ของ wait_click
-                            _rb_tap = True
-                        _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", _rb_to, _rb_sim, tap=_rb_tap, nudge=_nd,
+                        # ทุก step ไม่มี timeout - กดตามลำดับ ห้ามข้าม จนกว่าจะเจอ (ออกได้ทางเดียวคือ back.bmp ค้างครบ -> escape)
+                        _rb_sim = float(config.get("login_kaiby_raid_boss35_sim", 0.65)) if i in (3, 5) else 0.8
+                        _r = self._login_kaiby_wait_click(f"{base}/raid-boss/raid-boss{i}.bmp", 0, _rb_sim, nudge=_nd,
                                                           escape=(_back, _back_sec))
-                        if _r is not None and _r != "escape" and i in (3, 5):
-                            _xy = _rb_fixed.get(str(i))
-                            if _xy:
-                                print(f"[{self.device_id}] [LOGIN-KAIBY] raid-boss{i}: เจอรูป -> กดพิกัดตายตัว {_xy}")
-                                self.tap(*_xy)
                         if _r is None:
                             break
                         if _r == "escape":
