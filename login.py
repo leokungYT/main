@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.8.5"
+BOT_VERSION = "3.8.6"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -8072,11 +8072,17 @@ class RangerGearBot(threading.Thread):
     # =========================================================
     # Screen & Image Methods  
     # =========================================================
+    @staticmethod
+    def _tmpl_wants_color(template_path):
+        # raid-boss ทั้งโฟลเดอร์ (raid-boss1-6, back, checkpoint-rainboss) โหลดดิบเป็นสี
+        p = str(template_path).replace("\\", "/").lower()
+        return "/raid-boss/" in p
+
     @classmethod
     def _get_template(cls, template_path):
         if not hasattr(cls, '_template_cache_cls'):
             cls._template_cache_cls = {}
-        
+
         if template_path not in cls._template_cache_cls:
             # Ensure path is absolute relative to script dir
             if not os.path.isabs(template_path):
@@ -8084,20 +8090,34 @@ class RangerGearBot(threading.Thread):
                 full_path = os.path.join(script_dir, template_path)
             else:
                 full_path = template_path
-                
+
             # Convert forward slashes to backward slashes for Windows compatibility
             full_path = os.path.normpath(full_path)
-            
+
             if not os.path.exists(full_path):
                 cls._template_cache_cls[template_path] = None
                 return None
-                
-            tmpl = cv2.imread(full_path, 0)
+
+            flag = cv2.IMREAD_COLOR if cls._tmpl_wants_color(template_path) else 0
+            tmpl = cv2.imread(full_path, flag)
             if tmpl is None:
                 print(f"[WARN] Failed to read image (integrity check): {full_path}")
             cls._template_cache_cls[template_path] = tmpl
-            
+
         return cls._template_cache_cls[template_path]
+
+    def _screen_for(self, tmpl):
+        """คืน (screen, tmpl) ที่จำนวน channel ตรงกัน
+        template สี -> ใช้ _screen_color (BGR). ถ้าไม่มี -> ยุบ tmpl เป็น gray ใช้ _screen"""
+        if tmpl is None:
+            return None, None
+        if tmpl.ndim == 3:
+            sc = getattr(self, "_screen_color", None)
+            if sc is not None and sc.ndim == 3:
+                return sc, tmpl
+            # fallback: ยังไม่มีภาพสีเก็บไว้ -> ยุบ template ลง gray
+            return self._screen, cv2.cvtColor(tmpl, cv2.COLOR_BGR2GRAY)
+        return self._screen, tmpl
 
     def adb_run(self, args, timeout=10, **kwargs):
         if 'creationflags' not in kwargs and os.name == 'nt':
@@ -8292,18 +8312,22 @@ class RangerGearBot(threading.Thread):
         if tmpl is None:
             return None
 
+        screen, tmpl = self._screen_for(tmpl)
+        if screen is None:
+            return None
+
         if self._pos_mem is not None:
             # Cache key includes the threshold: the same image searched at a
             # different similarity is a different question.
-            return self._pos_mem.find(self._screen, tmpl,
+            return self._pos_mem.find(screen, tmpl,
                                       (template_path, similarity), similarity)
 
         try:
-            result = cv2.matchTemplate(self._screen, tmpl, cv2.TM_CCOEFF_NORMED)
+            result = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
             loc = np.where(result >= similarity)
             if len(loc[0]) > 0:
                 y, x = loc[0][0], loc[1][0]
-                h, w = tmpl.shape
+                h, w = tmpl.shape[:2]
                 return (x + w // 2, y + h // 2)
         except:
             pass
@@ -8328,8 +8352,11 @@ class RangerGearBot(threading.Thread):
         tmpl = self._get_template(template_path)
         if tmpl is None:
             return 0.0
+        screen, tmpl = self._screen_for(tmpl)
+        if screen is None:
+            return 0.0
         try:
-            result = cv2.matchTemplate(self._screen, tmpl, cv2.TM_CCOEFF_NORMED)
+            result = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
             return float(np.max(result))
         except:
             return 0.0
@@ -8431,10 +8458,13 @@ class RangerGearBot(threading.Thread):
             tmpl = self._get_template(template_path)
             if self._screen is None or tmpl is None:
                 return 0.0
-            th, tw = tmpl.shape[:2]
-            if self._screen.shape[0] < th or self._screen.shape[1] < tw:
+            screen, tmpl = self._screen_for(tmpl)
+            if screen is None:
                 return 0.0
-            res = cv2.matchTemplate(self._screen, tmpl, cv2.TM_CCOEFF_NORMED)
+            th, tw = tmpl.shape[:2]
+            if screen.shape[0] < th or screen.shape[1] < tw:
+                return 0.0
+            res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
             return float(cv2.minMaxLoc(res)[1])
         except Exception:
             return 0.0
