@@ -1151,7 +1151,32 @@ def reset_network_all(devices):
         except Exception:
             return ""
 
+    def ensure_wg_installed(dev):
+        """ติดตั้งแอป WireGuard ลงอีมูฯ ถ้ายังไม่มี - ทำก่อนล้าง VPN กันต่อ VPN ครั้งแรกต้องรอโหลด+ลง"""
+        if not int(config.get("wg_enabled", 1) or 0):
+            return
+        got = sh(dev, f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=12)
+        if "YES" in (got or ""):
+            return
+        apk = _wg_apk_path()
+        if not apk:
+            print(f"[WG-INSTALL] {dev}: ไม่มีไฟล์ wg/wireguard.apk (โหลดไม่ได้) - ข้ามเครื่องนี้")
+            return
+        print(f"[WG-INSTALL] {dev}: ไม่พบแอป {pkg} ในอีมูฯ - กำลังติดตั้ง...")
+        try:
+            r = subprocess.run([adb_path, "-s", dev, "install", "-r", apk],
+                               capture_output=True, text=True, errors="replace",
+                               timeout=180, **kw)
+            out = (r.stdout or "") + (r.stderr or "")
+            if "Success" in out:
+                print(f"[WG-INSTALL] {dev}: ติดตั้ง WireGuard สำเร็จ")
+            else:
+                print(f"[WG-INSTALL] {dev}: ติดตั้งไม่สำเร็จ -> {out.strip()[:200]}")
+        except Exception as e:
+            print(f"[WG-INSTALL] {dev}: ติดตั้งผิดพลาด {e}")
+
     def one(dev):
+        ensure_wg_installed(dev)
         had = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
         if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_once", 1) or 0):
             # wg_once: VPN ต้องเปิดแช่ไว้ - ตอนเริ่มห้ามปิด tunnel ที่เปิดอยู่ ล้างแค่ proxy ค้าง
