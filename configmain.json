@@ -118,6 +118,7 @@
     ],
     "wg_after_login": 0,
     "wg_dir": "wg",
+    "wg_profile": "",
     "wg_per_device": {},
     "channels": {
         "ch1": [

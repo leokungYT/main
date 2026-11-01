@@ -889,6 +889,24 @@ def load_config(quiet=False):
         except Exception as e:
             print(f"[WARN] Error loading configmain.json (wg_*): {e}")
 
+    # wg_profile: สลับโฟลเดอร์ IP (เช่น ip-chan / ip-boy) โดยไม่ต้องแก้ wg_dir
+    _wg_resolve_profile()
+
+
+def _wg_resolve_profile():
+    """อ่าน config['wg_profile'] -> หาโฟลเดอร์ที่มีจริง แล้วเขียนทับ config['wg_dir']"""
+    prof = str(config.get("wg_profile", "") or "").strip()
+    if not prof:
+        return
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [os.path.join("wg", prof), prof]
+    for c in candidates:
+        if os.path.isdir(os.path.join(script_dir, c)):
+            config["wg_dir"] = c
+            print(f"[CONFIG] wg_profile='{prof}' -> wg_dir='{c}'")
+            return
+    print(f"[CONFIG] wg_profile='{prof}' ไม่พบโฟลเดอร์ (ลอง: {candidates}) - ใช้ wg_dir='{config.get('wg_dir', 'wg')}' เดิม")
+
 
 # =========================================================
 # WireGuard (VPN แยกต่อจอ) - พอร์ตมาจาก login.py ให้ทำงานเหมือนกัน

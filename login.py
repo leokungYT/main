@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.8.8"
+BOT_VERSION = "3.8.9"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3032,6 +3032,26 @@ def load_config():
             print(f"[CONFIG] UI Settings Loaded: {ui_config_file}")
         except Exception as e:
             print(f"[WARN] Error loading UI config: {e}")
+
+    # 3. wg_profile: สลับโฟลเดอร์ IP (เช่น ip-chan / ip-boy) โดยไม่ต้องแก้ wg_dir
+    #    "wg_profile": "ip-chan" -> ใช้ wg/ip-chan/ (ถ้ามี) หรือ ip-chan/ ที่ root
+    #    เอาไว้โยนไฟล์ .conf จาก key หลายชุดลงคนละโฟลเดอร์ แล้ว switch ใน config ทีเดียว
+    _wg_resolve_profile()
+
+
+def _wg_resolve_profile():
+    """อ่าน config['wg_profile'] -> หาโฟลเดอร์ที่มีจริง แล้วเขียนทับ config['wg_dir']"""
+    prof = str(config.get("wg_profile", "") or "").strip()
+    if not prof:
+        return
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [os.path.join("wg", prof), prof]
+    for c in candidates:
+        if os.path.isdir(os.path.join(script_dir, c)):
+            config["wg_dir"] = c
+            print(f"[CONFIG] wg_profile='{prof}' -> wg_dir='{c}'")
+            return
+    print(f"[CONFIG] wg_profile='{prof}' ไม่พบโฟลเดอร์ (ลอง: {candidates}) - ใช้ wg_dir='{config.get('wg_dir', 'wg')}' เดิม")
 
 
 def reset_network_all(devices):
