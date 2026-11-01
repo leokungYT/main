@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.9.2"
+BOT_VERSION = "3.9.3"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -97,12 +97,9 @@ def _always_on_enabled():
 #   โดนตีตราแล้ว - สลับใน pool เดียวกัน = วนในแบล็กลิสต์เดียว
 #   แก้: ตัดชื่อเจ้าของ ASN ออกจาก pool, สร้างแต่เซิร์ฟที่ไม่อยู่ใน blacklist
 # ============================================================
-# ASN endpoint hostname ส่วนที่โดนเกมแบนทั้งก้อน (เซิร์ฟตอบ 401 ที่ probe แต่ login = Authentication failed)
-# เพิ่มชื่อลงที่นี่เมื่อเจอเพิ่ม - ไฟล์ wg/*.conf ที่ endpoint match จะไม่ถูกเลือก
-_ASN_BLACKLIST = {
-    "whiskergalaxy.com",     # Windscribe/Datapacket - log ยืนยัน Authentication failed ทุก country
-    # "nordvpn.com",         # ถ้าใช้แล้วเจอซ้ำ ปลดคอมเมนต์
-}
+# ASN blacklist ปิดถาวร: user ยืนยันซื้อ Windscribe (whiskergalaxy.com) 3 บัญชีมาใช้ -
+# การ auto-prune ลบไฟล์ที่ generate ใหม่ทิ้งหมด = loop ตาย ไม่เหลือ .conf ใน pool
+_ASN_BLACKLIST = set()
 
 
 def _conf_in_asn_blacklist(conf_path):
@@ -5180,15 +5177,7 @@ class RangerGearBot(threading.Thread):
             return
         if not int(config.get("wg_enabled", 1) or 0) or getattr(self, "_wg_off", False):
             return
-        # กัน ASN blacklist เผาเวลา: ลบไฟล์ที่ชี้ไปผู้ให้บริการที่โดนทั้ง ASN ก่อนเลือก
-        try:
-            wg_dir = str(config.get("wg_dir", "wg"))
-            n = _prune_blacklisted_confs(wg_dir)
-            if n:
-                print(f"[{self.device_id}] [ASN] ลบไฟล์ WG ที่อยู่ใน blacklist {n} ไฟล์ - "
-                      f"wg_gen จะสร้างชดเชยในรอบนี้")
-        except Exception:
-            pass
+        # ASN prune ปิดแล้ว - ไม่ลบไฟล์ตาม hostname (ดู _ASN_BLACKLIST)
         conf = self._wg_conf_for_device()
         if not conf and not getattr(self, "_wg_down_done", False):
             # ไม่ได้ไฟล์รอบนี้ แต่ tunnel เก่าจากรอบก่อนยังค้าง (อาจใช้กุญแจชนกับจออื่น) -> ปิดทิ้ง
