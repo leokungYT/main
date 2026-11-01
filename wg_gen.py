@@ -32,10 +32,11 @@ def read_conf(path):
 
 
 def main():
-    # python wg_gen.py 15 [--account account2] [--machine 3] [--total 30] [TH SG ...]
+    # python wg_gen.py 15 [--account account2] [--machine 3] [--total 30] [--dir wg/ip-chan/main-1] [TH SG ...]
+    # ไม่ระบุ --dir -> อ่าน wg_profile จาก configmain.json: list -> วนทุกโฟลเดอร์ย่อย
     args = sys.argv[1:]
     opt = {}
-    for k in ("--account", "--machine", "--total"):
+    for k in ("--account", "--machine", "--total", "--dir"):
         if k in args:
             i = args.index(k)
             opt[k] = args[i + 1]
@@ -47,7 +48,47 @@ def main():
     countries = [c.upper() for c in args[1:]] or None
     if save:
         save_config(opt.get("--account"), opt.get("--machine"))
-    return generate(want, countries, None, int(opt.get("--machine", 0)), opt.get("--account"), int(opt.get("--total", 0)))
+    machine = int(opt.get("--machine", 0))
+    acc = opt.get("--account")
+    total = int(opt.get("--total", 0))
+    if "--dir" in opt:
+        return generate(want, countries, opt["--dir"], machine, acc, total)
+    dirs = _wg_profile_dirs()
+    if not dirs:
+        return generate(want, countries, None, machine, acc, total)
+    print(f"[WG-GEN] wg_profile มี {len(dirs)} โฟลเดอร์ - generate ทีละอัน ({', '.join(dirs)})")
+    rc = 0
+    for i, d in enumerate(dirs, 1):
+        print(f"\n[WG-GEN] ===== [{i}/{len(dirs)}] โฟลเดอร์: {d} =====")
+        r = generate(want, countries, d, machine, acc, total)
+        rc = r or rc
+    print(f"\n[WG-GEN] จบครบ {len(dirs)} โฟลเดอร์")
+    return rc
+
+
+def _wg_profile_dirs():
+    """อ่าน configmain.json -> wg_profile -> คืน list ของ path โฟลเดอร์ที่มีจริง (relative จากโฟลเดอร์ repo)"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        with open(os.path.join(script_dir, "configmain.json"), encoding="utf-8-sig") as f:
+            cfg = json.load(f)
+    except Exception:
+        return []
+    prof = cfg.get("wg_profile", "")
+    if isinstance(prof, (list, tuple)):
+        profs = [str(p).strip() for p in prof if str(p).strip()]
+    else:
+        s = str(prof or "").strip()
+        profs = [p.strip() for p in s.split(",") if p.strip()] if s else []
+    out = []
+    for p in profs:
+        for cand in (os.path.join("wg", p), p):
+            if os.path.isdir(os.path.join(script_dir, cand)):
+                out.append(cand.replace("\\", "/"))
+                break
+        else:
+            print(f"[WG-GEN] wg_profile='{p}' ไม่พบโฟลเดอร์ - ข้าม")
+    return out
 
 
 def save_config(account=None, machine=None, path="configmain.json"):
