@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.9.3"
+BOT_VERSION = "3.9.4"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3078,6 +3078,24 @@ def _wg_resolve_profile():
                     pass
     except OSError:
         pass
+    # ก่อน copy เข้า pool: generate เพิ่มใน sub แต่ละอันให้ครบจำนวน (ถ้า user โยน 1 ไฟล์เป็นต้นแบบ) - ใช้ keypair ของ sub นั้น ๆ
+    try:
+        import wg_gen
+        _per = int(config.get("wg_per_machine", 15) or 15)
+        for d in resolved:
+            d_abs = os.path.join(script_dir, d)
+            try:
+                n_cur = len([f for f in os.listdir(d_abs) if f.lower().endswith(".conf")])
+            except OSError:
+                n_cur = 0
+            if n_cur == 0:
+                print(f"[CONFIG] wg_profile: {d} ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้")
+                continue
+            if n_cur < _per:
+                print(f"[CONFIG] wg_profile: {d} มี {n_cur} ไฟล์ (<{_per}) - generate เพิ่มจาก keypair ของ sub นี้")
+                wg_gen.generate(_per, config.get("wg_gen_countries") or None, d, 0, "", 0)
+    except Exception as e:
+        print(f"[CONFIG] wg_profile pre-generate ล้มเหลว: {e}")
     n = 0
     for d in resolved:
         d_abs = os.path.join(script_dir, d)
@@ -5365,11 +5383,21 @@ class RangerGearBot(threading.Thread):
             f"chmod -R 700 {d}/files",
             f"restorecon -R {d}/files 2>/dev/null",
             f"rm -f {tmp_conf} {tmp_pb}",
-            # อนุญาตสร้าง VPN ล่วงหน้า (ไม่ต้องกดยืนยันบนจอ)
+            # อนุญาตสร้าง VPN ล่วงหน้า (ไม่ต้องกดยืนยันบนจอ) - ยิงทั้งแบบมี --user และไม่มี กัน Android ไม่รับ format เดียว
+            f"cmd appops set --user 0 {pkg} ACTIVATE_VPN allow 2>/dev/null",
             f"cmd appops set {pkg} ACTIVATE_VPN allow",
-            # Android 12 ห้ามแอปเปิด VpnService จากเบื้องหลัง -> ใส่ไว้ในรายการยกเว้นประหยัดแบต (ทดสอบบน MuMu แล้วผ่าน)
+            # Android 12 ห้ามแอปเปิด VpnService จากเบื้องหลัง -> ใส่ไว้ในรายการยกเว้นประหยัดแบต
             f"cmd deviceidle whitelist +{pkg}",
-            # สั่งเปิด tunnel เป็น root (ผ่านสิทธิ์ CONTROL_TUNNELS) ; -f 0x20 = ส่งถึงแอปที่ถูก force-stop
+            # บังคับให้ WireGuard เป็น always-on VPN กัน Android บล็อก service background
+            f"settings put global always_on_vpn_app {pkg} 2>/dev/null",
+            # เปิด MainActivity ก่อน - app ต้อง initialize DataStore (อ่าน allow_remote_control_intents) ก่อน receiver จะยอมรับ broadcast
+            f"am start -W -n {pkg}/.activity.MainActivity >/dev/null 2>&1",
+            f"sleep 1",
+            # สั่งเปิด tunnel 3 ครั้ง (บาง MuMu รับ broadcast ครั้งแรกไม่ทัน app ยังไม่ bind receiver)
+            f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}",
+            f"sleep 1",
+            f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}",
+            f"sleep 1",
             f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}",
             f"rm -f {tmp_sh}",
             "",
@@ -12936,8 +12964,15 @@ if __name__ == "__main__":
         try:
             import wg_gen
             _wgd = str(config.get("wg_dir", "wg"))
+            # pool mode (wg_profile เป็น list -> wg_dir='wg/.pool'): ล้าง pool = ล้างกุญแจของ sub ทิ้งหมด -> rebuild จาก sub แทน
+            _is_pool = os.path.basename(_wgd.rstrip("/\\")) == ".pool"
             _wg_machine_no(_wgd)   # จำเลขเครื่องจาก server (.managed) ก่อนล้าง wg/
-            if int(config.get("wg_clear_on_start", 1) or 0):
+            if _is_pool:
+                _wg_resolve_profile()
+                _wgd = str(config.get("wg_dir", "wg"))
+                _n_pool = len(glob.glob(os.path.join(_wgd, "*.conf")))
+                print(f"[WG-GEN] pool mode - rebuild pool จาก sub ของ wg_profile: {_n_pool} ไฟล์")
+            if int(config.get("wg_clear_on_start", 1) or 0) and not _is_pool:
                 # เริ่มบอททุกครั้ง: ล้างไฟล์ IP ใน wg/ ทิ้งหมด (รวม .managed ที่ทำให้ไม่ยอมสร้างเอง) แล้วสร้างใหม่
                 # เก็บกุญแจไว้ก่อนลบ (keypair.txt) -> ไฟล์จาก server ก็ยังสร้างใหม่ได้ด้วยกุญแจเดิมของเครื่อง
                 os.makedirs(_wgd, exist_ok=True)
