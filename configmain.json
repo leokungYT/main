@@ -119,6 +119,7 @@
     "wg_after_login": 0,
     "wg_dir": "wg",
     "wg_profile": "",
+    "_wg_profile_hint": "string เดียวหรือ list เช่น [\"ip-chan/main-1\",\"ip-chan/main-2\",\"ip-chan/main-3\"] = รวม IP ของทั้ง 3 โฟลเดอร์",
     "wg_per_device": {},
     "channels": {
         "ch1": [

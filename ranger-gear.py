@@ -894,18 +894,65 @@ def load_config(quiet=False):
 
 
 def _wg_resolve_profile():
-    """อ่าน config['wg_profile'] -> หาโฟลเดอร์ที่มีจริง แล้วเขียนทับ config['wg_dir']"""
-    prof = str(config.get("wg_profile", "") or "").strip()
-    if not prof:
+    """อ่าน config['wg_profile'] -> ตั้ง config['wg_dir']
+    - string เดียว: "ip-chan/main-1" -> wg_dir='wg/ip-chan/main-1'
+    - list / comma: ["ip-chan/main-1","ip-chan/main-2"] -> รวม .conf ทุกโฟลเดอร์เข้า wg/.pool/ แล้วใช้ pool
+    """
+    prof = config.get("wg_profile", "")
+    if isinstance(prof, (list, tuple)):
+        profs = [str(p).strip() for p in prof if str(p).strip()]
+    else:
+        s = str(prof or "").strip()
+        profs = [p.strip() for p in s.split(",") if p.strip()] if s else []
+    if not profs:
         return
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates = [os.path.join("wg", prof), prof]
-    for c in candidates:
-        if os.path.isdir(os.path.join(script_dir, c)):
-            config["wg_dir"] = c
-            print(f"[CONFIG] wg_profile='{prof}' -> wg_dir='{c}'")
-            return
-    print(f"[CONFIG] wg_profile='{prof}' ไม่พบโฟลเดอร์ (ลอง: {candidates}) - ใช้ wg_dir='{config.get('wg_dir', 'wg')}' เดิม")
+    resolved = []
+    for p in profs:
+        for cand in (os.path.join("wg", p), p):
+            if os.path.isdir(os.path.join(script_dir, cand)):
+                resolved.append(cand.replace("\\", "/"))
+                break
+        else:
+            print(f"[CONFIG] wg_profile='{p}' ไม่พบโฟลเดอร์ - ข้าม")
+    if not resolved:
+        print(f"[CONFIG] wg_profile: ไม่พบโฟลเดอร์ที่ใช้ได้เลย ({profs}) - ใช้ wg_dir='{config.get('wg_dir', 'wg')}' เดิม")
+        return
+    if len(resolved) == 1:
+        config["wg_dir"] = resolved[0]
+        print(f"[CONFIG] wg_profile -> wg_dir='{resolved[0]}'")
+        return
+    pool = "wg/.pool"
+    pool_abs = os.path.join(script_dir, pool)
+    try:
+        os.makedirs(pool_abs, exist_ok=True)
+        for f in os.listdir(pool_abs):
+            if f.lower().endswith(".conf"):
+                try:
+                    os.remove(os.path.join(pool_abs, f))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    n = 0
+    for d in resolved:
+        d_abs = os.path.join(script_dir, d)
+        try:
+            for f in os.listdir(d_abs):
+                if not f.lower().endswith(".conf"):
+                    continue
+                src = os.path.join(d_abs, f)
+                prefix = d.replace("/", "__").replace("\\", "__")
+                dst = os.path.join(pool_abs, f"{prefix}__{f}")
+                try:
+                    shutil.copy2(src, dst)
+                    n += 1
+                except OSError:
+                    pass
+        except OSError:
+            pass
+    config["wg_dir"] = pool
+    print(f"[CONFIG] wg_profile -> รวม {n} ไฟล์จาก {len(resolved)} โฟลเดอร์ ({', '.join(resolved)}) -> wg_dir='{pool}'")
 
 
 # =========================================================

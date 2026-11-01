@@ -59,6 +59,7 @@ _processing/
 
 # WireGuard config à¸•à¹ˆà¸­à¸ˆà¸­ (à¸¡à¸µà¸à¸¸à¸à¹à¸ˆà¸šà¸±à¸à¸Šà¸µ Windscribe) + à¹„à¸Ÿà¸¥à¹Œà¹à¸­à¸› - à¸«à¹‰à¸²à¸¡à¸‚à¸¶à¹‰à¸™ git
 wg/*
+wg/.pool/
 !wg/README.txt
 !wg/ip-chan/
 !wg/ip-boy/
