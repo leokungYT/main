@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "3.9.6"
+BOT_VERSION = "3.9.7"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3135,24 +3135,26 @@ def reset_network_all(devices):
             return ""
 
     def ensure_wg_installed(dev):
-        """ติดตั้งแอป WireGuard ลงอีมูฯ ถ้ายังไม่มี - ทำก่อนล้าง VPN กันต่อ VPN ครั้งแรกต้องรอโหลด+ลง"""
+        """ติดตั้งแอป WireGuard ลงอีมูฯ ถ้ายังไม่มี - ทำก่อนล้าง VPN กันต่อ VPN ครั้งแรกต้องรอโหลด+ลง
+        พิมพ์ status ทุกจอ: มี/ลงใหม่/ลงไม่ได้ - จะได้รู้ว่า bot เช็คแล้ว"""
         if not int(config.get("wg_enabled", 1) or 0):
             return
         got = sh(dev, f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=12)
         if "YES" in (got or ""):
+            print(f"[WG-INSTALL] {dev}: มีแอป WireGuard อยู่แล้ว ✓")
             return
         apk = _wg_apk_path()
         if not apk:
-            print(f"[WG-INSTALL] {dev}: ไม่มีไฟล์ wg/wireguard.apk (โหลดไม่ได้) - ข้ามเครื่องนี้")
+            print(f"[WG-INSTALL] {dev}: ไม่พบแอป + โหลดไฟล์ wg/wireguard.apk ไม่ได้ - ข้ามเครื่องนี้")
             return
-        print(f"[WG-INSTALL] {dev}: ไม่พบแอป {pkg} ในอีมูฯ - กำลังติดตั้ง...")
+        print(f"[WG-INSTALL] {dev}: ไม่พบแอป WireGuard - กำลังติดตั้งจาก {apk}...")
         try:
             r = subprocess.run([adb_path, "-s", dev, "install", "-r", apk],
                                capture_output=True, text=True, errors="replace",
                                timeout=180, **kw)
             out = (r.stdout or "") + (r.stderr or "")
             if "Success" in out:
-                print(f"[WG-INSTALL] {dev}: ติดตั้ง WireGuard สำเร็จ")
+                print(f"[WG-INSTALL] {dev}: ติดตั้ง WireGuard สำเร็จ ✓")
             else:
                 print(f"[WG-INSTALL] {dev}: ติดตั้งไม่สำเร็จ -> {out.strip()[:200]}")
         except Exception as e:
