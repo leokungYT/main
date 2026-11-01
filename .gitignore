@@ -66,6 +66,18 @@ wg/ip-chan/*
 wg/ip-boy/*
 !wg/ip-chan/README.txt
 !wg/ip-boy/README.txt
+!wg/ip-chan/main-1/
+!wg/ip-chan/main-2/
+!wg/ip-chan/main-3/
+!wg/ip-boy/main-1/
+wg/ip-chan/main-1/*
+wg/ip-chan/main-2/*
+wg/ip-chan/main-3/*
+wg/ip-boy/main-1/*
+!wg/ip-chan/main-1/.gitkeep
+!wg/ip-chan/main-2/.gitkeep
+!wg/ip-chan/main-3/.gitkeep
+!wg/ip-boy/main-1/.gitkeep
 wg_accounts/
 # à¸•à¸±à¸§à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡à¸à¸¸à¸à¹à¸ˆ VPN à¸•à¹ˆà¸­à¸šà¸±à¸à¸Šà¸µ (à¸¡à¸µà¸à¸¸à¸à¹à¸ˆà¸šà¸±à¸à¸Šà¸µà¸­à¸¢à¸¹à¹ˆà¸‚à¹‰à¸²à¸‡à¹ƒà¸™) - à¸«à¹‰à¸²à¸¡à¸‚à¸¶à¹‰à¸™ git
 install_account*.bat
