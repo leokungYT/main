@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.0.2"
+BOT_VERSION = "4.0.3"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -1094,16 +1094,32 @@ _wg_apk_lock = threading.Lock()
 
 
 def _wg_apk_path():
-    """ไฟล์ติดตั้งแอป WireGuard (Android) - ไม่มีจะโหลดมาเก็บที่ wg/wireguard.apk ครั้งเดียว (ทุกจอใช้ร่วม)"""
+    """ไฟล์ติดตั้งแอป WireGuard (Android) - หาจากหลายจุดก่อนโหลดใหม่
+    (ทุกจอ/ทุก sub-folder ใช้ apk ตัวเดียวกัน ไม่ควรเก็บแยกใต้ wg/.pool, wg/ip-chan/*)
+    ลำดับการค้นหา:
+      1) <wg_dir>/wireguard.apk          (sub ปัจจุบัน เช่น wg/.pool/)
+      2) wg/wireguard.apk                 (จุดกลาง - ที่ควรเก็บถาวร)
+      3) script_dir/wg/wireguard.apk     (absolute - กันกรณี cwd ต่าง)
+    ไม่เจอทั้งหมด -> โหลดลง wg/ (ไม่ลงใต้ .pool/ sub) ทุกจอจะใช้ร่วม
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     wg_dir = str(config.get("wg_dir", "wg"))
-    path = os.path.join(wg_dir, "wireguard.apk")
+    candidates = [
+        os.path.join(wg_dir, "wireguard.apk"),
+        os.path.join("wg", "wireguard.apk"),
+        os.path.join(script_dir, "wg", "wireguard.apk"),
+    ]
     with _wg_apk_lock:
-        if os.path.exists(path) and os.path.getsize(path) > 1_000_000:
-            return path
+        for p in candidates:
+            if os.path.exists(p) and os.path.getsize(p) > 1_000_000:
+                return p
+        # เก็บถาวรที่ wg/ (ไม่ใช่ sub) - คงอยู่ข้าม restart แม้ wg_profile เปลี่ยน
+        central_dir = os.path.join(script_dir, "wg")
         try:
+            os.makedirs(central_dir, exist_ok=True)
             import urllib.request
-            os.makedirs(wg_dir, exist_ok=True)
-            print("[WG] กำลังโหลดแอป WireGuard (ครั้งแรกครั้งเดียว)...")
+            print("[WG] กำลังโหลดแอป WireGuard (ครั้งแรกครั้งเดียว) ลง wg/wireguard.apk...")
+            path = os.path.join(central_dir, "wireguard.apk")
             tmp = path + ".part"
             urllib.request.urlretrieve(str(config.get("wg_apk_url", WG_APK_URL)), tmp)
             os.replace(tmp, path)
