@@ -403,6 +403,34 @@ def _hosts_copy_exists(dev):
     return sh(f"test -e {HOSTS_COPY}", device=dev).returncode == 0
 
 
+def reclaim_stale_routing(dev):
+    """ของเก่าที่ชื่อ/พอร์ตตรงกับ capture_auto เป๊ะ ๆ = รอบก่อนที่ตาย/ปิดไม่สะอาด
+    (HOSTS_COPY = /data/local/tmp/lgr_capture_auto_hosts, iptables REDIRECT :443 -> :DEV_PORT ของเรา,
+     adb reverse tcp:DEV_PORT ของเรา) -> ปลอดภัยที่จะถอนออก เพราะไม่มีสคริปต์อื่นใช้ชื่อเดียวกัน
+    ถอนในลำดับย้อน: unmount hosts -> rm hosts_copy -> rm iptables -> adb reverse --remove"""
+    cleared = []
+    if _hosts_mounted(dev):
+        sh(f"umount {HOSTS}", device=dev)
+        if not _hosts_mounted(dev):
+            cleared.append("hosts")
+    if _hosts_copy_exists(dev):
+        sh(f"rm -f {HOSTS_COPY}", device=dev)
+        if not _hosts_copy_exists(dev):
+            cleared.append("hosts_copy")
+    if _route_rule_exists(dev):
+        sh(f"iptables -t nat -D {_ROUTE_RULE}", device=dev)
+        if not _route_rule_exists(dev):
+            cleared.append("rule")
+    if _reverse_exists(dev):
+        adb(["reverse", "--remove", f"tcp:{DEV_PORT}"], device=dev)
+        if not _reverse_exists(dev):
+            cleared.append("reverse")
+    _ROUTE_OWNED.pop(dev, None)
+    if cleared:
+        print(f"[*] [{dev}] ล้าง routing ค้างของ capture_auto รอบก่อน: {cleared}", flush=True)
+    return cleared
+
+
 def setup_routing(dev, host_port=PORT):
     """ตั้ง reverse + hosts bind-mount + กฎ REDIRECT ; ไม่ถอด/ลบของที่มีอยู่ก่อน
     ตรวจก่อนสร้างอะไรทั้งนั้น: เจอ resource ที่ไม่ได้อยู่ใน _ROUTE_OWNED[dev] -> RoutingConflict
@@ -417,9 +445,10 @@ def setup_routing(dev, host_port=PORT):
     }
     foreign = sorted(k for k, v in present.items() if v and k not in owned)
     if foreign:
-        raise RoutingConflict(
-            f"[{dev}] พบ routing ที่ไม่ใช่ของรอบนี้ {foreign} -> ไม่ลบ/ไม่ตั้งทับ "
-            f"(ตรวจ: adb reverse tcp:{DEV_PORT}, {HOSTS_COPY}, mount {HOSTS}, iptables {_ROUTE_RULE})")
+        # ของทุกตัวที่ตรวจเจอใช้ชื่อ/พอร์ตเฉพาะของ capture_auto - ของรอบก่อนตายค้าง ถอนปลอดภัย
+        print(f"[*] [{dev}] routing ค้างจาก capture_auto รอบก่อน {foreign} -> reclaim อัตโนมัติ", flush=True)
+        reclaim_stale_routing(dev)
+        owned = _ROUTE_OWNED.setdefault(dev, set())
     for k, v in present.items():                 # ของตัวเองที่หายไปแล้ว -> ไม่ถือว่าเป็นเจ้าของอีก
         if not v:
             owned.discard(k)
