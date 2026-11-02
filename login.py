@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.1.3"
+BOT_VERSION = "4.2.0"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3239,14 +3239,41 @@ def reset_network_all(devices):
         except Exception as e:
             print(f"[WG-INSTALL] {dev}: ติดตั้งผิดพลาด {e}")
 
+    def hard_reset_vpn(dev):
+        """nuclear reset ทุก state ของ VPN บน emulator - ให้ clean 100% ก่อนรอบใหม่
+        1) force-stop WG app
+        2) pm clear com.wireguard.android (ล้าง tunnel configs + app data ทั้งหมด)
+        3) ลบ always_on_vpn_app setting
+        4) ลบ tun0 interface
+        5) flush iptables mangle
+        6) ล้าง DNS cache (ndc)
+        7) ล้าง system http_proxy"""
+        print(f"[NET-RESET-HARD] {dev}: nuclear reset VPN state...")
+        sh(dev, f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr'")
+        time.sleep(1)
+        sh(dev, f"su -c 'am force-stop {pkg}'")
+        sh(dev, f"su -c 'pm clear {pkg}'")
+        sh(dev, "settings delete global always_on_vpn_app; settings delete global always_on_vpn_lockdown")
+        sh(dev, "su -c 'ip link delete tun0 2>/dev/null; ip link delete wg0 2>/dev/null; ip rule flush 2>/dev/null; ip route flush cache 2>/dev/null'")
+        sh(dev, "su -c 'iptables -t mangle -F 2>/dev/null; iptables -t nat -F 2>/dev/null'")
+        sh(dev, "su -c 'ndc resolver clearnetdns wlan0 2>/dev/null; ndc resolver flushnet wlan0 2>/dev/null'")
+        sh(dev, "settings put global http_proxy :0; settings delete global http_proxy; "
+                "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
+        print(f"[NET-RESET-HARD] {dev}: ล้างทุกอย่างแล้ว - WG app, tunnels, iptables, DNS, proxy")
+
     def one(dev):
         if not int(config.get("minitouch", 0) or 0):
             # minitouch ค้างในอีมู = ระบบกันโกง (LIAPP) ขึ้น "Malicious tool(s) has been found" -> ฆ่า+ลบทิ้งทุกจอ
             sh(dev, "su -c 'pkill -9 -f minitouch; rm -f /data/local/tmp/minitouch'")
+        # hard reset: ล้างทุก state VPN ก่อน (nuclear option - olivia เลือก)
+        # กด wg_hard_reset_on_start=0 ปิดได้ ถ้าอยากกลับไป soft reset แบบเดิม
+        if int(config.get("wg_hard_reset_on_start", 1) or 0):
+            hard_reset_vpn(dev)
         ensure_wg_installed(dev)
         had = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
         if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_once", 1) or 0):
             # wg_once: VPN ต้องเปิดแช่ไว้ - ตอนเริ่มห้ามปิด tunnel ที่เปิดอยู่ ล้างแค่ proxy ค้าง
+            # (ถ้า hard_reset ทำไปแล้ว tunnel หายหมด - จะต่อใหม่เอง)
             sh(dev, "settings put global http_proxy :0; settings delete global http_proxy; "
                     "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
             print(f"[NET-RESET] {dev}: VPN {'เปิดอยู่แล้ว - ไม่ยุ่ง' if had else 'ปิดอยู่ - จะเปิดให้ก่อนเข้าเกม'}")
