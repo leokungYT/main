@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.0.5"
+BOT_VERSION = "4.1.0"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3059,6 +3059,9 @@ def _wg_resolve_profile():
     - string เดียว: "ip-chan/main-1" -> wg_dir='wg/ip-chan/main-1'
     - list / comma: ["ip-chan/main-1","ip-chan/main-2"] -> รวม .conf ทุกโฟลเดอร์เข้า wg/.pool/ แล้วใช้ pool
       (blacklist/cooldown เขียนที่ pool - restart bot ก็ rebuild ให้ใหม่)
+
+    wg_profile_clear_on_start=1 (default 1): ลบ Windscribe-*.conf ทุก sub + .pool/ + .blocked.json
+      เก็บเฉพาะ key*.conf / template.conf (keypair ต้นแบบ) แล้วให้ wg_gen generate IP ใหม่ทั้งหมด
     """
     prof = config.get("wg_profile", "")
     if isinstance(prof, (list, tuple)):
@@ -3080,6 +3083,44 @@ def _wg_resolve_profile():
     if not resolved:
         print(f"[CONFIG] wg_profile: ไม่พบโฟลเดอร์ที่ใช้ได้เลย ({profs}) - ใช้ wg_dir='{config.get('wg_dir', 'wg')}' เดิม")
         return
+
+    # ลบ IP เดิมทุกโฟลเดอร์ก่อน generate ใหม่ (เก็บเฉพาะ key*.conf / template.conf = keypair ต้นแบบ)
+    # ทำให้ bot restart ทุกครั้ง = IP ชุดใหม่ล่าสุด ไม่ติด IP ที่โดนบล็อกไปแล้ว
+    if int(config.get("wg_profile_clear_on_start", 1) or 0):
+        total_deleted = 0
+        for d in resolved:
+            d_abs = os.path.join(script_dir, d)
+            try:
+                for f in os.listdir(d_abs):
+                    low = f.lower()
+                    if not low.endswith(".conf"):
+                        continue
+                    # เก็บ key.conf / key2.conf / template.conf ไว้ (keypair ต้นแบบ)
+                    if low.startswith("key") or low == "template.conf":
+                        continue
+                    try:
+                        os.remove(os.path.join(d_abs, f))
+                        total_deleted += 1
+                    except OSError:
+                        pass
+            except OSError:
+                pass
+        # ลบไฟล์กลางที่เก็บ IP บล็อก/cooldown ของ pool (จะได้ลองใหม่กับ IP ที่เคยโดนบล็อก เผื่อหลุด blacklist)
+        for junk in (os.path.join(script_dir, "wg", ".pool"),
+                     os.path.join(script_dir, "wg", ".blocked.json"),
+                     os.path.join(script_dir, "wg", ".cooldown.json")):
+            try:
+                if os.path.isdir(junk):
+                    for f in os.listdir(junk):
+                        try:
+                            os.remove(os.path.join(junk, f))
+                        except OSError:
+                            pass
+                elif os.path.isfile(junk):
+                    os.remove(junk)
+            except OSError:
+                pass
+        print(f"[CONFIG] wg_profile_clear_on_start: ลบ IP เก่า {total_deleted} ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด")
     if len(resolved) == 1:
         config["wg_dir"] = resolved[0]
         print(f"[CONFIG] wg_profile -> wg_dir='{resolved[0]}'")
