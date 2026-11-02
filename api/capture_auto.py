@@ -695,8 +695,23 @@ def find_template(img, name, thr=0.8):
     return v >= thr, loc[0] + tpl.shape[1] // 2, loc[1] + tpl.shape[0] // 2, v
 
 
+_LOGIN_CONFIG_LOADED = False
+
+
 def _login_wg_controller(dev):
     import login
+
+    # ต้องโหลด config ให้ login.py ก่อน ไม่งั้น wg_profile จะไม่ถูก resolve
+    # (login.py โหลด configmain.json ใน load_config() เท่านั้น ไม่ได้ auto ตอน import)
+    # -> wg_dir จะเป็น "wg" default (ไม่มี .conf) แทนที่จะเป็น wg/.pool จาก ip-chan + ip-boy
+    global _LOGIN_CONFIG_LOADED
+    if not _LOGIN_CONFIG_LOADED:
+        try:
+            login.load_config()
+            print(f"[WG] wg_profile={login.config.get('wg_profile')} -> wg_dir='{login.config.get('wg_dir')}'", flush=True)
+        except Exception as exc:
+            print(f"[!] login.load_config() ล้มเหลว: {exc}", flush=True)
+        _LOGIN_CONFIG_LOADED = True
 
     with _WG_CONTROLLERS_LOCK:
         controller = _WG_CONTROLLERS.get(dev)
