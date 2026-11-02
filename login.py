@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.2.2"
+BOT_VERSION = "4.2.3"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3215,12 +3215,22 @@ def reset_network_all(devices):
 
     def ensure_wg_installed(dev):
         """ติดตั้งแอป WireGuard ลงอีมูฯ ถ้ายังไม่มี - ทำก่อนล้าง VPN กันต่อ VPN ครั้งแรกต้องรอโหลด+ลง
-        พิมพ์ status ทุกจอ: มี/ลงใหม่/ลงไม่ได้ - จะได้รู้ว่า bot เช็คแล้ว"""
+        พิมพ์ status ทุกจอ: มี/ลงใหม่/ลงไม่ได้ - จะได้รู้ว่า bot เช็คแล้ว
+
+        เช็ค 2 ชั้น (ไม่พึ่ง su - จะได้ไม่ false negative เวลา su ค้าง/ไม่รูท):
+          1) pm path com.wireguard.android -> ถ้ามี path = ติดตั้งอยู่ (ไม่ต้องมีรูท)
+          2) ถ้า pm ไม่ตอบ -> fallback su test -d
+        """
         if not int(config.get("wg_enabled", 1) or 0):
             return
-        got = sh(dev, f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=12)
-        if "YES" in (got or ""):
+        got = sh(dev, f"pm path {pkg}", timeout=8)
+        if "package:" in (got or "").lower():
             print(f"[WG-INSTALL] {dev}: มีแอป WireGuard อยู่แล้ว ✓")
+            return
+        # fallback (บาง build pm ตอบช้า) - เช็คด้วย su test -d
+        got2 = sh(dev, f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=10)
+        if "YES" in (got2 or ""):
+            print(f"[WG-INSTALL] {dev}: มีแอป WireGuard อยู่แล้ว ✓ (via su)")
             return
         apk = _wg_apk_path()
         if not apk:
