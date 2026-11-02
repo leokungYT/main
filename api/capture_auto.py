@@ -735,6 +735,13 @@ def _login_wg_controller(dev):
     # -> wg_dir จะเป็น "wg" default (ไม่มี .conf) แทนที่จะเป็น wg/.pool จาก ip-chan + ip-boy
     global _LOGIN_CONFIG_LOADED
     if not _LOGIN_CONFIG_LOADED:
+        # บังคับ login.adb_path = capture_auto's ADB (absolute) - default ของ login.py คือแค่ "adb"
+        # ซึ่งถ้า PATH ไม่มี adb จะ WinError 2 ตอน subprocess.run (เช่น ensure_wg_installed adb install)
+        try:
+            login.adb_path = ADB
+            print(f"[WG] login.adb_path = {ADB}", flush=True)
+        except Exception as exc:
+            print(f"[!] ตั้ง login.adb_path ไม่สำเร็จ: {exc}", flush=True)
         try:
             login.load_config()
             print(f"[WG] wg_profile={login.config.get('wg_profile')} -> wg_dir='{login.config.get('wg_dir')}'", flush=True)
@@ -1337,7 +1344,7 @@ def run_xml_batch(devices, xml_files, mitmdump, args, action_on_finish, progress
     import concurrent.futures as cf
 
     device_count = len(devices)
-    jobs = max(1, min(args.jobs, device_count))
+    jobs = device_count if args.jobs <= 0 else max(1, min(args.jobs, device_count))
     work_queue = queue.Queue()
     total_files = len(xml_files)
     for index, path in enumerate(xml_files, 1):
