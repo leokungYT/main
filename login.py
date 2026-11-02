@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.2.0"
+BOT_VERSION = "4.2.1"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3240,26 +3240,30 @@ def reset_network_all(devices):
             print(f"[WG-INSTALL] {dev}: ติดตั้งผิดพลาด {e}")
 
     def hard_reset_vpn(dev):
-        """nuclear reset ทุก state ของ VPN บน emulator - ให้ clean 100% ก่อนรอบใหม่
-        1) force-stop WG app
-        2) pm clear com.wireguard.android (ล้าง tunnel configs + app data ทั้งหมด)
-        3) ลบ always_on_vpn_app setting
-        4) ลบ tun0 interface
-        5) flush iptables mangle
-        6) ล้าง DNS cache (ndc)
-        7) ล้าง system http_proxy"""
-        print(f"[NET-RESET-HARD] {dev}: nuclear reset VPN state...")
+        """hard reset: ล้าง VPN state ทั้งหมดแต่ไม่ลบตัวแอป (pm clear ทำให้ทุกจอต้อง reinstall apk พร้อมกัน -> timeout)
+        1) ปิด tunnel ที่เปิดอยู่
+        2) force-stop WG app
+        3) ลบ tunnel configs file-by-file (/data/data/.../files/*.conf) - ไม่ pm clear
+        4) ลบ always_on_vpn setting
+        5) ลบ tun0 / wg0 interface + flush ip rule + route cache
+        6) ล้าง iptables mangle/nat
+        7) ล้าง DNS cache
+        8) ล้าง system http_proxy"""
+        print(f"[NET-RESET-HARD] {dev}: hard reset VPN state (keep app)...")
         sh(dev, f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr'")
         time.sleep(1)
         sh(dev, f"su -c 'am force-stop {pkg}'")
-        sh(dev, f"su -c 'pm clear {pkg}'")
+        # ลบ tunnel configs file-by-file แทน pm clear (ไม่ทำให้ apk หาย -> ไม่ต้อง reinstall)
+        sh(dev, f"su -c 'rm -f /data/data/{pkg}/files/*.conf 2>/dev/null; "
+                f"rm -rf /data/data/{pkg}/databases/* 2>/dev/null; "
+                f"rm -rf /data/data/{pkg}/shared_prefs/* 2>/dev/null'")
         sh(dev, "settings delete global always_on_vpn_app; settings delete global always_on_vpn_lockdown")
         sh(dev, "su -c 'ip link delete tun0 2>/dev/null; ip link delete wg0 2>/dev/null; ip rule flush 2>/dev/null; ip route flush cache 2>/dev/null'")
         sh(dev, "su -c 'iptables -t mangle -F 2>/dev/null; iptables -t nat -F 2>/dev/null'")
         sh(dev, "su -c 'ndc resolver clearnetdns wlan0 2>/dev/null; ndc resolver flushnet wlan0 2>/dev/null'")
         sh(dev, "settings put global http_proxy :0; settings delete global http_proxy; "
                 "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
-        print(f"[NET-RESET-HARD] {dev}: ล้างทุกอย่างแล้ว - WG app, tunnels, iptables, DNS, proxy")
+        print(f"[NET-RESET-HARD] {dev}: ล้าง tunnels/configs/iptables/DNS/proxy - WG app ยังอยู่")
 
     def one(dev):
         if not int(config.get("minitouch", 0) or 0):
