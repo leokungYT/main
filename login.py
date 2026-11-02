@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.1.1"
+BOT_VERSION = "4.1.2"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3083,6 +3083,26 @@ def _wg_resolve_profile():
     if not resolved:
         print(f"[CONFIG] wg_profile: ไม่พบโฟลเดอร์ที่ใช้ได้เลย ({profs}) - ใช้ wg_dir='{config.get('wg_dir', 'wg')}' เดิม")
         return
+
+    # Auto-promote keypair.txt -> key.conf (user โยนไฟล์ Windscribe มาแล้ว rename เป็น .txt
+    #   หรือ copy จาก wg_accounts/account1/keypair.txt ตามคู่มือเก่า)
+    # ทำก่อน clear เพื่อให้ sub ที่มีแต่ keypair.txt มี .conf ให้ wg_gen ใช้ generate
+    for d in resolved:
+        d_abs = os.path.join(script_dir, d)
+        try:
+            files = os.listdir(d_abs)
+        except OSError:
+            continue
+        has_conf = any(f.lower().endswith(".conf") for f in files)
+        has_keypair_txt = "keypair.txt" in [f.lower() for f in files]
+        if not has_conf and has_keypair_txt:
+            src = os.path.join(d_abs, [f for f in files if f.lower() == "keypair.txt"][0])
+            dst = os.path.join(d_abs, "key.conf")
+            try:
+                shutil.copy2(src, dst)
+                print(f"[CONFIG] wg_profile: {d} เจอ keypair.txt (ไม่มี .conf) - copy เป็น key.conf ให้ wg_gen ใช้")
+            except OSError as e:
+                print(f"[CONFIG] wg_profile: {d} copy keypair.txt -> key.conf ล้มเหลว: {e}")
 
     # ลบ IP เดิมทุกโฟลเดอร์ก่อน generate ใหม่ (เก็บเฉพาะ key*.conf / template.conf = keypair ต้นแบบ)
     # ทำให้ bot restart ทุกครั้ง = IP ชุดใหม่ล่าสุด ไม่ติด IP ที่โดนบล็อกไปแล้ว
