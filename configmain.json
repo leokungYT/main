@@ -92,7 +92,7 @@
         "gachahero4": "SuzakuU+"
     },
     "warp_autostart": 0,
-    "windscribe_autostart": 1,
+    "windscribe_autostart": 0,
     "windscribe_location": "best",
     "windscribe_protocol": "wireguard",
     "windscribe_rotate_every": 0,
