@@ -1615,7 +1615,7 @@ def main():
     ap.add_argument("--input-dir", default="input-id", help="โฟลเดอร์เก็บไฟล์ XML บัญชี (default: input-id)")
     ap.add_argument("--use-login", action="store_true", help="ใช้ login.py ช่วยกดผ่านหน้า PLAY อัตโนมัติ")
     ap.add_argument("--timeout", type=int, default=50, help="รอจับ credential กี่วินาทีต่อไฟล์ (default 50)")
-    ap.add_argument("--jobs", type=int, default=4, help="จำนวนจอที่รันพร้อมกัน (default 4 กันเน็ต/CPU ดึงจนล็อกอินไม่ทัน)")
+    ap.add_argument("--jobs", type=int, default=0, help="จำนวนจอที่รันพร้อมกัน (0=auto ใช้ทุกจอที่ connect, default 0)")
     ap.add_argument("--stagger", type=int, default=5,
                     help="หน่วงเวลาระหว่างเริ่มแต่ละจอกี่วินาที กันแย่ง ADB/ฉีดไฟล์ชนกัน (default: 5 เหมือน thread_delay ใน login.py)")
     ap.add_argument("--no-move", "--no-delete", dest="no_move", action="store_true",
@@ -1730,7 +1730,7 @@ def main():
 
         import concurrent.futures as _cf
         n = len(devices)
-        jobs = max(1, min(args.jobs, n))
+        jobs = n if args.jobs <= 0 else max(1, min(args.jobs, n))
 
         # ใส่คิวแชร์ร่วมกันทุกจอ ใครว่างก็หยิบไฟล์ถัดไปทำงานทันทีเหมือน login.py
         q = queue.Queue()

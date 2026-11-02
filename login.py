@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.0.3"
+BOT_VERSION = "4.0.4"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -1104,10 +1104,12 @@ def _wg_apk_path():
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     wg_dir = str(config.get("wg_dir", "wg"))
+    # ลำดับ: ของกลางก่อน (wg/) แล้วค่อย sub-folder เผื่อมีคน copy ลงเฉพาะ sub
+    # ตัว sub (wg/.pool, wg/ip-chan/*) ไม่ควรเก็บ apk แยก - ใช้ wg/ ร่วมกัน
     candidates = [
-        os.path.join(wg_dir, "wireguard.apk"),
-        os.path.join("wg", "wireguard.apk"),
         os.path.join(script_dir, "wg", "wireguard.apk"),
+        os.path.join("wg", "wireguard.apk"),
+        os.path.join(wg_dir, "wireguard.apk"),
     ]
     with _wg_apk_lock:
         for p in candidates:
