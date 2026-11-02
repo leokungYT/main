@@ -684,22 +684,20 @@ def open_game_like_login(dev):
         print(f"[!] [{dev}] โหลดตัวเปิดเกมจาก login.py ไม่สำเร็จ: {exc}", flush=True)
         return False
 
-    # Reset IP แบบ wg-push-file (VPN เฉพาะเกม + ทดสอบผ่าน tunnel จริง + ใกล้ไทยก่อน)
-    # แทนระบบ WG ของ login.py ; ปิดด้วย CAPTURE_RESET_IP=0
+    # Reset IP เหมือน login.py เป๊ะ ๆ: ใช้ wg_profile pool จาก configmain.json
+    # (wg/ip-chan/main-{1,2,3} + wg/ip-boy/main-1) ไม่ใช้ wg_reset.py เดิมแล้ว
+    # เพราะ wg_reset อ่าน wg/ ตรง ๆ ไม่ตาม wg_profile -> ได้ IP คนละ pool กับ login.py
+    # ปิดด้วย CAPTURE_RESET_IP=0
     if os.environ.get("CAPTURE_RESET_IP", "1") != "0":
         try:
-            import wg_reset
-            ok, msg = wg_reset.reset_ip(dev, log=lambda m: print(m, flush=True))
-            if not ok:
-                print(f"[!] [{dev}] Reset IP ไม่สำเร็จ ({msg}) - เปิดเกมต่อด้วย IP เดิม", flush=True)
+            login.reset_network_all([dev])
         except Exception as exc:
-            print(f"[!] [{dev}] Reset IP error: {exc}", flush=True)
+            print(f"[!] [{dev}] Reset IP (login.py flow) error: {exc}", flush=True)
         try:
-            setup_routing(dev, _ROUTE_PORT.get(dev, PORT))   # Reset IP ล้าง routing ของ mitm -> ตั้งกลับ
+            setup_routing(dev, _ROUTE_PORT.get(dev, PORT))   # WG up แล้วค่อยวาง MITM NAT
         except RoutingConflict as exc:
             print(f"[X] {exc}", flush=True)
             return False
-        login.config["wg_enabled"] = 0                   # ไม่ให้ login.py ไปยุ่ง WG ซ้ำ
     try:
         # login.py resets these per account in main_login(); this controller
         # persists across capture_auto's batch, so reset the same per-ID quota.
