@@ -150,11 +150,42 @@ def sh(cmd, device=None, timeout=30):
 
 
 def list_devices():
-    """คืน serial ของทุกเครื่องที่ต่ออยู่ (สถานะ device)"""
-    out = adb(["devices"]).stdout.splitlines()
-    devs = [l.split()[0] for l in out[1:] if l.strip() and l.strip().endswith("device")]
+    """คืน serial ของทุกเครื่องที่ต่ออยู่ (สถานะ device)
+
+    ถ้า adb ว่าง: ถาม MuMuManager ว่า instance ไหนเปิดอยู่ -> ยิง adb connect ให้เอง
+    (เหมือน login.py ทำตอนเปิดบอต) แล้วค่อย exit ถ้ายังไม่เจอ
+    """
+    def _scan():
+        o = adb(["devices"]).stdout.splitlines()
+        return [l.split()[0] for l in o[1:] if l.strip() and l.strip().endswith("device")]
+
+    devs = _scan()
+    if devs:
+        return devs
+
+    # auto-connect ตาม MuMuManager (login.py flow)
+    try:
+        import login as _login
+        instances = _login.get_mumu_instances()
+    except Exception as exc:
+        print(f"[!] auto-connect ADB ผ่าน login.py ไม่สำเร็จ: {exc}", flush=True)
+        instances = None
+
+    if instances:
+        print(f"[ADB] MuMuManager เห็น {len(instances)} จอเปิดอยู่ - ยิง adb connect ให้เอง", flush=True)
+        for idx, host_port in instances:
+            r = adb(["connect", host_port])
+            msg = (r.stdout or "").strip() or (r.stderr or "").strip()
+            print(f"[ADB]   #{idx} {host_port} -> {msg}", flush=True)
+        # รอ boot ของทุก instance ที่เพิ่ง connect (เหมือน wait_devices_boot ของ login.py)
+        try:
+            _login.wait_devices_boot([hp for _, hp in instances], timeout=60)
+        except Exception:
+            pass
+        devs = _scan()
+
     if not devs:
-        sys.exit("[X] ไม่พบเครื่อง adb — เปิด emulator แล้ว `adb connect` ก่อน")
+        sys.exit("[X] ไม่พบเครื่อง adb — เปิด MuMu Multi-Instance Manager แล้ว start อย่างน้อย 1 จอ")
     return devs
 
 
