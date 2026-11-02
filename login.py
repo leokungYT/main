@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.2.1"
+BOT_VERSION = "4.2.2"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3240,30 +3240,40 @@ def reset_network_all(devices):
             print(f"[WG-INSTALL] {dev}: ติดตั้งผิดพลาด {e}")
 
     def hard_reset_vpn(dev):
-        """hard reset: ล้าง VPN state ทั้งหมดแต่ไม่ลบตัวแอป (pm clear ทำให้ทุกจอต้อง reinstall apk พร้อมกัน -> timeout)
-        1) ปิด tunnel ที่เปิดอยู่
-        2) force-stop WG app
-        3) ลบ tunnel configs file-by-file (/data/data/.../files/*.conf) - ไม่ pm clear
-        4) ลบ always_on_vpn setting
-        5) ลบ tun0 / wg0 interface + flush ip rule + route cache
-        6) ล้าง iptables mangle/nat
-        7) ล้าง DNS cache
-        8) ล้าง system http_proxy"""
+        """hard reset: ล้าง VPN state ทั้งหมดแต่ไม่ลบตัวแอป (pm clear = ลบ apk ด้วย = reinstall timeout)
+        รวมเป็นสคริปต์ชุดเดียว ยิง adb shell รอบเดียว - ไม่ค้าง sh() ซ้ำซ้อนทีละตัว
+        timeout 8 วิ (เร็ว ถ้า adb/emulator เน่า จะหลุดก่อน network block)
+        - ปิด tunnel + force-stop app
+        - ลบ tunnel configs/databases/shared_prefs (ไม่ pm clear)
+        - ลบ always_on_vpn setting
+        - ลบ tun0/wg0 interface (ไม่ ip rule flush รวม - จะพัง Android routing)
+        - flush iptables mangle/nat
+        - ล้าง DNS cache
+        - ล้าง system http_proxy"""
         print(f"[NET-RESET-HARD] {dev}: hard reset VPN state (keep app)...")
-        sh(dev, f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr'")
-        time.sleep(1)
-        sh(dev, f"su -c 'am force-stop {pkg}'")
-        # ลบ tunnel configs file-by-file แทน pm clear (ไม่ทำให้ apk หาย -> ไม่ต้อง reinstall)
-        sh(dev, f"su -c 'rm -f /data/data/{pkg}/files/*.conf 2>/dev/null; "
-                f"rm -rf /data/data/{pkg}/databases/* 2>/dev/null; "
-                f"rm -rf /data/data/{pkg}/shared_prefs/* 2>/dev/null'")
-        sh(dev, "settings delete global always_on_vpn_app; settings delete global always_on_vpn_lockdown")
-        sh(dev, "su -c 'ip link delete tun0 2>/dev/null; ip link delete wg0 2>/dev/null; ip rule flush 2>/dev/null; ip route flush cache 2>/dev/null'")
-        sh(dev, "su -c 'iptables -t mangle -F 2>/dev/null; iptables -t nat -F 2>/dev/null'")
-        sh(dev, "su -c 'ndc resolver clearnetdns wlan0 2>/dev/null; ndc resolver flushnet wlan0 2>/dev/null'")
-        sh(dev, "settings put global http_proxy :0; settings delete global http_proxy; "
-                "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
-        print(f"[NET-RESET-HARD] {dev}: ล้าง tunnels/configs/iptables/DNS/proxy - WG app ยังอยู่")
+        # รวมเป็น script เดียว ยิง sh รอบเดียว + timeout สั้น - คำสั่งใดๆที่ค้างจะโดนตัด
+        script = (
+            f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr 2>/dev/null; "
+            f"sleep 1; "
+            f"am force-stop {pkg} 2>/dev/null; "
+            f"su -c 'rm -f /data/data/{pkg}/files/*.conf; "
+            f"rm -rf /data/data/{pkg}/databases/*; "
+            f"rm -rf /data/data/{pkg}/shared_prefs/*; "
+            f"ip link delete tun0; ip link delete wg0; "
+            f"iptables -t mangle -F; iptables -t nat -F; "
+            f"ndc resolver clearnetdns wlan0; ndc resolver flushnet wlan0' 2>/dev/null; "
+            f"settings delete global always_on_vpn_app 2>/dev/null; "
+            f"settings delete global always_on_vpn_lockdown 2>/dev/null; "
+            f"settings put global http_proxy :0 2>/dev/null; "
+            f"settings delete global http_proxy 2>/dev/null; "
+            f"settings delete global global_http_proxy_host 2>/dev/null; "
+            f"settings delete global global_http_proxy_port 2>/dev/null; "
+            f"echo DONE_HARD_RESET"
+        )
+        out = sh(dev, script, timeout=15)
+        done = "DONE_HARD_RESET" in (out or "")
+        tag = "ล้าง tunnels/configs/iptables/DNS/proxy - WG app ยังอยู่" if done else "ล้างค้าง - บางคำสั่ง timeout (ข้ามไปต่อ)"
+        print(f"[NET-RESET-HARD] {dev}: {tag}")
 
     def one(dev):
         if not int(config.get("minitouch", 0) or 0):
