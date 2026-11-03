@@ -894,9 +894,13 @@ def load_config(quiet=False):
 
 
 def _wg_resolve_profile():
-    """อ่าน config['wg_profile'] -> ตั้ง config['wg_dir']
+    """อ่าน config['wg_profile'] -> ตั้ง config['wg_dir']  (sync กับ login.py เป๊ะ ๆ)
     - string เดียว: "ip-chan/main-1" -> wg_dir='wg/ip-chan/main-1'
-    - list / comma: ["ip-chan/main-1","ip-chan/main-2"] -> รวม .conf ทุกโฟลเดอร์เข้า wg/.pool/ แล้วใช้ pool
+    - list / comma: ["ip-chan/main-1","ip-chan/main-2"] -> รวม .conf ทุกโฟลเดอร์เข้า wg/.pool/
+      (blacklist/cooldown เขียนที่ pool - restart bot ก็ rebuild ให้ใหม่)
+
+    wg_profile_clear_on_start=1 (default 1): ลบ Windscribe-*.conf ทุก sub + .pool/ + .blocked.json
+      เก็บเฉพาะ key*.conf / template.conf (keypair ต้นแบบ) แล้วให้ wg_gen generate IP ใหม่ทั้งหมด
     """
     prof = config.get("wg_profile", "")
     if isinstance(prof, (list, tuple)):
@@ -918,6 +922,59 @@ def _wg_resolve_profile():
     if not resolved:
         print(f"[CONFIG] wg_profile: ไม่พบโฟลเดอร์ที่ใช้ได้เลย ({profs}) - ใช้ wg_dir='{config.get('wg_dir', 'wg')}' เดิม")
         return
+
+    # Auto-promote keypair.txt -> key.conf
+    for d in resolved:
+        d_abs = os.path.join(script_dir, d)
+        try:
+            files = os.listdir(d_abs)
+        except OSError:
+            continue
+        has_conf = any(f.lower().endswith(".conf") for f in files)
+        has_keypair_txt = "keypair.txt" in [f.lower() for f in files]
+        if not has_conf and has_keypair_txt:
+            src = os.path.join(d_abs, [f for f in files if f.lower() == "keypair.txt"][0])
+            dst = os.path.join(d_abs, "key.conf")
+            try:
+                shutil.copy2(src, dst)
+                print(f"[CONFIG] wg_profile: {d} เจอ keypair.txt (ไม่มี .conf) - copy เป็น key.conf ให้ wg_gen ใช้")
+            except OSError as e:
+                print(f"[CONFIG] wg_profile: {d} copy keypair.txt -> key.conf ล้มเหลว: {e}")
+
+    # ลบ IP เดิมทุกโฟลเดอร์ก่อน generate ใหม่ (เก็บเฉพาะ key*.conf / template.conf = keypair ต้นแบบ)
+    if int(config.get("wg_profile_clear_on_start", 1) or 0):
+        total_deleted = 0
+        for d in resolved:
+            d_abs = os.path.join(script_dir, d)
+            try:
+                for f in os.listdir(d_abs):
+                    low = f.lower()
+                    if not low.endswith(".conf"):
+                        continue
+                    if low.startswith("key") or low == "template.conf":
+                        continue
+                    try:
+                        os.remove(os.path.join(d_abs, f))
+                        total_deleted += 1
+                    except OSError:
+                        pass
+            except OSError:
+                pass
+        for junk in (os.path.join(script_dir, "wg", ".pool"),
+                     os.path.join(script_dir, "wg", ".blocked.json"),
+                     os.path.join(script_dir, "wg", ".cooldown.json")):
+            try:
+                if os.path.isdir(junk):
+                    for f in os.listdir(junk):
+                        try:
+                            os.remove(os.path.join(junk, f))
+                        except OSError:
+                            pass
+                elif os.path.isfile(junk):
+                    os.remove(junk)
+            except OSError:
+                pass
+        print(f"[CONFIG] wg_profile_clear_on_start: ลบ IP เก่า {total_deleted} ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด")
     if len(resolved) == 1:
         config["wg_dir"] = resolved[0]
         print(f"[CONFIG] wg_profile -> wg_dir='{resolved[0]}'")
@@ -1197,16 +1254,26 @@ _wg_apk_lock = threading.Lock()
 
 
 def _wg_apk_path():
-    """ไฟล์ติดตั้งแอป WireGuard (Android) - ไม่มีจะโหลดมาเก็บที่ wg/wireguard.apk ครั้งเดียว (ทุกจอใช้ร่วม)"""
+    """ไฟล์ติดตั้งแอป WireGuard (Android) - sync กับ login.py: หาจาก central ก่อน
+    ลำดับ: script_dir/wg/wireguard.apk, wg/wireguard.apk, <wg_dir>/wireguard.apk
+    ไม่เจอ -> โหลดลง wg/wireguard.apk (central) ทุก sub ใช้ร่วม"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     wg_dir = str(config.get("wg_dir", "wg"))
-    path = os.path.join(wg_dir, "wireguard.apk")
+    candidates = [
+        os.path.join(script_dir, "wg", "wireguard.apk"),
+        os.path.join("wg", "wireguard.apk"),
+        os.path.join(wg_dir, "wireguard.apk"),
+    ]
     with _wg_apk_lock:
-        if os.path.exists(path) and os.path.getsize(path) > 1_000_000:
-            return path
+        for p in candidates:
+            if os.path.exists(p) and os.path.getsize(p) > 1_000_000:
+                return p
+        central_dir = os.path.join(script_dir, "wg")
         try:
+            os.makedirs(central_dir, exist_ok=True)
             import urllib.request
-            os.makedirs(wg_dir, exist_ok=True)
-            print("[WG] กำลังโหลดแอป WireGuard (ครั้งแรกครั้งเดียว)...")
+            print("[WG] กำลังโหลดแอป WireGuard (ครั้งแรกครั้งเดียว) ลง wg/wireguard.apk...")
+            path = os.path.join(central_dir, "wireguard.apk")
             tmp = path + ".part"
             urllib.request.urlretrieve(str(config.get("wg_apk_url", WG_APK_URL)), tmp)
             os.replace(tmp, path)
@@ -1234,13 +1301,17 @@ def reset_network_all(devices):
             return ""
 
     def ensure_wg_installed(dev):
-        """ติดตั้งแอป WireGuard ลงอีมูฯ ถ้ายังไม่มี - ทำก่อนล้าง VPN กันต่อ VPN ครั้งแรกต้องรอโหลด+ลง
-        พิมพ์ status ทุกจอ: มี/ลงใหม่/ลงไม่ได้ - จะได้รู้ว่า bot เช็คแล้ว"""
+        """ติดตั้งแอป WireGuard ลงอีมูฯ ถ้ายังไม่มี (sync กับ login.py)
+        เช็ค 2 ชั้น: pm path (เร็ว ไม่พึ่ง su) -> fallback su test -d"""
         if not int(config.get("wg_enabled", 1) or 0):
             return
-        got = sh(dev, f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=12)
-        if "YES" in (got or ""):
+        got = sh(dev, f"pm path {pkg}", timeout=8)
+        if "package:" in (got or "").lower():
             print(f"[WG-INSTALL] {dev}: มีแอป WireGuard อยู่แล้ว ✓")
+            return
+        got2 = sh(dev, f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=10)
+        if "YES" in (got2 or ""):
+            print(f"[WG-INSTALL] {dev}: มีแอป WireGuard อยู่แล้ว ✓ (via su)")
             return
         apk = _wg_apk_path()
         if not apk:
@@ -1259,7 +1330,36 @@ def reset_network_all(devices):
         except Exception as e:
             print(f"[WG-INSTALL] {dev}: ติดตั้งผิดพลาด {e}")
 
+    def hard_reset_vpn(dev):
+        """hard reset VPN state (sync กับ login.py) - ไม่ pm clear เพราะจะทำให้ apk หาย -> reinstall timeout
+        รวมทุกคำสั่งเป็น script เดียว timeout 15s - ปลอดภัยถ้า adb/emulator เน่า"""
+        print(f"[NET-RESET-HARD] {dev}: hard reset VPN state (keep app)...")
+        script = (
+            f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr 2>/dev/null; "
+            f"sleep 1; "
+            f"am force-stop {pkg} 2>/dev/null; "
+            f"su -c 'rm -f /data/data/{pkg}/files/*.conf; "
+            f"rm -rf /data/data/{pkg}/databases/*; "
+            f"rm -rf /data/data/{pkg}/shared_prefs/*; "
+            f"ip link delete tun0; ip link delete wg0; "
+            f"iptables -t mangle -F; iptables -t nat -F; "
+            f"ndc resolver clearnetdns wlan0; ndc resolver flushnet wlan0' 2>/dev/null; "
+            f"settings delete global always_on_vpn_app 2>/dev/null; "
+            f"settings delete global always_on_vpn_lockdown 2>/dev/null; "
+            f"settings put global http_proxy :0 2>/dev/null; "
+            f"settings delete global http_proxy 2>/dev/null; "
+            f"settings delete global global_http_proxy_host 2>/dev/null; "
+            f"settings delete global global_http_proxy_port 2>/dev/null; "
+            f"echo DONE_HARD_RESET"
+        )
+        out = sh(dev, script, timeout=15)
+        done = "DONE_HARD_RESET" in (out or "")
+        tag = "ล้าง tunnels/configs/iptables/DNS/proxy - WG app ยังอยู่" if done else "ล้างค้าง - บางคำสั่ง timeout (ข้ามไปต่อ)"
+        print(f"[NET-RESET-HARD] {dev}: {tag}")
+
     def one(dev):
+        if int(config.get("wg_hard_reset_on_start", 1) or 0):
+            hard_reset_vpn(dev)
         ensure_wg_installed(dev)
         had = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
         if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_once", 1) or 0):
