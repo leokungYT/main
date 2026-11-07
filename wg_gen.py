@@ -188,18 +188,27 @@ def generate(want, countries=None, wg_dir=None, machine=0, account=None, total=0
     # เซิร์ฟเวอร์ที่ใช้อยู่แล้ว (กุญแจไหนก็ตาม) ไม่ซ้ำ จะได้ IP ไม่ซ้ำด้วย
     used = {kv.get("PublicKey") for kv in have}
     # ประเทศที่เซิร์ฟเวอร์เกมบล็อก IP VPN (ทดสอบ 2026-10-06: Bangkok ออกเน็ตได้แต่ rangers-api ไม่ตอบ)
+    # include whitelist (wg_include_countries) มี precedence เหนือ exclude - ถ้าใส่ไว้จะเอาเฉพาะประเทศนั้น
     try:
-        _ex = json.load(open(os.path.join(os.path.dirname(os.path.abspath(WG_DIR)), "configmain.json"),
-                             encoding="utf-8-sig")).get("wg_exclude_countries", ["TH"])
+        _cfg = json.load(open(os.path.join(os.path.dirname(os.path.abspath(WG_DIR)), "configmain.json"),
+                              encoding="utf-8-sig"))
+        _inc = _cfg.get("wg_include_countries", [])
+        _ex = _cfg.get("wg_exclude_countries", ["TH"])
     except Exception:
+        _inc = []
         _ex = ["TH"]
+    include = {str(c).upper() for c in (_inc or [])}
     exclude = {str(c).upper() for c in (_ex or [])}
     blocked = load_blocked(WG_DIR)      # เซิร์ฟเวอร์ที่บอทเจอว่าเกมบล็อก IP (wg/.blocked.json) - ไม่สร้างซ้ำ
     order = {c: i for i, c in enumerate(countries)}
     groups = []
     for loc in data:
         cc = loc.get("country_code", "")
-        if not loc.get("status", 1) or cc in exclude:
+        if not loc.get("status", 1):
+            continue
+        if include and cc not in include:
+            continue
+        if cc in exclude:
             continue
         for g in loc.get("groups") or []:
             if not g.get("wg_pubkey") or not g.get("wg_endpoint") or not g.get("nodes"):

@@ -457,22 +457,123 @@ def _ip_meter_gate():
     _ip_meter_mark(ip)
 
 
+# ---------- device profile pool: real-world flagships, randomized per login ----------
+# ไม่ใช้ profile เดียวทุกจอ (= ban cluster). pool นี้สุ่มแบบ consistent ต่อ device_id+login
+# ทุก field มาจาก device จริง - brand/model/manufacturer/fingerprint/gpu ต้อง match กัน
+# ไม่งั้น rangers anti-tamper เตือน (เช่น model=Pixel + gpu=Mali = fake)
+_DEVICE_POOL = [
+    {
+        "brand": "asus", "manufacturer": "asus",
+        "model": "ASUS_AI2401", "device": "WW_AI2401",
+        "product": "WW_AI2401", "board": "taro",
+        "fingerprint": "asus/WW_AI2401/ASUS_AI2401:14/UKQ1.230917.001/33.2210.2210.84-0:user/release-keys",
+        "gpu": "Adreno (TM) 740",
+    },
+    {
+        "brand": "samsung", "manufacturer": "samsung",
+        "model": "SM-S928B", "device": "e3q",
+        "product": "e3qxxx", "board": "kalama",
+        "fingerprint": "samsung/e3qxxx/e3q:14/UP1A.231005.007/S928BXXU1AXBC:user/release-keys",
+        "gpu": "Adreno (TM) 750",
+    },
+    {
+        "brand": "google", "manufacturer": "Google",
+        "model": "Pixel 8 Pro", "device": "husky",
+        "product": "husky", "board": "husky",
+        "fingerprint": "google/husky/husky:14/UD1A.230803.041/10808477:user/release-keys",
+        "gpu": "Mali-G715",
+    },
+    {
+        "brand": "Xiaomi", "manufacturer": "Xiaomi",
+        "model": "23116PN5BC", "device": "shennong",
+        "product": "shennong", "board": "shennong",
+        "fingerprint": "Xiaomi/shennong_global/shennong:14/UKQ1.230804.001/V816.0.7.0.UNCMIXM:user/release-keys",
+        "gpu": "Adreno (TM) 750",
+    },
+    {
+        "brand": "OnePlus", "manufacturer": "OnePlus",
+        "model": "CPH2573", "device": "OP5EB9L1",
+        "product": "CPH2573EEA", "board": "kalama",
+        "fingerprint": "OnePlus/CPH2573EEA/OP5EB9L1:14/UKQ1.230924.001/T.R.1-20240130:user/release-keys",
+        "gpu": "Adreno (TM) 750",
+    },
+    {
+        "brand": "vivo", "manufacturer": "vivo",
+        "model": "V2324A", "device": "PD2338",
+        "product": "PD2338", "board": "kalama",
+        "fingerprint": "vivo/PD2338/PD2338:14/UKQ1.230924.001/compiler12011241:user/release-keys",
+        "gpu": "Adreno (TM) 750",
+    },
+    {
+        "brand": "OPPO", "manufacturer": "OPPO",
+        "model": "CPH2609", "device": "OP5FA9L1",
+        "product": "CPH2609", "board": "kalama",
+        "fingerprint": "OPPO/CPH2609/OP5FA9L1:14/UKQ1.230924.001/T.R.1-20240215:user/release-keys",
+        "gpu": "Adreno (TM) 750",
+    },
+    {
+        "brand": "HUAWEI", "manufacturer": "HUAWEI",
+        "model": "ALN-AL00", "device": "HWALN",
+        "product": "ALN-AL00", "board": "kirin9000s",
+        "fingerprint": "HUAWEI/ALN-AL00/HWALN:12/HUAWEIALN-AL00/104.0.0.126C00:user/release-keys",
+        "gpu": "Maleoon 910",
+    },
+]
+
+
+def _pick_device_profile(device_id):
+    """สุ่ม profile per login - seed ด้วย device_id+timestamp เพื่อให้ ban/unban หมุนได้
+    แต่ภายใน 1 login session ค่าคงที่ (session_seed)"""
+    seed_src = f"{device_id}:{int(time.time() // 1800)}:{_random.random()}"
+    seed_int = int(_hashlib.sha256(seed_src.encode()).hexdigest()[:8], 16)
+    rng = _random.Random(seed_int)
+    return rng.choice(_DEVICE_POOL)
+
+
 # ---------- fingerprint churn per-login (ไม่ผูกบัญชี) ----------
 def _churn_device_fingerprint(adb_cmd, device_id):
-    """ยิง build.prop ที่เกมเช็ก, Android ID, GAID, FCM เผาใหม่ก่อน login
+    """ยิง build.prop ที่เกมเช็ก, Android ID, GAID, FCM, model/brand/fingerprint เผาใหม่ก่อน login
     เซิร์ฟเห็น (IP เดิม) แต่ (device signature ใหม่) -> ไม่เข้า counter เครื่องเดิม
     ของพวกนี้ไม่ผูก account - เปลี่ยนได้ทุก login ไม่กระทบ cookie/udid"""
     if not int(globals().get("config", {}).get("fp_churn", 1) or 0):
         return
     # Android ID 16 hex - ค่าที่ /settings_secure เก็บ, แอปอ่านผ่าน Settings.Secure.ANDROID_ID
     new_aid = _hashlib.sha1(f"{device_id}:{time.time()}:{_random.random()}".encode()).hexdigest()[:16]
+    # serial 16 hex uppercase - ro.serialno ที่ Build.getSerial() อ่าน
+    new_serial = _hashlib.sha1(f"serial:{device_id}:{time.time()}".encode()).hexdigest()[:16].upper()
+
     cmds = [
         ["shell", "settings", "put", "secure", "android_id", new_aid],
         # GAID (Google Advertising ID) reset - ของผูก ad tracking ไม่ผูก game account
         ["shell", "settings", "put", "secure", "advertising_id", _uuid4_lower()],
+        # ro.serialno / ro.boot.serialno - บาง game อ่านเป็น hardware id
+        ["shell", "setprop", "ro.serialno", new_serial],
+        ["shell", "setprop", "ro.boot.serialno", new_serial],
         # รีสตาร์ท media stack เพื่อให้ FCM token หมุน (บางเกมอ่าน FCM เป็น device key)
         ["shell", "am", "force-stop", "com.google.android.gms"],
     ]
+
+    # device profile rotation - model/brand/fingerprint/gpu pool (ถ้าเปิด fp_profile_rotate)
+    if int(globals().get("config", {}).get("fp_profile_rotate", 1) or 0):
+        prof = _pick_device_profile(device_id)
+        prop_map = [
+            ("ro.product.model", prof["model"]),
+            ("ro.product.brand", prof["brand"]),
+            ("ro.product.manufacturer", prof["manufacturer"]),
+            ("ro.product.device", prof["device"]),
+            ("ro.product.name", prof["product"]),
+            ("ro.product.board", prof["board"]),
+            ("ro.build.fingerprint", prof["fingerprint"]),
+            ("ro.product.vendor.model", prof["model"]),
+            ("ro.product.vendor.brand", prof["brand"]),
+            ("ro.product.vendor.manufacturer", prof["manufacturer"]),
+            ("ro.product.system.model", prof["model"]),
+            ("ro.product.system.brand", prof["brand"]),
+        ]
+        for prop, val in prop_map:
+            cmds.append(["shell", "setprop", prop, val])
+        print(f"[{device_id}] [FP-ROTATE] profile={prof['brand']}/{prof['model']} gpu={prof['gpu']}")
+
     for c in cmds:
         try:
             subprocess.run([*adb_cmd, *c], capture_output=True, timeout=8, check=False)
