@@ -72,9 +72,40 @@ def load_keys(keys_path):
     return keys
 
 
-def gen_confs(keys, relays, out_dir, per_key=5, base_address_octet=2):
-    """gen conf: each key x (per_key) relays. Address=10.64.0.{octet} placeholder"""
+def load_addresses(addrs_path):
+    """อ่าน addresses.txt - format: <pubkey>=<address>  (ต่อบรรทัด)
+    คืน dict {pubkey: address_cidr} (ว่าง = ไม่มีไฟล์/ไม่ตั้ง)"""
+    if not os.path.exists(addrs_path):
+        return {}
+    out = {}
+    with open(addrs_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            # pubkey base64 มี "=" padding -> split แค่ "=" แรกหลัง address เป็น CIDR
+            # ใช้ rsplit จากขวา: "pubkey==address" -> ["pubkey=", "address"]
+            if "=" not in line:
+                continue
+            # หา index ของ "=" ที่ตามด้วย IP (ตัวเลขหรือ "fc")
+            idx = -1
+            for i in range(len(line) - 1):
+                if line[i] == "=" and (line[i+1].isdigit() or line[i+1:i+3].lower() == "fc"):
+                    idx = i
+                    break
+            if idx < 0:
+                continue
+            pub = line[:idx]  # pubkey (รวม "=" padding ของตัวเอง, ไม่รวม separator)
+            addr = line[idx + 1:].strip()
+            out[pub] = addr
+    return out
+
+
+def gen_confs(keys, relays, out_dir, per_key=5, base_address_octet=2, addresses=None):
+    """gen conf: each key x (per_key) relays.
+    ถ้ามี addresses[pubkey] -> ใช้ Address จริง; ไม่งั้นใช้ placeholder 10.64.0.{octet}"""
     os.makedirs(out_dir, exist_ok=True)
+    addresses = addresses or {}
     made = 0
     for ki, priv in enumerate(keys):
         try:
@@ -82,19 +113,23 @@ def gen_confs(keys, relays, out_dir, per_key=5, base_address_octet=2):
         except Exception as e:
             print(f"[WG-MULLVAD] key #{ki+1} broken: {e}")
             continue
+        real_addr = addresses.get(pub)
+        addr = real_addr or f"10.64.0.{base_address_octet + ki}/32"
+        if not real_addr:
+            print(f"[WG-MULLVAD] warn: key #{ki+1} (pub={pub[:16]}...) ไม่มีใน addresses.txt - ใช้ placeholder {addr}")
         for ri, relay in enumerate(relays[:per_key]):
             conf = (
                 "[Interface]\n"
                 f"# Mullvad key #{ki+1} pub={pub}\n"
                 f"PrivateKey = {priv}\n"
-                f"Address = 10.64.0.{base_address_octet + ki}/32\n"
+                f"Address = {addr}\n"
                 "DNS = 10.64.0.1\n"
                 "\n"
                 "[Peer]\n"
                 f"PublicKey = {relay['public_key']}\n"
                 "AllowedIPs = 0.0.0.0/0\n"
                 f"Endpoint = {relay['ipv4_addr_in']}:51820\n"
-                f"# {relay['hostname']}\n"
+                f"# {relay['hostname']} ({relay.get('location','')})\n"
             )
             fname = f"Mullvad-key{ki+1}-{relay['hostname']}.conf"
             path = os.path.join(out_dir, fname)
@@ -133,7 +168,11 @@ def main():
         sys.exit(2)
     print(f"[WG-MULLVAD] โหลด {len(relays)} relay ประเทศ {args.country}")
 
-    made = gen_confs(keys, relays, args.out, per_key=args.per_key)
+    addrs_path = os.path.join(args.out, "addresses.txt")
+    addrs = load_addresses(addrs_path)
+    if addrs:
+        print(f"[WG-MULLVAD] โหลด {len(addrs)} address จาก {addrs_path}")
+    made = gen_confs(keys, relays, args.out, per_key=args.per_key, addresses=addrs)
     print(f"[WG-MULLVAD] gen {made} conf files ใน {args.out}")
 
 

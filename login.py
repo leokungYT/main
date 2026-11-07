@@ -3272,16 +3272,19 @@ def _wg_resolve_profile():
                 except OSError:
                     n_cur = 0
                 if n_cur < _per:
-                    print(f"[CONFIG] wg_profile: {d} เจอ keys.txt - รัน wg_gen_mullvad gen {_per} conf จาก Mullvad API")
+                    # mullvad_country: "" หรือ "any" = ทุกประเทศ (pool ใหญ่สุด), "jp"/"sg"/.. = เฉพาะประเทศนั้น
+                    country_raw = str(config.get("mullvad_country", "") or "").strip().lower()
+                    country = None if country_raw in ("", "any", "all") else country_raw
+                    print(f"[CONFIG] wg_profile: {d} เจอ keys.txt - รัน wg_gen_mullvad gen {_per} conf (country={country or 'ALL'})")
                     try:
                         import wg_gen_mullvad
                         keys = wg_gen_mullvad.load_keys(keys_path)
-                        country = str(config.get("mullvad_country", "jp") or "jp").lower()
+                        addrs = wg_gen_mullvad.load_addresses(os.path.join(d_abs, "addresses.txt"))
                         relays = wg_gen_mullvad.fetch_relays(country_filter=country)
                         if keys and relays:
                             per_key = max(1, _per // max(1, len(keys)))
-                            made = wg_gen_mullvad.gen_confs(keys, relays, d_abs, per_key=per_key)
-                            print(f"[CONFIG] wg_profile: {d} gen {made} conf (Mullvad {country.upper()})")
+                            made = wg_gen_mullvad.gen_confs(keys, relays, d_abs, per_key=per_key, addresses=addrs)
+                            print(f"[CONFIG] wg_profile: {d} gen {made} conf (Mullvad {country.upper() if country else 'ALL'}, addrs={len(addrs)})")
                         else:
                             print(f"[CONFIG] wg_profile: {d} Mullvad gen fail - keys={len(keys)} relays={len(relays)}")
                     except Exception as _e:

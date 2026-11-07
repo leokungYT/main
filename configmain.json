@@ -131,6 +131,8 @@
     "_wg_profile_clear_hint": "1 = ลบ IP เก่าทุกโฟลเดอร์ก่อนเริ่ม (เก็บแค่ key*.conf) แล้ว generate ใหม่, 0 = ใช้ IP เดิม",
     "wg_clear_on_start": 0,
     "_wg_clear_on_start_hint": "0 = ไม่ wipe wg/ pool ตอน startup (สำคัญสำหรับ Mullvad - conf มาจาก Mullvad API ไม่ใช่ wg_gen), 1 = default เดิม (wipe + regen จาก wg_gen)",
+    "mullvad_country": "",
+    "_mullvad_country_hint": "\"\" หรือ \"any\" = ทุกประเทศ (pool ใหญ่สุด ~700 relays), \"jp\"=เฉพาะ Japan, \"sg\"=Singapore, ...",
     "wg_per_device": {},
     "channels": {
         "ch1": [
