@@ -1,0 +1,9 @@
+# Mullvad pubkey -> Address mapping (จาก Mullvad web download)
+# format: <pubkey>=<ipv4_cidr>
+# pubkey = ตัว derive จาก privkey ใน keys.txt
+# wg_gen_mullvad.py อ่านไฟล์นี้ map Address ตอน gen conf
+am1q4do0GMaBX2kpBiNW7YCTHbsY/WVtpIkb/IIHEXo==10.64.121.152/32
+gbcJ5SzD5herrzN5hYetRRL+yOt/TrUhSasKEMC9rGQ==10.65.190.209/32
+P/DMM9bVfP77rnX5Oz15o0mN4443rO78g82OxWVmHUw==10.73.90.229/32
+wgU6Efn3+AduefGrhPeIBxfvoR/IADqaSf6AhME94gA==10.76.6.152/32
+0gvq8jTuYFJkChSlagRQ466wDXK7M0icRL+hjOuECS8==10.71.51.140/32

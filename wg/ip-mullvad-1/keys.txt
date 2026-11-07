@@ -1,7 +1,8 @@
-# Mullvad WireGuard private keys - 1 key per line
-# gen confs with: python wg_gen_mullvad.py
-am1q4do0GMaBX2kpBiNW7YCTHbsY/WVtpIkb/IIHEXo=
-gbcJ5SzD5herrzN5hYetRRL+yOt/TrUhSasKEMC9rGQ=
-P/DMM9bVfP77rnX5Oz15o0mN4443rO78g82OxWVmHUw=
-wgU6Efn3+AduefGrhPeIBxfvoR/IADqaSf6AhME94gA=
-0gvq8jTuYFJkChSlagRQ466wDXK7M0icRL+hjOuECS8=
+# Mullvad WireGuard PRIVATE keys (from downloaded conf)
+# 1 private key per line
+# Address mapping อยู่ที่ addresses.txt (map ด้วย pubkey ที่ derive จาก priv)
+yAMA5/zUQs1lXgyccxIIJgUS+YJeDZgEBtIfoECmLkM=
+4GJJEL7m0OdLqtNX4HQiitnFMtQn9j6LaG+n+ERhik8=
+8EPlN+f1p5P3mZC0HJDjlgUyZasCCUk5KIYgF8KZnlU=
+CHVWrQIIPVHdZYjQChDNPC5Qe6swUFTL+u8uwRGbl2E=
+GPFWQJ/7okjA5T/8NjAVVHV3u24EOSxULy7VjRicAWU=
