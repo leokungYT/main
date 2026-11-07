@@ -63,8 +63,10 @@ wg/.pool/
 !wg/README.txt
 !wg/ip-chan/
 !wg/ip-boy/
+!wg/ip-mullvad-1/
 !wg/ip-chan/**
 !wg/ip-boy/**
+!wg/ip-mullvad-1/**
 wg/ip-chan/.split/
 wg/ip-boy/.split/
 wg/ip-chan/**/.split/

@@ -125,7 +125,7 @@
     "wg_after_login": 0,
     "wg_dir": "wg",
     "wg_profile": ["ip-mullvad-1"],
-    "_wg_profile_hint": "string เดียวหรือ list เช่น [\"ip-chan/main-1\",\"ip-chan/main-2\",\"ip-chan/main-3\"] = รวม IP ของทั้ง 3 โฟลเดอร์. ตอนนี้: Mullvad only (ปิด Windscribe ชั่วคราวเพื่อเทส)",
+    "_wg_profile_hint": "string เดียวหรือ list เช่น [\"ip-chan/main-1\",\"ip-chan/main-2\"] = รวม IP. ตอนนี้: Mullvad only (ปิด Windscribe เพื่อเทส)",
     "_wg_profile_backup": ["ip-chan/main-1", "ip-chan/main-2", "ip-chan/main-3", "ip-boy/main-1"],
     "wg_profile_clear_on_start": 0,
     "_wg_profile_clear_hint": "1 = ลบ IP เก่าทุกโฟลเดอร์ก่อนเริ่ม (เก็บแค่ key*.conf) แล้ว generate ใหม่, 0 = ใช้ IP เดิม",
