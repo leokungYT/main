@@ -3264,6 +3264,29 @@ def _wg_resolve_profile():
         _per = int(config.get("wg_per_machine", 15) or 15)
         for d in resolved:
             d_abs = os.path.join(script_dir, d)
+            # Mullvad sub: ถ้ามี keys.txt -> รัน wg_gen_mullvad gen conf จาก Mullvad API
+            keys_path = os.path.join(d_abs, "keys.txt")
+            if os.path.exists(keys_path):
+                try:
+                    n_cur = len([f for f in os.listdir(d_abs) if f.lower().endswith(".conf")])
+                except OSError:
+                    n_cur = 0
+                if n_cur < _per:
+                    print(f"[CONFIG] wg_profile: {d} เจอ keys.txt - รัน wg_gen_mullvad gen {_per} conf จาก Mullvad API")
+                    try:
+                        import wg_gen_mullvad
+                        keys = wg_gen_mullvad.load_keys(keys_path)
+                        country = str(config.get("mullvad_country", "jp") or "jp").lower()
+                        relays = wg_gen_mullvad.fetch_relays(country_filter=country)
+                        if keys and relays:
+                            per_key = max(1, _per // max(1, len(keys)))
+                            made = wg_gen_mullvad.gen_confs(keys, relays, d_abs, per_key=per_key)
+                            print(f"[CONFIG] wg_profile: {d} gen {made} conf (Mullvad {country.upper()})")
+                        else:
+                            print(f"[CONFIG] wg_profile: {d} Mullvad gen fail - keys={len(keys)} relays={len(relays)}")
+                    except Exception as _e:
+                        print(f"[CONFIG] wg_profile: {d} Mullvad gen error: {_e}")
+                continue
             try:
                 n_cur = len([f for f in os.listdir(d_abs) if f.lower().endswith(".conf")])
             except OSError:
