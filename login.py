@@ -521,67 +521,9 @@ _DEVICE_POOL = [
 ]
 
 
-_STICKY_PATH = "wg/.sticky_binding.json"
-
-
-def _sticky_load():
-    try:
-        with open(_STICKY_PATH, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _sticky_save(d):
-    try:
-        os.makedirs(os.path.dirname(_STICKY_PATH) or ".", exist_ok=True)
-        tmp = _STICKY_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(d, f, indent=2)
-        os.replace(tmp, _STICKY_PATH)
-    except Exception:
-        pass
-
-
-def _sticky_get(device_id):
-    d = _sticky_load()
-    return d.get(device_id) or {}
-
-
-def _sticky_set(device_id, **kw):
-    """merge kw เข้า binding ของ device นี้ - เก็บถาวร: device_id -> {conf, profile_idx, created}"""
-    d = _sticky_load()
-    rec = d.get(device_id) or {}
-    rec.update(kw)
-    if "created" not in rec:
-        rec["created"] = time.time()
-    d[device_id] = rec
-    _sticky_save(d)
-
-
-def _sticky_enabled():
-    try:
-        return bool(int(globals().get("config", {}).get("sticky_binding", 0) or 0))
-    except Exception:
-        return False
-
-
 def _pick_device_profile(device_id):
-    """เลือก device profile - sticky mode: 1 device_id = 1 profile ตลอดชีพ
-    rotate mode (เดิม): seed ด้วย device_id+30min window"""
-    # sticky: ดู binding ก่อน - ถ้ามี profile_idx ใช้ตัวนั้นเสมอ
-    if _sticky_enabled():
-        rec = _sticky_get(device_id)
-        idx = rec.get("device_profile_idx")
-        if isinstance(idx, int) and 0 <= idx < len(_DEVICE_POOL):
-            return _DEVICE_POOL[idx]
-        # ยังไม่เคยผูก - สุ่มครั้งเดียวแล้ว lock ถาวร
-        seed_int = int(_hashlib.sha256(f"profile:{device_id}".encode()).hexdigest()[:8], 16)
-        new_idx = seed_int % len(_DEVICE_POOL)
-        _sticky_set(device_id, device_profile_idx=new_idx)
-        print(f"[{device_id}] [STICKY] lock device_profile_idx={new_idx} ({_DEVICE_POOL[new_idx]['model']}) ถาวร")
-        return _DEVICE_POOL[new_idx]
-    # rotate mode (เดิม)
+    """สุ่ม profile per login - seed ด้วย device_id+timestamp เพื่อให้ ban/unban หมุนได้
+    แต่ภายใน 1 login session ค่าคงที่ (session_seed)"""
     seed_src = f"{device_id}:{int(time.time() // 1800)}:{_random.random()}"
     seed_int = int(_hashlib.sha256(seed_src.encode()).hexdigest()[:8], 16)
     rng = _random.Random(seed_int)
@@ -4967,18 +4909,6 @@ class RangerGearBot(threading.Thread):
         if mapped:
             p = mapped if os.path.isabs(mapped) else os.path.join(wg_dir, mapped)
             return p if os.path.exists(p) else None
-        # sticky binding: 1 device = 1 conf ถาวร. ถ้า conf ยังอยู่ + ไม่ bad + ไม่ cool -> คืนทันที
-        if _sticky_enabled():
-            rec = _sticky_get(self.device_id)
-            sticky_conf = rec.get("conf")
-            if sticky_conf:
-                p = sticky_conf if os.path.isabs(sticky_conf) else os.path.join(wg_dir, sticky_conf)
-                if os.path.exists(p):
-                    bad = set(getattr(self, "_wg_bad", set()))
-                    cool = {} if getattr(self, "_wg_ignore_cool", False) else _wg_cooldown_load(wg_dir)
-                    if p not in bad and _wg_endpoint(p) not in cool:
-                        return p
-                    print(f"[{self.device_id}] [STICKY] conf ผูกไว้ {os.path.basename(p)} อยู่ใน bad/cool - จะเลือกใหม่ (relation เดิมอาจเสีย)")
         confs = _wg_list_configs(wg_dir)
         if (not confs and int(config.get("wg_regen_blocked", 1) or 0)
                 and time.time() - getattr(self, "_wg_empty_gen_t", 0) > 60):
@@ -5630,17 +5560,6 @@ class RangerGearBot(threading.Thread):
 
     def _wg_setup(self, conf):
         pkg, name = self.WG_PKG, self.WG_TUNNEL
-        # sticky binding: ยังไม่เคยผูก conf -> ผูกถาวร device_id -> conf นี้
-        if _sticky_enabled() and conf:
-            rec = _sticky_get(self.device_id)
-            if not rec.get("conf"):
-                wg_dir = str(config.get("wg_dir", "wg"))
-                try:
-                    rel = os.path.relpath(conf, wg_dir) if conf.startswith(wg_dir) else os.path.basename(conf)
-                except Exception:
-                    rel = os.path.basename(conf)
-                _sticky_set(self.device_id, conf=rel)
-                print(f"[{self.device_id}] [STICKY] lock conf={rel} ถาวร (relation: device↔IP)")
         # ทางลัด: ไฟล์ config นี้เคยเขียนลงเครื่องแล้ว (แค่ปิดไปตอนส่งไฟล์) -> สั่งเปิด tunnel อย่างเดียว ไม่ต้องส่งไฟล์ใหม่
         # (เทียบเวลาแก้ไฟล์ด้วย - server ส่งไฟล์ชื่อเดิมแต่เนื้อหาใหม่มา ต้องเขียนลงเครื่องใหม่)
         if getattr(self, "_wg_conf_written", None) == (conf, os.path.getmtime(conf)):
