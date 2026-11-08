@@ -111,6 +111,8 @@
     "wg_hard_reset_on_start": 1,
     "_wg_hard_reset_hint": "1 = nuclear reset ทุกจอก่อนเริ่ม (force-stop WG app + pm clear + ลบ tun0/iptables/DNS + ลบ always_on_vpn) - clean 100%, 0 = soft reset แบบเดิม (ล้างแค่ proxy)",
     "wg_rotate_logins": 0,
+    "wg_stick_on_success": 1,
+    "_wg_stick_hint": "1 = IP ที่ login ผ่านครั้งหนึ่งแล้ว จะยึดไว้ตลอด (ไม่สลับ) - สลับเฉพาะเจอ fixnet1 ตอน start เกม, 0 = สลับตาม strike ปกติ",
     "wg_regen_blocked": 1,
     "wg_fixnet1_switch": 1,
     "wg_auth_fallback": 0,
