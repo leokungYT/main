@@ -889,8 +889,11 @@ def load_config(quiet=False):
         except Exception as e:
             print(f"[WARN] Error loading configmain.json (wg_*): {e}")
 
-    # wg_profile: สลับโฟลเดอร์ IP (เช่น ip-chan / ip-boy) โดยไม่ต้องแก้ wg_dir
-    _wg_resolve_profile()
+    # wg_profile: สลับโฟลเดอร์ IP - ข้ามถ้า wg_enabled=0 (ไม่เสียเวลา startup ฟรี)
+    if int(config.get("wg_enabled", 1) or 0):
+        _wg_resolve_profile()
+    else:
+        print("[CONFIG] wg_enabled=0 - ข้าม wg_profile resolve + wg_gen (ใช้ IP ของ PC ตรง ๆ)")
 
 
 def _wg_resolve_profile():

@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.3.0"
+BOT_VERSION = "4.3.1"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3150,9 +3150,11 @@ def load_config():
             print(f"[WARN] Error loading UI config: {e}")
 
     # 3. wg_profile: สลับโฟลเดอร์ IP (เช่น ip-chan / ip-boy) โดยไม่ต้องแก้ wg_dir
-    #    "wg_profile": "ip-chan" -> ใช้ wg/ip-chan/ (ถ้ามี) หรือ ip-chan/ ที่ root
-    #    เอาไว้โยนไฟล์ .conf จาก key หลายชุดลงคนละโฟลเดอร์ แล้ว switch ใน config ทีเดียว
-    _wg_resolve_profile()
+    #    wg_enabled=0 -> ข้ามทั้ง resolve + clear + wg_gen (เสียเวลา startup ฟรี)
+    if int(config.get("wg_enabled", 1) or 0):
+        _wg_resolve_profile()
+    else:
+        print("[CONFIG] wg_enabled=0 - ข้าม wg_profile resolve + wg_gen (ใช้ IP ของ PC ตรง ๆ)")
 
 
 def _wg_resolve_profile():
