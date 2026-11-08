@@ -214,41 +214,51 @@ def main():
 
     print(f"\n[result] working proxies (LGR รับ): {len(working)}")
 
-    # 3. Classify by ASN
+    # 3. Classify by ASN - อัพเดท working ให้มี info dict
     residential = []
     datacenter = []
     unknown = []
+    classified = []   # (ip, port, proto, code, info_dict)
 
     if working:
         print("\n[classify] เช็ค ASN แต่ละ proxy...")
         for i, (ip, port, proto, code, exit_ip) in enumerate(working, 1):
             info = classify_asn(exit_ip or ip)
-            if country_filter and info.get("country", "").upper() != country_filter:
-                continue
+            # country filter: ข้ามจากการนับ residential/datacenter แต่ยังเก็บใน classified
+            matches_country = (not country_filter) or info.get("country", "").upper() == country_filter.upper()
             row = (ip, port, proto, code, info)
-            kind = info["kind"]
+            classified.append(row)
+            kind = info.get("kind", "unknown")
             tag = {"RESIDENTIAL": "✓ RES", "DATACENTER": "✗ DC", "UNKNOWN": "? UNK",
                    "error": "? ERR"}.get(kind, kind)
-            print(f"  [{i}/{len(working)}] {proto}://{ip}:{port} ({info['country']}) {tag} - {info['isp']}")
-            if kind == "RESIDENTIAL":
-                residential.append(row)
-            elif kind == "DATACENTER":
-                datacenter.append(row)
-            else:
-                unknown.append(row)
+            print(f"  [{i}/{len(working)}] {proto}://{ip}:{port} ({info.get('country', '-')}) {tag} - {info.get('isp', '-')}")
+            if matches_country:
+                if kind == "RESIDENTIAL":
+                    residential.append(row)
+                elif kind == "DATACENTER":
+                    datacenter.append(row)
+                else:
+                    unknown.append(row)
 
-    # 4. Output files
+    # 4. Output files - ใช้ classified ที่มี info dict ครบ
     with open("free_proxies_working.txt", "w", encoding="utf-8") as f:
-        f.write(f"# Found {len(working)} working proxies (LGR api accepts, code 401/200/204)\n")
+        f.write(f"# Found {len(classified)} working proxies (LGR api accepts, code 401/200/204)\n")
         f.write(f"# Updated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        for ip, port, proto, code, info in working:
-            f.write(f"{proto}://{ip}:{port}  # code={code} isp={info.get('isp', '-')} country={info.get('country', '-')} kind={info.get('kind', '-')}\n")
+        for ip, port, proto, code, info in classified:
+            isp = info.get("isp", "-") if isinstance(info, dict) else "-"
+            country = info.get("country", "-") if isinstance(info, dict) else "-"
+            kind = info.get("kind", "-") if isinstance(info, dict) else "-"
+            f.write(f"{proto}://{ip}:{port}  # code={code} isp={isp} country={country} kind={kind}\n")
 
     with open("free_proxies_residential.txt", "w", encoding="utf-8") as f:
-        f.write(f"# Residential proxies only ({len(residential)} proxies)\n")
+        f.write(f"# Residential + non-datacenter proxies ({len(residential) + len(unknown)} proxies)\n")
         f.write(f"# Updated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        for ip, port, proto, code, info in residential:
-            f.write(f"{proto}://{ip}:{port}  # isp={info.get('isp', '-')} country={info.get('country', '-')}\n")
+        # รวม residential + unknown (ไม่ใช่ datacenter) = usable pool
+        for ip, port, proto, code, info in residential + unknown:
+            isp = info.get("isp", "-") if isinstance(info, dict) else "-"
+            country = info.get("country", "-") if isinstance(info, dict) else "-"
+            kind = info.get("kind", "-") if isinstance(info, dict) else "-"
+            f.write(f"{proto}://{ip}:{port}  # isp={isp} country={country} kind={kind}\n")
 
     print("\n" + "=" * 70)
     print(" สรุป")
@@ -262,11 +272,14 @@ def main():
     print(f"    - free_proxies_working.txt       ({len(working)} lines)")
     print(f"    - free_proxies_residential.txt   ({len(residential)} lines)")
 
-    if residential:
-        print(f"\n[OK] เจอ residential proxy {len(residential)} ตัว - บอกไว้จะเขียน patch")
-        print(f"     login.py ให้ emulator ยิง LGR ผ่าน SOCKS5 proxy เหล่านี้")
+    usable = len(residential) + len(unknown)
+    if usable > 0:
+        print(f"\n[OK] เจอ proxy ใช้ได้ (ไม่ใช่ datacenter) {usable} ตัว:")
+        print(f"     - Residential ชัดเจน: {len(residential)}")
+        print(f"     - Unknown ASN (น่าจะไม่โดนบล็อก): {len(unknown)}")
+        print(f"     ลองเอา proxy จาก free_proxies_residential.txt ไปใช้ดู")
     else:
-        print(f"\n[!] ไม่เจอ residential proxy เลย - ผลปกติเพราะ free pool ส่วนใหญ่เป็น datacenter")
+        print(f"\n[!] ไม่เจอ residential/unknown proxy เลย")
         print(f"    ทางเลือก: 1) รันอีกครั้ง (รายการเปลี่ยน), 2) ซื้อ IPRoyal 1GB $1.56, 3) SIM 4G")
 
 
