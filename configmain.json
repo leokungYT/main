@@ -124,15 +124,17 @@
     ],
     "wg_after_login": 0,
     "wg_dir": "wg",
-    "wg_profile": [
-        "ip-chan/main-1",
-        "ip-chan/main-2",
-        "ip-chan/main-3",
-        "ip-boy/main-1"
-    ],
-    "_wg_profile_hint": "string เดียวหรือ list เช่น [\"ip-chan/main-1\",\"ip-chan/main-2\",\"ip-chan/main-3\"] = รวม IP ของทั้ง 3 โฟลเดอร์",
-    "wg_profile_clear_on_start": 1,
-    "_wg_profile_clear_hint": "1 = ลบ IP เก่าทุกโฟลเดอร์ก่อนเริ่ม (เก็บแค่ key*.conf) แล้ว generate ใหม่, 0 = ใช้ IP เดิม",
+    "wg_profile": ["ip-mullvad-1"],
+    "_wg_profile_hint": "string เดียวหรือ list. ตอนนี้: Mullvad only (ip-mullvad-1 = 30 conf จาก Mullvad API). backup Windscribe: [\"ip-chan/main-1\",\"ip-chan/main-2\",\"ip-chan/main-3\",\"ip-boy/main-1\"]",
+    "_wg_profile_backup_windscribe": ["ip-chan/main-1", "ip-chan/main-2", "ip-chan/main-3", "ip-boy/main-1"],
+    "wg_profile_clear_on_start": 0,
+    "_wg_profile_clear_hint": "0 = ไม่ wipe (สำคัญสำหรับ Mullvad - conf มาจาก Mullvad API ไม่ใช่ wg_gen), 1 = default เดิม Windscribe (wipe + regen จาก wg_gen)",
+    "wg_clear_on_start": 0,
+    "_wg_clear_on_start_hint": "0 = ไม่ wipe wg/ pool ตอน startup (สำคัญสำหรับ Mullvad), 1 = default เดิม",
+    "mullvad_country": "",
+    "_mullvad_country_hint": "\"\" หรือ \"any\" = ทุกประเทศ (pool ~700 relays), \"jp\"=เฉพาะ Japan",
+    "mullvad_strict": 1,
+    "_mullvad_strict_hint": "1 = เฉพาะ Mullvad-owned relay (IP สะอาด ~400 relays) - กัน M247/DataPacket rented ที่เกมแบน, 0 = ทุก relay",
     "wg_per_device": {},
     "channels": {
         "ch1": [
