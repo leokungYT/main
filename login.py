@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.5.4"
+BOT_VERSION = "4.6.0"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -4961,6 +4961,37 @@ class RangerGearBot(threading.Thread):
             # ไฟล์ใน wg/ หมด (ลบตัวที่โดนบล็อกไปหมด) แต่ยังมีกุญแจ -> สร้างชุดใหม่
             _wg_generate_more(wg_dir, int(config.get("wg_gen_extra", 5)) + 10, self.device_id)
             confs = _wg_list_configs(wg_dir)
+
+        # Sub-folder round-robin: pool mode ปกติสุ่มทุก sub รวมกัน
+        # ตั้ง wg_sub_round_robin=1 -> แต่ละจอ "ล็อก sub เดียว" ต่อรอบ
+        #   -> fixnet1 -> _wg_failover ขยับ _wg_sub_idx ไป sub ถัดไป
+        #   ประโยชน์: ถ้า ip-chan main-1 ตาย ยังเหลือ main-2/main-3/ip-boy ให้ลอง
+        #   ไม่กระโดดมั่วทำให้ไม่รู้ว่า sub ไหนใช้ได้/ไม่ได้
+        if int(config.get("wg_sub_round_robin", 1) or 0) and confs:
+            # แยกชื่อ sub จาก prefix ของไฟล์ (รูปแบบ: wg__ip-chan__main-1__xxx.conf)
+            subs = []
+            for c in confs:
+                bn = os.path.basename(c)
+                parts = bn.split("__")
+                if len(parts) >= 4 and parts[0] == "wg":
+                    sub = "__".join(parts[:3])   # "wg__ip-chan__main-1"
+                    if sub not in subs:
+                        subs.append(sub)
+            if len(subs) >= 2:
+                subs.sort()   # ลำดับคงที่: ip-boy/main-1, ip-chan/main-1, main-2, main-3
+                cur_idx = getattr(self, "_wg_sub_idx", None)
+                if cur_idx is None:
+                    # เริ่มที่ sub ตาม device_id (จอต่าง ๆ เริ่มคนละ sub = กระจายโหลด)
+                    try:
+                        port = int(self.device_id.rsplit(":", 1)[1])
+                        cur_idx = ((port - 16384) // 32) % len(subs) if port >= 16384 else 0
+                    except Exception:
+                        cur_idx = sum(map(ord, self.device_id)) % len(subs)
+                    self._wg_sub_idx = cur_idx
+                cur_sub = subs[cur_idx % len(subs)]
+                filtered = [c for c in confs if os.path.basename(c).startswith(cur_sub + "__")]
+                if filtered:
+                    confs = filtered   # จำกัดการเลือกเฉพาะ sub นี้
         if not confs:
             return None
         # แต่ละจอ "จอง" ไฟล์ของตัวเอง ไม่ใช้ซ้ำกับจออื่น (กุญแจเดียวกันต่อพร้อมกัน = ตีกันเน็ตหลุด)
@@ -5428,6 +5459,15 @@ class RangerGearBot(threading.Thread):
         if getattr(self, "_wg_stuck_conf", None) == conf:
             print(f"[{self.device_id}] [WG] ปลดล็อก IP ({os.path.basename(conf)}) - จะหาใหม่")
             self._wg_stuck_conf = None
+        # sub-folder round-robin: ขยับ sub index -> รอบหน้าจะไป sub ถัดไป
+        if int(config.get("wg_sub_round_robin", 1) or 0):
+            cur_idx = getattr(self, "_wg_sub_idx", 0)
+            self._wg_sub_idx = cur_idx + 1
+            # หา name ของ sub ปัจจุบันจาก conf ที่ fail
+            bn = os.path.basename(conf)
+            parts = bn.split("__")
+            cur_sub = "__".join(parts[:3]) if len(parts) >= 4 else "?"
+            print(f"[{self.device_id}] [WG] สลับ sub-pool: {cur_sub} -> next (idx {self._wg_sub_idx})")
         self.__dict__.setdefault("_wg_bad", set()).add(conf)
         _wg_cooldown_add(os.path.dirname(conf), _wg_endpoint(conf))
         # ลบไฟล์ + จดว่าโดนบล็อก 7 วัน เฉพาะตอน "ยืนยันแล้ว" (ทดสอบผ่าน VPN ได้ IP จริงแต่เซิร์ฟเวอร์เกมไม่ตอบ)

@@ -2234,6 +2234,32 @@ class RangerGearBot(threading.Thread):
             # ไฟล์ใน wg/ หมด (ลบตัวที่โดนบล็อกไปหมด) แต่ยังมีกุญแจ -> สร้างชุดใหม่
             _wg_generate_more(wg_dir, int(config.get("wg_gen_extra", 5)) + 10, self.device_id)
             confs = _wg_list_configs(wg_dir)
+
+        # Sub-folder round-robin: sync กับ login.py - ล็อก sub เดียวต่อรอบ
+        # fixnet1 -> _wg_failover ขยับ _wg_sub_idx -> รอบหน้าไป sub ถัดไป
+        if int(config.get("wg_sub_round_robin", 1) or 0) and confs:
+            subs = []
+            for c in confs:
+                bn = os.path.basename(c)
+                parts = bn.split("__")
+                if len(parts) >= 4 and parts[0] == "wg":
+                    sub = "__".join(parts[:3])
+                    if sub not in subs:
+                        subs.append(sub)
+            if len(subs) >= 2:
+                subs.sort()
+                cur_idx = getattr(self, "_wg_sub_idx", None)
+                if cur_idx is None:
+                    try:
+                        port = int(self.device_id.rsplit(":", 1)[1])
+                        cur_idx = ((port - 16384) // 32) % len(subs) if port >= 16384 else 0
+                    except Exception:
+                        cur_idx = sum(map(ord, self.device_id)) % len(subs)
+                    self._wg_sub_idx = cur_idx
+                cur_sub = subs[cur_idx % len(subs)]
+                filtered = [c for c in confs if os.path.basename(c).startswith(cur_sub + "__")]
+                if filtered:
+                    confs = filtered
         if not confs:
             return None
         # แต่ละจอ "จอง" ไฟล์ของตัวเอง ไม่ใช้ซ้ำกับจออื่น (กุญแจเดียวกันต่อพร้อมกัน = ตีกันเน็ตหลุด)
@@ -2607,6 +2633,14 @@ class RangerGearBot(threading.Thread):
         if getattr(self, "_wg_stuck_conf", None) == conf:
             print(f"[{self.device_id}] [WG] ปลดล็อก IP ({os.path.basename(conf)}) - จะหาใหม่")
             self._wg_stuck_conf = None
+        # sub-folder round-robin: ขยับ sub -> รอบหน้าไป sub ถัดไป (sync กับ login.py)
+        if int(config.get("wg_sub_round_robin", 1) or 0):
+            cur_idx = getattr(self, "_wg_sub_idx", 0)
+            self._wg_sub_idx = cur_idx + 1
+            bn = os.path.basename(conf)
+            parts = bn.split("__")
+            cur_sub = "__".join(parts[:3]) if len(parts) >= 4 else "?"
+            print(f"[{self.device_id}] [WG] สลับ sub-pool: {cur_sub} -> next (idx {self._wg_sub_idx})")
         self.__dict__.setdefault("_wg_bad", set()).add(conf)
         _wg_cooldown_add(os.path.dirname(conf), _wg_endpoint(conf))
         # ลบไฟล์ + จดว่าโดนบล็อก 7 วัน เฉพาะตอน "ยืนยันแล้ว" (ทดสอบผ่าน VPN ได้ IP จริงแต่เซิร์ฟเวอร์เกมไม่ตอบ)
