@@ -3280,7 +3280,8 @@ def _wg_resolve_profile():
                         import wg_gen_mullvad
                         keys = wg_gen_mullvad.load_keys(keys_path)
                         addrs = wg_gen_mullvad.load_addresses(os.path.join(d_abs, "addresses.txt"))
-                        relays = wg_gen_mullvad.fetch_relays(country_filter=country)
+                        _strict = bool(int(config.get("mullvad_strict", 1) or 0))
+                        relays = wg_gen_mullvad.fetch_relays(country_filter=country, strict=_strict)
                         if keys and relays:
                             per_key = max(1, _per // max(1, len(keys)))
                             made = wg_gen_mullvad.gen_confs(keys, relays, d_abs, per_key=per_key, addresses=addrs)
@@ -5424,13 +5425,19 @@ class RangerGearBot(threading.Thread):
             return conf
         apps = str(config.get("wg_split_apps", "com.linecorp.LGRGS") or "").strip()   # ดีฟอลต์ = เฉพาะเกมผ่าน VPN - ถ้าทั้งเครื่องผ่าน VPN adbd ตอบกลับไม่ถึงพีซี -> adb offline/not found ทุกจอ ("" = ทั้งเครื่อง)
         ka = int(config.get("wg_keepalive", 25) or 0)
+        mtu = int(config.get("wg_mtu", 1280) or 0)   # MuMu virtio NIC มี overhead - 1280 รองปลอดภัยสุด
         low = [l.strip().lower() for l in lines]
         out = []
         section = ""
+        mtu_injected = False
         for l in lines:
             s = l.strip().lower()
-            if s.startswith("[") and section == "[interface]" and apps and not any(x.startswith("includedapplications") for x in low):
-                out.append(f"IncludedApplications = {apps}")
+            if s.startswith("[") and section == "[interface]":
+                if apps and not any(x.startswith("includedapplications") for x in low):
+                    out.append(f"IncludedApplications = {apps}")
+                if mtu and not any(x.startswith("mtu") for x in low) and not mtu_injected:
+                    out.append(f"MTU = {mtu}")
+                    mtu_injected = True
             if s.startswith("["):
                 section = s
             out.append(l)
@@ -5649,6 +5656,8 @@ class RangerGearBot(threading.Thread):
             f"cmd deviceidle whitelist +{pkg}",
             # บังคับให้ WireGuard เป็น always-on VPN กัน Android บล็อก service background
             f"settings put global always_on_vpn_app {pkg} 2>/dev/null",
+            # kill-switch: tunnel down = ห้ามออกเน็ตเลย (กันบ้านไหล 27.130.*)
+            f"settings put global always_on_vpn_lockdown {int(bool(int(config.get('wg_lockdown', 1) or 0)))} 2>/dev/null",
             # เปิด MainActivity ก่อน - app ต้อง initialize DataStore (อ่าน allow_remote_control_intents) ก่อน receiver จะยอมรับ broadcast
             f"am start -W -n {pkg}/.activity.MainActivity >/dev/null 2>&1",
             f"sleep 1",
@@ -13450,6 +13459,11 @@ if __name__ == "__main__":
         processes.append(p)
         print(f"[INFO] Started process for {dev} (PID: {p.pid})")
         inflight += 1
+        # stagger: หน่วงก่อนปล่อยจอถัดไป กัน burst detection ของเกม (30 จอ login พร้อมกัน = flagged)
+        _stagger = float(config.get("stagger_login_sec", 0) or 0)
+        if _stagger > 0 and dev != targets[-1]:
+            print(f"[STAGGER] รอ {_stagger:.1f}s ก่อนปล่อยจอถัดไป")
+            time.sleep(_stagger)
         
     try:
         for p in processes:

@@ -28,6 +28,11 @@ except ImportError:
 
 MULLVAD_API = "https://api.mullvad.net/public/relays/wireguard/v2/"
 
+# ASN/provider ที่ Line Rangers แบน (datacenter rented) - เลี่ยง
+BAD_PROVIDERS = {"M247", "DataPacket", "100TB", "Datapacket", "QuadraNet", "Hydra"}
+# Mullvad ของตัวเอง - IP reputation สะอาดกว่า rented (ยืนยัน log 146.70.* = M247 โดนแบน)
+PREFER_OWNED = True
+
 
 def derive_pubkey(priv_b64):
     priv_bytes = base64.b64decode(priv_b64)
@@ -39,19 +44,30 @@ def derive_pubkey(priv_b64):
     return base64.b64encode(pub).decode()
 
 
-def fetch_relays(country_filter=None, retries=3):
+def fetch_relays(country_filter=None, retries=3, strict=False):
+    """strict=True -> เฉพาะ Mullvad-owned + ไม่ใช่ BAD_PROVIDERS (IP สะอาด, pool เล็กลง)"""
     for i in range(retries):
         try:
             with urlopen(MULLVAD_API, timeout=15) as r:
                 data = json.load(r)
             relays = []
+            skipped_bad = skipped_rented = 0
             for relay in data.get("wireguard", {}).get("relays", []):
                 if not relay.get("active", True):
                     continue
                 loc = relay.get("location", "")
                 if country_filter and not loc.startswith(f"{country_filter}-"):
                     continue
+                prov = (relay.get("provider") or "").strip()
+                if prov in BAD_PROVIDERS:
+                    skipped_bad += 1
+                    continue
+                if strict and relay.get("owned") is False:
+                    skipped_rented += 1
+                    continue
                 relays.append(relay)
+            if skipped_bad or skipped_rented:
+                print(f"[WG-MULLVAD] filter: skip {skipped_bad} bad-ASN + {skipped_rented} rented")
             return relays
         except Exception as e:
             print(f"[WG-MULLVAD] fetch relays fail ({e}) - retry {i+1}/{retries}")
@@ -124,12 +140,14 @@ def gen_confs(keys, relays, out_dir, per_key=5, base_address_octet=2, addresses=
                 f"PrivateKey = {priv}\n"
                 f"Address = {addr}\n"
                 "DNS = 10.64.0.1\n"
+                "MTU = 1280\n"
                 "\n"
                 "[Peer]\n"
                 f"PublicKey = {relay['public_key']}\n"
                 "AllowedIPs = 0.0.0.0/0\n"
                 f"Endpoint = {relay['ipv4_addr_in']}:51820\n"
-                f"# {relay['hostname']} ({relay.get('location','')})\n"
+                "PersistentKeepalive = 25\n"
+                f"# {relay['hostname']} ({relay.get('location','')}) provider={relay.get('provider','?')} owned={relay.get('owned','?')}\n"
             )
             fname = f"Mullvad-key{ki+1}-{relay['hostname']}.conf"
             path = os.path.join(out_dir, fname)
@@ -146,6 +164,7 @@ def main():
     ap.add_argument("--out", default="wg/ip-mullvad-1", help="โฟลเดอร์ปลายทาง")
     ap.add_argument("--keys", default=None, help="path ไฟล์ keys.txt (default: <out>/keys.txt)")
     ap.add_argument("--force", action="store_true", help="gen ทับไฟล์เดิม")
+    ap.add_argument("--strict", action="store_true", help="เฉพาะ Mullvad-owned relay (IP สะอาด)")
     args = ap.parse_args()
 
     keys_path = args.keys or os.path.join(args.out, "keys.txt")
@@ -162,7 +181,7 @@ def main():
         print(f"[WG-MULLVAD] มี {len(existing)} conf อยู่แล้วใน {args.out} - skip (ใช้ --force เพื่อ gen ทับ)")
         return
 
-    relays = fetch_relays(country_filter=args.country)
+    relays = fetch_relays(country_filter=args.country, strict=args.strict)
     if not relays:
         print(f"[WG-MULLVAD] ไม่พบ relay ประเทศ {args.country} - หยุด")
         sys.exit(2)

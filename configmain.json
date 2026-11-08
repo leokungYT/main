@@ -133,6 +133,14 @@
     "_wg_clear_on_start_hint": "0 = ไม่ wipe wg/ pool ตอน startup (สำคัญสำหรับ Mullvad - conf มาจาก Mullvad API ไม่ใช่ wg_gen), 1 = default เดิม (wipe + regen จาก wg_gen)",
     "mullvad_country": "",
     "_mullvad_country_hint": "\"\" หรือ \"any\" = ทุกประเทศ (pool ใหญ่สุด ~700 relays), \"jp\"=เฉพาะ Japan, \"sg\"=Singapore, ...",
+    "mullvad_strict": 1,
+    "_mullvad_strict_hint": "1 = เฉพาะ Mullvad-owned relay (IP สะอาด, pool ~400 relays) - กัน M247/DataPacket rented ที่เกมแบน, 0 = ทุก relay (pool ใหญ่สุดแต่ dirty)",
+    "wg_lockdown": 1,
+    "_wg_lockdown_hint": "1 = kill-switch (tunnel dead = block ทุก packet ออก wlan0) - กันบ้านไหล 27.130.*, 0 = ปล่อยเน็ตผ่านปกติ",
+    "wg_mtu": 1280,
+    "_wg_mtu_hint": "MTU inject เข้า [Interface] - MuMu virtio NIC overhead สูง, 1280 ปลอดภัยสุด (1420 default WG ตก packet บ่อย)",
+    "stagger_login_sec": 10,
+    "_stagger_login_hint": "หน่วงระหว่าง spawn แต่ละจอ (s) - 30 จอพร้อมกัน = burst flag, 10s = spread load แต่ไม่ช้าเกิน",
     "wg_per_device": {},
     "channels": {
         "ch1": [
