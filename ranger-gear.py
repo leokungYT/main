@@ -1290,8 +1290,15 @@ def reset_network_all(devices):
     """ก่อนเริ่มบอท: ล้างของค้างทุกจอ (พร้อมกัน) - tunnel WireGuard, แอป WireGuard, proxy
     แล้ว ping 1.1.1.1 จากในอีมูฯ บอกใน log ว่าจอไหนเน็ตใช้ได้/ไม่ได้
     ปิดได้ด้วย config "reset_network_on_start": 0
+
+    wg_enabled=0 (proxy mode): ข้ามทั้งหมด - ไม่ล้าง http_proxy ของ Android
+      (ที่ proxy_switcher.py ตั้งไว้ให้ emulator วิ่งผ่าน TOT/ISP ไทย)
     """
     if not int(config.get("reset_network_on_start", 1) or 0):
+        return
+    if not int(config.get("wg_enabled", 1) or 0):
+        print("[NET-RESET] wg_enabled=0 (proxy mode) - ข้าม VPN reset ทั้งหมด")
+        print("            Android http_proxy ที่ proxy_switcher ตั้งไว้คงอยู่")
         return
     pkg = "com.wireguard.android"
     kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
@@ -2205,7 +2212,15 @@ class RangerGearBot(threading.Thread):
     WG_TUNNEL = "lgr"
 
     def _wg_conf_for_device(self):
-        """ไฟล์ .conf ของจอนี้ (None = ไม่มีไฟล์/ไม่เปิดใช้)"""
+        """ไฟล์ .conf ของจอนี้ (None = ไม่มีไฟล์/ไม่เปิดใช้)
+
+        wg_stick_on_success=1 (default 1): IP ไหน login ผ่านแล้ว (._wg_ok() fired)
+          -> ยึด IP นั้นถาวร ไม่สลับ จนกว่าจะเจอ fixnet1 ที่ start เกม (_wg_failover clear)
+        """
+        # sticky: เคย login ผ่านด้วย IP นี้ -> ใช้ซ้ำไปเรื่อย ๆ ไม่ต้องคำนวณใหม่
+        stuck = getattr(self, "_wg_stuck_conf", None)
+        if stuck and os.path.exists(stuck) and int(config.get("wg_stick_on_success", 1) or 0):
+            return stuck
         wg_dir = str(config.get("wg_dir", "wg"))
         mapped = (config.get("wg_per_device") or {}).get(self.device_id)
         if mapped:
@@ -2558,10 +2573,17 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [BLOCK] เก็บหลักฐานไม่ได้: {e}")
 
     def _wg_ok(self):
-        """ล็อกอินผ่านบนเซิร์ฟเวอร์นี้ -> ล้างตัวนับ (นับเฉพาะครั้งที่ล้มติดกัน)"""
+        """ล็อกอินผ่านบนเซิร์ฟเวอร์นี้ -> ล้างตัวนับ (นับเฉพาะครั้งที่ล้มติดกัน) + ยึด IP ไว้ถาวร"""
         cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
         if cur:
             self.__dict__.setdefault("_wg_strikes", {})[cur] = 0
+            # sticky: ยึด IP นี้ถาวร - _wg_conf_for_device จะคืน cur เสมอ จนกว่า _wg_failover
+            # จะ clear (เฉพาะตอนเจอ fixnet1 ที่ start เกม)
+            if int(config.get("wg_stick_on_success", 1) or 0):
+                prev = getattr(self, "_wg_stuck_conf", None)
+                if prev != cur:
+                    self._wg_stuck_conf = cur
+                    print(f"[{self.device_id}] [WG] ล็อก IP นี้ไว้ถาวร ({os.path.basename(cur)}) - จะสลับเฉพาะเจอ fixnet1")
             # สลับ IP เป็นช่วง: ใช้เซิร์ฟเวอร์เดิมครบ wg_rotate_logins รอบ -> ปล่อยไฟล์นี้ให้จออื่น
             # แล้วเปิดเกมรอบหน้าจะต่อเซิร์ฟเวอร์ใหม่ (ไม่ตัดเน็ตตอนกำลังเล่น ; ไม่นับเป็นโดนบล็อก ไม่ติดพัก)
             n = int(config.get("wg_rotate_logins", 0) or 0)
@@ -2581,6 +2603,10 @@ class RangerGearBot(threading.Thread):
         """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
         if int(config.get("wg_lock", 1) or 0):
             return None   # wg_lock: ไม่สลับเซิร์ฟเวอร์
+        # clear sticky lock - IP ที่เคยยึดไว้ตอน login success ตอนนี้ fail -> ปล่อยให้สลับได้
+        if getattr(self, "_wg_stuck_conf", None) == conf:
+            print(f"[{self.device_id}] [WG] ปลดล็อก IP ({os.path.basename(conf)}) - จะหาใหม่")
+            self._wg_stuck_conf = None
         self.__dict__.setdefault("_wg_bad", set()).add(conf)
         _wg_cooldown_add(os.path.dirname(conf), _wg_endpoint(conf))
         # ลบไฟล์ + จดว่าโดนบล็อก 7 วัน เฉพาะตอน "ยืนยันแล้ว" (ทดสอบผ่าน VPN ได้ IP จริงแต่เซิร์ฟเวอร์เกมไม่ตอบ)
