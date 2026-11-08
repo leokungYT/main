@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.4.0"
+BOT_VERSION = "4.5.0"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3330,8 +3330,15 @@ def reset_network_all(devices):
     """ก่อนเริ่มบอท: ล้างของค้างทุกจอ (พร้อมกัน) - tunnel WireGuard, แอป WireGuard, proxy
     แล้ว ping 1.1.1.1 จากในอีมูฯ บอกใน log ว่าจอไหนเน็ตใช้ได้/ไม่ได้
     ปิดได้ด้วย config "reset_network_on_start": 0
+
+    wg_enabled=0 (proxy mode): ข้ามทั้งหมด - ไม่ล้าง http_proxy ของ Android
+      (ที่ proxy_switcher.py ตั้งไว้ให้ emulator วิ่งผ่าน TOT/ISP ไทย)
     """
     if not int(config.get("reset_network_on_start", 1) or 0):
+        return
+    if not int(config.get("wg_enabled", 1) or 0):
+        print("[NET-RESET] wg_enabled=0 (proxy mode) - ข้าม VPN reset ทั้งหมด")
+        print("            Android http_proxy ที่ proxy_switcher ตั้งไว้คงอยู่")
         return
     pkg = "com.wireguard.android"
     kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
