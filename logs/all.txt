@@ -12184,3 +12184,537 @@
 [2026-10-30 01:49:55] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
 [2026-10-30 01:49:55] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
 [2026-10-30 01:49:56] [GUI] Shutting down... Killing background processes.
+[2026-11-03 17:57:55] ============================================
+[2026-11-03 17:57:55]   Cloudflare WARP + norandom-reid Bot
+[2026-11-03 17:57:55] ============================================
+[2026-11-03 17:57:55] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-11-03 17:57:55] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-11-03 17:57:55] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-11-03 17:57:55] === Auto Ranger+Gear Script v4.2.3 ===
+[2026-11-03 17:57:55] [VERSION] v4.2.3 | ไฟล์แก้ล่าสุด 2026-11-02 23:51
+[2026-11-03 17:57:55] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-11-03 17:57:55] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-11-03 17:57:55] [CONFIG] wg_profile_clear_on_start: ลบ IP เก่า 1 ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด
+[2026-11-03 17:57:55] [CONFIG] wg_profile: wg/ip-chan/main-1 ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้
+[2026-11-03 17:57:55] [CONFIG] wg_profile: wg/ip-chan/main-2 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 17:57:55] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-2/key2.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 17:57:55] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 17:57:56] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-2/
+[2026-11-03 17:57:56] [CONFIG] wg_profile: wg/ip-chan/main-3 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 17:57:56] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-3/key3.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 17:57:56] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-3/
+[2026-11-03 17:57:57] [CONFIG] wg_profile: wg/ip-boy/main-1 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 17:57:57] [WG-GEN] ใช้ Key Pair จาก wg/ip-boy/main-1/key.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 17:57:57] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 17:57:57] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-boy/main-1/
+[2026-11-03 17:57:57] [CONFIG] wg_profile -> รวม 45 ไฟล์จาก 4 โฟลเดอร์ (wg/ip-chan/main-1, wg/ip-chan/main-2, wg/ip-chan/main-3, wg/ip-boy/main-1) -> wg_dir='wg/.pool'
+[2026-11-03 17:57:57] [CLEANUP] Removed 1 stale .lock file(s)
+[2026-11-03 17:57:57] [CLEANUP] Removed old shared_stats.json
+[2026-11-03 17:57:57] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-11-03 17:57:58] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-11-03 17:57:58] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-11-03 17:58:00] --- [ADB] Auto-scanning 101 ports (5555-5755 odd) ---
+[2026-11-03 17:58:03] [ADB] Port scan found no devices.
+[2026-11-03 17:58:03] --- Scan Complete ---
+[2026-11-03 17:58:07] [NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)
+[2026-11-03 17:58:08] [WARN] VPN บนเครื่องหลักเปิดอยู่: Tailscale - ทำเน็ต/adb ของอีมูแกว่งได้ ถ้าไม่ได้ใช้ให้ปิดก่อนรันบอท
+[2026-11-03 17:58:08] [DEV] Attempt 1: No devices found yet, waiting 3s...
+[2026-11-03 17:58:08] [DEV] Attempt 2: No devices found yet, waiting 3s...
+[2026-11-03 17:58:08] [ERROR] No devices connected. Make sure your emulator is running.
+[2026-11-03 17:59:41] ============================================
+[2026-11-03 17:59:41]   Cloudflare WARP + norandom-reid Bot
+[2026-11-03 17:59:41] ============================================
+[2026-11-03 17:59:41] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-11-03 17:59:41] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-11-03 17:59:41] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-11-03 17:59:41] === Auto Ranger+Gear Script v4.2.3 ===
+[2026-11-03 17:59:41] [VERSION] v4.2.3 | ไฟล์แก้ล่าสุด 2026-11-02 23:51
+[2026-11-03 17:59:41] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-11-03 17:59:41] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-11-03 17:59:41] [CONFIG] wg_profile_clear_on_start: ลบ IP เก่า 42 ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด
+[2026-11-03 17:59:41] [CONFIG] wg_profile: wg/ip-chan/main-1 ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้
+[2026-11-03 17:59:41] [CONFIG] wg_profile: wg/ip-chan/main-2 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 17:59:41] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-2/key2.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 17:59:41] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 17:59:42] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-2/
+[2026-11-03 17:59:42] [CONFIG] wg_profile: wg/ip-chan/main-3 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 17:59:42] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-3/key3.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 17:59:42] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 17:59:43] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-3/
+[2026-11-03 17:59:43] [CONFIG] wg_profile: wg/ip-boy/main-1 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 17:59:43] [WG-GEN] ใช้ Key Pair จาก wg/ip-boy/main-1/key.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 17:59:43] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 17:59:45] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-boy/main-1/
+[2026-11-03 17:59:45] [CONFIG] wg_profile -> รวม 45 ไฟล์จาก 4 โฟลเดอร์ (wg/ip-chan/main-1, wg/ip-chan/main-2, wg/ip-chan/main-3, wg/ip-boy/main-1) -> wg_dir='wg/.pool'
+[2026-11-03 17:59:45] [CLEANUP] Removed old shared_stats.json
+[2026-11-03 17:59:45] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-11-03 17:59:45] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-11-03 17:59:45] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-11-03 17:59:47] --- [ADB] Auto-scanning 101 ports (5555-5755 odd) ---
+[2026-11-03 17:59:50] [ADB] Port scan found 1 device(s): 127.0.0.1:5563
+[2026-11-03 17:59:50] --- Scan Complete ---
+[2026-11-03 17:59:54] [NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)
+[2026-11-03 17:59:54] [WARN] VPN บนเครื่องหลักเปิดอยู่: Tailscale - ทำเน็ต/adb ของอีมูแกว่งได้ ถ้าไม่ได้ใช้ให้ปิดก่อนรันบอท
+[2026-11-03 17:59:54] [INFO] Connected Devices (1): 127.0.0.1:5563
+[2026-11-03 17:59:54] [NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม (1 จอ)...
+[2026-11-03 17:59:55] [NET-RESET-HARD] 127.0.0.1:5563: hard reset VPN state (keep app)...
+[2026-11-03 17:59:59] [NET-RESET-HARD] 127.0.0.1:5563: ล้าง tunnels/configs/iptables/DNS/proxy - WG app ยังอยู่
+[2026-11-03 17:59:59] [WG-INSTALL] 127.0.0.1:5563: มีแอป WireGuard อยู่แล้ว ✓
+[2026-11-03 18:00:03] [NET-RESET] 127.0.0.1:5563: ไม่มี VPN ค้าง | เน็ต: ใช้ได้
+[2026-11-03 18:00:03] [NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง 30 วิ ก่อนเริ่มทำงาน...
+[2026-11-03 18:00:33] [CONFIG] wg_profile_clear_on_start: ลบ IP เก่า 42 ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด
+[2026-11-03 18:00:33] [CONFIG] wg_profile: wg/ip-chan/main-1 ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้
+[2026-11-03 18:00:33] [CONFIG] wg_profile: wg/ip-chan/main-2 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:00:33] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-2/key2.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:00:33] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:00:37] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-2/
+[2026-11-03 18:00:37] [CONFIG] wg_profile: wg/ip-chan/main-3 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:00:37] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-3/key3.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:00:37] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-3/
+[2026-11-03 18:00:43] [CONFIG] wg_profile: wg/ip-boy/main-1 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:00:43] [WG-GEN] ใช้ Key Pair จาก wg/ip-boy/main-1/key.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:00:43] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:00:43] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-boy/main-1/
+[2026-11-03 18:00:43] [CONFIG] wg_profile -> รวม 45 ไฟล์จาก 4 โฟลเดอร์ (wg/ip-chan/main-1, wg/ip-chan/main-2, wg/ip-chan/main-3, wg/ip-boy/main-1) -> wg_dir='wg/.pool'
+[2026-11-03 18:00:43] [WG-GEN] pool mode - rebuild pool จาก sub ของ wg_profile: 45 ไฟล์
+[2026-11-03 18:00:43] [WG-GEN] ใช้ Key Pair จาก wg/.pool/wg__ip-boy__main-1__Windscribe-Hanoi-Red-River-WG.conf | มีอยู่แล้ว 45 ไฟล์ ต้องการ 15 | เครื่องที่ 1
+[2026-11-03 18:00:43] [WG-GEN] ครบแล้ว ไม่ต้องสร้างเพิ่ม
+[2026-11-03 18:00:43] [WG-GEN] เก็บกุญแจสำรองไว้แล้ว (wg__ip-boy__main-1__key.conf) - IP หมดเมื่อไหร่บอทสร้างใหม่เอง
+[2026-11-03 18:00:53] [INFO] Pre-loading OCR model...
+[2026-11-03 18:01:13] [INFO] Loading EasyOCR model (first time only)...
+[2026-11-03 18:01:13] Using CPU. Note: This module is much faster with a GPU.
+[2026-11-03 18:01:18] [OK] EasyOCR model loaded!
+[2026-11-03 18:01:18] [OK] OCR model loaded.
+[2026-11-03 18:01:18] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-11-03 18:01:18] [FILE] Found 1 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-11-03 18:01:18] [FILE] คิวรวมทั้งหมด 1 ไฟล์ (backup + input-id)
+[2026-11-03 18:01:18] [32m[START] Launching GUI Mode...[0m
+[2026-11-03 18:01:19] [GUI] Launched Successfully. Waiting for manual start.
+[2026-11-03 18:01:19] [GUI] cloud_fast_start=1 - จะเริ่มบอทอัตโนมัติใน 2.0 วินาที
+[2026-11-03 18:01:24] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-11-03 18:01:24] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-11-03 18:01:24] [CONFIG] wg_profile_clear_on_start: ลบ IP เก่า 14 ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด
+[2026-11-03 18:01:24] [CONFIG] wg_profile: wg/ip-chan/main-1 ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้
+[2026-11-03 18:01:24] [CONFIG] wg_profile: wg/ip-chan/main-2 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:01:24] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-2/key2.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:01:24] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:01:26] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-2/
+[2026-11-03 18:01:26] [CONFIG] wg_profile: wg/ip-chan/main-3 มี 12 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:01:26] [CONFIG] wg_profile pre-generate ล้มเหลว: [Errno 2] No such file or directory: 'wg/ip-chan/main-3\\Windscribe-Singapore-SMRT-WG.conf'
+[2026-11-03 18:01:26] [CONFIG] wg_profile -> รวม 5 ไฟล์จาก 4 โฟลเดอร์ (wg/ip-chan/main-1, wg/ip-chan/main-2, wg/ip-chan/main-3, wg/ip-boy/main-1) -> wg_dir='wg/.pool'
+[2026-11-03 18:01:29] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-11-03 18:01:29] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-11-03 18:01:29] [CONFIG] wg_profile_clear_on_start: ลบ IP เก่า 42 ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด
+[2026-11-03 18:01:29] [CONFIG] wg_profile: wg/ip-chan/main-1 ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้
+[2026-11-03 18:01:29] [CONFIG] wg_profile: wg/ip-chan/main-2 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:01:29] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-2/key2.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:01:29] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:01:29] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-2/
+[2026-11-03 18:01:29] [CONFIG] wg_profile: wg/ip-chan/main-3 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:01:29] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-3/key3.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:01:29] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:01:31] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-3/
+[2026-11-03 18:01:31] [CONFIG] wg_profile: wg/ip-boy/main-1 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:01:31] [WG-GEN] ใช้ Key Pair จาก wg/ip-boy/main-1/key.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:01:31] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:01:32] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-boy/main-1/
+[2026-11-03 18:01:32] [CONFIG] wg_profile -> รวม 45 ไฟล์จาก 4 โฟลเดอร์ (wg/ip-chan/main-1, wg/ip-chan/main-2, wg/ip-chan/main-3, wg/ip-boy/main-1) -> wg_dir='wg/.pool'
+[2026-11-03 18:01:34] [GUI] Shutting down... Killing background processes.
+[2026-11-03 18:05:46] ============================================
+[2026-11-03 18:05:46]   Cloudflare WARP + norandom-reid Bot
+[2026-11-03 18:05:46] ============================================
+[2026-11-03 18:05:46] [WARP] ปิด autostart อยู่ (configmain.json: warp_autostart = 0) - ข้าม
+[2026-11-03 18:05:46] [PIP] เช็คแพ็กเกจที่บอทต้องใช้...
+[2026-11-03 18:05:46] [PIP] ครบทุกตัวแล้ว (9 แพ็กเกจ) - ไม่ต้องลงอะไร
+[2026-11-03 18:05:46] === Auto Ranger+Gear Script v4.2.4 ===
+[2026-11-03 18:05:46] [VERSION] v4.2.4 | ไฟล์แก้ล่าสุด 2026-11-03 18:04
+[2026-11-03 18:05:46] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-11-03 18:05:46] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-11-03 18:05:46] [CONFIG] wg_profile_clear_on_start: ลบ IP เก่า 42 ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด
+[2026-11-03 18:05:46] [CONFIG] wg_profile: wg/ip-chan/main-1 ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้
+[2026-11-03 18:05:46] [CONFIG] wg_profile: wg/ip-chan/main-2 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:05:46] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-2/key2.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:05:46] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:05:46] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-2/
+[2026-11-03 18:05:46] [CONFIG] wg_profile: wg/ip-chan/main-3 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:05:46] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-3/key3.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:05:46] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:05:47] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-3/
+[2026-11-03 18:05:47] [CONFIG] wg_profile: wg/ip-boy/main-1 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:05:47] [WG-GEN] ใช้ Key Pair จาก wg/ip-boy/main-1/key.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:05:47] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:05:48] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-boy/main-1/
+[2026-11-03 18:05:48] [CONFIG] wg_profile -> รวม 45 ไฟล์จาก 4 โฟลเดอร์ (wg/ip-chan/main-1, wg/ip-chan/main-2, wg/ip-chan/main-3, wg/ip-boy/main-1) -> wg_dir='wg/.pool'
+[2026-11-03 18:05:48] [CLEANUP] Removed 9 stale .lock file(s)
+[2026-11-03 18:05:48] [CLEANUP] Removed old shared_stats.json
+[2026-11-03 18:05:48] [ADB] Found file at c:\Users\Administrator\Downloads\LGR\adb\adb.exe, testing...
+[2026-11-03 18:05:48] [ADB] Verified: c:\Users\Administrator\Downloads\LGR\adb\adb.exe
+[2026-11-03 18:05:48] [INFO] Connecting to all MuMu ports (ADB Restart inside)...
+[2026-11-03 18:05:50] --- [ADB] Auto-scanning 101 ports (5555-5755 odd) ---
+[2026-11-03 18:05:53] [ADB] Port scan found 1 device(s): 127.0.0.1:5563
+[2026-11-03 18:05:53] --- Scan Complete ---
+[2026-11-03 18:05:56] [NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)
+[2026-11-03 18:05:56] [WARN] VPN บนเครื่องหลักเปิดอยู่: Tailscale - ทำเน็ต/adb ของอีมูแกว่งได้ ถ้าไม่ได้ใช้ให้ปิดก่อนรันบอท
+[2026-11-03 18:05:56] [INFO] Connected Devices (1): 127.0.0.1:5563
+[2026-11-03 18:05:56] [NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม (1 จอ)...
+[2026-11-03 18:05:56] [NET-RESET-HARD] 127.0.0.1:5563: hard reset VPN state (keep app)...
+[2026-11-03 18:05:58] [NET-RESET-HARD] 127.0.0.1:5563: ล้าง tunnels/configs/iptables/DNS/proxy - WG app ยังอยู่
+[2026-11-03 18:06:00] [WG-INSTALL] 127.0.0.1:5563: มีแอป WireGuard อยู่แล้ว ✓
+[2026-11-03 18:06:03] [NET-RESET] 127.0.0.1:5563: ไม่มี VPN ค้าง | เน็ต: ใช้ได้
+[2026-11-03 18:06:03] [NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง 30 วิ ก่อนเริ่มทำงาน...
+[2026-11-03 18:06:33] [CONFIG] wg_profile_clear_on_start: ลบ IP เก่า 42 ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด
+[2026-11-03 18:06:33] [CONFIG] wg_profile: wg/ip-chan/main-1 ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้
+[2026-11-03 18:06:33] [CONFIG] wg_profile: wg/ip-chan/main-2 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:06:33] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-2/key2.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:06:33] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:06:34] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-2/
+[2026-11-03 18:06:34] [CONFIG] wg_profile: wg/ip-chan/main-3 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:06:34] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-3/key3.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:06:34] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:06:35] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-3/
+[2026-11-03 18:06:35] [CONFIG] wg_profile: wg/ip-boy/main-1 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:06:35] [WG-GEN] ใช้ Key Pair จาก wg/ip-boy/main-1/key.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:06:35] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:06:36] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-boy/main-1/
+[2026-11-03 18:06:36] [CONFIG] wg_profile -> รวม 45 ไฟล์จาก 4 โฟลเดอร์ (wg/ip-chan/main-1, wg/ip-chan/main-2, wg/ip-chan/main-3, wg/ip-boy/main-1) -> wg_dir='wg/.pool'
+[2026-11-03 18:06:36] [WG-GEN] pool mode - rebuild pool จาก sub ของ wg_profile: 45 ไฟล์
+[2026-11-03 18:06:36] [WG-GEN] ใช้ Key Pair จาก wg/.pool/wg__ip-boy__main-1__Windscribe-Hanoi-Red-River-WG.conf | มีอยู่แล้ว 45 ไฟล์ ต้องการ 15 | เครื่องที่ 1
+[2026-11-03 18:06:36] [WG-GEN] ครบแล้ว ไม่ต้องสร้างเพิ่ม
+[2026-11-03 18:06:37] [INFO] Pre-loading OCR model...
+[2026-11-03 18:06:42] [INFO] Loading EasyOCR model (first time only)...
+[2026-11-03 18:06:42] Using CPU. Note: This module is much faster with a GPU.
+[2026-11-03 18:06:44] [OK] EasyOCR model loaded!
+[2026-11-03 18:06:44] [OK] OCR model loaded.
+[2026-11-03 18:06:44] [FILE] Found 0 files in c:\Users\Administrator\Downloads\LGR\backup (รวมโฟลเดอร์ย่อย)
+[2026-11-03 18:06:44] [FILE] Found 1 files in c:\Users\Administrator\Downloads\LGR\input-id (รวมโฟลเดอร์ย่อย)
+[2026-11-03 18:06:44] [FILE] คิวรวมทั้งหมด 1 ไฟล์ (backup + input-id)
+[2026-11-03 18:06:44] [32m[START] Launching GUI Mode...[0m
+[2026-11-03 18:06:45] [GUI] Launched Successfully. Waiting for manual start.
+[2026-11-03 18:06:45] [GUI] cloud_fast_start=1 - จะเริ่มบอทอัตโนมัติใน 2.0 วินาที
+[2026-11-03 18:06:50] [CONFIG] Base Loaded: c:\Users\Administrator\Downloads\LGR\ranger-gear_config.json
+[2026-11-03 18:06:50] [CONFIG] UI Settings Loaded: c:\Users\Administrator\Downloads\LGR\configmain.json
+[2026-11-03 18:06:50] [CONFIG] wg_profile_clear_on_start: ลบ IP เก่า 0 ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด
+[2026-11-03 18:06:50] [CONFIG] wg_profile: wg/ip-chan/main-1 ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้
+[2026-11-03 18:06:50] [CONFIG] wg_profile: wg/ip-chan/main-2 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:06:50] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-2/key2.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:06:50] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Jakarta-Ancol-WG.conf  (ID cgk-416-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Surabaya-Nasi-Goreng-WG.conf  (ID sub-454-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Bali-Pulau-Dewata-WG.conf  (ID dps-464-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Jakarta-Indomie-WG.conf  (ID cgk-484-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Manila-Hotdog-WG.conf  (PH mnl-365-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Mumbai-Old-Spice-WG.conf  (IN bom-372-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-New-Delhi-Chole-Bhature-WG.conf  (IN del-417-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Fake-Mumbai-Mayanagri-WG.conf  (IN bom-457-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Perth-Kings-Park-WG.conf  (AU per-223-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Melbourne-Yarra-WG.conf  (AU mel-224-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Brisbane-Bad-Koala-WG.conf  (AU bne-225-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Sydney-Eshay-WG.conf  (AU syd-226-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Sydney-Squidney-WG.conf  (AU syd-243-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] + Windscribe-Adelaide-Oval-WG.conf  (AU adl-319-wg.whiskergalaxy.com)
+[2026-11-03 18:06:52] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-2/
+[2026-11-03 18:06:52] [CONFIG] wg_profile: wg/ip-chan/main-3 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:06:52] [WG-GEN] ใช้ Key Pair จาก wg/ip-chan/main-3/key3.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:06:52] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:06:53] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-chan/main-3/
+[2026-11-03 18:06:53] [CONFIG] wg_profile: wg/ip-boy/main-1 มี 1 ไฟล์ (<15) - generate เพิ่มจาก keypair ของ sub นี้
+[2026-11-03 18:06:53] [WG-GEN] ใช้ Key Pair จาก wg/ip-boy/main-1/key.conf | มีอยู่แล้ว 1 ไฟล์ ต้องการ 15
+[2026-11-03 18:06:53] [WG-GEN] โหลดรายชื่อเซิร์ฟเวอร์ Windscribe...
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Singapore-Laksa-WG.conf  (SG sin-170-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Singapore-Marina-Bay-WG.conf  (SG sin-235-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Singapore-SMRT-WG.conf  (SG sin-241-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Hong-Kong-Victoria-WG.conf  (HK hkg-26-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Hong-Kong-Phooey-WG.conf  (HK hkg-189-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Kuala-Lumpur-Perdana-WG.conf  (MY kul-270-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Hanoi-Red-River-WG.conf  (VN han-122-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Hanoi-Train-Street-WG.conf  (VN han-458-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Tokyo-Shinkansen-WG.conf  (JP hnd-148-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Tokyo-Wabi-sabi-WG.conf  (JP hnd-287-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Seoul-Hangang-WG.conf  (KR icn-362-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Seoul-Namsan-WG.conf  (KR icn-399-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Taipei-Tianlong-WG.conf  (TW tpe-483-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] + Windscribe-Jakarta-Old-Town-WG.conf  (ID cgk-391-wg.whiskergalaxy.com)
+[2026-11-03 18:06:54] [WG-GEN] สร้างเพิ่ม 14 ไฟล์ - ตอนนี้มี 15 ไฟล์ใน wg/ip-boy/main-1/
+[2026-11-03 18:06:54] [CONFIG] wg_profile -> รวม 59 ไฟล์จาก 4 โฟลเดอร์ (wg/ip-chan/main-1, wg/ip-chan/main-2, wg/ip-chan/main-3, wg/ip-boy/main-1) -> wg_dir='wg/.pool'
