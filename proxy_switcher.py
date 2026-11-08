@@ -102,19 +102,25 @@ def clear_proxy(dev):
     return r
 
 
-def test_proxy(ip, port):
-    """ยิง LGR API ผ่าน proxy ดู code - 401 = ใช้ได้"""
+def test_proxy(ip, port, retries=3, timeout=20):
+    """ยิง LGR API ผ่าน proxy ดู code - 401 = ใช้ได้ (retry 3x, timeout 20s)"""
     import urllib.request
+    import time as _t
     proxy_url = f"http://{ip}:{port}"
     handler = urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
     opener = urllib.request.build_opener(handler)
-    try:
-        r = opener.open("https://rangers-api.line-apps.com/v12.3/home", timeout=10)
-        return r.getcode()
-    except urllib.error.HTTPError as e:
-        return e.code
-    except Exception as e:
-        return f"error: {e}"
+    last_err = ""
+    for attempt in range(retries):
+        try:
+            r = opener.open("https://rangers-api.line-apps.com/v12.3/home", timeout=timeout)
+            return r.getcode()
+        except urllib.error.HTTPError as e:
+            return e.code
+        except Exception as e:
+            last_err = str(e)[:50]
+            if attempt < retries - 1:
+                _t.sleep(2)   # delay ระหว่าง retry กัน rate limit
+    return f"error: {last_err}"
 
 
 def main():
@@ -169,22 +175,30 @@ def main():
 
     print(f"\n[devices] {len(devs)} จอ - แจก proxy แบบ round-robin...")
 
-    # ทดสอบ proxy ก่อนแจก - เอาเฉพาะที่ยัง live
-    print(f"[verify] ทดสอบ proxy แต่ละตัว (10s/ตัว)...")
-    alive = []
-    for p in proxies[:len(devs) * 2]:  # ทดสอบแค่ 2x จำนวนจอ
-        code = test_proxy(p["ip"], p["port"])
-        if code in (401, 200):
-            print(f"  ✓ {p['ip']}:{p['port']} ({p['country']}) - code {code}")
-            alive.append(p)
-            if len(alive) >= len(devs):
-                break
-        else:
-            print(f"  ✗ {p['ip']}:{p['port']} ({p['country']}) - code {code}")
+    # ทดสอบ proxy ก่อนแจก - retry 3x, timeout 20s, delay 2s ระหว่าง proxy
+    skip_verify = "--no-verify" in args
+    if skip_verify:
+        print(f"[verify] ข้าม (ใช้ proxy ทุกตัวจากไฟล์ทันที)")
+        alive = proxies[:]
+    else:
+        print(f"[verify] ทดสอบ proxy แต่ละตัว (retry 3x, 20s, delay 2s)...")
+        import time as _t
+        alive = []
+        for p in proxies[:len(devs) * 2]:
+            code = test_proxy(p["ip"], p["port"])
+            if code in (401, 200):
+                print(f"  ✓ {p['ip']}:{p['port']} ({p['country']}) - code {code}")
+                alive.append(p)
+                if len(alive) >= len(devs):
+                    break
+            else:
+                print(f"  ✗ {p['ip']}:{p['port']} ({p['country']}) - code {code}")
+            _t.sleep(2)   # delay ระหว่าง proxy กัน rate limit
 
     if not alive:
-        print("[X] ไม่มี proxy ที่ยังใช้ได้ - รัน scraper ใหม่")
-        return
+        print("[!] ไม่มี proxy ผ่าน verify - แต่จะใช้ทั้งหมดอยู่ดี (บาง proxy อาจ timeout ช่วง verify")
+        print("    แต่ emulator ใช้ได้จริง). ใช้ --no-verify ถ้าเจออีก")
+        alive = proxies[:]
 
     print(f"\n[assign] proxy ที่ใช้ได้ {len(alive)} ตัว - แจก {len(devs)} จอ:")
     for i, d in enumerate(devs):
