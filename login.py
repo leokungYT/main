@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.6.0"
+BOT_VERSION = "4.6.1"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -5653,6 +5653,11 @@ class RangerGearBot(threading.Thread):
                 # ไฟล์นี้ต่อไม่ขึ้น -> รอบหน้าสุ่มไฟล์อื่น (ไม่วนไฟล์เดิม 10 รอบ) ; เสียหมดทุกไฟล์ก็สุ่มจากทั้งหมดใหม่
                 self.__dict__.setdefault("_wg_bad", set()).add(_c)
                 self._wg_rand_conf = None
+                # sub-round-robin: VPN ไม่ขึ้น 2 รอบ -> ขยับ sub-pool (ไม่วนรอ 10 รอบใน sub เดิม)
+                if int(config.get("wg_sub_round_robin", 1) or 0) and n >= 2:
+                    cur_idx = getattr(self, "_wg_sub_idx", 0)
+                    self._wg_sub_idx = cur_idx + 1
+                    print(f"[{self.device_id}] [WG] VPN ไม่ขึ้น {n} รอบ -> สลับ sub-pool (idx {self._wg_sub_idx})")
             else:
                 self._wg_bad = set()        # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
             _real_sleep(5)

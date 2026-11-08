@@ -2791,7 +2791,16 @@ class RangerGearBot(threading.Thread):
             _c = self._wg_conf_for_device()
             _why = ("ไม่มีไฟล์ .conf ใน " + str(config.get("wg_dir", "wg")) + "/") if not _c else ("ใช้ " + os.path.basename(_c) + " แต่ tunnel ไม่ขึ้น")
             print(f"[{self.device_id}] [WG] VPN ยังไม่ขึ้น ({n}/{tries}) - {_why} - ลองใหม่...")
-            self._wg_bad = set()            # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
+            if _c:
+                self.__dict__.setdefault("_wg_bad", set()).add(_c)
+                self._wg_rand_conf = None
+                # sub-round-robin: VPN ไม่ขึ้น 2 รอบ -> ขยับ sub-pool
+                if int(config.get("wg_sub_round_robin", 1) or 0) and n >= 2:
+                    cur_idx = getattr(self, "_wg_sub_idx", 0)
+                    self._wg_sub_idx = cur_idx + 1
+                    print(f"[{self.device_id}] [WG] VPN ไม่ขึ้น {n} รอบ -> สลับ sub-pool (idx {self._wg_sub_idx})")
+            else:
+                self._wg_bad = set()        # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
             _real_sleep(5)
         print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น {tries} รอบ - รีสตาร์ทไฟล์นี้แทนการเข้าเกมด้วยเน็ตบ้าน")
         raise RestartTimeoutError("wg_required: VPN not up")
