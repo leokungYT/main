@@ -97,7 +97,7 @@
     "windscribe_protocol": "wireguard",
     "windscribe_rotate_every": 0,
     "delay_scale": 0.1,
-    "wg_enabled": 0,
+    "wg_enabled": 1,
     "wg_once": 0,
     "wg_account": "",
     "wg_machine": 1,
@@ -192,6 +192,6 @@
     "event_max_back": 30,
     "event_back_per_round": 10,
     "wg_regen_every_min": 0,
-    "wg_required": 0,
+    "wg_required": 1,
     "wg_lock": 0
 }
