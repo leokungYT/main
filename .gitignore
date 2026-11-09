@@ -98,3 +98,7 @@ api/tools/wireproxy.conf
 api/output/
 auto-cap-out/
 math-ranger/
+
+# frida-server binaries - too big for GitHub (164MB)
+frida-server
+frida-server.xz

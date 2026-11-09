@@ -881,7 +881,10 @@ def load_config(quiet=False):
                 raw = f.read()
             loaded = json.loads(raw)
             config.update({k: v for k, v in loaded.items()
-                           if k.startswith("wg_") or k in ("reset_network_on_start", "net_reset_wait", "block_log")})
+                           if k.startswith("wg_")
+                           or k.startswith("ip_meter")
+                           or k in ("reset_network_on_start", "net_reset_wait", "block_log",
+                                    "no_proxy_mode", "login_min_gap_sec")})
             sig = hashlib.md5(raw.encode("utf-8")).hexdigest()
             if not quiet or sig != _configmain_sig:
                 print(f"[CONFIG] WG Settings Loaded: {ui_config_file}")
@@ -1036,6 +1039,141 @@ def _wg_resolve_profile():
 # WireGuard (VPN แยกต่อจอ) - พอร์ตมาจาก login.py ให้ทำงานเหมือนกัน
 # =========================================================
 _real_sleep = time.sleep   # พักจริง (ไม่ผ่านตัวปรับความเร็ว) ให้เหมือน login.py
+
+
+# ============================================================
+# IP-METER / NO-PROXY / LOGIN-PACE  - sync 100% กับ login.py
+# configmain.json:
+#   no_proxy_mode        1 = ใช้ IP เครื่องตรง ๆ (ปิด VPN) + เปิด ip_meter + login_pace
+#   ip_meter_endpoint    URL ดึง public IP (default https://api.ipify.org, "" = ใช้คีย์ 'local')
+#   ip_meter_force       1 = เปิด ip_meter แม้ไม่ no_proxy_mode (ใช้ตอน VPN เพื่อตัด cap ต่อ IP ขาออก)
+#   login_min_gap_sec    เว้นระยะระหว่าง login ของบอตเดียวกัน (default 45s, jitter 0-30%)
+# ============================================================
+import json as _json_ipm
+import random as _random_ipm
+import threading as _threading_ipm
+
+_IP_METER_PATH = "ip_meter.json"
+_IP_METER_LOCK = _threading_ipm.Lock()
+_IP_WINDOWS = [(3600, 3), (6 * 3600, 8), (24 * 3600, 20)]
+
+
+def _no_proxy_mode():
+    try:
+        return bool(int(globals().get("config", {}).get("no_proxy_mode", 0) or 0))
+    except Exception:
+        return False
+
+
+def _ip_meter_load():
+    try:
+        with open(_IP_METER_PATH, "r", encoding="utf-8") as f:
+            return _json_ipm.load(f)
+    except Exception:
+        return {}
+
+
+def _ip_meter_save(d):
+    tmp = _IP_METER_PATH + f".{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json_ipm.dump(d, f)
+        os.replace(tmp, _IP_METER_PATH)
+    except Exception:
+        try: os.remove(tmp)
+        except Exception: pass
+
+
+def _current_public_ip():
+    """ดึง public IP ของเครื่องนี้ - ใช้แยก bucket per-IP ใน state file
+    (ปิดได้ด้วย ip_meter_endpoint = "" ใน config -> ใช้ 'local' เป็นคีย์แทน)"""
+    url = str(globals().get("config", {}).get("ip_meter_endpoint", "https://api.ipify.org") or "")
+    if not url:
+        return "local"
+    try:
+        import urllib.request as _ur
+        with _ur.urlopen(url, timeout=6) as r:
+            ip = r.read().decode("ascii").strip()
+            if ip and len(ip) <= 45:
+                return ip
+    except Exception:
+        pass
+    return "local"
+
+
+def _ip_meter_cap_wait(ip):
+    """ชน cap หน้าต่างไหน -> คืนวินาทีที่ต้องรอให้หลุดหน้าต่างนั้น (เอามากที่สุด). 0 = ยิงได้"""
+    with _IP_METER_LOCK:
+        d = _ip_meter_load()
+        hist = [t for t in d.get(ip, []) if t > time.time() - 48 * 3600]
+        now = time.time()
+        max_wait = 0.0
+        for window, cap in _IP_WINDOWS:
+            recent = [t for t in hist if t > now - window]
+            if len(recent) >= cap:
+                oldest = min(recent)
+                wait = (oldest + window) - now
+                if wait > max_wait:
+                    max_wait = wait
+        return max_wait
+
+
+def _ip_meter_mark(ip):
+    with _IP_METER_LOCK:
+        d = _ip_meter_load()
+        hist = [t for t in d.get(ip, []) if t > time.time() - 48 * 3600]
+        hist.append(time.time())
+        d[ip] = hist
+        _ip_meter_save(d)
+
+
+def _ip_meter_gate():
+    """เรียกก่อน login ทุกครั้ง: ถ้าชน cap -> รอจนหลุด แล้ว mark login ครั้งนี้"""
+    if not _no_proxy_mode() and not int(globals().get("config", {}).get("ip_meter_force", 0) or 0):
+        return
+    ip = _current_public_ip()
+    wait = _ip_meter_cap_wait(ip)
+    if wait > 0:
+        mins = wait / 60.0
+        print(f"[IP-METER] IP {ip} ชน cap - รอ {mins:.1f} นาทีให้หลุดหน้าต่าง")
+        _real_sleep(min(wait + 5, 3 * 3600))
+    _ip_meter_mark(ip)
+
+
+_LAST_LOGIN_T = [0.0]
+def _login_pace():
+    """เว้นช่วงระหว่าง login ของบอตเดียวกัน - IP เดียวยิงถี่ = เซิร์ฟมองเป็น bot แน่นอน"""
+    if not _no_proxy_mode():
+        return
+    try:
+        gap = float(globals().get("config", {}).get("login_min_gap_sec", 45) or 0)
+    except Exception:
+        gap = 45.0
+    wait = (_LAST_LOGIN_T[0] + gap + _random_ipm.uniform(0, gap * 0.3)) - time.time()
+    if wait > 0:
+        _real_sleep(wait)
+    _LAST_LOGIN_T[0] = time.time()
+
+
+def _pool_pick_ip(wg_dir="wg"):
+    """เลือก IP จาก wg/ pool ที่ 'ใกล้ว่างสุด' (รอน้อยสุด)
+    คืน (conf_path, endpoint_ip, wait_seconds). ว่างทันที wait=0.
+    ไม่มีไฟล์เลย -> คืน (None, 'local', wait=per-IP cap ปัจจุบัน)"""
+    confs = _wg_list_configs(wg_dir) if "_wg_list_configs" in globals() else []
+    if not confs:
+        return None, "local", _ip_meter_cap_wait("local")
+    best = None
+    for c in confs:
+        try:
+            ep = _wg_endpoint(c)
+        except Exception:
+            ep = os.path.basename(c)
+        w = _ip_meter_cap_wait(ep)
+        if best is None or w < best[2]:
+            best = (c, ep, w)
+        if w <= 0:
+            return c, ep, 0
+    return best
 
 
 class RestartTimeoutError(Exception):
@@ -2762,6 +2900,11 @@ class RangerGearBot(threading.Thread):
         """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
         ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
         ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
+        if int(config.get("no_proxy_mode", 0) or 0):
+            # no_proxy_mode: ใช้ IP เครื่องตรง ๆ - ip_meter_gate กัน cap + login_pace jitter
+            _ip_meter_gate()
+            _login_pace()
+            return
         if not int(config.get("wg_enabled", 1) or 0):
             return
         if not int(config.get("wg_required", 0) or 0):   # 0 = VPN ไม่ขึ้นก็เล่นต่อด้วยเน็ตบ้าน (แบบเดิม)

@@ -200,5 +200,13 @@
     "event_back_per_round": 10,
     "wg_regen_every_min": 0,
     "wg_required": 1,
-    "wg_lock": 0
+    "wg_lock": 0,
+    "no_proxy_mode": 0,
+    "_no_proxy_mode_hint": "1 = ใช้ IP เครื่องตรง ๆ (ปิด VPN) + เปิด ip_meter + login_pace (sync กับ login.py)",
+    "ip_meter_endpoint": "https://api.ipify.org",
+    "_ip_meter_endpoint_hint": "URL ดึง public IP ของเครื่อง - แยก bucket per-IP ใน ip_meter.json; \"\" = ใช้คีย์ 'local'",
+    "ip_meter_force": 0,
+    "_ip_meter_force_hint": "1 = เปิด ip_meter แม้ไม่ no_proxy_mode (ใช้ตอน VPN เพื่อตัด cap ต่อ IP ขาออก)",
+    "login_min_gap_sec": 45,
+    "_login_min_gap_sec_hint": "เว้นระยะระหว่าง login บนบอตเดียวกัน (วินาที) - jitter 0-30%; ทำงานเฉพาะ no_proxy_mode=1"
 }
