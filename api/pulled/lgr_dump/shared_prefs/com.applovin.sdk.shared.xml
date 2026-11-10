@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="com.applovin.sdk.save_settings_with_sdk_key_agnostic_name" value="true" />
+    <string name="com.applovin.sdk.applovin_random_token">c941192f-0240-4a37-b295-5077904173b5</string>
+    <string name="com.applovin.sdk.compass_random_token">afbf1a01-ef6c-4325-88ae-d1bd21be15bd</string>
+</map>

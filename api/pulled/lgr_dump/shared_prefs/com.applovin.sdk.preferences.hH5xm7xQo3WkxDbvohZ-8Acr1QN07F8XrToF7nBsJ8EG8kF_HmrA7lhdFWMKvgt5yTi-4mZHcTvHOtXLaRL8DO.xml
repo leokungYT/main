@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <long name="com.applovin.sdk.launch_count" value="93" />
+    <long name="com.applovin.sdk.last_launch_timestamp" value="1794241151756" />
+    <boolean name="com.applovin.sdk.launched_before" value="true" />
+    <string name="com.applovin.sdk.device_test_group">70</string>
+    <long name="com.applovin.sdk.install_date" value="1791809778000" />
+    <string name="com.applovin.sdk.latest_installed_version">13.4.0</string>
+    <string name="com.applovin.sdk.mediation.auto_init_adapters">{&quot;communicator_settings&quot;:{},&quot;status&quot;:200,&quot;auto_init_adapters&quot;:[]}</string>
+    <boolean name="com.applovin.sdk.has_seen_but_not_accepted_privacy_policy" value="false" />
+    <string name="com.applovin.sdk.mediation.signal_providers">{&quot;communicator_settings&quot;:{},&quot;status&quot;:200,&quot;signal_providers&quot;:[]}</string>
+</map>

@@ -1,0 +1,267 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="dcrobs" value="true" />
+    <int name="fmldt" value="-1" />
+    <long name="com.applovin.sdk.L8DO.session_tracking_paused_cooldown_minutes" value="0" />
+    <boolean name="com.applovin.sdk.L8DO.usc" value="false" />
+    <float name="health_events_reporter_v1_error_sampling_percent" value="-1.0" />
+    <boolean name="md_v2" value="false" />
+    <int name="wvmldt" value="-1" />
+    <boolean name="uaeq" value="false" />
+    <boolean name="session_tracking_cooldown_on_event_fire" value="true" />
+    <boolean name="qq1" value="true" />
+    <int name="stps" value="2" />
+    <boolean name="qq3" value="true" />
+    <boolean name="qq2" value="true" />
+    <int name="com.applovin.sdk.L8DO.http_connection_timeout" value="30000" />
+    <boolean name="ape" value="false" />
+    <boolean name="uactlac" value="true" />
+    <boolean name="allow_pause_auto_refresh_immediately" value="false" />
+    <boolean name="com.applovin.sdk.L8DO.uaeq" value="false" />
+    <long name="com.applovin.sdk.L8DO.fullscreen_ad_displayed_timeout_ms" value="-1" />
+    <string name="server_installed_at">1539903917819</string>
+    <boolean name="qq" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.avrsponse" value="true" />
+    <string name="device_id">10f3165e5502afee14</string>
+    <long name="com.applovin.sdk.L8DO.ejt_ms" value="10000" />
+    <string name="system_bars_hide_list"></string>
+    <boolean name="track_app_killed" value="true" />
+    <long name="cache_file_ttl_seconds" value="259200" />
+    <int name="com.applovin.sdk.L8DO.mra" value="5" />
+    <boolean name="falawpr" value="false" />
+    <long name="bvdim" value="8000" />
+    <boolean name="com.applovin.sdk.L8DO.suaf" value="true" />
+    <boolean name="suaf" value="true" />
+    <int name="com.applovin.sdk.L8DO.stps" value="2" />
+    <int name="com.applovin.sdk.L8DO.network_thread_count" value="2" />
+    <long name="com.applovin.sdk.L8DO.ad_view_refresh_precache_request_viewability_undesired_flags" value="406" />
+    <boolean name="com.applovin.sdk.L8DO.cmi" value="true" />
+    <string name="plugin_version">13.4.0.0</string>
+    <long name="com.applovin.sdk.L8DO.freast_ms" value="-1" />
+    <boolean name="com.applovin.sdk.L8DO.sufecfhrd" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.btee" value="true" />
+    <string name="com.applovin.sdk.L8DO.tmas">webm</string>
+    <long name="famttl_ms" value="0" />
+    <int name="http_socket_timeout" value="20000" />
+    <boolean name="com.applovin.sdk.L8DO.hgn" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.faroae" value="false" />
+    <int name="com.applovin.sdk.L8DO.resource_max_filename_length" value="251" />
+    <boolean name="com.applovin.sdk.L8DO.spims" value="true" />
+    <boolean name="btee" value="true" />
+    <string name="tmas">webm</string>
+    <string name="com.applovin.sdk.L8DO.health_events_reporter_valid_network_status_codes">{&quot;default&quot;:[200,204,302]}</string>
+    <boolean name="cf" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.siarni" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.session_tracking_cooldown_on_event_fire" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.pafqi" value="false" />
+    <string name="com.applovin.sdk.L8DO.health_events_reporter_v1_event_level_sampling_percentages">{&quot;custom_intent_launch_success&quot;:100,&quot;custom_intent_launch_failure&quot;:100}</string>
+    <boolean name="scrsifm" value="true" />
+    <long name="com.applovin.sdk.L8DO.famttl_ms" value="0" />
+    <string name="com.applovin.sdk.L8DO.plugin_version">13.4.0.0</string>
+    <long name="max_signal_provider_latency_ms" value="30000" />
+    <long name="inter_display_delay" value="0" />
+    <boolean name="cfs" value="true" />
+    <string name="com.applovin.sdk.L8DO.mps">{&quot;admost.sdk.networkadapter&quot;:&quot;admost&quot;,&quot;com.anything.network&quot;:&quot;topon&quot;,&quot;com.appodeal.ads.adapter&quot;:&quot;appodeal&quot;,&quot;com.google.ads.mediation&quot;:&quot;admob&quot;,&quot;com.cleveradssolutions.adapters&quot;:&quot;cas&quot;,&quot;com.etermax.xmediator.mediation&quot;:&quot;etermax&quot;,&quot;com.fyber.fairbid&quot;:&quot;fyber&quot;,&quot;com.ironsource.adapters&quot;:&quot;ironsource&quot;,&quot;com.tradplus.ads&quot;:&quot;tradplus&quot;,&quot;com.unity3d.player&quot;:&quot;unity&quot;,&quot;com.yandex.mobile.ads.mediation&quot;:&quot;yandex&quot;}</string>
+    <boolean name="com.applovin.sdk.L8DO.qjscwwvl" value="true" />
+    <boolean name="ah_crut" value="true" />
+    <boolean name="cdbpn" value="true" />
+    <boolean name="mmcarc" value="true" />
+    <boolean name="anr_detection_enabled" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.max_postback_gzip" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.md_v2" value="false" />
+    <int name="tmtp" value="1" />
+    <string name="com.applovin.sdk.L8DO.mediation_backup_endpoint">https://ms4.applvn.com/</string>
+    <int name="mdafra" value="1" />
+    <boolean name="com.applovin.sdk.L8DO.suohfrl" value="false" />
+    <boolean name="com.applovin.sdk.L8DO.vast_fire_trackers_from_webview" value="true" />
+    <boolean name="faer" value="false" />
+    <int name="com.applovin.sdk.L8DO.max_postback_attempts" value="3" />
+    <boolean name="ree" value="true" />
+    <boolean name="lfblrs" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.anr_detection_enabled" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.stcpc" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.track_ad_duration" value="true" />
+    <boolean name="ncre" value="false" />
+    <boolean name="pvdiaqp" value="false" />
+    <boolean name="qjscwwvl" value="true" />
+    <string name="com.applovin.sdk.L8DO.country_code">TH</string>
+    <boolean name="com.applovin.sdk.L8DO.cf" value="true" />
+    <string name="config_consent_dialog_state">does_not_apply</string>
+    <boolean name="com.applovin.sdk.L8DO.uactlac" value="true" />
+    <long name="freast_ms" value="-1" />
+    <boolean name="collect_device_movement" value="true" />
+    <string name="com.applovin.sdk.L8DO.afi"></string>
+    <boolean name="ncrcs" value="false" />
+    <string name="country_code">TH</string>
+    <boolean name="com.applovin.sdk.L8DO.always_destroy_ad_view_on_ui_thread" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.allow_pause_auto_refresh_immediately" value="false" />
+    <string name="webview_network_error_endpoints_to_report">.applovin.com,.applvn.com,.axon.ai</string>
+    <int name="com.applovin.sdk.L8DO.http_socket_timeout" value="20000" />
+    <long name="com.applovin.sdk.L8DO.track_mediated_ad_duration_interval_ms" value="-1" />
+    <int name="com.applovin.sdk.L8DO.fetch_ad_retry_count_v1" value="1" />
+    <boolean name="com.applovin.sdk.L8DO.cavdi" value="false" />
+    <int name="auxiliary_operations_threads" value="1" />
+    <boolean name="com.applovin.sdk.L8DO.dcrome" value="true" />
+    <boolean name="ccrc" value="false" />
+    <long name="ad_view_refresh_precache_request_viewability_undesired_flags" value="406" />
+    <boolean name="vast_fire_trackers_from_webview" value="true" />
+    <boolean name="umsm" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.cmps" value="false" />
+    <boolean name="crat" value="true" />
+    <boolean name="spadib" value="true" />
+    <string name="com.applovin.sdk.L8DO.server_installed_at">1539903917819</string>
+    <long name="com.applovin.sdk.L8DO.max_signal_provider_latency_ms" value="30000" />
+    <int name="ttc_acrsv2a" value="1" />
+    <boolean name="com.applovin.sdk.L8DO.track_app_killed_during_mediated_ad" value="false" />
+    <boolean name="com.applovin.sdk.L8DO.falawpr" value="false" />
+    <long name="session_tracking_paused_cooldown_minutes" value="0" />
+    <boolean name="spims" value="true" />
+    <boolean name="max_postback_gzip" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.ah_cvc" value="true" />
+    <int name="resource_max_filename_length" value="251" />
+    <boolean name="creative_debugger_enabled" value="true" />
+    <long name="track_mediated_ad_duration_interval_ms" value="-1" />
+    <string name="afi"></string>
+    <boolean name="suohfrl" value="false" />
+    <long name="viewability_adview_imp_delay_ms" value="0" />
+    <boolean name="com.applovin.sdk.L8DO.ah_crut" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.bvde" value="true" />
+    <boolean name="aocve" value="true" />
+    <int name="com.applovin.sdk.L8DO.wvmldt" value="-1" />
+    <boolean name="com.applovin.sdk.L8DO.track_app_killed" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.schedule_ad_hidden_on_single_task_app_relaunch" value="false" />
+    <boolean name="use_initialization_spec_during_init" value="true" />
+    <long name="app_closed_time_threshold_for_app_killed_event_ms" value="3600000" />
+    <boolean name="fetch_mediated_ad_gzip" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.is_verbose_logging" value="false" />
+    <float name="health_events_reporter_v1_user_session_sampling_percent" value="-1.0" />
+    <int name="http_connection_timeout" value="30000" />
+    <boolean name="com.applovin.sdk.L8DO.dwvvb" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.ah_cdde" value="true" />
+    <boolean name="sufecfhrd" value="true" />
+    <boolean name="iaad" value="false" />
+    <string name="com.applovin.sdk.L8DO.system_bars_hide_list"></string>
+    <boolean name="com.applovin.sdk.L8DO.ustpfcrc" value="false" />
+    <boolean name="com.applovin.sdk.L8DO.iaad" value="false" />
+    <long name="ejt_ms" value="10000" />
+    <long name="com.applovin.sdk.L8DO.viewability_adview_imp_delay_ms" value="0" />
+    <boolean name="com.applovin.sdk.L8DO.collect_webview_package_info" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.ree" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.fetch_mediated_ad_gzip" value="true" />
+    <boolean name="stcpc" value="true" />
+    <string name="com.applovin.sdk.L8DO.config_consent_dialog_state">does_not_apply</string>
+    <boolean name="com.applovin.sdk.L8DO.spadib" value="true" />
+    <int name="network_thread_count" value="2" />
+    <boolean name="siarni" value="true" />
+    <string name="adserver_endpoint">https://a4.applovin.com/</string>
+    <string name="mps">{&quot;admost.sdk.networkadapter&quot;:&quot;admost&quot;,&quot;com.anything.network&quot;:&quot;topon&quot;,&quot;com.appodeal.ads.adapter&quot;:&quot;appodeal&quot;,&quot;com.google.ads.mediation&quot;:&quot;admob&quot;,&quot;com.cleveradssolutions.adapters&quot;:&quot;cas&quot;,&quot;com.etermax.xmediator.mediation&quot;:&quot;etermax&quot;,&quot;com.fyber.fairbid&quot;:&quot;fyber&quot;,&quot;com.ironsource.adapters&quot;:&quot;ironsource&quot;,&quot;com.tradplus.ads&quot;:&quot;tradplus&quot;,&quot;com.unity3d.player&quot;:&quot;unity&quot;,&quot;com.yandex.mobile.ads.mediation&quot;:&quot;yandex&quot;}</string>
+    <boolean name="com.applovin.sdk.L8DO.cfs" value="true" />
+    <long name="com.applovin.sdk.L8DO.cache_file_ttl_seconds" value="259200" />
+    <boolean name="com.applovin.sdk.L8DO.cdbpn" value="true" />
+    <boolean name="pafqi" value="false" />
+    <boolean name="cmi" value="true" />
+    <string name="com.applovin.sdk.L8DO.pbpn"></string>
+    <int name="cachetc" value="1" />
+    <string name="pbpn"></string>
+    <boolean name="com.applovin.sdk.L8DO.sejwp" value="true" />
+    <boolean name="rmps" value="false" />
+    <long name="com.applovin.sdk.L8DO.app_closed_time_threshold_for_app_killed_event_ms" value="3600000" />
+    <boolean name="preload_postback_webview" value="false" />
+    <boolean name="hgn" value="true" />
+    <float name="com.applovin.sdk.L8DO.health_events_reporter_v1_error_sampling_percent" value="-1.0" />
+    <boolean name="ah_cvc" value="true" />
+    <int name="com.applovin.sdk.L8DO.auxiliary_operations_threads" value="1" />
+    <int name="mra" value="5" />
+    <boolean name="com.applovin.sdk.L8DO.rmps" value="false" />
+    <string name="com.applovin.sdk.L8DO.webview_network_error_endpoints_to_report">.applovin.com,.applvn.com,.axon.ai</string>
+    <boolean name="com.applovin.sdk.L8DO.ncrcs" value="false" />
+    <boolean name="com.applovin.sdk.L8DO.qq" value="true" />
+    <boolean name="proe" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.pvdiaqp" value="false" />
+    <boolean name="sswskan" value="true" />
+    <long name="com.applovin.sdk.L8DO.inter_display_delay" value="0" />
+    <boolean name="com.applovin.sdk.L8DO.proe" value="true" />
+    <boolean name="collect_webview_package_info" value="true" />
+    <long name="com.applovin.sdk.L8DO.ad_refresh_ms" value="30000" />
+    <boolean name="com.applovin.sdk.L8DO.cso" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.lfblrs" value="true" />
+    <string name="health_events_reporter_v1_event_level_sampling_percentages">{&quot;custom_intent_launch_success&quot;:100,&quot;custom_intent_launch_failure&quot;:100}</string>
+    <boolean name="usc" value="false" />
+    <int name="com.applovin.sdk.L8DO.tmtp" value="1" />
+    <boolean name="com.applovin.sdk.L8DO.faer" value="false" />
+    <boolean name="com.applovin.sdk.L8DO.ncre" value="false" />
+    <string name="com.applovin.sdk.L8DO.adserver_endpoint">https://a4.applovin.com/</string>
+    <int name="com.applovin.sdk.L8DO.csl" value="-1" />
+    <boolean name="esowod" value="true" />
+    <int name="max_postback_attempts" value="3" />
+    <boolean name="com.applovin.sdk.L8DO.use_initialization_spec_during_init" value="true" />
+    <string name="mediation_backup_endpoint">https://ms4.applvn.com/</string>
+    <int name="com.applovin.sdk.L8DO.ttc_acrsv2a" value="1" />
+    <boolean name="dwvvb" value="true" />
+    <int name="com.applovin.sdk.L8DO.fmldt" value="-1" />
+    <string name="md">FTYp/BwVABUAFQAAFQAVABUCABUAFQAVBAAVABUAFQYAFQAVABUIABUAFQAVChUAABUAFQAVDAAVABUAFQ4AFQAVABUQABUAFQAVEgAVgDUVuLgBFRQVAAAVABUAFRYAFQAVABUYABUAFQAVGhUAABWKJxX+fRUcFQAAFQAVABUeFQAAFQAVABUgABUAFQAVIgAVABUAFSQAFQAVABUmABUAFQAVKAAVABUAFSoAFQAVABUsABUAFQAVLgAVABUAFTAVAAAVABUAFTIAFQAVABU0ABUAFQAVNgAbAlwUFYA1Fbi4ARUUFQAAHBWKJxX+fRUcFQAAAA==</string>
+    <string name="com.applovin.sdk.L8DO.device_token">MaznYs97JTiqaqEwnZGZ5nBB_rMEU1UbH6lzaXqxgHVYAEydeNzytLDet9noCyk9qmuAnYdqWWq0BwS_3oKfj5JclINFL150jh9nhE7D1xQQ3JurRPeM0jalgEA1bXsfsd4V0KPIyQJXxYoR0EN4Ln6bi-Ob7U1i00zQ9dq9X58=</string>
+    <boolean name="com.applovin.sdk.L8DO.ape" value="false" />
+    <string name="com.applovin.sdk.L8DO.mediation_endpoint">https://ms4.applovin.com/</string>
+    <boolean name="com.applovin.sdk.L8DO.qq1" value="true" />
+    <string name="mra_af">INTER,REWARDED,REWARDED_INTER,BANNER,LEADER,MREC</string>
+    <boolean name="com.applovin.sdk.L8DO.cin_v2" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.qq2" value="true" />
+    <int name="mtc" value="1" />
+    <string name="com.applovin.sdk.L8DO.device_id">10f3165e5502afee14</string>
+    <boolean name="com.applovin.sdk.L8DO.qq3" value="true" />
+    <long name="ad_refresh_ms" value="30000" />
+    <boolean name="com.applovin.sdk.L8DO.esowod" value="true" />
+    <boolean name="sudbia" value="false" />
+    <boolean name="com.applovin.sdk.L8DO.fdadaomr" value="true" />
+    <boolean name="ah_cdde" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.ccrc" value="false" />
+    <boolean name="com.applovin.sdk.L8DO.ueq" value="false" />
+    <boolean name="schedule_ad_hidden_on_single_task_app_relaunch" value="false" />
+    <string name="com.applovin.sdk.L8DO.sc3">1794241158221:his2Ws-cc-Yiu0TEovuGvZ1aoKsrBtabnWgKUo5g3eA*</string>
+    <boolean name="com.applovin.sdk.L8DO.aocve" value="true" />
+    <int name="com.applovin.sdk.L8DO.mdafra" value="1" />
+    <boolean name="avrsponse" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.creative_debugger_enabled" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.preload_postback_webview" value="false" />
+    <boolean name="com.applovin.sdk.L8DO.sudbia" value="false" />
+    <boolean name="sejwp" value="true" />
+    <string name="mediation_endpoint">https://ms4.applovin.com/</string>
+    <string name="com.applovin.sdk.L8DO.mra_af">INTER,REWARDED,REWARDED_INTER,BANNER,LEADER,MREC</string>
+    <boolean name="cin_v2" value="true" />
+    <boolean name="track_ad_duration" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.mmcarc" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.umsm" value="true" />
+    <boolean name="cmps" value="false" />
+    <long name="fullscreen_ad_displayed_timeout_ms" value="-1" />
+    <boolean name="com.applovin.sdk.L8DO.scrsifm" value="true" />
+    <boolean name="faroae" value="false" />
+    <boolean name="caf" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.caf" value="true" />
+    <string name="health_events_reporter_valid_network_status_codes">{&quot;default&quot;:[200,204,302]}</string>
+    <boolean name="collect_device_angle" value="true" />
+    <boolean name="dcrome" value="true" />
+    <boolean name="always_destroy_ad_view_on_ui_thread" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.collect_device_angle" value="true" />
+    <boolean name="ueq" value="false" />
+    <float name="com.applovin.sdk.L8DO.health_events_reporter_v1_user_session_sampling_percent" value="-1.0" />
+    <string name="sc3">1794241158221:his2Ws-cc-Yiu0TEovuGvZ1aoKsrBtabnWgKUo5g3eA*</string>
+    <int name="com.applovin.sdk.L8DO.cachetc" value="1" />
+    <int name="com.applovin.sdk.L8DO.mtc" value="1" />
+    <boolean name="fdadaomr" value="true" />
+    <boolean name="ustpfcrc" value="false" />
+    <boolean name="track_app_killed_during_mediated_ad" value="false" />
+    <boolean name="is_verbose_logging" value="false" />
+    <string name="com.applovin.sdk.L8DO.md">FTYp/BwVABUAFQAAFQAVABUCABUAFQAVBAAVABUAFQYAFQAVABUIABUAFQAVChUAABUAFQAVDAAVABUAFQ4AFQAVABUQABUAFQAVEgAVgDUVuLgBFRQVAAAVABUAFRYAFQAVABUYABUAFQAVGhUAABWKJxX+fRUcFQAAFQAVABUeFQAAFQAVABUgABUAFQAVIgAVABUAFSQAFQAVABUmABUAFQAVKAAVABUAFSoAFQAVABUsABUAFQAVLgAVABUAFTAVAAAVABUAFTIAFQAVABU0ABUAFQAVNgAbAlwUFYA1Fbi4ARUUFQAAHBWKJxX+fRUcFQAAAA==</string>
+    <long name="com.applovin.sdk.L8DO.bvdim" value="8000" />
+    <boolean name="com.applovin.sdk.L8DO.collect_device_movement" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.dcrobs" value="true" />
+    <boolean name="com.applovin.sdk.L8DO.sswskan" value="true" />
+    <string name="device_token">MaznYs97JTiqaqEwnZGZ5nBB_rMEU1UbH6lzaXqxgHVYAEydeNzytLDet9noCyk9qmuAnYdqWWq0BwS_3oKfj5JclINFL150jh9nhE7D1xQQ3JurRPeM0jalgEA1bXsfsd4V0KPIyQJXxYoR0EN4Ln6bi-Ob7U1i00zQ9dq9X58=</string>
+    <boolean name="com.applovin.sdk.L8DO.crat" value="true" />
+    <boolean name="bvde" value="true" />
+    <int name="csl" value="-1" />
+    <int name="fetch_ad_retry_count_v1" value="1" />
+    <boolean name="cavdi" value="false" />
+    <boolean name="cso" value="true" />
+</map>

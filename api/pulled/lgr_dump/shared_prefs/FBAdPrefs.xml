@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="deviceIdHash">77abe033-edc2-4fdf-a946-ec5a395e20de</string>
+    <string name="LAST_SAVED_LOCALE">en_US</string>
+    <string name="Asus/AI2501/AI2501:12/V417IR/375:user/release-keys;12.3.5">502c40c0903651c7666ebf4c0689d92b</string>
+    <string name="Asus/AI2501/AI2501:12/V417IR/375:user/release-keys;12.3.4">eeb7a749f3998e538a10fca177f8c3cf</string>
+    <int name="AppMinSdkVersion" value="26" />
+</map>

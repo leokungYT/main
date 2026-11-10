@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <long name="com.facebook.appevents.SessionInfo.sessionStartTime" value="1794242334874" />
+    <long name="com.facebook.appevents.SessionInfo.sessionEndTime" value="1794242334874" />
+    <string name="com.five_corp.ad.user.id">6af5cd2b-191e-480a-935c-3f478a182136</string>
+    <int name="com.facebook.appevents.SessionInfo.interruptionCount" value="0" />
+    <string name="com.applovin.sdk.impl.isFirstRun">false</string>
+    <string name="InMobi_unifiedId">{&quot;ufids&quot;:[{&quot;src&quot;:&quot;LotamePanorama&quot;,&quot;signature&quot;:&quot;&quot;,&quot;envelope&quot;:&quot;&quot;,&quot;expiry&quot;:1793208743788},{&quot;src&quot;:&quot;ID5&quot;,&quot;signature&quot;:&quot;ID5_AsVVJCQIMEbKjc6NqFmVrGFSoNLvJY5x96f09PzRLHKz4RT6crQmU2ZdX4e8TQvkssD9Bv4FaSC1Nccf99WZK9JZYZ3aLrUc3-Uf8WnEYYQtxTtLv66J4Ga66pfaKLvxL5B9Tv6GrS9FYJ3wlm8IZlUfbe6gd3HGGPMiJSq6wW3EvZU-aME&quot;,&quot;envelope&quot;:&quot;eyJjcmVhdGVkX2F0IjoiMjAyNi0wOC0zMFQwMToyMToxOFoiLCJzaWduYXR1cmUiOiJJRDVfQXNWVkpDUUlNRWJLamM2TnFGbVZyR0ZTb05MdkpZNXg5NmYwOVB6UkxIS3o0UlQ2Y3JRbVUyWmRYNGU4VFF2a3NzRDlCdjRGYVNDMU5jY2Y5OVdaSzlKWllaM2FMclVjMy1VZjhXbkVZWVF0eFR0THY2Nko0R2E2NnBmYUtMdnhMNUI5VHY2R3JTOUZZSjN3bG04SVpsVWZiZTZnZDNIR0dQTWlKU3E2d1czRXZaVS1hTUUiLCJvcmlnaW5hbF91aWQiOiJJRDUqUThfSVVMb3hhbGM3QUI2dlgyS1VnM3dPUzhKOWc3MFlGRVJjRFJIeWtVel9fMnJ4OG9kYUFBRUJDbXFUaFk0QS1KekN1SlFpYktKVGlvT3NXejBLaFEiLCJ1bml2ZXJzYWxfdWlkIjoiSUQ1KmJYc3NoMnhGNHp1YmxLRHlHbjBtMUNfYWFoVnlRQzlfc2YtNHdWZm1hakRfXzJyeDhvZGFBQUVCQ21xVGhZNEEtSnpiQzhMdDBITkRka0YzX1ZRZFVRIiwiaWRlbnRpdHlQYXJ0bmVyIjoiSUQ1IiwiaXNFcnJvclJlc3BvbnNlIjpmYWxzZX0=&quot;,&quot;expiry&quot;:1794327559457},{&quot;src&quot;:&quot;LiveIntent&quot;,&quot;envelope&quot;:&quot;34-hIP9tUZs1PUSuuttI+HeqjxOxb1v2CDZhJRvgJcIUuotyolwMD9uTGd2aKT9BhVLZtWbQcMvZrUiKAMnMRFJ4BInFhD3R4mguEQCuCTslUFYGA==&quot;,&quot;expiry&quot;:1793213183662}]}</string>
+    <string name="com.facebook.appevents.SessionInfo.sessionId">0b6b467e-aeeb-4157-a526-7e640ad30cdd</string>
+</map>

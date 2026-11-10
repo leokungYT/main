@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="APP_HAS_BEEN_LAUNCHED_KEY" value="true" />
+    <long name="TIME_OF_LAST_LOGGED_PURCHASE" value="1794240986963" />
+    <long name="TIME_OF_LAST_LOGGED_SUBSCRIPTION" value="1794240986963" />
+</map>

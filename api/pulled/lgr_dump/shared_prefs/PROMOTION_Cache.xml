@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="appVersion">12.3.5</string>
+    <string name="appId">LGRGS</string>
+    <boolean name="isFirstLaunch" value="false" />
+</map>

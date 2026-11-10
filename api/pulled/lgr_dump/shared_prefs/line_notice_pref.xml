@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="white_list" value="false" />
+    <long name="notice_last_revision" value="10218714" />
+    <long name="new_count_timestamp_notice" value="1794242369734" />
+    <long name="appInfo_timestamp" value="1794242369735" />
+    <long name="notice_local_timestamp" value="1794242369732" />
+    <string name="pref_user_hash">995dda0dcc7a3983efaf914851ba98246a70bfa3</string>
+    <int name="new_document_count_notice" value="2" />
+    <string name="app_info">{&quot;version&quot;:&quot;12.3.5&quot;,&quot;versionCode&quot;:&quot;&quot;,&quot;marketAppLink&quot;:&quot;https:\/\/play.google.com\/store\/apps\/details?id=com.linecorp.LGRGS&quot;,&quot;marketBrowserLink&quot;:&quot;https:\/\/play.google.com\/store\/apps\/details?id=com.linecorp.LGRGS&quot;,&quot;marketShortUrl&quot;:&quot;http:\/\/nav.cx\/3FcvHtk&quot;,&quot;extras&quot;:&quot;{\&quot;cdnServerIP\&quot;:\&quot;\&quot;,\&quot;httpsServerIP\&quot;:\&quot;\&quot;,\&quot;proxyServerIP\&quot;:\&quot;\&quot;,\&quot;termsURL\&quot;:\&quot;https:\\\/\\\/terms2.line.me\\\/LGRGS_term\\\/sp\&quot;,\&quot;billingGWServerIP\&quot;:\&quot;\&quot;,\&quot;gameServerIP\&quot;:\&quot;\&quot;,\&quot;sccServerIP\&quot;:\&quot;\&quot;,\&quot;guestAuthServerIP\&quot;:\&quot;\&quot;}&quot;}</string>
+    <string name="pref_user_id"></string>
+    <string name="pref_lang">en</string>
+    <string name="pref_country">LA</string>
+    <long name="notice_server_timestamp" value="1794242369946" />
+</map>

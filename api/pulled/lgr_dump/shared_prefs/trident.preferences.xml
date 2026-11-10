@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="com.linecorp.trident.accesstoken">+mvOd1uU06n7nqF6M9CNgPpmfH2/GMKEjHcX4+SmQpzI7Ww5pVqd077SHRPAokm5QgNiz9YwXBloMLkKMFboRsEjJ5UNZ3TDjBbe2NhibLCp7xuiAOCZT1JNI+ENHqr7UC3b6xtU6sZ/knt5Jauvz7iNbcuzLAFz9RsUOwpppx6Bzfbm69Wr8Hdh8b3O03Z2</string>
+    <string name="com.linecorp.trident.providertoken">6CD/aLzgNi4YMcGY+pd07MBe/4JKvvUHrY5y/22FkjiY/iFeRWz6ANhVUcU1uZHF</string>
+    <string name="com.linecorp.trident.prevuserkey">ljQrmihxh93GwGtft3IYtg==</string>
+    <string name="com.linecorp.trident.refreshtoken">3ePb2OL2vFqf9cHrXavlylvn6AwszdfPBU2Ug7P8TElYY8CgXFfkCF3k6Nboz6pulaVXvth8wZRYPhSByClQi29Dmad6+KFJdRID0aj7SroZ5Fgv3xnR4N4o0bzfJC4g6SOUbUfy1YKmCK1Lt0JUeg==</string>
+    <set name="com.linecorp.trident.permissions" />
+    <boolean name="com.linecorp.trident.kcs.ismigrated" value="true" />
+    <string name="guest_reset_tm">kbSRHtj1l5tgfqtw9TOPCqYcIkmsw0mf48kT8nKu+eY=</string>
+    <string name="com.linecorp.trident.refreshtoken.expiretime">+PINoKETfTazPMi6q2ZePQ==</string>
+    <boolean name="com.linecorp.trident.tracker.sentdata" value="true" />
+    <string name="com.linecorp.trident.providerid">ChzxAqF/eckNiKbQb8sX5bzSGGojKceRuWAgo75+0D0=</string>
+    <string name="com.linecorp.trident.kcs.ver">3.12.3.459</string>
+    <string name="com.linecorp.trident.userkey">DejFlZt1kiAIXz1IiV63zg==</string>
+    <string name="com.linecorp.trident.uuid">6CD/aLzgNi4YMcGY+pd07MBe/4JKvvUHrY5y/22FkjiY/iFeRWz6ANhVUcU1uZHF</string>
+    <long name="SCC_eb367819af1a5fb9c6feee4af9251c87" value="1794242340" />
+    <string name="guest_auth_marker">DejFlZt1kiAIXz1IiV63zg==</string>
+    <boolean name="com.linecorp.trident.tracker.issetuser" value="true" />
+    <string name="com.linecorp.trident.accesstoken.expiretime">WpvQV2Bg946CtDbXoBuTag==</string>
+    <string name="com.linecorp.trident.tracker.adjustid">bcede081ee7707b01c6c7354bc5df008</string>
+    <string name="com.linecorp.trident.tracker.uuid">e2b09061-efa4-3654-af2a-9d2b5e3efda1</string>
+    <string name="com.linecorp.trident.providername">5RWBWEo+KiZCDq02ThXGYg==</string>
+</map>
