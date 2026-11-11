@@ -19,7 +19,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 
 # ============ แก้บล็อกนี้ให้ตรงกับที่ Charles ดักมาจากมือถือ ============
-BASE       = "https://rangers-api.linega.me"
+BASE       = "https://rangers-api.line-apps.com"
 APP_VER    = "15.3.0"
 CLIENT     = "LGRGS"
 LANG       = "th"

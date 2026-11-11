@@ -102,6 +102,16 @@ math-ranger/
 # frida-server binaries - too big for GitHub (164MB)
 frida-server
 frida-server.xz
+frida-server-*
 hluda
 frida.log
 scan.log
+cipher.log
+
+# api/ secrets + runtime output
+api/_ENC_LF_AC.txt
+api/_UDID.txt
+api/.current_ser
+api/dumps/
+api/maps.txt
+api/libs.txt
