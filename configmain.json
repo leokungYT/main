@@ -100,6 +100,9 @@
     "use_host_vpn": 0,
     "host_vpn_rotate_min": 7,
     "host_vpn_full_tunnel": 0,
+    "host_vpn_trigger_rotate": 1,
+    "host_vpn_trigger_min_gap_sec": 120,
+    "host_vpn_exclude_paths": ["ip-mullvad", "mullvad"],
     "host_vpn_split_domains": [
         "rangers-api.line-apps.com",
         "game-api.line.me",

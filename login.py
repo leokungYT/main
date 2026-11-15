@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.7.5"
+BOT_VERSION = "4.7.6"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -22,6 +22,21 @@ def _no_proxy_mode():
         return bool(int(globals().get("config", {}).get("no_proxy_mode", 0) or 0))
     except Exception:
         return False
+
+
+def _signal_host_vpn_rotate(reason=""):
+    """เขียนไฟล์ trigger เพื่อให้ host_wg_rotator.py สลับ IP ทันที (ใช้ตอน login fail / IP โดน block)
+    rotator จะเช็คทุก 5 วิ ถ้าเจอไฟล์ -> rotate + ลบไฟล์; มี cool-off (default 120s) กันสลับรัว"""
+    if not int(globals().get("config", {}).get("use_host_vpn", 0) or 0):
+        return
+    try:
+        import os as _os
+        _script_dir = _os.path.dirname(_os.path.abspath(__file__))
+        _trigger = _os.path.join(_script_dir, ".host_wg_trigger")
+        with open(_trigger, "w", encoding="utf-8") as f:
+            f.write(str(reason)[:200])
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -8319,6 +8334,7 @@ class RangerGearBot(threading.Thread):
         base = os.path.basename(file_path)
         try: shutil.move(file_path, os.path.join(dst_dir, base))
         except: pass
+        _signal_host_vpn_rotate(f"login-failed {self.device_id} {base}")
 
     # =========================================================
     # File Handling
@@ -8454,7 +8470,8 @@ class RangerGearBot(threading.Thread):
             os.makedirs(dst_dir)
         base = os.path.basename(file_path)
         dst = os.path.join(dst_dir, base)
-        
+        _signal_host_vpn_rotate(f"login-failed {self.device_id} {base}")
+
         print(f"[{self.device_id}] Login FAILED. Pulling file from device for debug...")
         
         # Pull the current file from the device to see its state

@@ -44,6 +44,7 @@ WG_CLI_CANDIDATES = [
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(SCRIPT_DIR, "host_wg_state.json")
 TUNNEL_DIR = os.path.join(SCRIPT_DIR, ".host_wg_tunnels")   # ชื่อ tunnel แบบสั้น (WG for Windows จำกัด 32 ตัว)
+TRIGGER_FILE = os.path.join(SCRIPT_DIR, ".host_wg_trigger") # บอทเขียนไฟล์นี้ตอน login fail -> rotator สลับทันที
 
 # domain ที่ควรวิ่งผ่าน VPN (split-tunnel) - override ด้วย config host_vpn_split_domains
 # AnyDesk / browser / Windows Update ยังใช้เน็ตบ้าน ไม่โดนตัด
@@ -148,7 +149,17 @@ def _load_cfg():
 def _list_confs(wg_dir):
     base = wg_dir if os.path.isabs(wg_dir) else os.path.join(SCRIPT_DIR, wg_dir)
     files = sorted(glob.glob(os.path.join(base, "**", "*.conf"), recursive=True))
-    return [os.path.abspath(f) for f in files]
+    # กรองออก: path ที่มี substring ใน host_vpn_exclude_paths (default กัน Mullvad ที่ key หมดอายุบ่อย)
+    cfg = _load_cfg()
+    excludes = cfg.get("host_vpn_exclude_paths") or ["ip-mullvad", "mullvad", "Mullvad"]
+    out = []
+    for f in files:
+        fa = os.path.abspath(f)
+        norm = fa.replace("\\", "/").lower()
+        if any(e.lower() in norm for e in excludes):
+            continue
+        out.append(fa)
+    return out
 
 
 def _current_tunnel():
@@ -399,7 +410,16 @@ def main():
         return
 
     interval = max(60.0, args.min * 60.0)   # ขั้นต่ำ 1 นาที กัน config ผิด
-    print(f"[HOST-WG] เริ่ม rotator: wg_dir={args.dir} รอบละ {args.min} นาที", flush=True)
+    cfg = _load_cfg()
+    trigger_on = int(cfg.get("host_vpn_trigger_rotate", 1) or 0)
+    trigger_gap = max(30.0, float(cfg.get("host_vpn_trigger_min_gap_sec", 120) or 120))
+    print(f"[HOST-WG] เริ่ม rotator: wg_dir={args.dir} รอบละ {args.min} นาที "
+          f"(trigger-rotate={'on' if trigger_on else 'off'}, min gap {trigger_gap:.0f}s)", flush=True)
+    try:
+        if os.path.exists(TRIGGER_FILE):
+            os.remove(TRIGGER_FILE)
+    except Exception:
+        pass
 
     # cleanup: Ctrl+C / Ctrl+Break / ปิดจาก Task Manager -> ถอด tunnel ก่อนออก
     # เพราะ /installtunnelservice ติดตั้งเป็น Windows service persistent - ไม่ถอดเอง = ค้างจน restart
@@ -422,14 +442,41 @@ def main():
     except Exception:
         pass
 
+    last_rotate = 0.0
     while True:
         try:
             rotate(args.dir)
+            last_rotate = time.time()
         except Exception as e:
             print(f"[HOST-WG] rotate พัง: {e}", flush=True)
         if args.once:
             return
-        time.sleep(interval)
+        # แทนที่จะ sleep ยาว - นอน 5 วิ x N ครั้ง เพื่อเช็ค trigger file ได้บ่อยๆ
+        slept = 0.0
+        while slept < interval:
+            time.sleep(5)
+            slept += 5
+            if not trigger_on:
+                continue
+            try:
+                if os.path.exists(TRIGGER_FILE):
+                    gap = time.time() - last_rotate
+                    if gap < trigger_gap:
+                        print(f"[HOST-WG] trigger file พบ แต่เพิ่งสลับไป {gap:.0f}s (ต้องรอ {trigger_gap:.0f}s) - ข้าม", flush=True)
+                        try: os.remove(TRIGGER_FILE)
+                        except Exception: pass
+                        continue
+                    try:
+                        with open(TRIGGER_FILE, "r", encoding="utf-8", errors="replace") as f:
+                            reason = (f.read() or "").strip()[:200]
+                    except Exception:
+                        reason = ""
+                    try: os.remove(TRIGGER_FILE)
+                    except Exception: pass
+                    print(f"[HOST-WG] ★ trigger-rotate: บอทขอสลับ IP ({reason or 'ไม่ระบุสาเหตุ'})", flush=True)
+                    break   # ออกจาก inner sleep -> ไป rotate รอบใหม่
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
