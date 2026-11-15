@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.6.1"
+BOT_VERSION = "4.6.3"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3336,6 +3336,9 @@ def reset_network_all(devices):
     """
     if not int(config.get("reset_network_on_start", 1) or 0):
         return
+    if int(config.get("use_host_vpn", 0) or 0):
+        print("[NET-RESET] use_host_vpn=1 - ข้าม VPN reset ในอีมูฯ (host_wg_rotator คุมบน Windows)")
+        return
     if not int(config.get("wg_enabled", 1) or 0):
         print("[NET-RESET] wg_enabled=0 (proxy mode) - ข้าม VPN reset ทั้งหมด")
         print("            Android http_proxy ที่ proxy_switcher ตั้งไว้คงอยู่")
@@ -5134,6 +5137,8 @@ class RangerGearBot(threading.Thread):
 
     def _wg_after_refresh(self):
         """wg_after_login: กด refresh แล้ว -> ต่อ VPN ตรงนี้เลย (ส่งไฟล์/เปิดเกมไปด้วยเน็ตปกติแล้ว)"""
+        if int(config.get("use_host_vpn", 0) or 0):
+            return   # host VPN mode: ไม่ต่อ WG ในอีมูฯ (host_wg_rotator.py คุม)
         if int(config.get("wg_after_login", 0) or 0):
             self._ensure_wireguard()
 
@@ -5153,6 +5158,8 @@ class RangerGearBot(threading.Thread):
         ทำทุกครั้ง (ไม่ใช่เฉพาะตอนเห็น tun): สั่งปิด tunnel -> ฆ่าแอป WireGuard ->
         รอจน Android ไม่มี VPN ค้าง -> รอจนออกเน็ตได้จริง (ping) -> พักให้เน็ตนิ่ง แล้วค่อยไปต่อ
         """
+        if int(config.get("use_host_vpn", 0) or 0):
+            return None   # host VPN mode: VPN อยู่นอกอีมูฯ ไม่แตะ
         if int(config.get("wg_lock", 1) or 0) and not force:
             return None   # wg_lock: ห้ามปิด VPN เด็ดขาด (ปิดแล้วเข้าเกมไม่ได้)
         if not int(config.get("wg_enabled", 1) or 0):
@@ -5524,6 +5531,9 @@ class RangerGearBot(threading.Thread):
 
     def _ensure_wireguard(self):
         """ต่อ WireGuard ในอีมูฯ จอนี้ (เรียกก่อนเปิดเกมทุกครั้ง - ต่ออยู่แล้วจะข้ามเร็ว)"""
+        if int(config.get("use_host_vpn", 0) or 0):
+            self._wg_off = True
+            return   # host VPN mode: ไม่ต่อ WG ในอีมูฯ (host_wg_rotator.py คุม)
         if int(config.get("no_proxy_mode", 0) or 0):
             self._wg_off = True
             return
@@ -5599,6 +5609,8 @@ class RangerGearBot(threading.Thread):
         """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
         ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
         ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
+        if int(config.get("use_host_vpn", 0) or 0):
+            return   # host VPN mode: VPN อยู่บน Windows host - ไม่ต้องเช็ค tunnel ในอีมูฯ
         if int(config.get("no_proxy_mode", 0) or 0):
             # no_proxy_mode: 6 ชั้นก่อน login บน IP เดิม
             #   1) _spoof_mobile_network: ปลอม prop ให้รายงาน TYPE_MOBILE + carrier TH
@@ -5732,7 +5744,9 @@ class RangerGearBot(threading.Thread):
             # kill-switch: tunnel down = ห้ามออกเน็ตเลย (กันบ้านไหล 27.130.*)
             f"settings put global always_on_vpn_lockdown {int(bool(int(config.get('wg_lockdown', 1) or 0)))} 2>/dev/null",
             # เปิด MainActivity ก่อน - app ต้อง initialize DataStore (อ่าน allow_remote_control_intents) ก่อน receiver จะยอมรับ broadcast
-            f"am start -W -n {pkg}/.activity.MainActivity >/dev/null 2>&1",
+            # --activity-no-animation + ยิง HOME ทันที = ไม่โผล่ค้างบนจออีมู (ยังได้ initialize DataStore ในเบื้องหลังช่วง sleep)
+            f"am start -W --activity-no-animation -n {pkg}/.activity.MainActivity >/dev/null 2>&1",
+            f"input keyevent 3 >/dev/null 2>&1",
             f"sleep 1",
             # สั่งเปิด tunnel 3 ครั้ง (บาง MuMu รับ broadcast ครั้งแรกไม่ทัน app ยังไม่ bind receiver)
             f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}",

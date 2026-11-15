@@ -97,6 +97,8 @@
     "windscribe_protocol": "wireguard",
     "windscribe_rotate_every": 0,
     "delay_scale": 0.1,
+    "use_host_vpn": 0,
+    "host_vpn_rotate_min": 7,
     "wg_enabled": 1,
     "wg_once": 0,
     "wg_account": "",
