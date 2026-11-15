@@ -29,11 +29,13 @@ import webbrowser
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS = os.path.join(os.path.expanduser("~"), "Downloads")
-DST_DIRS = [
-    os.path.join(SCRIPT_DIR, "wg", "ip-chan", "main-1"),
-    os.path.join(SCRIPT_DIR, "wg", "ip-chan", "main-2"),
-    os.path.join(SCRIPT_DIR, "wg", "ip-chan", "main-3"),
-]
+
+
+def _dst_dir(i):
+    """main-1, main-2, ... main-N (ไม่จำกัด - รองรับ Pro 5 keypairs ด้วย)"""
+    return os.path.join(SCRIPT_DIR, "wg", "ip-chan", f"main-{i}")
+
+
 GETCONFIG_URL = "https://windscribe.com/getconfig/wireguard"
 
 
@@ -54,7 +56,7 @@ def _valid_wg_conf(path):
 
 def main():
     ap = argparse.ArgumentParser(description="Windscribe .conf auto-import")
-    ap.add_argument("--count", type=int, default=3, help="จำนวน .conf ที่รอ (default 3)")
+    ap.add_argument("--count", type=int, default=5, help="จำนวน .conf ที่รอ (default 5 = ใช้ Windscribe Pro 5 keypairs)")
     ap.add_argument("--timeout", type=int, default=600, help="หมดเวลารอ (วินาที, default 600)")
     ap.add_argument("--downloads", default=DOWNLOADS, help=f"โฟลเดอร์ Downloads (default: {DOWNLOADS})")
     args = ap.parse_args()
@@ -63,8 +65,8 @@ def main():
         print(f"[WS] ไม่พบโฟลเดอร์ Downloads: {args.downloads}")
         sys.exit(1)
 
-    for d in DST_DIRS[:args.count]:
-        os.makedirs(d, exist_ok=True)
+    for i in range(1, args.count + 1):
+        os.makedirs(_dst_dir(i), exist_ok=True)
 
     print(f"[WS] =============================================================")
     print(f"[WS] Windscribe Config Fetcher")
@@ -99,7 +101,7 @@ def main():
             if not _valid_wg_conf(p):
                 continue
             idx = len(collected) + 1
-            dst = os.path.join(DST_DIRS[idx - 1], f"key{idx}.conf")
+            dst = os.path.join(_dst_dir(idx), f"key{idx}.conf")
             try:
                 shutil.move(p, dst)
                 collected.append(dst)

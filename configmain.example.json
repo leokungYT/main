@@ -140,7 +140,7 @@
     ],
     "wg_after_login": 0,
     "wg_dir": "wg",
-    "wg_profile": ["ip-chan/main-1", "ip-chan/main-2", "ip-chan/main-3"],
+    "wg_profile": ["ip-chan/main-1", "ip-chan/main-2", "ip-chan/main-3", "ip-chan/main-4", "ip-chan/main-5"],
     "_wg_profile_hint": "string เดียวหรือ list. ตอนนี้: Windscribe ip-chan เท่านั้น (ตัด ip-boy ออก). backup Mullvad: [\"ip-mullvad-1\"]",
     "_wg_profile_backup_mullvad": ["ip-mullvad-1"],
     "_wg_profile_backup_boy": ["ip-boy/main-1"],
