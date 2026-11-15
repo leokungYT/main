@@ -20,12 +20,14 @@ CLI:
   --min <n>      นาทีต่อรอบสลับ (default: 7)
 """
 import argparse
+import atexit
 import glob
 import hashlib
 import json
 import os
 import random
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -299,14 +301,37 @@ def rotate(wg_dir, exclude_current=True):
         _write_state(None, None)
 
 
+def _list_all_wg_services():
+    """list ชื่อ tunnel ของทุก WireGuard service ที่ติดอยู่ในเครื่อง (ไม่ใช่แค่ตัวที่เราติดตั้ง)"""
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-Service -Name 'WireGuardTunnel$*' -ErrorAction SilentlyContinue | "
+             "ForEach-Object { $_.Name -replace '^WireGuardTunnel\\$','' }"],
+            capture_output=True, text=True, timeout=10)
+        return [n.strip() for n in (r.stdout or "").splitlines() if n.strip()]
+    except Exception:
+        return []
+
+
 def stop_current():
-    cur = _current_tunnel()
-    if cur:
-        print(f"[HOST-WG] ถอด tunnel ปัจจุบัน: {cur}", flush=True)
-        _uninstall(cur)
-        _write_state(None, None)
+    """ถอด tunnel ที่ต่ออยู่ - uninstall ทุก WireGuard service ไม่ใช่แค่ที่ rotator ติดตั้ง
+    (ครอบคลุม tunnel ที่ user ติดจาก GUI เองด้วย - จะได้ปิดคราวเดียวจบ)"""
+    all_svcs = _list_all_wg_services()
+    if not all_svcs:
+        cur = _current_tunnel()
+        if cur:
+            print(f"[HOST-WG] ถอด tunnel ปัจจุบัน: {cur}", flush=True)
+            _uninstall(cur)
+        else:
+            print("[HOST-WG] ไม่มี tunnel ที่ต่ออยู่", flush=True)
     else:
-        print("[HOST-WG] ไม่มี tunnel ที่ต่ออยู่", flush=True)
+        print(f"[HOST-WG] พบ {len(all_svcs)} tunnel - ถอดทั้งหมด", flush=True)
+        for n in all_svcs:
+            print(f"[HOST-WG] ถอด: {n}", flush=True)
+            _uninstall(n)
+            time.sleep(1)
+    _write_state(None, None)
 
 
 def main():
@@ -324,6 +349,28 @@ def main():
 
     interval = max(60.0, args.min * 60.0)   # ขั้นต่ำ 1 นาที กัน config ผิด
     print(f"[HOST-WG] เริ่ม rotator: wg_dir={args.dir} รอบละ {args.min} นาที", flush=True)
+
+    # cleanup: Ctrl+C / Ctrl+Break / ปิดจาก Task Manager -> ถอด tunnel ก่อนออก
+    # เพราะ /installtunnelservice ติดตั้งเป็น Windows service persistent - ไม่ถอดเอง = ค้างจน restart
+    _cleaning = {"done": False}
+    def _cleanup(*_a):
+        if _cleaning["done"]:
+            return
+        _cleaning["done"] = True
+        print("\n[HOST-WG] กำลัง cleanup - ถอด tunnel ก่อนออก...", flush=True)
+        try:
+            stop_current()
+        except Exception as e:
+            print(f"[HOST-WG] cleanup พัง: {e}", flush=True)
+    atexit.register(_cleanup)
+    try:
+        signal.signal(signal.SIGINT, lambda *a: (_cleanup(), sys.exit(0)))
+        signal.signal(signal.SIGTERM, lambda *a: (_cleanup(), sys.exit(0)))
+        if hasattr(signal, "SIGBREAK"):   # Windows เท่านั้น (Ctrl+Break / close window)
+            signal.signal(signal.SIGBREAK, lambda *a: (_cleanup(), sys.exit(0)))
+    except Exception:
+        pass
+
     while True:
         try:
             rotate(args.dir)
