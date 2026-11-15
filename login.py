@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.7.6"
+BOT_VERSION = "4.7.7"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -5242,6 +5242,12 @@ class RangerGearBot(threading.Thread):
         ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
         ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
         คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
+        # host VPN mode: ไม่แตะ VPN ในอีมู แต่บอก host rotator ให้สลับ IP ทันที (trigger-rotate)
+        # ให้ bot ยัง return True = "จัดการแล้ว" เพื่อไม่ให้กด RETRY ซ้ำ (รอ host สลับใน 5-10 วิ)
+        if int(config.get("use_host_vpn", 0) or 0):
+            _signal_host_vpn_rotate(f"{where} {self.device_id}")
+            print(f"[{self.device_id}] [HOST-VPN] {where} - signal host rotator ให้สลับ IP (trigger file)")
+            return True
         if getattr(self, "_wg_past_login", False):
             return False   # ผ่าน stoplogin แล้ว - เลิกสลับ IP (กด RETRY แบบเดิม)
         if int(config.get("wg_lock", 1) or 0) and not force_switch:
