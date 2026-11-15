@@ -303,12 +303,14 @@ def rotate(wg_dir, exclude_current=True):
         if _BAD_CONFS:
             print(f"[HOST-WG] ไฟล์ดีหมด - ลองกลุ่มที่เคยเสีย ({len(_BAD_CONFS)} ไฟล์)", flush=True)
 
-    # ลองไฟล์ 1-5 ไฟล์ จนกว่า handshake จะผ่าน (ถ้า install แรกพัง อย่าปล่อยให้ไม่มี tunnel)
-    max_tries = min(5, len(good))
+    # ลองไฟล์เรื่อยๆ จนกว่า handshake จะผ่าน (host_vpn_max_tries=0 = ไม่จำกัด = ลองทุกไฟล์)
+    cfg2 = _load_cfg()
+    max_cfg = int(cfg2.get("host_vpn_max_tries", 0) or 0)
+    max_tries = len(good) if max_cfg <= 0 else min(max_cfg, len(good))
     pick = None
     for attempt in range(max_tries):
         pick = random.choice(good)
-        good = [c for c in good if c != pick]   # กัน loop สุ่มซ้ำตัวเดิม
+        good = [c for c in good if c != pick]
         if attempt > 0:
             print(f"[HOST-WG] ลองไฟล์ที่ {attempt + 1}/{max_tries}...", flush=True)
         if _rotate_once(pick, cur):
@@ -316,7 +318,21 @@ def rotate(wg_dir, exclude_current=True):
             return
         _mark_conf_bad(pick)
         print(f"[HOST-WG] ไฟล์นี้ handshake พัง -> blacklist ชั่วคราว", flush=True)
-    print(f"[HOST-WG] ลอง {max_tries} ไฟล์ยังไม่ผ่าน - ไม่มี VPN รอรอบถัดไป", flush=True)
+    print(f"[HOST-WG] ================================================================", flush=True)
+    print(f"[HOST-WG] ลอง {max_tries} ไฟล์ทั้งหมดไม่ผ่านเลย = Windscribe keypair ตาย 100%", flush=True)
+    print(f"[HOST-WG] ต้องโหลด .conf ใหม่จากเว็บ Windscribe:", flush=True)
+    print(f"[HOST-WG]   1. เปิด https://windscribe.com/getconfig/wireguard", flush=True)
+    print(f"[HOST-WG]   2. Login + Generate + Download .conf (3 ครั้ง)", flush=True)
+    print(f"[HOST-WG]   3. วางทับ wg/ip-chan/main-1/key1.conf, main-2/key2.conf, main-3/key3.conf", flush=True)
+    print(f"[HOST-WG]   4. รัน host-wg-reset.bat แล้วเริ่มใหม่", flush=True)
+    print(f"[HOST-WG] ================================================================", flush=True)
+    # เปิดเว็บให้เลย (best-effort)
+    if int(cfg2.get("host_vpn_open_web_on_fail", 1) or 0):
+        try:
+            import webbrowser
+            webbrowser.open("https://windscribe.com/getconfig/wireguard")
+        except Exception:
+            pass
 
 
 def _rotate_once(pick, cur):
