@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.7.0"
+BOT_VERSION = "4.7.1"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3337,7 +3337,38 @@ def reset_network_all(devices):
     if not int(config.get("reset_network_on_start", 1) or 0):
         return
     if int(config.get("use_host_vpn", 0) or 0):
-        print("[NET-RESET] use_host_vpn=1 - ข้าม VPN reset ในอีมูฯ (host_wg_rotator คุมบน Windows)")
+        print("[NET-RESET] use_host_vpn=1 - host_wg_rotator คุมบน Windows (ข้าม VPN setup ในอีมูฯ)")
+        # กำจัด WireGuard app ค้างในทุกอีมู - ป้องกันหน้าจอแอป WG โผล่/ค้างจากรอบก่อน
+        # host_vpn_purge_emu_wg=0 ปิดการถอน (ถ้าอยากเก็บแอปไว้ในอีมู)
+        if int(config.get("host_vpn_purge_emu_wg", 1) or 0):
+            pkg = "com.wireguard.android"
+            kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+            def _purge(dev):
+                try:
+                    # 1) ปิด tunnel ค้าง (เผื่อ VPN ในอีมูยังรันจากรอบก่อน)
+                    subprocess.run([adb_path, "-s", dev, "shell",
+                                    f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel wg0'"],
+                                   capture_output=True, timeout=10, **kw)
+                    # 2) ฆ่าแอป WG
+                    subprocess.run([adb_path, "-s", dev, "shell", f"am force-stop {pkg}"],
+                                   capture_output=True, timeout=10, **kw)
+                    # 3) ถอน app ออกเลย - ไม่ให้โผล่ในจอ/launcher อีก
+                    if int(config.get("host_vpn_uninstall_emu_wg", 1) or 0):
+                        r = subprocess.run([adb_path, "-s", dev, "uninstall", pkg],
+                                           capture_output=True, text=True, timeout=30, **kw)
+                        out = (r.stdout or "") + (r.stderr or "")
+                        if "Success" in out:
+                            print(f"[NET-RESET] {dev}: ถอนแอป WireGuard ออกจากอีมูแล้ว ✓")
+                except Exception:
+                    pass
+            threads = []
+            import threading as _t
+            for d in devices:
+                t = _t.Thread(target=_purge, args=(d,), daemon=True)
+                t.start()
+                threads.append(t)
+            for t in threads:
+                t.join(timeout=35)
         return
     if not int(config.get("wg_enabled", 1) or 0):
         print("[NET-RESET] wg_enabled=0 (proxy mode) - ข้าม VPN reset ทั้งหมด")
