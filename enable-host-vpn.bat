@@ -10,7 +10,7 @@ if not exist configmain.json (
     exit /b 1
 )
 
-python -c "import json; p='configmain.json'; d=json.load(open(p,encoding='utf-8')); d['use_host_vpn']=1; d['host_vpn_rotate_min']=d.get('host_vpn_rotate_min',7); d.setdefault('host_vpn_split_domains', ['rangers-api.line-apps.com','obs.line-apps.com']); open(p,'w',encoding='utf-8').write(json.dumps(d, ensure_ascii=False, indent=4)); print('[OK] use_host_vpn =', d['use_host_vpn']); print('[OK] host_vpn_rotate_min =', d['host_vpn_rotate_min']); print('[OK] host_vpn_split_domains =', d['host_vpn_split_domains'])"
+python -c "import json; p='configmain.json'; d=json.load(open(p,encoding='utf-8')); d['use_host_vpn']=1; d['host_vpn_rotate_min']=d.get('host_vpn_rotate_min',7); d['host_vpn_split_domains']=['rangers-api.line-apps.com','game-api.line.me','obs.line-apps.com','obs.line-scdn.net','access.line.me','api.line.me']; open(p,'w',encoding='utf-8').write(json.dumps(d, ensure_ascii=False, indent=4)); print('[OK] use_host_vpn =', d['use_host_vpn']); print('[OK] host_vpn_rotate_min =', d['host_vpn_rotate_min']); print('[OK] host_vpn_split_domains =', d['host_vpn_split_domains'])"
 
 if %errorlevel% neq 0 (
     echo [ERR] Failed to patch configmain.json

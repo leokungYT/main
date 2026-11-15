@@ -102,7 +102,11 @@
     "host_vpn_full_tunnel": 0,
     "host_vpn_split_domains": [
         "rangers-api.line-apps.com",
-        "obs.line-apps.com"
+        "game-api.line.me",
+        "obs.line-apps.com",
+        "obs.line-scdn.net",
+        "access.line.me",
+        "api.line.me"
     ],
     "wg_enabled": 1,
     "wg_once": 0,
