@@ -288,17 +288,25 @@ def rotate(wg_dir, exclude_current=True):
         print(f"[HOST-WG] เตรียมไฟล์ tunnel ล้มเหลว: {e}", flush=True)
         return
 
-    if cur:
-        print(f"[HOST-WG] ถอด tunnel เก่า: {cur}", flush=True)
+    # seamless rotation: ติด tunnel ใหม่ก่อน -> รอ handshake -> ค่อยถอดเก่า
+    # (ไม่ทำแบบนี้: ถอดเก่า -> 2-5 วิไม่มี tunnel -> ติดใหม่ => ทุกจอเจอ fixnet พร้อมกัน)
+    print(f"[HOST-WG] ติด tunnel ใหม่ก่อน (seamless): {label} -> {short_name}", flush=True)
+    if not _install(short_conf):
+        print(f"[HOST-WG] ติด tunnel ใหม่พัง - คง tunnel เก่า ({cur}) ไว้", flush=True)
+        return
+    # รอ handshake ของ tunnel ใหม่สำเร็จ (จริงๆ ตอบ peer ได้) ก่อนค่อยถอดเก่า
+    ok = _tunnel_handshake_ok(short_name, wait_sec=15)
+    if ok is False:   # ลองแล้ว ไม่ handshake ภายใน 15 วิ -> rollback ไม่สลับ
+        print(f"[HOST-WG] tunnel ใหม่ handshake ไม่ผ่านใน 15 วิ - rollback (คง {cur})", flush=True)
+        _uninstall(short_name)
+        return
+    # ok is True (handshake สำเร็จ) หรือ None (ไม่มี wg.exe เช็คไม่ได้ - ยอมสลับ)
+    if cur and cur != short_name:
+        print(f"[HOST-WG] handshake OK - ถอด tunnel เก่า: {cur}", flush=True)
         _uninstall(cur)
-        time.sleep(2)
-    print(f"[HOST-WG] ต่อ tunnel ใหม่: {label} -> {short_name} ({pick})", flush=True)
-    if _install(short_conf):
-        _write_state(short_name, short_conf, source=pick, label=label)
-        time.sleep(3)
-        _show_ip()
-    else:
-        _write_state(None, None)
+    _write_state(short_name, short_conf, source=pick, label=label)
+    time.sleep(1)
+    _show_ip()
 
 
 def _list_all_wg_services():
