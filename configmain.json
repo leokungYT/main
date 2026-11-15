@@ -99,6 +99,12 @@
     "delay_scale": 0.1,
     "use_host_vpn": 0,
     "host_vpn_rotate_min": 7,
+    "host_vpn_full_tunnel": 0,
+    "host_vpn_split_domains": [
+        "rangers-api.line-apps.com",
+        "sdfe.line-apps.com",
+        "obs.line-apps.com"
+    ],
     "wg_enabled": 1,
     "wg_once": 0,
     "wg_account": "",

@@ -43,12 +43,72 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(SCRIPT_DIR, "host_wg_state.json")
 TUNNEL_DIR = os.path.join(SCRIPT_DIR, ".host_wg_tunnels")   # ชื่อ tunnel แบบสั้น (WG for Windows จำกัด 32 ตัว)
 
+# domain ที่ควรวิ่งผ่าน VPN (split-tunnel) - override ด้วย config host_vpn_split_domains
+# AnyDesk / browser / Windows Update ยังใช้เน็ตบ้าน ไม่โดนตัด
+DEFAULT_SPLIT_DOMAINS = [
+    "rangers-api.line-apps.com",   # API หลักของเกม LINE Rangers
+    "sdfe.line-apps.com",          # endpoint รอง
+    "obs.line-apps.com",            # CDN รูปภาพ/asset
+]
+
 
 def _safe_tunnel_name(conf_path):
     """ชื่อ tunnel สั้นๆ ไม่เกิน 32 ตัว, deterministic ต่อ path เดิม
     WG for Windows: ^[a-zA-Z0-9_=+.-]{1,32}$ - ชื่อยาวเกิน/มีช่องว่างจะ Error: Tunnel name is not valid"""
     h = hashlib.md5(conf_path.encode("utf-8")).hexdigest()[:8]
     return f"wg-{h}"   # 11 ตัว ปลอดภัยแน่
+
+
+def _resolve_domains(domains):
+    """resolve domain → list of IPs (IPv4 + IPv6) - รวบรวมทั้ง A และ AAAA records
+    ถ้า resolve บาง domain พัง -> ข้ามเฉพาะตัวนั้น ไม่ถล่มทั้ง rotator"""
+    import socket
+    ips = set()
+    for d in domains:
+        d = d.strip()
+        if not d:
+            continue
+        try:
+            infos = socket.getaddrinfo(d, None)
+            for info in infos:
+                ip = info[4][0]
+                # IPv4 → /32, IPv6 → /128
+                if ":" in ip:
+                    ips.add(f"{ip}/128")
+                else:
+                    ips.add(f"{ip}/32")
+        except Exception as e:
+            print(f"[HOST-WG] resolve {d} ล้มเหลว: {e}", flush=True)
+    return sorted(ips)
+
+
+def _tune_conf_split(src_conf, dst_conf, allowed_ips):
+    """copy src_conf -> dst_conf และแทน AllowedIPs ใน [Peer] ด้วย allowed_ips (split-tunnel)
+    - AllowedIPs = 0.0.0.0/0 จะทำให้ ทุก traffic ของ Windows ผ่าน VPN (AnyDesk/Chrome RD ตัด)
+    - เปลี่ยนเป็น IP เฉพาะเกม = เน็ตอื่นวิ่งตรง ไม่โดนตัด"""
+    with open(src_conf, "r", encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+    out = []
+    in_peer = False
+    replaced = False
+    for line in lines:
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            in_peer = (s.lower() == "[peer]")
+            out.append(line)
+            continue
+        if in_peer and s.lower().startswith("allowedips"):
+            if not replaced:
+                out.append(f"AllowedIPs = {', '.join(allowed_ips)}\n")
+                replaced = True
+            # skip ทั้งบรรทัด AllowedIPs เดิม (ไม่ append)
+            continue
+        out.append(line)
+    if not replaced:
+        # ไม่เจอ AllowedIPs ใน [Peer] - เพิ่มท้ายไฟล์
+        out.append(f"\nAllowedIPs = {', '.join(allowed_ips)}\n")
+    with open(dst_conf, "w", encoding="utf-8") as f:
+        f.writelines(out)
 
 
 def _first_existing(paths):
@@ -141,14 +201,43 @@ def _install(conf_path):
 
 
 def _show_ip():
-    """print public IP ปัจจุบัน - ยืนยันว่า VPN ต่อแล้ว (best-effort)"""
+    """print public IP (ของ api.ipify.org) - เป็นแค่ sanity check
+    split-tunnel mode: ipify ไม่อยู่ใน AllowedIPs -> IP ที่เห็นยัง = IP บ้าน ไม่ใช่ IP VPN
+                       แต่ traffic ไปเซิร์ฟเกม (rangers-api.line-apps.com) วิ่งผ่าน VPN จริง
+    full-tunnel mode:  IP ที่เห็น = IP VPN"""
     try:
         import urllib.request
         with urllib.request.urlopen("https://api.ipify.org", timeout=6) as r:
             ip = r.read().decode("ascii", "ignore").strip()
-            print(f"[HOST-WG] public IP = {ip}", flush=True)
+            print(f"[HOST-WG] public IP (ipify) = {ip}", flush=True)
+            print(f"[HOST-WG]   split-tunnel: IP นี้คือเน็ตบ้าน - เซิร์ฟเกมจะเห็น IP VPN ต่างหาก", flush=True)
+            return ip
     except Exception:
-        pass
+        return None
+
+
+def _tunnel_handshake_ok(name, wait_sec=20):
+    """รอ handshake จริงของ tunnel (wg show <name> latest-handshakes != 0)
+    install service สำเร็จ != tunnel ต่อสำเร็จ - WG for Windows ต้อง handshake กับ peer ก่อน"""
+    cli = _wg_cli()
+    if not cli:
+        time.sleep(5)
+        return None   # ไม่มี wg.exe - เช็คไม่ได้
+    deadline = time.time() + wait_sec
+    while time.time() < deadline:
+        try:
+            r = subprocess.run([cli, "show", name, "latest-handshakes"],
+                               capture_output=True, text=True, timeout=5)
+            out = (r.stdout or "").strip()
+            # format: "<pubkey>\t<unix ts>" - ts != 0 = handshake สำเร็จ
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) >= 2 and parts[-1].isdigit() and int(parts[-1]) > 0:
+                    return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
 
 
 def rotate(wg_dir, exclude_current=True):
@@ -174,10 +263,27 @@ def rotate(wg_dir, exclude_current=True):
 
     os.makedirs(TUNNEL_DIR, exist_ok=True)
     short_conf = os.path.join(TUNNEL_DIR, f"{short_name}.conf")
+
+    # split-tunnel: resolve domain เกม -> ใส่เฉพาะ IP นั้นใน AllowedIPs
+    # ทุก traffic อื่น (AnyDesk, Chrome Remote Desktop, browser, Windows Update) ไม่โดนตัด
+    cfg = _load_cfg()
+    domains = cfg.get("host_vpn_split_domains") or DEFAULT_SPLIT_DOMAINS
+    full_tunnel = int(cfg.get("host_vpn_full_tunnel", 0) or 0)
     try:
-        shutil.copyfile(pick, short_conf)
+        if full_tunnel:
+            shutil.copyfile(pick, short_conf)
+            print(f"[HOST-WG] full-tunnel mode (host_vpn_full_tunnel=1) - traffic ทั้งหมดผ่าน VPN", flush=True)
+        else:
+            allowed_ips = _resolve_domains(domains)
+            if not allowed_ips:
+                print(f"[HOST-WG] resolve domain ไม่ได้เลย -> fallback full-tunnel", flush=True)
+                shutil.copyfile(pick, short_conf)
+            else:
+                _tune_conf_split(pick, short_conf, allowed_ips)
+                print(f"[HOST-WG] split-tunnel: route {len(allowed_ips)} IP ของเกมผ่าน VPN "
+                      f"(เน็ตอื่นวิ่งตรง - AnyDesk/Chrome RD ไม่ตัด)", flush=True)
     except Exception as e:
-        print(f"[HOST-WG] copy .conf ล้มเหลว: {e}", flush=True)
+        print(f"[HOST-WG] เตรียมไฟล์ tunnel ล้มเหลว: {e}", flush=True)
         return
 
     if cur:
