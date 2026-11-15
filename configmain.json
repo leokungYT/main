@@ -102,7 +102,6 @@
     "host_vpn_full_tunnel": 0,
     "host_vpn_split_domains": [
         "rangers-api.line-apps.com",
-        "sdfe.line-apps.com",
         "obs.line-apps.com"
     ],
     "wg_enabled": 1,

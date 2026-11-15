@@ -48,9 +48,9 @@ TUNNEL_DIR = os.path.join(SCRIPT_DIR, ".host_wg_tunnels")   # ชื่อ tunne
 # domain ที่ควรวิ่งผ่าน VPN (split-tunnel) - override ด้วย config host_vpn_split_domains
 # AnyDesk / browser / Windows Update ยังใช้เน็ตบ้าน ไม่โดนตัด
 DEFAULT_SPLIT_DOMAINS = [
-    "rangers-api.line-apps.com",   # API หลักของเกม LINE Rangers
-    "sdfe.line-apps.com",          # endpoint รอง
+    "rangers-api.line-apps.com",   # API หลักของเกม LINE Rangers (login, home, gacha)
     "obs.line-apps.com",            # CDN รูปภาพ/asset
+    # เจอ domain เพิ่มตอนบอทเล่น (HTTP 000 / probe fail) -> เพิ่มใน configmain.json host_vpn_split_domains
 ]
 
 
