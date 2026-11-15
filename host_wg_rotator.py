@@ -21,9 +21,11 @@ CLI:
 """
 import argparse
 import glob
+import hashlib
 import json
 import os
 import random
+import shutil
 import subprocess
 import sys
 import time
@@ -39,6 +41,14 @@ WG_CLI_CANDIDATES = [
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(SCRIPT_DIR, "host_wg_state.json")
+TUNNEL_DIR = os.path.join(SCRIPT_DIR, ".host_wg_tunnels")   # ชื่อ tunnel แบบสั้น (WG for Windows จำกัด 32 ตัว)
+
+
+def _safe_tunnel_name(conf_path):
+    """ชื่อ tunnel สั้นๆ ไม่เกิน 32 ตัว, deterministic ต่อ path เดิม
+    WG for Windows: ^[a-zA-Z0-9_=+.-]{1,32}$ - ชื่อยาวเกิน/มีช่องว่างจะ Error: Tunnel name is not valid"""
+    h = hashlib.md5(conf_path.encode("utf-8")).hexdigest()[:8]
+    return f"wg-{h}"   # 11 ตัว ปลอดภัยแน่
 
 
 def _first_existing(paths):
@@ -91,10 +101,16 @@ def _current_tunnel():
         return None
 
 
-def _write_state(tunnel, conf):
+def _write_state(tunnel, conf, source=None, label=None):
     try:
         with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump({"tunnel": tunnel, "conf": conf, "ts": int(time.time())}, f)
+            json.dump({
+                "tunnel": tunnel,          # ชื่อ tunnel ที่ WG for Windows รู้จัก (wg-xxxxxxxx)
+                "conf": conf,              # ไฟล์ .conf ที่ใช้ install (TUNNEL_DIR/wg-xxxxxxxx.conf)
+                "source": source or conf,  # ไฟล์ .conf ต้นฉบับใน wg/ (ใช้ exclude ตอน rotate)
+                "label": label,            # ชื่ออ่านง่าย (Windscribe-Singapore-...)
+                "ts": int(time.time()),
+            }, f)
     except Exception:
         pass
 
@@ -136,7 +152,8 @@ def _show_ip():
 
 
 def rotate(wg_dir, exclude_current=True):
-    """สลับไป tunnel ใหม่ (สุ่มจาก .conf ใน wg_dir ที่ไม่ใช่ตัวปัจจุบัน)"""
+    """สลับไป tunnel ใหม่ (สุ่มจาก .conf ใน wg_dir ที่ไม่ใช่ตัวปัจจุบัน)
+    copy .conf ไปเป็นชื่อสั้น (<32 ตัว) ก่อน install เพราะ WG for Windows จำกัดชื่อ tunnel"""
     cur = _current_tunnel()
     confs = _list_confs(wg_dir)
     if not confs:
@@ -144,19 +161,32 @@ def rotate(wg_dir, exclude_current=True):
         return
     choices = confs
     if cur and exclude_current:
-        choices = [c for c in confs
-                   if os.path.splitext(os.path.basename(c))[0] != cur]
-        if not choices:
-            choices = confs   # มีไฟล์เดียว - วนใช้ซ้ำ
+        # cur คือชื่อสั้น (wg-xxxxxxxx) - map กลับไปหา source conf ของตัวที่กำลังใช้
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                cur_src = (json.load(f) or {}).get("source") or ""
+        except Exception:
+            cur_src = ""
+        choices = [c for c in confs if c != cur_src] or confs
     pick = random.choice(choices)
-    name = os.path.splitext(os.path.basename(pick))[0]
+    short_name = _safe_tunnel_name(pick)
+    label = os.path.splitext(os.path.basename(pick))[0]
+
+    os.makedirs(TUNNEL_DIR, exist_ok=True)
+    short_conf = os.path.join(TUNNEL_DIR, f"{short_name}.conf")
+    try:
+        shutil.copyfile(pick, short_conf)
+    except Exception as e:
+        print(f"[HOST-WG] copy .conf ล้มเหลว: {e}", flush=True)
+        return
+
     if cur:
         print(f"[HOST-WG] ถอด tunnel เก่า: {cur}", flush=True)
         _uninstall(cur)
         time.sleep(2)
-    print(f"[HOST-WG] ต่อ tunnel ใหม่: {name} ({pick})", flush=True)
-    if _install(pick):
-        _write_state(name, pick)
+    print(f"[HOST-WG] ต่อ tunnel ใหม่: {label} -> {short_name} ({pick})", flush=True)
+    if _install(short_conf):
+        _write_state(short_name, short_conf, source=pick, label=label)
         time.sleep(3)
         _show_ip()
     else:
