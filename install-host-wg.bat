@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul 2>&1
 REM install-host-wg.bat - ติดตั้ง WireGuard for Windows แบบเงียบ
 REM ใช้กับ host_wg_rotator.py (VPN นอกเครื่อง - IP เดียวคุมทุกอีมูฯ)
 
