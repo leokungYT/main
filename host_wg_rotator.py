@@ -246,32 +246,74 @@ def _tunnel_handshake_ok(name, wait_sec=20):
     return False
 
 
+_BAD_CONFS = {}   # {conf_path: (last_fail_ts, fail_count)} - ไฟล์ที่ handshake ไม่ผ่าน เว้นสักพักค่อยลองใหม่
+
+
+def _conf_is_bad(conf):
+    """ไฟล์นี้เพิ่ง fail ภายใน cool-off ไหม (เริ่มที่ 5 นาที x fail_count, max 60 นาที)"""
+    rec = _BAD_CONFS.get(conf)
+    if not rec:
+        return False
+    last, n = rec
+    cooloff = min(60 * 60, 5 * 60 * n)   # 5 นาที, 10, 15, ..., สูงสุด 60 นาที
+    return (time.time() - last) < cooloff
+
+
+def _mark_conf_bad(conf):
+    last, n = _BAD_CONFS.get(conf, (0, 0))
+    _BAD_CONFS[conf] = (time.time(), n + 1)
+
+
+def _mark_conf_good(conf):
+    _BAD_CONFS.pop(conf, None)
+
+
 def rotate(wg_dir, exclude_current=True):
     """สลับไป tunnel ใหม่ (สุ่มจาก .conf ใน wg_dir ที่ไม่ใช่ตัวปัจจุบัน)
-    copy .conf ไปเป็นชื่อสั้น (<32 ตัว) ก่อน install เพราะ WG for Windows จำกัดชื่อ tunnel"""
+    copy .conf ไปเป็นชื่อสั้น (<32 ตัว) ก่อน install เพราะ WG for Windows จำกัดชื่อ tunnel
+    ถ้า handshake ไม่ผ่าน -> ลองไฟล์อื่นต่อ (สูงสุด 5 ไฟล์) + blacklist ไฟล์เสียไว้ชั่วคราว"""
     cur = _current_tunnel()
-    confs = _list_confs(wg_dir)
-    if not confs:
+    all_confs = _list_confs(wg_dir)
+    if not all_confs:
         print(f"[HOST-WG] ไม่มีไฟล์ .conf ใน {wg_dir}/ - ข้าม", flush=True)
         return
-    choices = confs
+    # filter: ตัดตัวปัจจุบัน + ตัดไฟล์ที่เพิ่ง handshake พัง (cool-off)
+    cur_src = ""
     if cur and exclude_current:
-        # cur คือชื่อสั้น (wg-xxxxxxxx) - map กลับไปหา source conf ของตัวที่กำลังใช้
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 cur_src = (json.load(f) or {}).get("source") or ""
         except Exception:
-            cur_src = ""
-        choices = [c for c in confs if c != cur_src] or confs
-    pick = random.choice(choices)
+            pass
+    good = [c for c in all_confs if c != cur_src and not _conf_is_bad(c)]
+    if not good:
+        # ไฟล์ดีหมด cool-off -> ลองไฟล์เสียเก่าสุด (อาจกลับมาใช้ได้แล้ว)
+        good = [c for c in all_confs if c != cur_src] or all_confs
+        if _BAD_CONFS:
+            print(f"[HOST-WG] ไฟล์ดีหมด - ลองกลุ่มที่เคยเสีย ({len(_BAD_CONFS)} ไฟล์)", flush=True)
+
+    # ลองไฟล์ 1-5 ไฟล์ จนกว่า handshake จะผ่าน (ถ้า install แรกพัง อย่าปล่อยให้ไม่มี tunnel)
+    max_tries = min(5, len(good))
+    pick = None
+    for attempt in range(max_tries):
+        pick = random.choice(good)
+        good = [c for c in good if c != pick]   # กัน loop สุ่มซ้ำตัวเดิม
+        if attempt > 0:
+            print(f"[HOST-WG] ลองไฟล์ที่ {attempt + 1}/{max_tries}...", flush=True)
+        if _rotate_once(pick, cur):
+            _mark_conf_good(pick)
+            return
+        _mark_conf_bad(pick)
+        print(f"[HOST-WG] ไฟล์นี้ handshake พัง -> blacklist ชั่วคราว", flush=True)
+    print(f"[HOST-WG] ลอง {max_tries} ไฟล์ยังไม่ผ่าน - ไม่มี VPN รอรอบถัดไป", flush=True)
+
+
+def _rotate_once(pick, cur):
+    """ติด tunnel 1 ไฟล์ + รอ handshake. คืน True ถ้าผ่าน, False ถ้าพัง (rollback แล้ว)"""
     short_name = _safe_tunnel_name(pick)
     label = os.path.splitext(os.path.basename(pick))[0]
-
     os.makedirs(TUNNEL_DIR, exist_ok=True)
     short_conf = os.path.join(TUNNEL_DIR, f"{short_name}.conf")
-
-    # split-tunnel: resolve domain เกม -> ใส่เฉพาะ IP นั้นใน AllowedIPs
-    # ทุก traffic อื่น (AnyDesk, Chrome Remote Desktop, browser, Windows Update) ไม่โดนตัด
     cfg = _load_cfg()
     domains = cfg.get("host_vpn_split_domains") or DEFAULT_SPLIT_DOMAINS
     full_tunnel = int(cfg.get("host_vpn_full_tunnel", 0) or 0)
@@ -290,27 +332,24 @@ def rotate(wg_dir, exclude_current=True):
                       f"(เน็ตอื่นวิ่งตรง - AnyDesk/Chrome RD ไม่ตัด)", flush=True)
     except Exception as e:
         print(f"[HOST-WG] เตรียมไฟล์ tunnel ล้มเหลว: {e}", flush=True)
-        return
+        return False
 
-    # seamless rotation: ติด tunnel ใหม่ก่อน -> รอ handshake -> ค่อยถอดเก่า
-    # (ไม่ทำแบบนี้: ถอดเก่า -> 2-5 วิไม่มี tunnel -> ติดใหม่ => ทุกจอเจอ fixnet พร้อมกัน)
     print(f"[HOST-WG] ติด tunnel ใหม่ก่อน (seamless): {label} -> {short_name}", flush=True)
     if not _install(short_conf):
         print(f"[HOST-WG] ติด tunnel ใหม่พัง - คง tunnel เก่า ({cur}) ไว้", flush=True)
-        return
-    # รอ handshake ของ tunnel ใหม่สำเร็จ (จริงๆ ตอบ peer ได้) ก่อนค่อยถอดเก่า
+        return False
     ok = _tunnel_handshake_ok(short_name, wait_sec=15)
-    if ok is False:   # ลองแล้ว ไม่ handshake ภายใน 15 วิ -> rollback ไม่สลับ
-        print(f"[HOST-WG] tunnel ใหม่ handshake ไม่ผ่านใน 15 วิ - rollback (คง {cur})", flush=True)
+    if ok is False:
+        print(f"[HOST-WG] tunnel ใหม่ handshake ไม่ผ่านใน 15 วิ - rollback", flush=True)
         _uninstall(short_name)
-        return
-    # ok is True (handshake สำเร็จ) หรือ None (ไม่มี wg.exe เช็คไม่ได้ - ยอมสลับ)
+        return False
     if cur and cur != short_name:
         print(f"[HOST-WG] handshake OK - ถอด tunnel เก่า: {cur}", flush=True)
         _uninstall(cur)
     _write_state(short_name, short_conf, source=pick, label=label)
     time.sleep(1)
     _show_ip()
+    return True
 
 
 def _list_all_wg_services():
