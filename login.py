@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.8.5"
+BOT_VERSION = "4.8.6"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3166,7 +3166,10 @@ def load_config():
 
     # 3. wg_profile: สลับโฟลเดอร์ IP (เช่น ip-chan / ip-boy) โดยไม่ต้องแก้ wg_dir
     #    wg_enabled=0 -> ข้ามทั้ง resolve + clear + wg_gen (เสียเวลา startup ฟรี)
-    if int(config.get("wg_enabled", 1) or 0):
+    #    use_host_vpn=1 -> VPN อยู่บน Windows host - ข้าม resolve + gen ทั้งหมด (ไม่แตะโฟลเดอร์ wg/)
+    if int(config.get("use_host_vpn", 0) or 0):
+        print("[CONFIG] use_host_vpn=1 - ข้าม wg_profile resolve + wg_gen (VPN อยู่บน Windows host)")
+    elif int(config.get("wg_enabled", 1) or 0):
         _wg_resolve_profile()
     else:
         print("[CONFIG] wg_enabled=0 - ข้าม wg_profile resolve + wg_gen (ใช้ IP ของ PC ตรง ๆ)")
@@ -13371,7 +13374,8 @@ if __name__ == "__main__":
     reset_network_all(devices)
 
     # === ไฟล์ WireGuard ไม่พอจำนวนจอ -> สร้างเพิ่มอัตโนมัติจาก Key Pair ที่มี (wg_gen.py) ===
-    if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_auto_gen", 1) or 0):
+    # use_host_vpn=1: VPN อยู่บน Windows host - ข้าม auto-gen ทั้งหมด (ไม่แตะโฟลเดอร์ wg/)
+    if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_auto_gen", 1) or 0) and not int(config.get("use_host_vpn", 0) or 0):
         try:
             import wg_gen
             _wgd = str(config.get("wg_dir", "wg"))
@@ -13503,11 +13507,13 @@ if __name__ == "__main__":
                 print(f"[WG-GEN] สร้าง IP ใหม่ไม่สำเร็จ: {e}")
             time.sleep(30)
 
-    if int(config.get("wg_enabled", 1) or 0):
+    # use_host_vpn=1: VPN อยู่บน Windows host - ไม่ต้องสร้าง/regen .conf ในโฟลเดอร์ wg/
+    _host_vpn = int(config.get("use_host_vpn", 0) or 0)
+    if int(config.get("wg_enabled", 1) or 0) and not _host_vpn:
         threading.Thread(target=_wg_empty_watch, args=(len(devices) + int(config.get("wg_gen_spare", 2)),),
                          daemon=True).start()
 
-    if int(config.get("wg_enabled", 1) or 0) and float(config.get("wg_regen_every_min", 0) or 0) > 0:
+    if int(config.get("wg_enabled", 1) or 0) and not _host_vpn and float(config.get("wg_regen_every_min", 0) or 0) > 0:
         threading.Thread(target=_wg_regen_loop, args=(len(devices) + int(config.get("wg_gen_spare", 2)),),
                          daemon=True).start()
 
