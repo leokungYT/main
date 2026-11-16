@@ -82,7 +82,7 @@ def _status(cli):
 def _rotate(cli, cfg):
     mode = str(cfg.get("fixnet_rotate_mode", "ip") or "ip").lower().strip()
     pre = _status(cli)
-    connected = pre.get("connect state", "").lower().startswith("connected")
+    connected = pre.get("connection", "").lower().startswith("connected")
     # ip rotate ต้องการ connected VPN อยู่ก่อน - ถ้า disconnected ต้อง connect ก่อน
     if mode == "ip" and not connected:
         print("[WS-CLI] disconnected อยู่ - connect best ก่อน (ip rotate ต้องต่ออยู่ก่อน)")
@@ -103,8 +103,8 @@ def _rotate(cli, cfg):
         return False
     time.sleep(3)  # รอ tunnel up
     st = _status(cli)
-    ip = st.get("vpn ip") or st.get("public ip") or "?"
-    state = st.get("connect state", "?")
+    ip = st.get("ip") or "?"
+    state = st.get("connection", "?")
     print(f"[WS-CLI] ok - {state} - IP {ip}")
     return True
 
@@ -129,14 +129,14 @@ def main():
     st = {}
     for i in range(3):
         st = _status(cli)
-        if "logged in" in st.get("login state", "").lower():
+        if "logged in" in st.get("login", "").lower():
             break
         time.sleep(2)
-    if "logged in" not in st.get("login state", "").lower():
-        print(f"[WS-CLI] ยังไม่ได้ล็อกอิน Windscribe (login state={st.get('login state','?')}) - เปิดแอปแล้วล็อกอินก่อน (จะคอยต่อไป)")
+    if "logged in" not in st.get("login", "").lower():
+        print(f"[WS-CLI] ยังไม่ได้ล็อกอิน Windscribe (Login={st.get('login','?')}) - เปิดแอปแล้วล็อกอินก่อน (จะคอยต่อไป)")
     else:
-        conn = st.get("connect state", "?")
-        ip = st.get("vpn ip") or st.get("public ip") or "?"
+        conn = st.get("connection", "?")
+        ip = st.get("ip") or "?"
         print(f"[WS-CLI] พร้อม - {conn} - IP {ip}")
 
     # ลบ trigger ที่ค้าง
