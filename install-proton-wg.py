@@ -96,16 +96,30 @@ def main():
     if os.path.exists(CFG):
         with open(CFG, "r", encoding="utf-8") as f:
             cfg = json.load(f)
+        # Proton per-emu mode
         cfg["use_host_vpn"] = 0
         cfg["wg_enabled"] = 1
         cfg["wg_profile"] = [f"ip-chan/main-{i+1}" for i in range(N_SUB)]
         cfg["wg_clear_on_start"] = 0
         cfg["wg_profile_clear_on_start"] = 0
         cfg["wg_hard_reset_on_start"] = 1
-        cfg["wg_per_machine"] = PER_SUB
+        # ใช้ค่าน้อยสุดในทุก sub เป็น wg_per_machine - ไม่ให้ bot พยายาม generate เพิ่ม (Proton conf ไม่เข้ากับ wg_gen Windscribe)
+        min_per_sub = min(len(os.listdir(sub)) for sub in subs) if all(os.listdir(s) for s in subs) else 1
+        cfg["wg_per_machine"] = max(1, min_per_sub)
+        cfg["wg_auto_gen"] = 0   # ปิด wg_gen (Windscribe generator) - Proton conf ไม่ใช่ template
+        cfg["wg_regen_every_min"] = 0
+        # Latency-friendly tuning สำหรับ Proton VPN (ping Thailand->JP/SG ~150-250ms)
+        cfg["black_screen_timeout"] = int(cfg.get("black_screen_timeout", 8) or 8)
+        if cfg["black_screen_timeout"] < 20:
+            cfg["black_screen_timeout"] = 25
+        cfg["wg_mtu"] = 1420
+        cfg["wg_keepalive"] = 15
+        cfg["wg_net_recover_max"] = 20
+        cfg["login_loop_delay"] = 0.3
         with open(CFG, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=4)
-        print(f"[CFG] configmain.json: use_host_vpn=0, wg_profile={cfg['wg_profile']}")
+        print(f"[CFG] configmain.json: use_host_vpn=0, wg_profile={cfg['wg_profile']}, wg_per_machine={cfg['wg_per_machine']}")
+        print(f"[CFG] + latency tuning: black_screen_timeout=25, mtu=1420, keepalive=15, net_recover_max=20")
 
     print()
     print("=" * 60)
