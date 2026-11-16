@@ -4623,8 +4623,9 @@ def check_critical_errors(bot, adb_img, context=""):
         # ตรวจสอบ fixnet1.png / fixnet.png (ปัญหาเน็ตหลุดเด้งป๊อปอัพ)
         fixnet_pos = ImgSearchADB(adb_img, 'img/fixnet1.png') or ImgSearchADB(adb_img, 'img/fixnet.png')
         if fixnet_pos:
-            print(f"[{bot.device_id}] 📶 พบปัญหาการเชื่อมต่อ (fixnet1/fixnet) ใน {context} - กำลังกด OK...")
+            print(f"[{bot.device_id}] 📶 พบปัญหาการเชื่อมต่อ (fixnet1/fixnet) ใน {context} - กด OK + ยิง VPN rotate")
             bot.tap(fixnet_pos[0][0], fixnet_pos[0][1])
+            _signal_host_vpn_rotate("fixnet1")
             time.sleep(1)
             # return None เพื่อให้ลูปทำงานปกติต่อไป (แค่กดป๊อปอัพทิ้ง)
         
