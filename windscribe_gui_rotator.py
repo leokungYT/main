@@ -32,6 +32,17 @@ import subprocess
 import sys
 import time
 
+# force UTF-8 output so Thai doesn't print as ???? in Windows cmd
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+try:
+    import ctypes
+    ctypes.windll.kernel32.SetConsoleOutputCP(65001)   # force code page 65001 (UTF-8)
+except Exception:
+    pass
+
 try:
     import pyautogui
     import pygetwindow as gw
@@ -142,8 +153,18 @@ def _rotate():
 
 
 def main():
+    import argparse as _ap
+    p = _ap.ArgumentParser(description="Windscribe GUI Rotator")
+    p.add_argument("--interval", type=float, default=0,
+                   help="สลับประเทศอัตโนมัติทุก N นาที (0 = เฉพาะตอนบอท trigger)")
+    p.add_argument("--min-gap", type=float, default=30.0,
+                   help="cool-off ขั้นต่ำระหว่างสลับ (วินาที)")
+    args = p.parse_args()
+
     print(f"[WS-GUI] =============================================================")
     print(f"[WS-GUI] Windscribe GUI Rotator - คอยดู {TRIGGER_FILE}")
+    if args.interval > 0:
+        print(f"[WS-GUI] + สลับประเทศเองทุก {args.interval} นาที (--interval)")
     print(f"[WS-GUI] =============================================================")
     print(f"[WS-GUI] วิธีใช้:")
     print(f"[WS-GUI]   1. เปิด Windscribe app ให้ตัว window โผล่หน้าจอ (ไม่ใช่ tray)")
@@ -168,9 +189,16 @@ def main():
         print(f"[WS-GUI] ยังไม่เจอ Windscribe window - เปิด app ให้ window โผล่ด้วย")
 
     last_rotate = 0.0
-    min_gap = 30.0   # cool-off 30 วิ กันบอทหลายจอ trigger รัว
+    min_gap = max(10.0, args.min_gap)
+    interval_sec = max(0.0, args.interval * 60.0)
     while True:
         try:
+            now = time.time()
+            # timer-based rotate (ไม่รอ trigger) ถ้าตั้ง --interval
+            if interval_sec > 0 and (now - last_rotate) >= interval_sec:
+                print(f"[WS-GUI] ★ timer: ครบ {args.interval} นาที - หมุน country")
+                if _rotate():
+                    last_rotate = time.time()
             if os.path.exists(TRIGGER_FILE):
                 gap = time.time() - last_rotate
                 if gap < min_gap:

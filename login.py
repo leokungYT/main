@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.8.3"
+BOT_VERSION = "4.8.4"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -25,10 +25,10 @@ def _no_proxy_mode():
 
 
 def _signal_host_vpn_rotate(reason=""):
-    """เขียนไฟล์ trigger เพื่อให้ host_wg_rotator.py สลับ IP ทันที (ใช้ตอน login fail / IP โดน block)
-    rotator จะเช็คทุก 5 วิ ถ้าเจอไฟล์ -> rotate + ลบไฟล์; มี cool-off (default 120s) กันสลับรัว"""
-    if not int(globals().get("config", {}).get("use_host_vpn", 0) or 0):
-        return
+    """เขียนไฟล์ trigger เพื่อให้ host_wg_rotator.py / windscribe_gui_rotator.py สลับ IP ทันที
+    - ใช้ตอน login fail / IP โดน block / fixnet detect
+    - rotator จะเช็คทุก 5 วิ ถ้าเจอไฟล์ -> rotate + ลบไฟล์; มี cool-off กันสลับรัว
+    - เขียนเสมอ (ไม่ต้องสน use_host_vpn) - ถ้าไม่มี rotator ก็เขียนไฟล์ทิ้งไม่มีผล"""
     try:
         import os as _os
         _script_dir = _os.path.dirname(_os.path.abspath(__file__))
@@ -9341,9 +9341,10 @@ class RangerGearBot(threading.Thread):
                       + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             return
 
-        # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
+        # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png - + trigger host rotator ให้สลับ IP
         if self.exists_in_cache("img/fixnetv2.png", similarity=0.8):
             print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
+            _signal_host_vpn_rotate(f"fixnetv2 {self.device_id}")
             self.click("img/fixnetv2.png", similarity=0.8)
             sleep(0.5)
             self._raw_capture()
