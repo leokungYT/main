@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.8.7"
+BOT_VERSION = "4.8.8"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -492,11 +492,39 @@ _DEVICE_POOL = [
         "gpu": "Adreno (TM) 750",
     },
     {
+        "brand": "samsung", "manufacturer": "samsung",
+        "model": "SM-S921B", "device": "e1q",
+        "product": "e1qxxx", "board": "kalama",
+        "fingerprint": "samsung/e1qxxx/e1q:14/UP1A.231005.007/S921BXXU1AXBC:user/release-keys",
+        "gpu": "Adreno (TM) 750",
+    },
+    {
+        "brand": "samsung", "manufacturer": "samsung",
+        "model": "SM-A556B", "device": "a55x",
+        "product": "a55xeea", "board": "s5e8845",
+        "fingerprint": "samsung/a55xeea/a55x:14/UP1A.231005.007/A556BXXU2AXD1:user/release-keys",
+        "gpu": "Mali-G68",
+    },
+    {
         "brand": "google", "manufacturer": "Google",
         "model": "Pixel 8 Pro", "device": "husky",
         "product": "husky", "board": "husky",
         "fingerprint": "google/husky/husky:14/UD1A.230803.041/10808477:user/release-keys",
         "gpu": "Mali-G715",
+    },
+    {
+        "brand": "google", "manufacturer": "Google",
+        "model": "Pixel 8", "device": "shiba",
+        "product": "shiba", "board": "shiba",
+        "fingerprint": "google/shiba/shiba:14/UD1A.230803.041/10808477:user/release-keys",
+        "gpu": "Mali-G715",
+    },
+    {
+        "brand": "google", "manufacturer": "Google",
+        "model": "Pixel 7", "device": "panther",
+        "product": "panther", "board": "panther",
+        "fingerprint": "google/panther/panther:14/UP1A.231105.003/11010452:user/release-keys",
+        "gpu": "Mali-G710",
     },
     {
         "brand": "Xiaomi", "manufacturer": "Xiaomi",
@@ -506,11 +534,32 @@ _DEVICE_POOL = [
         "gpu": "Adreno (TM) 750",
     },
     {
+        "brand": "Redmi", "manufacturer": "Xiaomi",
+        "model": "23090RA98G", "device": "corot",
+        "product": "corot_global", "board": "corot",
+        "fingerprint": "Redmi/corot_global/corot:13/TKQ1.221114.001/V816.0.5.0.TNUMIXM:user/release-keys",
+        "gpu": "Mali-G57",
+    },
+    {
+        "brand": "POCO", "manufacturer": "Xiaomi",
+        "model": "23113RKC6G", "device": "aristotle",
+        "product": "aristotle_global", "board": "aristotle",
+        "fingerprint": "POCO/aristotle_global/aristotle:14/UKQ1.230804.001/V816.0.5.0.UNNMIXM:user/release-keys",
+        "gpu": "Adreno (TM) 740",
+    },
+    {
         "brand": "OnePlus", "manufacturer": "OnePlus",
         "model": "CPH2573", "device": "OP5EB9L1",
         "product": "CPH2573EEA", "board": "kalama",
         "fingerprint": "OnePlus/CPH2573EEA/OP5EB9L1:14/UKQ1.230924.001/T.R.1-20240130:user/release-keys",
         "gpu": "Adreno (TM) 750",
+    },
+    {
+        "brand": "OnePlus", "manufacturer": "OnePlus",
+        "model": "CPH2449", "device": "OP5G0DL1",
+        "product": "CPH2449EEA", "board": "taro",
+        "fingerprint": "OnePlus/CPH2449EEA/OP5G0DL1:14/UKQ1.230924.001/T.R.1-20240215:user/release-keys",
+        "gpu": "Adreno (TM) 730",
     },
     {
         "brand": "vivo", "manufacturer": "vivo",
@@ -527,11 +576,46 @@ _DEVICE_POOL = [
         "gpu": "Adreno (TM) 750",
     },
     {
+        "brand": "realme", "manufacturer": "realme",
+        "model": "RMX3842", "device": "RE54C1L1",
+        "product": "RMX3842", "board": "s5e8835",
+        "fingerprint": "realme/RMX3842/RE54C1L1:14/UKQ1.230924.001/R.1402e65_1-20240418:user/release-keys",
+        "gpu": "Mali-G68",
+    },
+    {
         "brand": "HUAWEI", "manufacturer": "HUAWEI",
         "model": "ALN-AL00", "device": "HWALN",
         "product": "ALN-AL00", "board": "kirin9000s",
         "fingerprint": "HUAWEI/ALN-AL00/HWALN:12/HUAWEIALN-AL00/104.0.0.126C00:user/release-keys",
         "gpu": "Maleoon 910",
+    },
+    {
+        "brand": "HONOR", "manufacturer": "HONOR",
+        "model": "VER-N49", "device": "HNVER",
+        "product": "VER-N49", "board": "kirin9010",
+        "fingerprint": "HONOR/VER-N49/HNVER:14/HONORVER-N49/8.0.0.125C185:user/release-keys",
+        "gpu": "Maleoon 910",
+    },
+    {
+        "brand": "motorola", "manufacturer": "motorola",
+        "model": "motorola edge 50 pro", "device": "aura",
+        "product": "aura_g", "board": "sm7475",
+        "fingerprint": "motorola/aura_g/aura:14/U1TG34.19-72-2/d80d4-2e4f6:user/release-keys",
+        "gpu": "Adreno (TM) 710",
+    },
+    {
+        "brand": "Nothing", "manufacturer": "Nothing",
+        "model": "A142P", "device": "Pacman",
+        "product": "Pacman", "board": "Pacman",
+        "fingerprint": "Nothing/Pacman/Pacman:14/UKQ1.230917.001/00.1215-240521:user/release-keys",
+        "gpu": "Adreno (TM) 720",
+    },
+    {
+        "brand": "Infinix", "manufacturer": "INFINIX",
+        "model": "Infinix X6871", "device": "Infinix-X6871",
+        "product": "X6871-GL", "board": "mt6886",
+        "fingerprint": "Infinix/X6871-OP/Infinix-X6871:14/UP1A.231005.007/240409V1316:user/release-keys",
+        "gpu": "Mali-G615",
     },
 ]
 
