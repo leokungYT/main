@@ -16,7 +16,6 @@
 import glob
 import json
 import os
-import shutil
 import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -57,12 +56,41 @@ def main():
             os.remove(f)
         print(f"[CLEAN] {sub}")
 
-    # กระจาย
+    # กระจาย + strip IPv6 (MuMu Android WG จัดการ IPv6 ไม่เสถียร)
+    def _strip_ipv6(text):
+        out = []
+        for line in text.splitlines():
+            s = line.strip()
+            if s.startswith("Address") or s.startswith("DNS") or s.startswith("AllowedIPs"):
+                k, _, v = s.partition("=")
+                parts = [p.strip() for p in v.split(",") if ":" not in p and p.strip()]
+                if parts:
+                    out.append(f"{k.strip()} = {', '.join(parts)}")
+                continue
+            # ลบ IPv6 endpoint สำรอง (commented อยู่แล้ว ไม่ชนอะไร แต่ตัดไปให้สะอาด)
+            if s.startswith("# Endpoint = ["):
+                continue
+            out.append(line)
+        return "\n".join(out) + "\n"
+
+    warned_free = False
     for i, conf in enumerate(confs):
         sub_idx = i % N_SUB
         target = os.path.join(subs[sub_idx], f"proton-{i+1:02d}.conf")
-        shutil.copy2(conf, target)
-        print(f"[COPY] {os.path.basename(conf)} -> main-{sub_idx+1}/proton-{i+1:02d}.conf")
+        try:
+            with open(conf, "r", encoding="utf-8") as f:
+                txt = f.read()
+            if "FREE" in txt and not warned_free:
+                print("[WARN] เจอ FREE server ใน config - server พวกนี้แชร์ IP กับผู้ใช้ Proton Free ทั้งโลก")
+                print("       ควรกลับไปสร้างใหม่ ใช้ Plus server (ไม่มีคำว่า FREE)")
+                warned_free = True
+            txt = _strip_ipv6(txt)
+            with open(target, "w", encoding="utf-8") as f:
+                f.write(txt)
+        except Exception as e:
+            print(f"[ERR] อ่าน/เขียน {conf} ไม่ได้: {e}")
+            continue
+        print(f"[COPY] {os.path.basename(conf)} -> main-{sub_idx+1}/proton-{i+1:02d}.conf (IPv4 only)")
 
     # แก้ config
     if os.path.exists(CFG):
