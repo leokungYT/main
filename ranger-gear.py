@@ -6077,7 +6077,11 @@ if __name__ == "__main__":
     reset_network_all(devices)
 
     # === ไฟล์ WireGuard ไม่พอจำนวนจอ -> สร้างเพิ่มอัตโนมัติจาก Key Pair ที่มี (wg_gen.py) ===
-    if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_auto_gen", 1) or 0):
+    # use_host_vpn=1: VPN อยู่บน Windows host - ข้าม auto-gen (ไม่แตะโฟลเดอร์ wg/)
+    # wg_auto_gen=0: Proton mode - wg_gen ใช้ไม่ได้กับ Proton conf (ไม่มี PresharedKey)
+    if (int(config.get("wg_enabled", 1) or 0)
+            and int(config.get("wg_auto_gen", 1) or 0)
+            and not int(config.get("use_host_vpn", 0) or 0)):
         try:
             import wg_gen
             _mach = int(config.get("wg_machine", 0) or 0)   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
