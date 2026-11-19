@@ -8,10 +8,9 @@ echo   UPDATE - download latest code from GitHub (NO git needed)
 echo ============================================================
 echo.
 
-rem --- kill running bots first ---
+rem --- kill running bots first (PowerShell - no taskkill hang) ---
 echo [1/4] killing running bots...
-taskkill /IM python.exe /F >nul 2>&1
-taskkill /IM pythonw.exe /F >nul 2>&1
+powershell -NoProfile -Command "Get-Process -Name python,pythonw -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
 echo       done
 echo.
 

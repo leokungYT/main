@@ -8,10 +8,9 @@ echo   GO-PROTON - full migration: kill bot + update + install
 echo ============================================================
 echo.
 
-rem --- Step 1: KILL running bots ---
+rem --- Step 1: KILL running bots (PowerShell - no taskkill hang) ---
 echo [1/5] killing running bots...
-taskkill /IM python.exe /F >nul 2>&1
-taskkill /IM pythonw.exe /F >nul 2>&1
+powershell -NoProfile -Command "Get-Process -Name python,pythonw -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
 echo       done
 echo.
 
