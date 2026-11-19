@@ -4,39 +4,36 @@ setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
 echo ============================================================
-echo   GO-PROTON - full migration: kill bot + pull + install
+echo   GO-PROTON - full migration: kill bot + update + install
 echo ============================================================
 echo.
 
-rem --- Step 1: KILL running bots (simple, no for-loop to avoid "Out of memory") ---
+rem --- Step 1: KILL running bots ---
 echo [1/5] killing running bots...
 taskkill /IM python.exe /F >nul 2>&1
 taskkill /IM pythonw.exe /F >nul 2>&1
 echo       done
 echo.
 
-rem --- Step 2: find git executable ---
-echo [2/5] finding git...
+rem --- Step 2: find git or fallback to PowerShell zip download ---
+echo [2/5] updating code...
 set "GIT="
 where git >nul 2>&1
 if not errorlevel 1 (
     set "GIT=git"
     goto git_found
 )
-rem common install locations
 for %%G in (
     "C:\Program Files\Git\bin\git.exe"
     "C:\Program Files (x86)\Git\bin\git.exe"
     "%LOCALAPPDATA%\Programs\Git\bin\git.exe"
     "%USERPROFILE%\scoop\apps\git\current\bin\git.exe"
-    "C:\msys64\usr\bin\git.exe"
 ) do (
     if exist "%%~G" (
         set "GIT=%%~G"
         goto git_found
     )
 )
-rem GitHub Desktop portable git (version-dir varies)
 for /d %%D in ("%LOCALAPPDATA%\GitHubDesktop\app-*") do (
     if exist "%%~D\resources\app\git\cmd\git.exe" (
         set "GIT=%%~D\resources\app\git\cmd\git.exe"
@@ -44,31 +41,73 @@ for /d %%D in ("%LOCALAPPDATA%\GitHubDesktop\app-*") do (
     )
 )
 
-echo [!] git.exe NOT FOUND on this PC
-echo     install: https://git-scm.com/download/win
-echo     or run: winget install Git.Git
-pause
-exit /b 1
+rem --- no git found -> use PowerShell zip download ---
+echo       no git found - using PowerShell zip download fallback
+set "URL=https://github.com/leokungYT/main/archive/refs/heads/main.zip"
+set "ZIP=%TEMP%\lgr-main.zip"
+set "EXTRACT=%TEMP%\lgr-main-extract"
 
-:git_found
-echo       using git: !GIT!
-echo.
+if exist "%ZIP%" del /q "%ZIP%" >nul 2>&1
+if exist "%EXTRACT%" rmdir /s /q "%EXTRACT%" >nul 2>&1
 
-rem --- Step 3: git pull ---
-echo [3/5] git pull...
-"!GIT!" pull
+powershell -NoProfile -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%URL%' -OutFile '%ZIP%' -UseBasicParsing; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
 if errorlevel 1 (
-    echo [!] git pull failed - fix conflict then re-run
+    echo [!] download failed - check internet
     pause
     exit /b 1
 )
+powershell -NoProfile -Command "try { Expand-Archive -Path '%ZIP%' -DestinationPath '%EXTRACT%' -Force; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
+if errorlevel 1 (
+    echo [!] extract failed
+    pause
+    exit /b 1
+)
+set "SRC=%EXTRACT%\main-main"
+if not exist "%SRC%\login.py" (
+    echo [!] extracted content missing
+    pause
+    exit /b 1
+)
+rem copy updated files (NOT configmain.json/creds.json/wg/)
+copy /y "%SRC%\login.py"               "%~dp0" >nul
+copy /y "%SRC%\ranger-gear.py"         "%~dp0" >nul
+copy /y "%SRC%\rangerplus.py"          "%~dp0" >nul 2>&1
+copy /y "%SRC%\install-proton-wg.py"   "%~dp0" >nul
+copy /y "%SRC%\patch-proton-config.py" "%~dp0" >nul
+copy /y "%SRC%\fix-stuck-emu.py"       "%~dp0" >nul
+copy /y "%SRC%\host_wg_rotator.py"     "%~dp0" >nul 2>&1
+copy /y "%SRC%\wg_gen.py"              "%~dp0" >nul 2>&1
+copy /y "%SRC%\GO-PROTON.bat"          "%~dp0" >nul
+copy /y "%SRC%\SETUP-PROTON.bat"       "%~dp0" >nul
+copy /y "%SRC%\UPDATE.bat"             "%~dp0" >nul
+if exist "%SRC%\proton-configs" (
+    if not exist "%~dp0proton-configs" mkdir "%~dp0proton-configs"
+    xcopy /y /e /q "%SRC%\proton-configs\*" "%~dp0proton-configs\" >nul
+)
+del /q "%ZIP%" >nul 2>&1
+rmdir /s /q "%EXTRACT%" >nul 2>&1
+echo       code updated via PowerShell zip
+goto after_update
+
+:git_found
+echo       using git: !GIT!
+"!GIT!" pull
+if errorlevel 1 (
+    echo [!] git pull failed
+    pause
+    exit /b 1
+)
+
+:after_update
 echo.
 
-rem --- Step 4: show version + find proton configs ---
-echo [4/5] bot version:
+rem --- Step 3: show version ---
+echo [3/5] bot version:
 findstr /c:"BOT_VERSION =" login.py
 echo.
-echo       finding Proton .conf...
+
+rem --- Step 4: find proton configs ---
+echo [4/5] finding Proton .conf...
 set "SRC="
 if exist "%~dp0proton-configs" (
     for %%F in ("%~dp0proton-configs\*.conf") do (
@@ -85,8 +124,7 @@ if not defined SRC (
     )
 )
 if not defined SRC (
-    echo [!] no proton-configs folder with .conf files found
-    echo     expected at: %~dp0proton-configs
+    echo [!] no proton-configs folder found
     pause
     exit /b 1
 )
