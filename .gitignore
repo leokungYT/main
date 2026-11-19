@@ -119,3 +119,4 @@ api/apk/
 
 # Per-machine config - should not be synced via git (use_host_vpn, wg_* per machine)
 configmain.json
+api/
