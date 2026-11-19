@@ -1048,23 +1048,25 @@ def _wg_resolve_profile():
                     pass
     except OSError:
         pass
-    try:
-        import wg_gen
-        _per = int(config.get("wg_per_machine", 15) or 15)
-        for d in resolved:
-            d_abs = os.path.join(script_dir, d)
-            try:
-                n_cur = len([f for f in os.listdir(d_abs) if f.lower().endswith(".conf")])
-            except OSError:
-                n_cur = 0
-            if n_cur == 0:
-                print(f"[CONFIG] wg_profile: {d} ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้")
-                continue
-            if n_cur < _per:
-                print(f"[CONFIG] wg_profile: {d} มี {n_cur} ไฟล์ (<{_per}) - generate เพิ่มจาก keypair ของ sub นี้")
-                wg_gen.generate(_per, config.get("wg_gen_countries") or None, d, 0, "", 0)
-    except Exception as e:
-        print(f"[CONFIG] wg_profile pre-generate ล้มเหลว: {e}")
+    # wg_auto_gen=0 (Proton mode) -> ข้าม pre-generate (wg_gen ใช้ไม่ได้กับ Proton + ไม่ต้องเติม)
+    if int(config.get("wg_auto_gen", 1) or 0):
+        try:
+            import wg_gen
+            _per = int(config.get("wg_per_machine", 15) or 15)
+            for d in resolved:
+                d_abs = os.path.join(script_dir, d)
+                try:
+                    n_cur = len([f for f in os.listdir(d_abs) if f.lower().endswith(".conf")])
+                except OSError:
+                    n_cur = 0
+                if n_cur == 0:
+                    print(f"[CONFIG] wg_profile: {d} ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้")
+                    continue
+                if n_cur < _per:
+                    print(f"[CONFIG] wg_profile: {d} มี {n_cur} ไฟล์ (<{_per}) - generate เพิ่มจาก keypair ของ sub นี้")
+                    wg_gen.generate(_per, config.get("wg_gen_countries") or None, d, 0, "", 0)
+        except Exception as e:
+            print(f"[CONFIG] wg_profile pre-generate ล้มเหลว: {e}")
     n = 0
     for d in resolved:
         d_abs = os.path.join(script_dir, d)

@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.9.1"
+BOT_VERSION = "4.9.2"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3413,7 +3413,10 @@ def _wg_resolve_profile():
     except OSError:
         pass
     # ก่อน copy เข้า pool: generate เพิ่มใน sub แต่ละอันให้ครบจำนวน (ถ้า user โยน 1 ไฟล์เป็นต้นแบบ) - ใช้ keypair ของ sub นั้น ๆ
+    # wg_auto_gen=0 (Proton mode) -> ข้าม pre-generate ทั้งหมด (wg_gen ใช้ไม่ได้กับ Proton + ไม่ต้องเติม)
     try:
+        if not int(config.get("wg_auto_gen", 1) or 0):
+            raise StopIteration   # ข้ามทั้ง block (จับใน except ด้านล่าง)
         import wg_gen
         _per = int(config.get("wg_per_machine", 15) or 15)
         for d in resolved:
@@ -3455,6 +3458,8 @@ def _wg_resolve_profile():
             if n_cur < _per:
                 print(f"[CONFIG] wg_profile: {d} มี {n_cur} ไฟล์ (<{_per}) - generate เพิ่มจาก keypair ของ sub นี้")
                 wg_gen.generate(_per, config.get("wg_gen_countries") or None, d, 0, "", 0)
+    except StopIteration:
+        pass   # Proton mode - ข้าม pre-generate
     except Exception as e:
         print(f"[CONFIG] wg_profile pre-generate ล้มเหลว: {e}")
     n = 0
