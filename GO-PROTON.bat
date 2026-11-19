@@ -83,6 +83,11 @@ if exist "%SRC%\proton-configs" (
     if not exist "%~dp0proton-configs" mkdir "%~dp0proton-configs"
     xcopy /y /e /q "%SRC%\proton-configs\*" "%~dp0proton-configs\" >nul
 )
+rem img/ folder: template images for popup detection (REQUIRED)
+if exist "%SRC%\img" (
+    if not exist "%~dp0img" mkdir "%~dp0img"
+    xcopy /y /e /q "%SRC%\img\*" "%~dp0img\" >nul
+)
 del /q "%ZIP%" >nul 2>&1
 rmdir /s /q "%EXTRACT%" >nul 2>&1
 echo       code updated via PowerShell zip
