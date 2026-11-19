@@ -932,6 +932,54 @@ def _wg_resolve_profile():
         print(f"[CONFIG] wg_profile: ไม่พบโฟลเดอร์ที่ใช้ได้เลย ({profs}) - ใช้ wg_dir='{config.get('wg_dir', 'wg')}' เดิม")
         return
 
+    # === auto-detect Proton mode: ถ้าเจอ proton-*.conf ใน sub ใด ๆ -> ปิด wg_gen + clear_on_start อัตโนมัติ
+    # Proton conf ไม่มี PresharedKey -> wg_gen ใช้ไม่ได้ ; clear_on_start จะลบ Proton conf ทิ้ง ไม่มีทางได้กลับ
+    proton_detected = False
+    proton_sub = None
+    for d in resolved:
+        d_abs = os.path.join(script_dir, d)
+        try:
+            for f in os.listdir(d_abs):
+                low = f.lower()
+                if not low.endswith(".conf"):
+                    continue
+                if low.startswith("proton"):
+                    proton_detected = True
+                    proton_sub = d
+                    break
+                if not (low.startswith("key") or low == "template.conf") and not low.startswith("windscribe"):
+                    try:
+                        with open(os.path.join(d_abs, f), "r", encoding="utf-8", errors="ignore") as fp:
+                            txt = fp.read()
+                        if "PublicKey" in txt and "Endpoint" in txt and "PresharedKey" not in txt:
+                            proton_detected = True
+                            proton_sub = d
+                            break
+                    except OSError:
+                        pass
+            if proton_detected:
+                break
+        except OSError:
+            continue
+    if proton_detected:
+        forced = []
+        if int(config.get("wg_auto_gen", 1) or 0):
+            config["wg_auto_gen"] = 0
+            forced.append("wg_auto_gen=0")
+        if int(config.get("wg_profile_clear_on_start", 1) or 0):
+            config["wg_profile_clear_on_start"] = 0
+            forced.append("wg_profile_clear_on_start=0")
+        if int(config.get("wg_clear_on_start", 1) or 0):
+            config["wg_clear_on_start"] = 0
+            forced.append("wg_clear_on_start=0")
+        if float(config.get("wg_regen_every_min", 0) or 0) > 0:
+            config["wg_regen_every_min"] = 0
+            forced.append("wg_regen_every_min=0")
+        if forced:
+            print(f"[CONFIG] auto-detect Proton mode จาก {proton_sub} - override: {', '.join(forced)}")
+        else:
+            print(f"[CONFIG] auto-detect Proton mode จาก {proton_sub} - config ถูกต้องอยู่แล้ว")
+
     # Auto-promote keypair.txt -> key.conf
     for d in resolved:
         d_abs = os.path.join(script_dir, d)
