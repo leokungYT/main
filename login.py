@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.9.2"
+BOT_VERSION = "4.9.3"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -1544,6 +1544,7 @@ def _hero_display_name(name):
 
 ui_stats = SimpleUIStats()
 GUI_INSTANCE = None
+_PUT_FAIL_STREAK = {}   # device_id -> consecutive Injection FAILED count (auto-recover stuck emu)
 
 if GUI_AVAILABLE:
     class MainConfigWindow(ctk.CTkToplevel):
@@ -10371,6 +10372,7 @@ class RangerGearBot(threading.Thread):
 
                 self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
                 print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
+                _PUT_FAIL_STREAK[self.device_id] = 0   # success - reset streak
                 return local_xml_path
 
             except Exception as e:
@@ -10378,6 +10380,25 @@ class RangerGearBot(threading.Thread):
                 sleep(2)
 
         print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
+        # auto-recover: push ล้มเหลวติดต่อกัน -> emu/adb เน่า (md5 mismatch, ADB protocol corrupt)
+        # 3 ไฟล์ติด -> reconnect adb ; 5 ไฟล์ติด -> adb reboot เฉพาะจอนี้
+        _PUT_FAIL_STREAK[self.device_id] = _PUT_FAIL_STREAK.get(self.device_id, 0) + 1
+        streak = _PUT_FAIL_STREAK[self.device_id]
+        try:
+            if streak >= 5:
+                print(f"[{self.device_id}] [RECOVER] push ล้ม {streak} ไฟล์ติด - สั่ง reboot emu")
+                subprocess.run([self.adb_cmd, "-s", self.device_id, "reboot"],
+                               capture_output=True, timeout=15)
+                _PUT_FAIL_STREAK[self.device_id] = 0
+            elif streak == 3:
+                print(f"[{self.device_id}] [RECOVER] push ล้ม 3 ไฟล์ติด - ต่อ adb ใหม่")
+                subprocess.run([self.adb_cmd, "disconnect", self.device_id],
+                               capture_output=True, timeout=10)
+                sleep(1)
+                subprocess.run([self.adb_cmd, "connect", self.device_id],
+                               capture_output=True, timeout=10)
+        except Exception as _e:
+            print(f"[{self.device_id}] [RECOVER] error: {_e}")
         return None
 
     def first_loop_process(self):
