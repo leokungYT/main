@@ -18,27 +18,34 @@ if not "%~1"=="" (
 )
 
 rem --- auto-search ---
-echo [*] auto-search proton-*.conf in:
-echo     - current folder + proton-configs
-echo     - %USERPROFILE%\Downloads
-echo     - %USERPROFILE%\Desktop
+echo [*] auto-search Proton .conf in:
+echo     - current folder: proton-configs
+echo     - %USERPROFILE%\Downloads: proton-configs
+echo     - %USERPROFILE%\Desktop: proton-configs
+echo     (any .conf in a proton-configs folder, or proton-*.conf anywhere)
 echo.
 
 set "FOUND="
-call :scan "%~dp0proton-configs"
-call :scan "%~dp0"
-call :scan "%USERPROFILE%\Downloads\proton-configs"
-call :scan "%USERPROFILE%\Downloads"
-call :scan "%USERPROFILE%\Desktop\proton-configs"
-call :scan "%USERPROFILE%\Desktop"
+
+rem priority 1: any folder named proton-configs with ANY .conf in it
+call :scan_any "%~dp0proton-configs"
+call :scan_any "%USERPROFILE%\Downloads\proton-configs"
+call :scan_any "%USERPROFILE%\Desktop\proton-configs"
+
+rem priority 2: fallback - look for proton-*.conf files anywhere common
+call :scan_proton "%~dp0"
+call :scan_proton "%USERPROFILE%\Downloads"
+call :scan_proton "%USERPROFILE%\Desktop"
 
 if not defined FOUND (
-    echo [!] no proton-*.conf found anywhere
+    echo [!] no .conf found in any proton-configs folder and no proton-*.conf anywhere
     echo.
     echo HOW TO USE:
     echo   1. download 15 Proton WG .conf from account.proton.me/vpn/WireGuard
-    echo   2. drag the folder onto SETUP-PROTON.bat
-    echo      OR put .conf files in Downloads\proton-configs\ then run again
+    echo   2. put all .conf files in a folder named: proton-configs
+    echo      recommended path: Downloads\proton-configs\
+    echo   3. drag that folder onto SETUP-PROTON.bat
+    echo      OR double-click SETUP-PROTON.bat (will auto-find)
     echo.
     pause
     exit /b 1
@@ -73,7 +80,22 @@ pause
 endlocal
 exit /b 0
 
-:scan
+rem priority 1: accept any .conf in a folder named proton-configs
+:scan_any
+if defined FOUND exit /b 0
+if not exist "%~1" exit /b 0
+for %%F in ("%~1\*.conf") do (
+    if exist "%%~F" (
+        if not defined FOUND (
+            set "FOUND=%~1"
+            echo [OK] found .conf in: %~1
+        )
+    )
+)
+exit /b 0
+
+rem priority 2: look specifically for proton-*.conf (post-install naming)
+:scan_proton
 if defined FOUND exit /b 0
 if not exist "%~1" exit /b 0
 for %%F in ("%~1\proton-*.conf") do (
