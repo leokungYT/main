@@ -1,12 +1,12 @@
-"""fix-stuck-emu.py - กู้ emu ที่ค้างอัตโนมัติ
+"""fix-stuck-emu.py - auto-recover stuck emulators
 
-ตรวจทุก 30 วิ:
+Checks every 30s:
   1. ADB offline/timeout -> adb kill-server + restart
-  2. เกม crash (ไม่เจอ pidof LGRGS) นานกว่า N นาที -> เตือน
-  3. tun0 ไม่ขึ้น -> เตือน
-  4. RAM ใช้ > 95% -> เตือน
+  2. game crash (no pidof LGRGS) for N minutes -> warn
+  3. tun0 not up -> warn
+  4. RAM > 95% -> warn
 
-รันคู่กับบอทได้ (background monitor)
+Run alongside bot (background monitor)
 """
 import os
 import re
@@ -23,7 +23,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(SCRIPT_DIR, "adb", "adb.exe")
 LGR_PKG = "com.linecorp.LGRGS"
 CHECK_INTERVAL = 30
-GAME_DEAD_MAX_SEC = 180   # เกมปิดอยู่ > 3 นาที = เตือน
+GAME_DEAD_MAX_SEC = 180   # game dead > 3 min = warn + restart
 KW = {"creationflags": 0x08000000} if os.name == "nt" else {}   # CREATE_NO_WINDOW
 
 
@@ -59,7 +59,7 @@ def check_tun(dev):
 
 
 def restart_adb():
-    print("[FIX] restart adb server...")
+    print("[FIX] restarting adb server...")
     sh([ADB, "kill-server"], timeout=10)
     time.sleep(2)
     sh([ADB, "start-server"], timeout=10)
@@ -78,7 +78,7 @@ def main():
     offline_count = 0
 
     print("=" * 60)
-    print("[FIX] fix-stuck-emu monitor - ตรวจทุก {} วิ".format(CHECK_INTERVAL))
+    print("[FIX] fix-stuck-emu monitor - check every {}s".format(CHECK_INTERVAL))
     print("[FIX] ADB: {}".format(ADB))
     print("=" * 60)
 
@@ -87,7 +87,7 @@ def main():
             devs = adb_devices()
             if not devs:
                 offline_count += 1
-                print(f"[WARN] ไม่เจอ emu เลย ({offline_count}/3)")
+                print(f"[WARN] no emu found ({offline_count}/3)")
                 if offline_count >= 3:
                     restart_adb()
                     offline_count = 0
@@ -99,7 +99,7 @@ def main():
             status = []
             offline_devs = [d for d, s in devs.items() if s != "device"]
             if offline_devs:
-                print(f"[WARN] offline: {', '.join(offline_devs)} - restart adb")
+                print(f"[WARN] offline: {', '.join(offline_devs)} - restarting adb")
                 restart_adb()
                 time.sleep(3)
                 devs = adb_devices()
@@ -112,20 +112,20 @@ def main():
                 t = check_tun(dev)
                 if g:
                     game_dead_since.pop(dev, None)
-                    status.append(f"{dev}: ✓ game+{'VPN' if t else '✗VPN'}")
+                    status.append(f"{dev}: OK game+{'VPN' if t else '-VPN'}")
                 else:
                     first_dead = game_dead_since.setdefault(dev, now)
                     dead_sec = int(now - first_dead)
                     if dead_sec >= GAME_DEAD_MAX_SEC:
-                        print(f"[FIX] {dev}: เกมตาย {dead_sec}s - restart LGR")
+                        print(f"[FIX] {dev}: game dead {dead_sec}s - restarting LGR")
                         restart_game(dev)
                         game_dead_since[dev] = now
                     else:
-                        status.append(f"{dev}: ✗game ({dead_sec}s) {'+VPN' if t else '-VPN'}")
+                        status.append(f"{dev}: NO-game ({dead_sec}s) {'+VPN' if t else '-VPN'}")
 
             ts = time.strftime("%H:%M:%S")
-            ok_n = sum(1 for s in status if "✓" in s)
-            bad = [s for s in status if "✓" not in s]
+            ok_n = sum(1 for s in status if " OK " in s)
+            bad = [s for s in status if " OK " not in s]
             print(f"[{ts}] {ok_n}/{len(devs)} ok" + (" | " + ", ".join(bad) if bad else ""))
 
         except KeyboardInterrupt:

@@ -1,17 +1,17 @@
-"""install-proton-wg.py - ติดตั้ง ProtonVPN WireGuard config เป็น per-emulator mode
+"""install-proton-wg.py - install ProtonVPN WireGuard configs as per-emulator mode
 
-ใช้ยังไง:
-  1. สมัคร ProtonVPN Plus
-  2. เข้า https://account.proton.me/vpn/WireGuard
-  3. Download WG config 15 ไฟล์ (country ไหนก็ได้ ไม่ต้อง TH)
-     - ตั้งชื่อ server อะไรก็ได้ เช่น lgr1, lgr2, lgr3, ...
-     - NAT type: "Moderate NAT" ดีสุดสำหรับเกม
-     - VPN Accelerator: เปิด
-  4. โยนไฟล์ .conf ทั้งหมดไว้ในโฟลเดอร์ 1 โฟลเดอร์ (เช่น proton-configs/)
-  5. รัน: python install-proton-wg.py proton-configs/
+HOW TO USE:
+  1. subscribe ProtonVPN Plus
+  2. go to https://account.proton.me/vpn/WireGuard
+  3. download 15 WG configs (any country, no need TH)
+     - server name: anything, e.g. lgr1, lgr2, lgr3, ...
+     - NAT type: "Moderate NAT" (best for games)
+     - VPN Accelerator: ON
+  4. put all .conf files in one folder (e.g. proton-configs/)
+  5. run: python install-proton-wg.py proton-configs/
 
-จะกระจาย 15 config เป็น main-1 ถึง main-5 (3 ไฟล์/sub)
-พร้อมแก้ configmain.json ให้ปิด host VPN + เปิด per-emu WG อัตโนมัติ
+Distributes 15 configs into main-1..main-5 (3 files/sub)
+Patches configmain.json: host VPN off + per-emu WG on (auto)
 """
 import glob
 import json
@@ -25,8 +25,8 @@ CFG = os.path.join(SCRIPT_DIR, "configmain.json")
 
 def main():
     if len(sys.argv) < 2:
-        print("ใช้: python install-proton-wg.py <path-to-proton-configs-folder>")
-        print("หรือ: python install-proton-wg.py <single-config-file.conf> (ทำ 1 ไฟล์)")
+        print("usage: python install-proton-wg.py <path-to-proton-configs-folder>")
+        print("    or python install-proton-wg.py <single-config-file.conf>")
         return 1
 
     src = sys.argv[1]
@@ -35,28 +35,28 @@ def main():
     elif os.path.isdir(src):
         confs = sorted(glob.glob(os.path.join(src, "*.conf")))
     else:
-        print(f"[ERR] ไม่เจอ: {src}")
+        print(f"[ERR] not found: {src}")
         return 1
 
     if not confs:
-        print(f"[ERR] ไม่เจอไฟล์ .conf ใน {src}")
+        print(f"[ERR] no .conf files in {src}")
         return 1
 
-    print(f"[INFO] เจอ {len(confs)} ไฟล์ .conf")
+    print(f"[INFO] found {len(confs)} .conf files")
 
-    # กระจายเป็น main-1..main-5 (3 ไฟล์/sub)
+    # distribute into main-1..main-5 (3 files/sub)
     PER_SUB = 3
     N_SUB = 5
     subs = [os.path.join(WG_DIR, f"main-{i+1}") for i in range(N_SUB)]
 
     for sub in subs:
         os.makedirs(sub, exist_ok=True)
-        # ล้างของเก่า
+        # clear old files
         for f in glob.glob(os.path.join(sub, "*.conf")):
             os.remove(f)
         print(f"[CLEAN] {sub}")
 
-    # กระจาย + strip IPv6 (MuMu Android WG จัดการ IPv6 ไม่เสถียร)
+    # distribute + strip IPv6 (MuMu Android WG is unstable with IPv6)
     def _strip_ipv6(text):
         out = []
         for line in text.splitlines():
@@ -67,7 +67,7 @@ def main():
                 if parts:
                     out.append(f"{k.strip()} = {', '.join(parts)}")
                 continue
-            # ลบ IPv6 endpoint สำรอง (commented อยู่แล้ว ไม่ชนอะไร แต่ตัดไปให้สะอาด)
+            # drop IPv6 Endpoint fallback (commented out anyway)
             if s.startswith("# Endpoint = ["):
                 continue
             out.append(line)
@@ -81,18 +81,18 @@ def main():
             with open(conf, "r", encoding="utf-8") as f:
                 txt = f.read()
             if "FREE" in txt and not warned_free:
-                print("[WARN] เจอ FREE server ใน config - server พวกนี้แชร์ IP กับผู้ใช้ Proton Free ทั้งโลก")
-                print("       ควรกลับไปสร้างใหม่ ใช้ Plus server (ไม่มีคำว่า FREE)")
+                print("[WARN] FREE server detected - these are shared with all Proton Free users worldwide")
+                print("       recreate with Plus server (no 'FREE' in name)")
                 warned_free = True
             txt = _strip_ipv6(txt)
             with open(target, "w", encoding="utf-8") as f:
                 f.write(txt)
         except Exception as e:
-            print(f"[ERR] อ่าน/เขียน {conf} ไม่ได้: {e}")
+            print(f"[ERR] read/write {conf} failed: {e}")
             continue
         print(f"[COPY] {os.path.basename(conf)} -> main-{sub_idx+1}/proton-{i+1:02d}.conf (IPv4 only)")
 
-    # แก้ config
+    # patch configmain.json
     if os.path.exists(CFG):
         with open(CFG, "r", encoding="utf-8") as f:
             cfg = json.load(f)
@@ -103,12 +103,12 @@ def main():
         cfg["wg_clear_on_start"] = 0
         cfg["wg_profile_clear_on_start"] = 0
         cfg["wg_hard_reset_on_start"] = 1
-        # ใช้ค่าน้อยสุดในทุก sub เป็น wg_per_machine - ไม่ให้ bot พยายาม generate เพิ่ม (Proton conf ไม่เข้ากับ wg_gen Windscribe)
+        # use minimum per sub as wg_per_machine - don't let bot try to generate more (Proton conf incompatible with wg_gen)
         min_per_sub = min(len(os.listdir(sub)) for sub in subs) if all(os.listdir(s) for s in subs) else 1
         cfg["wg_per_machine"] = max(1, min_per_sub)
-        cfg["wg_auto_gen"] = 0   # ปิด wg_gen (Windscribe generator) - Proton conf ไม่ใช่ template
+        cfg["wg_auto_gen"] = 0   # disable wg_gen (Windscribe generator) - Proton conf is not a template
         cfg["wg_regen_every_min"] = 0
-        # Latency-friendly tuning สำหรับ Proton VPN (ping Thailand->JP/SG ~150-250ms)
+        # Latency-friendly tuning for Proton VPN (ping Thailand->JP/SG ~150-250ms)
         cfg["black_screen_timeout"] = int(cfg.get("black_screen_timeout", 8) or 8)
         if cfg["black_screen_timeout"] < 20:
             cfg["black_screen_timeout"] = 25
@@ -123,13 +123,13 @@ def main():
 
     print()
     print("=" * 60)
-    print("[DONE] ติดตั้ง ProtonVPN per-emu mode เรียบร้อย")
+    print("[DONE] ProtonVPN per-emu mode installed")
     print("=" * 60)
-    print("ขั้นต่อไป:")
-    print("  1. ปิด Windscribe app (ไม่ต้องใช้แล้ว)")
-    print("  2. ปิด windscribe_cli_rotator.py (ไม่ต้องใช้แล้ว)")
-    print("  3. git pull + รีสตาร์ทบอท")
-    print("  4. บอทจะต่อ WG ให้แต่ละ emu แยก - 15 emu = 15 IP")
+    print("NEXT:")
+    print("  1. close Windscribe app (not needed anymore)")
+    print("  2. close windscribe_cli_rotator.py (not needed anymore)")
+    print("  3. git pull + restart bot")
+    print("  4. bot will connect WG per-emu - 15 emu = 15 IP")
     return 0
 
 

@@ -1,8 +1,8 @@
-"""patch-proton-config.py - patch configmain.json สำหรับ Proton per-emu mode
-- ปิด wg_auto_gen (ไม่งั้น bot ขึ้น warning PresharedKey เพราะ Proton conf ไม่เข้ากับ wg_gen Windscribe)
-- ปรับ timeout/MTU/keepalive ให้รองรับ Proton latency (ping Thai->JP/SG ~150-250ms)
+"""patch-proton-config.py - patch configmain.json for Proton per-emu mode
+- disable wg_auto_gen (otherwise bot warns PresharedKey - Proton conf incompatible with Windscribe wg_gen)
+- tune timeout/MTU/keepalive for Proton latency (ping Thailand->JP/SG ~150-250ms)
 
-ใช้ยังไง:
+HOW TO USE:
   cd C:\\Users\\t\\Desktop\\main
   git pull
   python patch-proton-config.py
@@ -17,7 +17,7 @@ CFG = os.path.join(SCRIPT_DIR, "configmain.json")
 
 def main():
     if not os.path.exists(CFG):
-        print(f"[ERR] ไม่เจอ: {CFG}")
+        print(f"[ERR] not found: {CFG}")
         return 1
 
     with open(CFG, "r", encoding="utf-8") as f:
@@ -43,7 +43,7 @@ def main():
             changed.append(f"  {k}: {old} -> {v}")
 
     if not changed:
-        print("[OK] configmain.json: ไม่มีการเปลี่ยนแปลง (patches เคยทำแล้ว)")
+        print("[OK] configmain.json: no changes (patches already applied)")
         return 0
 
     with open(CFG, "w", encoding="utf-8") as f:
@@ -53,7 +53,7 @@ def main():
     for line in changed:
         print(line)
     print()
-    print("[NEXT] ปิดบอท -> รีสตาร์ท เพื่อให้ config ใหม่ทำงาน")
+    print("[NEXT] close bot -> restart to apply new config")
     return 0
 
 
