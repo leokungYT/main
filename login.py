@@ -11,7 +11,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.9.4"
+BOT_VERSION = "4.9.5"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -5548,18 +5548,30 @@ class RangerGearBot(threading.Thread):
 
     def _net_probe(self):
         """(IP ขาออก, HTTP code ของเซิร์ฟเวอร์เกม) ผ่านเน็ตที่เกมใช้จริง
-        adb shell / root ถูก Android ยกเว้นจาก VPN -> ถ้ามี tun0 ใส่ ip rule ชั่วคราวให้ root วิ่งผ่าน tunnel ก่อนยิง
+        วัดด้วย UID ของเกม (com.linecorp.LGRGS) โดยตรง - split tunnel IncludedApplications ใช้ UID filter
+        ถ้าใช้ UID 0 (root) จะได้ IP จริงเสมอเพราะ root ไม่อยู่ใน IncludedApplications
         code: 401 = ต่อได้ปกติ (แค่ไม่ได้ล็อกอิน) / 000 = ไม่ตอบ (IP โดนบล็อกหรือเน็ตไม่ออก) / 403,429 = ถูกปฏิเสธ"""
         safe = self.device_id.replace(":", "_")
         sh = f"/data/local/tmp/probe_{safe}.sh"
         local = os.path.join(tempfile.gettempdir(), f"probe_{safe}.sh")
         script = chr(10).join([
             "command -v curl >/dev/null 2>&1 || { echo 'P NA NA'; rm -f " + sh + "; exit 0; }",
-            "R=0",
-            "if ip -o link | grep -q ' tun0'; then ip rule add pref 10500 uidrange 0-0 lookup tun0 2>/dev/null && R=1; fi",
-            "IP=$(curl -s -m 8 https://api.ipify.org)",
-            "C=$(curl -s -m 12 -o /dev/null -w '%{http_code}' https://rangers-api.line-apps.com/v12.3/home)",
-            "[ $R = 1 ] && ip rule del pref 10500",
+            # หา UID ของเกม LGR - split tunnel ใช้ UID filter ผ่าน IncludedApplications
+            "UID=$(stat -c %u /data/data/com.linecorp.LGRGS 2>/dev/null)",
+            "if [ -z \"$UID\" ] || [ \"$UID\" = \"0\" ]; then",
+            "  # ไม่มีเกม -> probe UID 0 แบบเดิม (ใช้ ip rule trick)",
+            "  R=0",
+            "  if ip -o link | grep -q ' tun0'; then ip rule add pref 10500 uidrange 0-0 lookup tun0 2>/dev/null && R=1; fi",
+            "  IP=$(curl -s -m 8 https://api.ipify.org)",
+            "  C=$(curl -s -m 12 -o /dev/null -w '%{http_code}' https://rangers-api.line-apps.com/v12.3/home)",
+            "  [ $R = 1 ] && ip rule del pref 10500",
+            "else",
+            "  # ยิง curl ผ่าน UID ของเกม - traffic จะเข้า split tunnel เหมือนเกมจริง",
+            "  IP=$(su $UID -c 'curl -s -m 8 https://api.ipify.org' 2>/dev/null)",
+            "  [ -z \"$IP\" ] && IP=$(su -c \"su $UID -c 'curl -s -m 8 https://api.ipify.org'\" 2>/dev/null)",
+            "  C=$(su $UID -c 'curl -s -m 12 -o /dev/null -w %{http_code} https://rangers-api.line-apps.com/v12.3/home' 2>/dev/null)",
+            "  [ -z \"$C\" ] && C=$(su -c \"su $UID -c 'curl -s -m 12 -o /dev/null -w %{http_code} https://rangers-api.line-apps.com/v12.3/home'\" 2>/dev/null)",
+            "fi",
             "echo \"P ${IP:--} ${C:-000}\"",
             f"rm -f {sh}",
             "",
