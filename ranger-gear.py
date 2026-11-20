@@ -12,6 +12,12 @@ import hashlib
 import time
 from time import sleep
 import sys
+# บังคับ stdout/stderr เป็น UTF-8 บน Windows - แก้ 'charmap' codec can't encode เวลา print ภาษาไทย
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 import shutil
 import glob
 import tempfile
@@ -951,6 +957,31 @@ def _wg_resolve_profile():
         print(f"[CONFIG] FORCE Proton mode - override: {', '.join(forced)}")
     else:
         print(f"[CONFIG] FORCE Proton mode - config already set")
+
+    # === FORCE Proton: ลบไฟล์ .conf ที่ไม่ใช่ proton-*.conf ออกจากทุก sub-folder
+    # (Windscribe/wg_gen สร้างทิ้งไว้จากรอบก่อน - ต้องเคลียร์เพื่อไม่ให้ bot ไปใช้)
+    try:
+        purged = 0
+        for d in resolved:
+            d_abs = os.path.join(script_dir, d)
+            try:
+                for f in os.listdir(d_abs):
+                    low = f.lower()
+                    if not low.endswith(".conf"):
+                        continue
+                    if low.startswith("proton-"):
+                        continue        # เก็บไฟล์ Proton
+                    try:
+                        os.remove(os.path.join(d_abs, f))
+                        purged += 1
+                    except OSError:
+                        pass
+            except OSError:
+                continue
+        if purged:
+            print(f"[CONFIG] FORCE Proton mode - ลบ non-Proton .conf เก่า {purged} ไฟล์ (Windscribe/key*.conf)")
+    except Exception as e:
+        print(f"[CONFIG] FORCE Proton cleanup ล้มเหลว: {e}")
 
     # Auto-promote keypair.txt -> key.conf
     for d in resolved:

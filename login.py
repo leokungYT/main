@@ -2,16 +2,23 @@
 import numpy as np
 import subprocess
 import os
+import sys
 # ทำงานในโฟลเดอร์ของไฟล์นี้เสมอ - เปิดจากโฟลเดอร์อื่น (เช่น VS Code ที่โฟลเดอร์แม่) แล้วหา img/... ไม่เจอ
 try:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+except Exception:
+    pass
+# บังคับ stdout/stderr เป็น UTF-8 บน Windows - แก้ 'charmap' codec can't encode เวลา print ภาษาไทย
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
     pass
 import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.9.5"
+BOT_VERSION = "4.9.6"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3310,6 +3317,31 @@ def _wg_resolve_profile():
         print(f"[CONFIG] FORCE Proton mode - override: {', '.join(forced)}")
     else:
         print(f"[CONFIG] FORCE Proton mode - config already set")
+
+    # === FORCE Proton: ลบไฟล์ .conf ที่ไม่ใช่ proton-*.conf ออกจากทุก sub-folder
+    # (Windscribe/wg_gen สร้างทิ้งไว้จากรอบก่อน - ต้องเคลียร์เพื่อไม่ให้ bot ไปใช้)
+    try:
+        purged = 0
+        for d in resolved:
+            d_abs = os.path.join(script_dir, d)
+            try:
+                for f in os.listdir(d_abs):
+                    low = f.lower()
+                    if not low.endswith(".conf"):
+                        continue
+                    if low.startswith("proton-"):
+                        continue        # เก็บไฟล์ Proton
+                    try:
+                        os.remove(os.path.join(d_abs, f))
+                        purged += 1
+                    except OSError:
+                        pass
+            except OSError:
+                continue
+        if purged:
+            print(f"[CONFIG] FORCE Proton mode - ลบ non-Proton .conf เก่า {purged} ไฟล์ (Windscribe/key*.conf)")
+    except Exception as e:
+        print(f"[CONFIG] FORCE Proton cleanup ล้มเหลว: {e}")
 
     # Auto-promote keypair.txt -> key.conf (user โยนไฟล์ Windscribe มาแล้ว rename เป็น .txt
     #   หรือ copy จาก wg_accounts/account1/keypair.txt ตามคู่มือเก่า)
