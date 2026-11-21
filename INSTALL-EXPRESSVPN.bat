@@ -8,17 +8,23 @@ echo   INSTALL-EXPRESSVPN - download + install ExpressVPN (Windows)
 echo ============================================================
 echo.
 
-rem --- ตรวจว่าติดตั้งอยู่แล้วหรือยัง ---
+rem --- check if already installed ---
 set "EVPN_EXE="
-if exist "C:\Program Files (x86)\ExpressVPN\expressvpn-ui\ExpressVPN.exe" set "EVPN_EXE=C:\Program Files (x86)\ExpressVPN\expressvpn-ui\ExpressVPN.exe"
-if "%EVPN_EXE%"=="" if exist "C:\Program Files\ExpressVPN\expressvpn-ui\ExpressVPN.exe" set "EVPN_EXE=C:\Program Files\ExpressVPN\expressvpn-ui\ExpressVPN.exe"
+set "P1=C:\Program Files (x86)\ExpressVPN\expressvpn-ui\ExpressVPN.exe"
+set "P2=C:\Program Files\ExpressVPN\expressvpn-ui\ExpressVPN.exe"
+set "P3=C:\Program Files (x86)\ExpressVPN\ExpressVPN.exe"
+set "P4=C:\Program Files\ExpressVPN\ExpressVPN.exe"
+if exist "!P1!" set "EVPN_EXE=!P1!"
+if "!EVPN_EXE!"=="" if exist "!P2!" set "EVPN_EXE=!P2!"
+if "!EVPN_EXE!"=="" if exist "!P3!" set "EVPN_EXE=!P3!"
+if "!EVPN_EXE!"=="" if exist "!P4!" set "EVPN_EXE=!P4!"
 
-if not "%EVPN_EXE%"=="" (
-    echo [OK] ExpressVPN ติดตั้งอยู่แล้ว: %EVPN_EXE%
+if not "!EVPN_EXE!"=="" (
+    echo [OK] ExpressVPN already installed: !EVPN_EXE!
     goto show_creds
 )
 
-echo [*] ยังไม่พบ ExpressVPN - กำลังโหลด installer...
+echo [*] ExpressVPN not found - downloading installer...
 echo.
 
 set "INSTALLER=%TEMP%\expressvpn_installer.exe"
@@ -26,39 +32,39 @@ set "URL=https://www.expressvpn.com/clients/latest/windows"
 
 powershell -NoProfile -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%URL%' -OutFile '%INSTALLER%' -UseBasicParsing -MaximumRedirection 10; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
 if errorlevel 1 (
-    echo [!] โหลด installer ไม่สำเร็จ - โหลดเองจาก:
+    echo [!] Download failed - get installer manually from:
     echo     %URL%
     pause
     exit /b 1
 )
 
-echo [*] โหลดเสร็จ: %INSTALLER%
+echo [*] Downloaded: %INSTALLER%
 echo.
-echo [*] เปิด installer (ต้องกด UAC = Yes)...
-echo     - ติดตั้งแบบ default เลย ไม่ต้องเปลี่ยนอะไร
-echo     - เสร็จแล้วจะเปิด ExpressVPN ให้ login
+echo [*] Launching installer. Click UAC Yes.
+echo     - Install with default settings.
+echo     - After install, ExpressVPN login window should appear.
 start "" "%INSTALLER%"
 
 echo.
-echo [*] รอให้ติดตั้งเสร็จ... (กด Enter เมื่อหน้าต่าง "Sign In" ของ ExpressVPN ขึ้นมาแล้ว)
+echo [*] Press Enter here AFTER you see the ExpressVPN "Sign In" window...
 pause >nul
 
 :show_creds
 echo.
 echo ============================================================
-echo [STEP 1] login ExpressVPN ด้วยบัญชีนี้ (copy-paste):
+echo [STEP 1] Login ExpressVPN with these credentials (copy-paste)
 echo ============================================================
 if exist evpn_creds.txt (
     type evpn_creds.txt
 ) else (
-    echo [!] evpn_creds.txt ไม่พบ - ใส่ email/password เองตามปกติ
+    echo [!] evpn_creds.txt not found - enter email/password manually
 )
 echo.
 echo ============================================================
-echo [STEP 2] หลัง login สำเร็จแล้ว ต่อ VPN ให้เรียบร้อย (ประเทศไหนก็ได้)
+echo [STEP 2] After login, connect to any country
 echo ============================================================
 echo.
-echo [*] เสร็จแล้วปิดหน้าต่างนี้ - ครั้งถัดไป loginสะสม.bat จะเปิด ExpressVPN + swap_bot ให้เอง
+echo [*] Done - next time loginสะสม.bat will auto-launch ExpressVPN + swap_bot
 echo.
 pause
 endlocal
