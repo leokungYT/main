@@ -57,7 +57,7 @@ class VPNRotatorApp:
         frame_top.pack(fill=tk.X, padx=10)
 
         tk.Label(frame_top, text="Interval (วินาที):").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.interval_var = tk.IntVar(value=60)
+        self.interval_var = tk.IntVar(value=300)
         tk.Entry(frame_top, textvariable=self.interval_var, width=10).grid(row=0, column=1, sticky=tk.W, pady=2)
 
         self.shuffle_var = tk.BooleanVar(value=True)
@@ -389,14 +389,29 @@ class VPNRotatorApp:
             time.sleep(3)
         return False
 
+    def _find_trigger_file(self):
+        """หา .host_wg_trigger ของ login.py (root ของโปรเจกต์ LGR)
+        - exe รันจาก swap_bot/dist/  -> ../../.host_wg_trigger
+        - .py รันจาก swap_bot/        -> ../.host_wg_trigger
+        - fallback: cwd/.host_wg_trigger"""
+        here = os.path.dirname(os.path.abspath(sys.argv[0] if getattr(sys, "frozen", False) else __file__))
+        for up in (os.path.join(here, "..", "..", ".host_wg_trigger"),
+                   os.path.join(here, "..", ".host_wg_trigger"),
+                   os.path.join(os.getcwd(), ".host_wg_trigger")):
+            p = os.path.abspath(up)
+            if os.path.exists(p):
+                return p
+        return None
+
     def rotation_loop(self):
         idx = 0
         last = None
         interval = self.interval_var.get()
-        
+        trigger_hits = 0
+
         self.log("="*40)
-        self.log(f"เริ่มการทำงาน - สลับทุกๆ {interval} วินาที")
-        
+        self.log(f"เริ่มการทำงาน - สลับทุกๆ {interval} วินาที (+ fast-switch เมื่อเจอ .host_wg_trigger)")
+
         while self.is_running:
             if self.shuffle_var.get():
                 loc = self.pick_next_location(last)
@@ -419,12 +434,31 @@ class VPNRotatorApp:
                 # จำว่า server นี้มีปัญหา โดยใส่ ping สูงไว้ให้เลี่ยง
                 self.server_stats[loc] = max(self.server_stats.get(loc, 0), 9999)
                 self.log("ข้ามไปเซิร์ฟเวอร์ถัดไป")
-                
-            # Sleep ลูปย่อยเพื่อเช็คสถานะ Stop เร็วขึ้น
-            for _ in range(interval):
-                if not self.is_running:
+
+            # รอครบ interval หรือเจอ trigger file (จาก login.py: login-failed/fixnet/IP-blocked)
+            # - trigger -> ลบไฟล์ -> rotate ทันที (cool-off 30 วิ ไม่ให้สลับรัว)
+            MIN_COOLOFF = 30
+            waited = 0
+            trigger_fired = False
+            while waited < interval and self.is_running:
+                tf = self._find_trigger_file()
+                if tf and waited >= MIN_COOLOFF:
+                    try:
+                        reason = open(tf, encoding="utf-8").read().strip()[:80]
+                    except Exception:
+                        reason = "?"
+                    try:
+                        os.remove(tf)
+                    except Exception:
+                        pass
+                    trigger_hits += 1
+                    self.log(f"[TRIGGER #{trigger_hits}] login.py ขอสลับ IP: {reason} (รอไปแล้ว {waited}s/{interval}s) -> สลับทันที")
+                    trigger_fired = True
                     break
                 time.sleep(1)
+                waited += 1
+            if trigger_fired:
+                continue   # ข้าม `for _ in range(interval)` ไปเริ่มรอบใหม่
                 
         if self.disconnect_var.get():
             self.log("กำลังยกเลิกการเชื่อมต่อ VPN...")
