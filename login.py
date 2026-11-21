@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.0.0"
+BOT_VERSION = "5.0.1"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -5838,10 +5838,8 @@ class RangerGearBot(threading.Thread):
         """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
         ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
         ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
-        if int(config.get("use_host_vpn", 0) or 0):
-            return   # host VPN mode: VPN อยู่บน Windows host - ไม่ต้องเช็ค tunnel ในอีมูฯ
-        if int(config.get("no_proxy_mode", 0) or 0):
-            # no_proxy_mode: 6 ชั้นก่อน login บน IP เดิม
+        if _no_proxy_mode():
+            # KILL_VPN / no_proxy_mode: 6 ชั้นก่อน login บน IP เดิม
             #   1) _spoof_mobile_network: ปลอม prop ให้รายงาน TYPE_MOBILE + carrier TH
             #   2) _bypass_arm: mitm rewrite + Frida flip
             #   3) _ip_meter_gate: ชน cap -> รอให้หลุดหน้าต่าง
@@ -5861,6 +5859,8 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [FP-CHURN] skip: {e}")
             _login_pace()
             return
+        if int(config.get("use_host_vpn", 0) or 0):
+            return   # host VPN mode: VPN อยู่บน Windows host - ไม่ต้องเช็ค tunnel ในอีมูฯ
         if not int(config.get("wg_enabled", 1) or 0):
             return
         if not int(config.get("wg_required", 0) or 0):   # 0 = VPN ไม่ขึ้นก็เล่นต่อด้วยเน็ตบ้าน (แบบเดิม)

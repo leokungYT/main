@@ -3024,13 +3024,13 @@ class RangerGearBot(threading.Thread):
         """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
         ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
         ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
-        if int(config.get("use_host_vpn", 0) or 0):
-            return   # host VPN mode: VPN อยู่บน Windows host - ไม่ต้องเช็ค tunnel ในอีมูฯ
-        if int(config.get("no_proxy_mode", 0) or 0):
-            # no_proxy_mode: ใช้ IP เครื่องตรง ๆ - ip_meter_gate กัน cap + login_pace jitter
+        if _no_proxy_mode():
+            # KILL_VPN / no_proxy_mode: ใช้ IP เครื่องตรง ๆ - ip_meter_gate กัน cap + login_pace jitter
             _ip_meter_gate()
             _login_pace()
             return
+        if int(config.get("use_host_vpn", 0) or 0):
+            return   # host VPN mode: VPN อยู่บน Windows host - ไม่ต้องเช็ค tunnel ในอีมูฯ
         if not int(config.get("wg_enabled", 1) or 0):
             return
         if not int(config.get("wg_required", 0) or 0):   # 0 = VPN ไม่ขึ้นก็เล่นต่อด้วยเน็ตบ้าน (แบบเดิม)
