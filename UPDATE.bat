@@ -52,31 +52,34 @@ if not exist "%SRC%\login.py" (
     exit /b 1
 )
 
-rem Python code
-copy /y "%SRC%\login.py"              "%~dp0" >nul
-copy /y "%SRC%\ranger-gear.py"        "%~dp0" >nul
-copy /y "%SRC%\rangerplus.py"         "%~dp0" >nul 2>&1
-copy /y "%SRC%\install-proton-wg.py"  "%~dp0" >nul
-copy /y "%SRC%\patch-proton-config.py" "%~dp0" >nul
-copy /y "%SRC%\fix-stuck-emu.py"      "%~dp0" >nul
-copy /y "%SRC%\host_wg_rotator.py"    "%~dp0" >nul 2>&1
-copy /y "%SRC%\wg_gen.py"             "%~dp0" >nul 2>&1
-
-rem Batch files
-copy /y "%SRC%\GO-PROTON.bat"         "%~dp0" >nul
-copy /y "%SRC%\SETUP-PROTON.bat"      "%~dp0" >nul
-copy /y "%SRC%\UPDATE.bat"            "%~dp0" >nul
-
-rem proton-configs folder
-if exist "%SRC%\proton-configs" (
-    if not exist "%~dp0proton-configs" mkdir "%~dp0proton-configs"
-    xcopy /y /e /q "%SRC%\proton-configs\*" "%~dp0proton-configs\" >nul
+rem === sync EVERYTHING from GitHub zip, except user data ===
+rem exclude list (xcopy /exclude takes a file with one pattern per line, substring match)
+set "EXCLUDE=%TEMP%\lgr_update_exclude.txt"
+> "%EXCLUDE%" (
+    echo \backup\
+    echo \backup-id\
+    echo \backup-xml\
+    echo \backup-fail\
+    echo \input-id\
+    echo \login-success\
+    echo \login-failed\
+    echo \login-fail\
+    echo \random-fail\
+    echo \play-stage30-100-150\
+    echo \ranger-locks\
+    echo \7day-check\
+    echo \wg\
+    echo \api\
+    echo \.git\
+    echo configmain.json
+    echo evpn_creds.txt
+    echo creds.json
+    echo .evpn_creds
+    echo shared_stats.json
 )
-rem img/ folder: template images for popup detection (REQUIRED)
-if exist "%SRC%\img" (
-    if not exist "%~dp0img" mkdir "%~dp0img"
-    xcopy /y /e /q "%SRC%\img\*" "%~dp0img\" >nul
-)
+
+xcopy /y /e /q /exclude:"%EXCLUDE%" "%SRC%\*" "%~dp0" >nul
+del /q "%EXCLUDE%" >nul 2>&1
 
 rem cleanup
 del /q "%ZIP%" >nul 2>&1
