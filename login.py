@@ -18,13 +18,22 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.9.8"
+BOT_VERSION = "4.9.9"
+
+# === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
+# เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
+#   -> การปิด VPN ผ่าน no_proxy_mode ต้องรัน DISABLE-ALL-VPN.bat ทีละเครื่อง
+#   ฝัง flag นี้ใน code แทน -> git pull ครั้งเดียว ทั้งฝูงปิด WG ทันที
+# ถ้าอยากเปิด VPN กลับ: เปลี่ยน False -> True ด้านล่าง แล้ว git push (บอตจะกลับมาใช้ config)
+KILL_VPN_HARDCODED = True
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
 #   configmain.json "login_min_gap_sec": 45 -> เว้นระยะระหว่าง login บนบอตเดียวกัน (กันเซิร์ฟฟลายจาก IP เดียว)
 #   เมื่อเปิด: fingerprint = IP + udid + UA คงที่, จังหวะยิงเท่านั้นที่ป้องกันแบน
 def _no_proxy_mode():
+    if KILL_VPN_HARDCODED:
+        return True
     try:
         return bool(int(globals().get("config", {}).get("no_proxy_mode", 0) or 0))
     except Exception:
@@ -3257,11 +3266,12 @@ def load_config():
             print(f"[WARN] Error loading UI config: {e}")
 
     # 3. wg_profile: สลับโฟลเดอร์ IP (เช่น ip-chan / ip-boy) โดยไม่ต้องแก้ wg_dir
+    #    KILL_VPN_HARDCODED=True -> ปิด VPN ถาวรทั่วทั้งฝูง (อ่านไม่เอาค่าจาก config remote)
     #    no_proxy_mode=1 -> kill switch ชนะทุก flag อื่น (รวม wg_enabled=1 ที่ค้างจากรอบเก่า)
     #    wg_enabled=0 -> ข้ามทั้ง resolve + clear + wg_gen (เสียเวลา startup ฟรี)
     #    use_host_vpn=1 -> VPN อยู่บน Windows host - ข้าม resolve + gen ทั้งหมด (ไม่แตะโฟลเดอร์ wg/)
-    if int(config.get("no_proxy_mode", 0) or 0):
-        print("[CONFIG] no_proxy_mode=1 - ข้าม wg_profile/FORCE Proton/wg_gen ทุกอย่าง (ใช้ IP เครื่องตรง ๆ)")
+    if _no_proxy_mode():
+        print("[CONFIG] no_proxy_mode / KILL_VPN=on - ข้าม wg_profile/FORCE Proton/wg_gen ทุกอย่าง (ใช้ IP เครื่องตรง ๆ)")
     elif int(config.get("use_host_vpn", 0) or 0):
         print("[CONFIG] use_host_vpn=1 - ข้าม wg_profile resolve + wg_gen (VPN อยู่บน Windows host)")
     elif int(config.get("wg_enabled", 1) or 0):
@@ -3500,8 +3510,8 @@ def reset_network_all(devices):
     """
     if not int(config.get("reset_network_on_start", 1) or 0):
         return
-    if int(config.get("no_proxy_mode", 0) or 0):
-        print("[NET-RESET] no_proxy_mode=1 - ข้าม VPN reset / WG-INSTALL / hard-reset ทั้งหมด (ใช้ IP เครื่องตรง ๆ)")
+    if _no_proxy_mode():
+        print("[NET-RESET] no_proxy_mode / KILL_VPN=on - ข้าม VPN reset / WG-INSTALL / hard-reset ทั้งหมด (ใช้ IP เครื่องตรง ๆ)")
         return
     if int(config.get("use_host_vpn", 0) or 0):
         print("[NET-RESET] use_host_vpn=1 - host_wg_rotator คุมบน Windows (ข้าม VPN setup ในอีมูฯ)")

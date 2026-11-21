@@ -900,10 +900,11 @@ def load_config(quiet=False):
             print(f"[WARN] Error loading configmain.json (wg_*): {e}")
 
     # wg_profile: สลับโฟลเดอร์ IP - ข้ามถ้า wg_enabled=0 (ไม่เสียเวลา startup ฟรี)
+    # KILL_VPN_HARDCODED=True -> ปิด VPN ถาวรทั่วทั้งฝูง (อ่านไม่เอาค่าจาก config remote)
     # no_proxy_mode=1 -> kill switch ชนะทุก flag อื่น (รวม wg_enabled=1 ที่ค้างจากรอบเก่า)
     # use_host_vpn=1 -> ข้ามทั้งหมด (VPN อยู่บน Windows host)
-    if int(config.get("no_proxy_mode", 0) or 0):
-        print("[CONFIG] no_proxy_mode=1 - ข้าม wg_profile/FORCE Proton/wg_gen ทุกอย่าง (ใช้ IP เครื่องตรง ๆ)")
+    if _no_proxy_mode():
+        print("[CONFIG] no_proxy_mode / KILL_VPN=on - ข้าม wg_profile/FORCE Proton/wg_gen ทุกอย่าง (ใช้ IP เครื่องตรง ๆ)")
     elif int(config.get("use_host_vpn", 0) or 0):
         print("[CONFIG] use_host_vpn=1 - ข้าม wg_profile resolve + wg_gen (VPN อยู่บน Windows host)")
     elif int(config.get("wg_enabled", 1) or 0):
@@ -1117,7 +1118,15 @@ _IP_METER_LOCK = _threading_ipm.Lock()
 _IP_WINDOWS = [(3600, 3), (6 * 3600, 8), (24 * 3600, 20)]
 
 
+# === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
+# เหตุผล: configmain.json ถูก untrack แล้ว บอต remote config ต่างกัน -> code-level ชัวร์กว่า
+# ถ้าอยากเปิด VPN กลับ: เปลี่ยน True -> False แล้ว git push
+KILL_VPN_HARDCODED = True
+
+
 def _no_proxy_mode():
+    if KILL_VPN_HARDCODED:
+        return True
     try:
         return bool(int(globals().get("config", {}).get("no_proxy_mode", 0) or 0))
     except Exception:
@@ -1493,8 +1502,8 @@ def reset_network_all(devices):
     """
     if not int(config.get("reset_network_on_start", 1) or 0):
         return
-    if int(config.get("no_proxy_mode", 0) or 0):
-        print("[NET-RESET] no_proxy_mode=1 - ข้าม VPN reset / WG-INSTALL / hard-reset ทั้งหมด (ใช้ IP เครื่องตรง ๆ)")
+    if _no_proxy_mode():
+        print("[NET-RESET] no_proxy_mode / KILL_VPN=on - ข้าม VPN reset / WG-INSTALL / hard-reset ทั้งหมด (ใช้ IP เครื่องตรง ๆ)")
         return
     if int(config.get("use_host_vpn", 0) or 0):
         print("[NET-RESET] use_host_vpn=1 - host_wg_rotator คุมบน Windows (ข้าม VPN setup ในอีมูฯ)")
