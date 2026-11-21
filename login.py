@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.9.7"
+BOT_VERSION = "4.9.8"
 
 # no-proxy mode: บังคับใช้ IP เครื่องตรง ๆ - ไม่ต่อ VPN, ไม่สลับ WG, ไม่หมุนออก
 #   configmain.json "no_proxy_mode": 1 -> ปิดทั้ง wg_enabled และ windscribe_autostart ที่ runtime
@@ -3257,9 +3257,12 @@ def load_config():
             print(f"[WARN] Error loading UI config: {e}")
 
     # 3. wg_profile: สลับโฟลเดอร์ IP (เช่น ip-chan / ip-boy) โดยไม่ต้องแก้ wg_dir
+    #    no_proxy_mode=1 -> kill switch ชนะทุก flag อื่น (รวม wg_enabled=1 ที่ค้างจากรอบเก่า)
     #    wg_enabled=0 -> ข้ามทั้ง resolve + clear + wg_gen (เสียเวลา startup ฟรี)
     #    use_host_vpn=1 -> VPN อยู่บน Windows host - ข้าม resolve + gen ทั้งหมด (ไม่แตะโฟลเดอร์ wg/)
-    if int(config.get("use_host_vpn", 0) or 0):
+    if int(config.get("no_proxy_mode", 0) or 0):
+        print("[CONFIG] no_proxy_mode=1 - ข้าม wg_profile/FORCE Proton/wg_gen ทุกอย่าง (ใช้ IP เครื่องตรง ๆ)")
+    elif int(config.get("use_host_vpn", 0) or 0):
         print("[CONFIG] use_host_vpn=1 - ข้าม wg_profile resolve + wg_gen (VPN อยู่บน Windows host)")
     elif int(config.get("wg_enabled", 1) or 0):
         _wg_resolve_profile()
@@ -3496,6 +3499,9 @@ def reset_network_all(devices):
       (ที่ proxy_switcher.py ตั้งไว้ให้ emulator วิ่งผ่าน TOT/ISP ไทย)
     """
     if not int(config.get("reset_network_on_start", 1) or 0):
+        return
+    if int(config.get("no_proxy_mode", 0) or 0):
+        print("[NET-RESET] no_proxy_mode=1 - ข้าม VPN reset / WG-INSTALL / hard-reset ทั้งหมด (ใช้ IP เครื่องตรง ๆ)")
         return
     if int(config.get("use_host_vpn", 0) or 0):
         print("[NET-RESET] use_host_vpn=1 - host_wg_rotator คุมบน Windows (ข้าม VPN setup ในอีมูฯ)")

@@ -104,7 +104,10 @@
     "host_vpn_trigger_min_gap_sec": 120,
     "host_vpn_max_tries": 0,
     "host_vpn_open_web_on_fail": 1,
-    "host_vpn_exclude_paths": ["ip-mullvad", "mullvad"],
+    "host_vpn_exclude_paths": [
+        "ip-mullvad",
+        "mullvad"
+    ],
     "host_vpn_split_domains": [
         "rangers-api.line-apps.com",
         "game-api.line.me",
@@ -113,7 +116,7 @@
         "access.line.me",
         "api.line.me"
     ],
-    "wg_enabled": 1,
+    "wg_enabled": 0,
     "wg_once": 0,
     "wg_account": "",
     "wg_machine": 1,
@@ -124,13 +127,13 @@
     "wg_probe": 0,
     "wg_probe_max": 10,
     "_wg_probe_hint": "0 = เปิดเกมเลย รอ fixnet1 (ชัวร์กว่า - ใช้นี้), 1 = ยิง curl rangers-api ก่อน (เร็วแต่ false positive บน MuMu เพราะ ip rule tun0 ไม่เสถียร)",
-    "wg_hard_reset_on_start": 1,
+    "wg_hard_reset_on_start": 0,
     "_wg_hard_reset_hint": "1 = nuclear reset ทุกจอก่อนเริ่ม (force-stop WG app + pm clear + ลบ tun0/iptables/DNS + ลบ always_on_vpn) - clean 100%, 0 = soft reset แบบเดิม (ล้างแค่ proxy)",
     "wg_rotate_logins": 0,
     "wg_stick_on_success": 1,
     "_wg_stick_hint": "1 = IP ที่ login ผ่านครั้งหนึ่งแล้ว จะยึดไว้ตลอด (ไม่สลับ) - สลับเฉพาะเจอ fixnet1 ตอน start เกม, 0 = สลับตาม strike ปกติ",
-    "wg_regen_blocked": 1,
-    "wg_fixnet1_switch": 1,
+    "wg_regen_blocked": 0,
+    "wg_fixnet1_switch": 0,
     "wg_auth_fallback": 0,
     "wg_fixid_switch": 1,
     "wg_net_recover_max": 10,
@@ -140,10 +143,20 @@
     ],
     "wg_after_login": 0,
     "wg_dir": "wg",
-    "wg_profile": ["ip-chan/main-1", "ip-chan/main-2", "ip-chan/main-3", "ip-chan/main-4", "ip-chan/main-5"],
+    "wg_profile": [
+        "ip-chan/main-1",
+        "ip-chan/main-2",
+        "ip-chan/main-3",
+        "ip-chan/main-4",
+        "ip-chan/main-5"
+    ],
     "_wg_profile_hint": "string เดียวหรือ list. ตอนนี้: Windscribe ip-chan เท่านั้น (ตัด ip-boy ออก). backup Mullvad: [\"ip-mullvad-1\"]",
-    "_wg_profile_backup_mullvad": ["ip-mullvad-1"],
-    "_wg_profile_backup_boy": ["ip-boy/main-1"],
+    "_wg_profile_backup_mullvad": [
+        "ip-mullvad-1"
+    ],
+    "_wg_profile_backup_boy": [
+        "ip-boy/main-1"
+    ],
     "wg_profile_clear_on_start": 1,
     "wg_sub_round_robin": 1,
     "_wg_sub_round_robin_hint": "1 = แต่ละจอ ล็อก sub เดียวต่อรอบ (ip-chan/main-1 OR main-2 OR main-3 OR ip-boy/main-1) - fixnet1 -> สลับไป sub ถัดไป. 0 = สุ่ม pool เดียวกันทุก sub",
@@ -217,12 +230,13 @@
     "wg_regen_every_min": 0,
     "wg_required": 1,
     "wg_lock": 0,
-    "no_proxy_mode": 0,
+    "no_proxy_mode": 1,
     "_no_proxy_mode_hint": "1 = ใช้ IP เครื่องตรง ๆ (ปิด VPN) + เปิด ip_meter + login_pace (sync กับ login.py)",
     "ip_meter_endpoint": "https://api.ipify.org",
     "_ip_meter_endpoint_hint": "URL ดึง public IP ของเครื่อง - แยก bucket per-IP ใน ip_meter.json; \"\" = ใช้คีย์ 'local'",
     "ip_meter_force": 0,
     "_ip_meter_force_hint": "1 = เปิด ip_meter แม้ไม่ no_proxy_mode (ใช้ตอน VPN เพื่อตัด cap ต่อ IP ขาออก)",
     "login_min_gap_sec": 45,
-    "_login_min_gap_sec_hint": "เว้นระยะระหว่าง login บนบอตเดียวกัน (วินาที) - jitter 0-30%; ทำงานเฉพาะ no_proxy_mode=1"
+    "_login_min_gap_sec_hint": "เว้นระยะระหว่าง login บนบอตเดียวกัน (วินาที) - jitter 0-30%; ทำงานเฉพาะ no_proxy_mode=1",
+    "wg_auto_gen": 0
 }
