@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "4.9.9"
+BOT_VERSION = "5.0.0"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -5687,6 +5687,8 @@ class RangerGearBot(threading.Thread):
 
     def _wg_failover(self, conf, confirmed=False):
         """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
+        if _no_proxy_mode():
+            return None   # KILL_VPN: ไม่มี WG ให้ failover
         if int(config.get("wg_lock", 1) or 0):
             return None   # wg_lock: ไม่สลับเซิร์ฟเวอร์
         # clear sticky lock - IP ที่เคยยึดไว้ตอน login success ตอนนี้ fail -> ปล่อยให้สลับได้
@@ -5758,12 +5760,12 @@ class RangerGearBot(threading.Thread):
 
     def _ensure_wireguard(self):
         """ต่อ WireGuard ในอีมูฯ จอนี้ (เรียกก่อนเปิดเกมทุกครั้ง - ต่ออยู่แล้วจะข้ามเร็ว)"""
+        if _no_proxy_mode():
+            self._wg_off = True
+            return   # KILL_VPN_HARDCODED / no_proxy_mode: ใช้เน็ตเครื่อง/exness VPN - ไม่ต่อ WG ในอีมูฯ
         if int(config.get("use_host_vpn", 0) or 0):
             self._wg_off = True
             return   # host VPN mode: ไม่ต่อ WG ในอีมูฯ (host_wg_rotator.py คุม)
-        if int(config.get("no_proxy_mode", 0) or 0):
-            self._wg_off = True
-            return
         if not int(config.get("wg_enabled", 1) or 0) or getattr(self, "_wg_off", False):
             return
         # ASN prune ปิดแล้ว - ไม่ลบไฟล์ตาม hostname (ดู _ASN_BLACKLIST)
@@ -5904,6 +5906,8 @@ class RangerGearBot(threading.Thread):
         raise WGNotUpError("wg_required: VPN not up")
 
     def _wg_setup(self, conf):
+        if _no_proxy_mode():
+            return   # KILL_VPN: ไม่ต่อ WG ใด ๆ
         pkg, name = self.WG_PKG, self.WG_TUNNEL
         # ทางลัด: ไฟล์ config นี้เคยเขียนลงเครื่องแล้ว (แค่ปิดไปตอนส่งไฟล์) -> สั่งเปิด tunnel อย่างเดียว ไม่ต้องส่งไฟล์ใหม่
         # (เทียบเวลาแก้ไฟล์ด้วย - server ส่งไฟล์ชื่อเดิมแต่เนื้อหาใหม่มา ต้องเขียนลงเครื่องใหม่)
