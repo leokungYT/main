@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.1.2"
+BOT_VERSION = "5.1.3"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -53,6 +53,49 @@ def _signal_host_vpn_rotate(reason=""):
             f.write(str(reason)[:200])
     except Exception:
         pass
+
+
+def _ensure_swap_bot_running():
+    """เช็ค swap_bot.exe ว่ารันอยู่ไหม - ถ้าไม่ เปิดให้
+    - รันได้ทั้งจาก login.py / ranger-gear.py / หาตัว+เกียร์.bat (ไม่ต้องผ่าน loginสะสม.bat)
+    - เงียบ: ไม่ error ถ้าหา exe ไม่เจอ (เครื่องที่ไม่ได้ลง swap_bot ก็รันปกติ)"""
+    try:
+        import os as _os
+        import subprocess as _sp
+        # เช็ค process ก่อน: ถ้ามีแล้วไม่ต้องเปิดซ้ำ
+        try:
+            r = _sp.run(["tasklist", "/FI", "IMAGENAME eq swap_bot.exe", "/NH"],
+                        capture_output=True, text=True, timeout=10,
+                        creationflags=_sp.CREATE_NO_WINDOW if hasattr(_sp, "CREATE_NO_WINDOW") else 0)
+            if "swap_bot.exe" in (r.stdout or "").lower():
+                print("[SWAP_BOT] already running - ไม่เปิดซ้ำ")
+                return
+        except Exception:
+            pass
+        # หา exe: swap_bot/dist/swap_bot.exe ข้างๆ script
+        _script_dir = _os.path.dirname(_os.path.abspath(__file__))
+        candidates = [
+            _os.path.join(_script_dir, "swap_bot", "dist", "swap_bot.exe"),
+            _os.path.join(_script_dir, "swap_bot", "swap_bot.exe"),
+            _os.path.join(_script_dir, "swap_bot.exe"),
+        ]
+        exe = next((p for p in candidates if _os.path.isfile(p)), None)
+        if not exe:
+            print("[SWAP_BOT] ไม่พบ swap_bot.exe (จะข้าม - rotator trigger เขียนทิ้งเฉยๆ)")
+            return
+        print(f"[SWAP_BOT] launching: {exe}")
+        # DETACHED_PROCESS=0x00000008 | CREATE_NEW_PROCESS_GROUP=0x00000200
+        # ปล่อยลอย ไม่ให้ตายตามบอท
+        _sp.Popen([exe], cwd=_os.path.dirname(exe),
+                  creationflags=0x00000008 | 0x00000200,
+                  close_fds=True, stdin=_sp.DEVNULL,
+                  stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+    except Exception as e:
+        print(f"[SWAP_BOT] launch ล้มเหลว (ไม่กระทบบอท): {e}")
+
+
+# เรียกตอนโหลดไฟล์ - ครอบคลุมทุกทางรันบอท (login.py / ranger-gear.py / .bat ต่างๆ)
+_ensure_swap_bot_running()
 
 
 # ============================================================

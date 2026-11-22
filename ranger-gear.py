@@ -1148,6 +1148,44 @@ def _signal_host_vpn_rotate(reason=""):
         pass
 
 
+def _ensure_swap_bot_running():
+    """เช็ค swap_bot.exe ว่ารันอยู่ไหม - ถ้าไม่ เปิดให้
+    - รันได้ทั้งจาก ranger-gear.py / หาตัว+เกียร์.bat (ไม่ต้องผ่าน loginสะสม.bat)
+    - เงียบ: ไม่ error ถ้าหา exe ไม่เจอ"""
+    try:
+        import os as _os
+        import subprocess as _sp
+        try:
+            r = _sp.run(["tasklist", "/FI", "IMAGENAME eq swap_bot.exe", "/NH"],
+                        capture_output=True, text=True, timeout=10,
+                        creationflags=_sp.CREATE_NO_WINDOW if hasattr(_sp, "CREATE_NO_WINDOW") else 0)
+            if "swap_bot.exe" in (r.stdout or "").lower():
+                print("[SWAP_BOT] already running - ไม่เปิดซ้ำ")
+                return
+        except Exception:
+            pass
+        _script_dir = _os.path.dirname(_os.path.abspath(__file__))
+        candidates = [
+            _os.path.join(_script_dir, "swap_bot", "dist", "swap_bot.exe"),
+            _os.path.join(_script_dir, "swap_bot", "swap_bot.exe"),
+            _os.path.join(_script_dir, "swap_bot.exe"),
+        ]
+        exe = next((p for p in candidates if _os.path.isfile(p)), None)
+        if not exe:
+            print("[SWAP_BOT] ไม่พบ swap_bot.exe (จะข้าม - rotator trigger เขียนทิ้งเฉยๆ)")
+            return
+        print(f"[SWAP_BOT] launching: {exe}")
+        _sp.Popen([exe], cwd=_os.path.dirname(exe),
+                  creationflags=0x00000008 | 0x00000200,
+                  close_fds=True, stdin=_sp.DEVNULL,
+                  stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+    except Exception as e:
+        print(f"[SWAP_BOT] launch ล้มเหลว (ไม่กระทบบอท): {e}")
+
+
+_ensure_swap_bot_running()
+
+
 def _ip_meter_load():
     try:
         with open(_IP_METER_PATH, "r", encoding="utf-8") as f:
