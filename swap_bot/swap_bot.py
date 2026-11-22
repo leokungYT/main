@@ -288,11 +288,13 @@ class VPNRotatorApp:
         return r.returncode == 0 and "fail" not in out.lower(), out
 
     def _add_subnet_route(self, net, mask, gw, ifidx):
-        """เพิ่ม route /subnet (ไม่ใช่ /32) - สำหรับ LAN/Tailscale ทั้ง range"""
+        """เพิ่ม route /subnet (ไม่ใช่ /32) - สำหรับ LAN/Tailscale ทั้ง range
+        ใช้ -p (persistent) + metric 1 - ExpressVPN ลบไม่ได้ + survive reboot
+        ถ้า ExpressVPN พยายามลบ route จะล้มเหลวเพราะ persistent"""
         subprocess.run(["route", "delete", net, "mask", mask],
                        capture_output=True, text=True, timeout=10,
                        creationflags=subprocess.CREATE_NO_WINDOW)
-        cmd = ["route", "add", net, "mask", mask, gw, "metric", "1"]
+        cmd = ["route", "-p", "add", net, "mask", mask, gw, "metric", "1"]
         if ifidx:
             cmd += ["IF", str(ifidx)]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
@@ -533,10 +535,47 @@ class VPNRotatorApp:
             rc, out = self.run_cli(["connect", location], timeout=180)
             if rc == 0 and self.is_connected():
                 self.log(f"เชื่อมต่อสำเร็จ: {location}")
+                # รอ ExpressVPN ปรับ routing table เสร็จ (2s) แล้วค่อย re-add
+                # กัน ExpressVPN ลบ LAN/TS bypass routes ทันทีหลังเราเพิ่ม
+                time.sleep(2)
                 return True
             self.log(f"เชื่อมต่อล้มเหลว: {out.strip()[:100]}...")
             time.sleep(3)
         return False
+
+    def _verify_critical_routes(self):
+        """verify Tailscale + LAN route ยังอยู่หลัง VPN connect
+        ถ้าโดน ExpressVPN ลบ -> ยัดกลับทันที วนเช็ค 3 รอบ ห่าง 1 วิ
+        กัน agent socket หลุดถาวร"""
+        if not self.bypass_lan_var.get():
+            return
+        for i in range(3):
+            re_add_needed = False
+            # ตรวจ Tailscale route 100.64.0.0/10
+            try:
+                r = subprocess.run(["route", "print", "-4", "100.64.0.0"],
+                                   capture_output=True, text=True, timeout=5,
+                                   creationflags=subprocess.CREATE_NO_WINDOW)
+                if "100.64.0.0" not in r.stdout or "255.192.0.0" not in r.stdout:
+                    re_add_needed = True
+            except Exception:
+                re_add_needed = True
+            # ตรวจ LAN route 192.168.0.0/16
+            try:
+                r = subprocess.run(["route", "print", "-4", "192.168.0.0"],
+                                   capture_output=True, text=True, timeout=5,
+                                   creationflags=subprocess.CREATE_NO_WINDOW)
+                if "192.168.0.0" not in r.stdout or "255.255.0.0" not in r.stdout:
+                    re_add_needed = True
+            except Exception:
+                re_add_needed = True
+
+            if not re_add_needed:
+                self.log(f"[VERIFY] routes OK (รอบ {i+1}/3)")
+                return
+            self.log(f"[VERIFY] routes หายไป! re-add (รอบ {i+1}/3)")
+            self.add_lan_tailscale_bypass()
+            time.sleep(1)
 
     def _find_trigger_file(self):
         """หา .host_wg_trigger ของ login.py (root ของโปรเจกต์ LGR)
@@ -574,6 +613,7 @@ class VPNRotatorApp:
                     self.ensure_bypass_routes()
                 if self.bypass_lan_var.get():
                     self.add_lan_tailscale_bypass()
+                    self._verify_critical_routes()
                 if self.prefer_low_load_var.get():
                     ms = self.measure_latency()
                     if ms is not None:
