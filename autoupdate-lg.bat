@@ -173,5 +173,26 @@ if %RC% GEQ 8 (
     echo      Update Successful ^(Saved in %TARGET_FOLDER%^)
     echo ============================================
 )
+
+:: ── Auto-sync ไปยัง Desktop\pes\ และ Desktop\main\ ด้วย (ถ้ามี) ──
+:: หลายเครื่องรันบอทจากโฟลเดอร์นอก main ที่ไม่ใช่ git repo (เช่น Desktop\pes)
+:: ก๊อปไฟล์หลัก (.py / .bat / swap_bot/) ไปทับให้ได้ของใหม่ทุกครั้ง
+for %%D in ("%USERPROFILE%\Desktop\pes" "%USERPROFILE%\Desktop\main") do (
+    if exist "%%~D" if /I not "%%~fD"=="%cd%\%TARGET_FOLDER%" (
+        echo.
+        echo ============================================
+        echo   Auto-sync %TARGET_FOLDER% -^> %%~D
+        echo ============================================
+        robocopy "%TARGET_FOLDER%" "%%~D" *.py *.bat /E ^
+            /XD backup backup-id input-id logs login-success login-failed wg api .git __pycache__ old Tesseract-OCR ^
+            /XF configmain.json evpn_creds.txt creds.json ranger-gear_config.json ^
+            /NJH /NJS /NP /R:2 /W:1 >nul
+        if exist "%TARGET_FOLDER%\swap_bot" (
+            if not exist "%%~D\swap_bot" mkdir "%%~D\swap_bot"
+            robocopy "%TARGET_FOLDER%\swap_bot" "%%~D\swap_bot" *.py /NJH /NJS /NP /R:2 /W:1 >nul
+        )
+        echo [OK] sync %%~D เสร็จ
+    )
+)
 echo.
 pause
