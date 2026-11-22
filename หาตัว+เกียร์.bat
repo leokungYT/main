@@ -1,65 +1,39 @@
 @echo off
-chcp 65001 >nul
-title Ranger Gear Bot Auto Update
+title Ranger Gear Bot
 cd /d "%~dp0"
 
 echo =========================================
-echo       Checking for updates...
+echo    Checking for updates (optional)...
 echo =========================================
-
-:: Check if this is a Git repository
 if not exist ".git" (
-    echo [SKIP] Not a Git repo - skipping update check
+    echo [SKIP] Not a Git repo
     goto start_program
 )
-
-:: Fetch latest from Github
 git fetch origin main >nul 2>&1
-
-:: Count how many commits behind
-for /f "tokens=*" %%g in ('git rev-list HEAD...origin/main --count') do (set UPDATE_COUNT=%%g)
+for /f "tokens=*" %%g in ('git rev-list HEAD...origin/main --count 2^>nul') do (set UPDATE_COUNT=%%g)
 if "%UPDATE_COUNT%"=="" set UPDATE_COUNT=0
-
 if %UPDATE_COUNT% GTR 0 (
-    echo [!] New update found on Github!
-    
-    :: Show popup via separate Python script
-    if exist "_check_update.py" (
-        python _check_update.py
-        
-        if not errorlevel 1 (
-            echo [UPDATE] Downloading latest files...
-            git reset --hard origin/main
-            git clean -f
-            echo [DONE] Update complete!
-        ) else (
-            echo [SKIP] Update skipped by user
-        )
-    ) else (
-        echo [UPDATE] _check_update.py not found. Downloading latest files automatically...
-        git reset --hard origin/main
-        git clean -f
-        echo [DONE] Update complete!
-    )
+    echo [UPDATE] %UPDATE_COUNT% new commits - pulling...
+    git reset --hard origin/main >nul 2>&1
+    git clean -f >nul 2>&1
+    echo [DONE] Update complete
 ) else (
-    echo [OK] Already up to date!
+    echo [OK] Already up to date
 )
 
 :start_program
 echo.
 echo =========================================
-echo       Launching swap_bot.py (IP rotator)...
+echo    Launching swap_bot.py (IP rotator)
 echo =========================================
 
 setlocal EnableDelayedExpansion
-rem --- เช็ค process ด้วย wmic (ดู command line ของ python ว่ามี swap_bot.py ไหม) ---
 wmic process where "name='python.exe' or name='pythonw.exe'" get CommandLine 2>nul | find /I "swap_bot.py" >nul
 if !errorlevel! equ 0 (
     echo [SWAP_BOT] already running - skip
     goto start_python
 )
 
-rem --- ค้นหา swap_bot.py จากหลายที่ ---
 set "SB="
 set "S1=%~dp0swap_bot\swap_bot.py"
 set "S2=%~dp0swap_bot.py"
@@ -73,7 +47,7 @@ if "!SB!"=="" if exist "!S4!" set "SB=!S4!"
 if "!SB!"=="" if exist "!S5!" set "SB=!S5!"
 
 if "!SB!"=="" (
-    echo [SWAP_BOT] WARN: ไม่พบ swap_bot.py ที่ไหนเลย - จะข้าม
+    echo [SWAP_BOT] WARN: swap_bot.py not found anywhere - skip
 ) else (
     echo [SWAP_BOT] launching: pythonw !SB!
     for %%I in ("!SB!") do start "" /D "%%~dpI" pythonw "!SB!"
@@ -83,9 +57,19 @@ endlocal
 :start_python
 echo.
 echo =========================================
-echo       Starting program...
+echo    Starting ranger-gear.py
 echo =========================================
 echo.
 
-python ranger-gear.py
+if not exist "logs" mkdir "logs" >nul 2>&1
+python ranger-gear.py 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath logs\ranger-gear-last.log -Append"
+set "EXITCODE=%errorlevel%"
+echo.
+echo =========================================
+echo    Python exited with code: %EXITCODE%
+echo =========================================
+if %EXITCODE% NEQ 0 (
+    echo [!] ERROR: python crashed - full log: logs\ranger-gear-last.log
+)
 pause
+exit /b %EXITCODE%
