@@ -43,6 +43,24 @@ echo [1/5] Downloading latest version from GitHub...
 
 set "DOWNLOAD_OK=0"
 
+:: Pre-check DNS: codeload.github.com resolution often breaks after
+:: ExpressVPN/WARP/Surfshark has been running. Flush + test first.
+echo [DNS] Checking resolution of codeload.github.com...
+nslookup codeload.github.com >nul 2>&1
+if !ERRORLEVEL! NEQ 0 (
+    echo [DNS] resolution failed - flushing + resetting DNS to DHCP...
+    ipconfig /flushdns >nul 2>&1
+    powershell -NoProfile -Command "Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }" >nul 2>&1
+    timeout /t 2 /nobreak >nul
+    nslookup codeload.github.com >nul 2>&1
+    if !ERRORLEVEL! NEQ 0 (
+        echo [DNS] still failed - trying Cloudflare+Google DNS...
+        powershell -NoProfile -Command "Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ServerAddresses '1.1.1.1','8.8.8.8' -ErrorAction SilentlyContinue }" >nul 2>&1
+        ipconfig /flushdns >nul 2>&1
+        timeout /t 2 /nobreak >nul
+    )
+)
+
 :: Try curl with retries
 for /L %%i in (1,1,3) do (
     if !DOWNLOAD_OK! EQU 0 (
@@ -72,10 +90,28 @@ if !DOWNLOAD_OK! EQU 0 (
     )
 )
 
+:: Last resort: stop ExpressVPN temporarily, retry PowerShell, then restart
+if !DOWNLOAD_OK! EQU 0 (
+    echo [FALLBACK] Stopping ExpressVPN temporarily and retrying...
+    taskkill /F /IM ExpressVPN.exe >nul 2>&1
+    taskkill /F /IM swap_bot.exe >nul 2>&1
+    timeout /t 3 /nobreak >nul
+    ipconfig /flushdns >nul 2>&1
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_NAME%' -UseBasicParsing -TimeoutSec 60; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
+    if !ERRORLEVEL! EQU 0 (
+        if exist "%ZIP_NAME%" (
+            set "DOWNLOAD_OK=1"
+            echo [FALLBACK] Download OK after stopping ExpressVPN
+        )
+    )
+)
+
 if !DOWNLOAD_OK! EQU 0 (
     echo.
     echo [ERROR] Download failed! Please check your internet connection.
-    echo [TIP] Try: ipconfig /flushdns   then run this script again.
+    echo [TIP 1] Manual: ipconfig /flushdns  ^&^&  run this script again
+    echo [TIP 2] Disconnect ExpressVPN manually then run this script
+    echo [TIP 3] Check firewall allows curl.exe + powershell.exe to github.com
     pause
     exit /b 1
 )
