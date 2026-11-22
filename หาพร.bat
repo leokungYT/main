@@ -47,31 +47,31 @@ if %UPDATE_COUNT% GTR 0 (
 :start_program
 echo.
 echo =========================================
-echo       Launching swap_bot.exe (IP rotator)...
+echo       Launching swap_bot.py (IP rotator)...
 echo =========================================
 
 setlocal EnableDelayedExpansion
-tasklist /FI "IMAGENAME eq swap_bot.exe" /NH 2>nul | find /I "swap_bot.exe" >nul
+wmic process where "name='python.exe' or name='pythonw.exe'" get CommandLine 2>nul | find /I "swap_bot.py" >nul
 if !errorlevel! equ 0 (
     echo [SWAP_BOT] already running - skip
     goto start_python_hp
 )
 set "SB="
-set "S1=%~dp0swap_bot\dist\swap_bot.exe"
-set "S2=%~dp0swap_bot\swap_bot.exe"
-set "S3=%~dp0..\LGR\swap_bot\dist\swap_bot.exe"
-set "S4=%USERPROFILE%\Downloads\LGR\swap_bot\dist\swap_bot.exe"
-set "S5=%USERPROFILE%\Desktop\main\swap_bot\dist\swap_bot.exe"
+set "S1=%~dp0swap_bot\swap_bot.py"
+set "S2=%~dp0swap_bot.py"
+set "S3=%~dp0..\LGR\swap_bot\swap_bot.py"
+set "S4=%USERPROFILE%\Downloads\LGR\swap_bot\swap_bot.py"
+set "S5=%USERPROFILE%\Desktop\main\swap_bot\swap_bot.py"
 if exist "!S1!" set "SB=!S1!"
 if "!SB!"=="" if exist "!S2!" set "SB=!S2!"
 if "!SB!"=="" if exist "!S3!" set "SB=!S3!"
 if "!SB!"=="" if exist "!S4!" set "SB=!S4!"
 if "!SB!"=="" if exist "!S5!" set "SB=!S5!"
 if "!SB!"=="" (
-    echo [SWAP_BOT] WARN: ไม่พบ swap_bot.exe - ข้าม
+    echo [SWAP_BOT] WARN: ไม่พบ swap_bot.py - ข้าม
 ) else (
-    echo [SWAP_BOT] launching: !SB!
-    for %%I in ("!SB!") do start "" /D "%%~dpI" "!SB!"
+    echo [SWAP_BOT] launching: pythonw !SB!
+    for %%I in ("!SB!") do start "" /D "%%~dpI" pythonw "!SB!"
 )
 endlocal
 

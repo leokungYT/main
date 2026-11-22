@@ -1149,33 +1149,38 @@ def _signal_host_vpn_rotate(reason=""):
 
 
 def _ensure_swap_bot_running():
-    """เช็ค swap_bot.exe ว่ารันอยู่ไหม - ถ้าไม่ เปิดให้
-    - รันได้ทั้งจาก ranger-gear.py / หาตัว+เกียร์.bat (ไม่ต้องผ่าน loginสะสม.bat)
-    - เงียบ: ไม่ error ถ้าหา exe ไม่เจอ"""
+    """เช็ค swap_bot.py ว่ารันอยู่ไหม - ถ้าไม่ เปิดให้ (รัน .py ตรงๆ ไม่ใช้ .exe)
+    - รันได้ทั้งจาก ranger-gear.py / .bat ต่างๆ
+    - เงียบ: ไม่ error ถ้าหา .py ไม่เจอ"""
     try:
         import os as _os
+        import sys as _sys
         import subprocess as _sp
+        _CREATE_NO_WINDOW = getattr(_sp, "CREATE_NO_WINDOW", 0x08000000)
         try:
-            r = _sp.run(["tasklist", "/FI", "IMAGENAME eq swap_bot.exe", "/NH"],
-                        capture_output=True, text=True, timeout=10,
-                        creationflags=_sp.CREATE_NO_WINDOW if hasattr(_sp, "CREATE_NO_WINDOW") else 0)
-            if "swap_bot.exe" in (r.stdout or "").lower():
+            r = _sp.run(["wmic", "process", "where", "name='python.exe' or name='pythonw.exe'",
+                         "get", "CommandLine", "/FORMAT:LIST"],
+                        capture_output=True, text=True, timeout=15,
+                        creationflags=_CREATE_NO_WINDOW)
+            if "swap_bot.py" in (r.stdout or "").lower():
                 print("[SWAP_BOT] already running - ไม่เปิดซ้ำ")
                 return
         except Exception:
             pass
         _script_dir = _os.path.dirname(_os.path.abspath(__file__))
         candidates = [
-            _os.path.join(_script_dir, "swap_bot", "dist", "swap_bot.exe"),
-            _os.path.join(_script_dir, "swap_bot", "swap_bot.exe"),
-            _os.path.join(_script_dir, "swap_bot.exe"),
+            _os.path.join(_script_dir, "swap_bot", "swap_bot.py"),
+            _os.path.join(_script_dir, "swap_bot.py"),
         ]
-        exe = next((p for p in candidates if _os.path.isfile(p)), None)
-        if not exe:
-            print("[SWAP_BOT] ไม่พบ swap_bot.exe (จะข้าม - rotator trigger เขียนทิ้งเฉยๆ)")
+        py = next((p for p in candidates if _os.path.isfile(p)), None)
+        if not py:
+            print("[SWAP_BOT] ไม่พบ swap_bot.py (จะข้าม - trigger เขียนทิ้งเฉยๆ)")
             return
-        print(f"[SWAP_BOT] launching: {exe}")
-        _sp.Popen([exe], cwd=_os.path.dirname(exe),
+        exe_dir = _os.path.dirname(_sys.executable)
+        pyw = _os.path.join(exe_dir, "pythonw.exe")
+        interp = pyw if _os.path.isfile(pyw) else _sys.executable
+        print(f"[SWAP_BOT] launching: {interp} {py}")
+        _sp.Popen([interp, py], cwd=_os.path.dirname(py),
                   creationflags=0x00000008 | 0x00000200,
                   close_fds=True, stdin=_sp.DEVNULL,
                   stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)

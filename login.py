@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.1.4"
+BOT_VERSION = "5.1.5"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -56,37 +56,43 @@ def _signal_host_vpn_rotate(reason=""):
 
 
 def _ensure_swap_bot_running():
-    """เช็ค swap_bot.exe ว่ารันอยู่ไหม - ถ้าไม่ เปิดให้
-    - รันได้ทั้งจาก login.py / ranger-gear.py / หาตัว+เกียร์.bat (ไม่ต้องผ่าน loginสะสม.bat)
-    - เงียบ: ไม่ error ถ้าหา exe ไม่เจอ (เครื่องที่ไม่ได้ลง swap_bot ก็รันปกติ)"""
+    """เช็ค swap_bot.py ว่ารันอยู่ไหม - ถ้าไม่ เปิดให้ (รัน .py ตรงๆ ไม่ใช้ .exe)
+    - รันได้ทั้งจาก login.py / ranger-gear.py / .bat ต่างๆ
+    - เช็ค process ด้วยการสแกน command line (tasklist เช็คแค่ชื่อ python.exe ไม่พอ)
+    - เงียบ: ไม่ error ถ้าหา .py ไม่เจอ"""
     try:
         import os as _os
+        import sys as _sys
         import subprocess as _sp
-        # เช็ค process ก่อน: ถ้ามีแล้วไม่ต้องเปิดซ้ำ
+        _CREATE_NO_WINDOW = getattr(_sp, "CREATE_NO_WINDOW", 0x08000000)
+        # เช็ค process ด้วย wmic (ดู command line ของ python.exe มี swap_bot.py ไหม)
         try:
-            r = _sp.run(["tasklist", "/FI", "IMAGENAME eq swap_bot.exe", "/NH"],
-                        capture_output=True, text=True, timeout=10,
-                        creationflags=_sp.CREATE_NO_WINDOW if hasattr(_sp, "CREATE_NO_WINDOW") else 0)
-            if "swap_bot.exe" in (r.stdout or "").lower():
+            r = _sp.run(["wmic", "process", "where", "name='python.exe' or name='pythonw.exe'",
+                         "get", "CommandLine", "/FORMAT:LIST"],
+                        capture_output=True, text=True, timeout=15,
+                        creationflags=_CREATE_NO_WINDOW)
+            if "swap_bot.py" in (r.stdout or "").lower():
                 print("[SWAP_BOT] already running - ไม่เปิดซ้ำ")
                 return
         except Exception:
             pass
-        # หา exe: swap_bot/dist/swap_bot.exe ข้างๆ script
+        # หา swap_bot.py
         _script_dir = _os.path.dirname(_os.path.abspath(__file__))
         candidates = [
-            _os.path.join(_script_dir, "swap_bot", "dist", "swap_bot.exe"),
-            _os.path.join(_script_dir, "swap_bot", "swap_bot.exe"),
-            _os.path.join(_script_dir, "swap_bot.exe"),
+            _os.path.join(_script_dir, "swap_bot", "swap_bot.py"),
+            _os.path.join(_script_dir, "swap_bot.py"),
         ]
-        exe = next((p for p in candidates if _os.path.isfile(p)), None)
-        if not exe:
-            print("[SWAP_BOT] ไม่พบ swap_bot.exe (จะข้าม - rotator trigger เขียนทิ้งเฉยๆ)")
+        py = next((p for p in candidates if _os.path.isfile(p)), None)
+        if not py:
+            print("[SWAP_BOT] ไม่พบ swap_bot.py (จะข้าม - trigger เขียนทิ้งเฉยๆ)")
             return
-        print(f"[SWAP_BOT] launching: {exe}")
-        # DETACHED_PROCESS=0x00000008 | CREATE_NEW_PROCESS_GROUP=0x00000200
-        # ปล่อยลอย ไม่ให้ตายตามบอท
-        _sp.Popen([exe], cwd=_os.path.dirname(exe),
+        # ใช้ pythonw.exe (ถ้ามี) เพื่อซ่อน console - UI tkinter เปิดเองอยู่แล้ว
+        exe_dir = _os.path.dirname(_sys.executable)
+        pyw = _os.path.join(exe_dir, "pythonw.exe")
+        interp = pyw if _os.path.isfile(pyw) else _sys.executable
+        print(f"[SWAP_BOT] launching: {interp} {py}")
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP - ปล่อยลอยไม่ตายตามบอท
+        _sp.Popen([interp, py], cwd=_os.path.dirname(py),
                   creationflags=0x00000008 | 0x00000200,
                   close_fds=True, stdin=_sp.DEVNULL,
                   stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)

@@ -81,19 +81,19 @@ if !errorlevel! equ 1 (
 :launch_swap
 echo.
 echo =========================================
-echo       Launching swap_bot ^(VPN rotator^)
+echo       Launching swap_bot.py ^(VPN rotator^)
 echo =========================================
-set "SWAP_EXE=%~dp0swap_bot\dist\swap_bot.exe"
-if exist "!SWAP_EXE!" (
-    tasklist /FI "IMAGENAME eq swap_bot.exe" 2>nul | find /I "swap_bot.exe" >nul
+set "SWAP_PY=%~dp0swap_bot\swap_bot.py"
+if exist "!SWAP_PY!" (
+    wmic process where "name='python.exe' or name='pythonw.exe'" get CommandLine 2>nul | find /I "swap_bot.py" >nul
     if !errorlevel! equ 1 (
-        echo [*] starting swap_bot
-        start "" "!SWAP_EXE!"
+        echo [*] starting swap_bot.py
+        start "" /D "%~dp0swap_bot" pythonw "!SWAP_PY!"
     ) else (
         echo [OK] swap_bot already running
     )
 ) else (
-    echo [SKIP] !SWAP_EXE! not found
+    echo [SKIP] !SWAP_PY! not found
 )
 
 echo.
