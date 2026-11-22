@@ -3294,13 +3294,56 @@ class RangerGearBot(threading.Thread):
         # เดิม try ครอบ while True ไว้ทั้งก้อน = พังครั้งเดียว thread ตายถาวร
         # เครื่องนั้นเงียบไปเลยทั้งที่โปรแกรมยังเปิดอยู่ ตอนนี้แยกลูปออกมาแล้ว
         # supervise ให้กลับมาเดินต่อเองได้
+        crash_count = 0
         while getattr(self, "_running", True):
             try:
                 self._main_loop()
+                crash_count = 0   # loop จบเอง (เช่น คิวหมด) - reset
             except Exception as e:
-                print(f"[{self.device_id}] Thread Crash: {e} - restarting loop in 5s", flush=True)
+                crash_count += 1
+                print(f"[{self.device_id}] Thread Crash #{crash_count}: {e} - recover", flush=True)
                 traceback.print_exc()
-                sleep(5)
+                # recover: reconnect ADB + ตรวจสอบ device ก่อนเข้า loop ใหม่
+                # (เคสหลัง VPN swap: ADB/MuMu อาจค้าง thread ตาย ต้องปลุก device ก่อน)
+                try:
+                    self._adb_recover_device()
+                except Exception as rec_e:
+                    print(f"[{self.device_id}] ADB recover failed: {rec_e}", flush=True)
+                # exponential backoff ถ้า crash ซ้ำ ๆ (กัน loop พังตลอด)
+                delay = min(60, 5 * (2 ** min(crash_count - 1, 4)))   # 5, 10, 20, 40, 60, 60...
+                sleep(delay)
+
+    def _adb_recover_device(self):
+        """ปลุก ADB device ที่หลุด/offline (หลัง VPN swap / emulator sleep / timeout)
+        - adb disconnect + reconnect
+        - restart-server ถ้า device status 'offline'"""
+        dev = self.device_id
+        # ไม่ใช่ TCP device (emulator-xxxx) -> ไม่มีอะไรให้ reconnect
+        if ":" not in dev:
+            return
+        print(f"[{dev}] [RECOVER] adb reconnect...", flush=True)
+        try:
+            subprocess.run([adb_path, "disconnect", dev], capture_output=True, timeout=10)
+        except Exception:
+            pass
+        try:
+            r = subprocess.run([adb_path, "connect", dev], capture_output=True, text=True, timeout=10)
+            print(f"[{dev}] [RECOVER] {(r.stdout or '').strip()[:80]}", flush=True)
+        except Exception as e:
+            print(f"[{dev}] [RECOVER] connect error: {e}", flush=True)
+        # เช็ค device state - ถ้ายัง offline ลอง restart ADB server
+        try:
+            r = subprocess.run([adb_path, "-s", dev, "get-state"], capture_output=True, text=True, timeout=10)
+            state = (r.stdout or "").strip()
+            if state != "device":
+                print(f"[{dev}] [RECOVER] state={state} -> restart ADB server", flush=True)
+                subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=15)
+                sleep(2)
+                subprocess.run([adb_path, "start-server"], capture_output=True, timeout=15)
+                sleep(2)
+                subprocess.run([adb_path, "connect", dev], capture_output=True, timeout=10)
+        except Exception as e:
+            print(f"[{dev}] [RECOVER] state check error: {e}", flush=True)
 
     # โฟลเดอร์คิวที่ยอมหยิบไฟล์มาทำ = backup/ เท่านั้น (ตั้งทับได้ใน config "queue_folders"
     # แต่ค่าเริ่มต้นจงใจไม่แตะ input-id/ ที่ loginสะสมใช้ กันสองโปรแกรมแย่งไฟล์กัน)
