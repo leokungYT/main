@@ -156,6 +156,12 @@ robocopy "%SOURCE_FOLDER%" "%TARGET_FOLDER%" /E /IS /NJH /NJS /NP /R:2 /W:1
 set "RC=%ERRORLEVEL%"
 echo ============================================
 
+:: ── CRITICAL: GitHub zip กู้ไฟล์มาเป็น LF - cmd.exe parse ไม่ได้ bat จะเด้งปิด ──
+:: Convert .bat/.cmd ทุกไฟล์ใน target เป็น CRLF (byte-safe, รักษา UTF-8 Thai)
+echo [4b/5] convert .bat to CRLF line endings...
+powershell -NoProfile -Command "Get-ChildItem '%TARGET_FOLDER%' -Recurse -Include *.bat,*.cmd -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\\.git\\' } | ForEach-Object { try { $b = [System.IO.File]::ReadAllBytes($_.FullName); $needs = $false; for ($i=0; $i -lt [Math]::Min(500,$b.Length); $i++) { if ($b[$i] -eq 0x0A -and ($i -eq 0 -or $b[$i-1] -ne 0x0D)) { $needs = $true; break } }; if ($needs) { $out = New-Object System.Collections.Generic.List[byte]; for ($i=0; $i -lt $b.Length; $i++) { if ($b[$i] -eq 0x0A -and ($i -eq 0 -or $b[$i-1] -ne 0x0D)) { $out.Add(0x0D); $out.Add(0x0A) } else { $out.Add($b[$i]) } }; [System.IO.File]::WriteAllBytes($_.FullName, $out.ToArray()); Write-Host ('  CRLF: ' + $_.Name) } } catch {} }" 2>&1 | findstr /B /C:"  CRLF"
+echo ============================================
+
 :: 6. Cleanup
 echo [5/5] Cleaning up temporary files...
 del /q "%ZIP_NAME%"
