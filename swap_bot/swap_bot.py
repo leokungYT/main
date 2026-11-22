@@ -57,7 +57,7 @@ class VPNRotatorApp:
         frame_top.pack(fill=tk.X, padx=10)
 
         tk.Label(frame_top, text="Interval (วินาที):").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.interval_var = tk.IntVar(value=300)
+        self.interval_var = tk.IntVar(value=1800)
         tk.Entry(frame_top, textvariable=self.interval_var, width=10).grid(row=0, column=1, sticky=tk.W, pady=2)
 
         self.shuffle_var = tk.BooleanVar(value=True)
@@ -140,9 +140,16 @@ class VPNRotatorApp:
         if self.cli:
             self.log(f"พบ ExpressVPN CLI ที่: {self.cli}")
             self.fetch_locations()
+            self.log("[AUTO] จะเริ่ม rotator อัตโนมัติใน 3 วินาที...")
+            self.root.after(3000, self._auto_start_once)
         else:
             self.log("ไม่พบ expressvpnctl.exe กรุณาตรวจสอบว่าติดตั้ง ExpressVPN v12.69.0+ แล้ว")
             self.btn_start.config(state=tk.DISABLED)
+
+    def _auto_start_once(self):
+        if not self.is_running and self.locations:
+            self.log("[AUTO] เริ่ม rotator อัตโนมัติ")
+            self.start_rotator()
 
     def fetch_locations(self):
         self.log("กำลังดึงรายชื่อเซิร์ฟเวอร์...")
