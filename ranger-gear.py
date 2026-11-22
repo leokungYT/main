@@ -2677,6 +2677,44 @@ class RangerGearBot(threading.Thread):
         except Exception:
             return False
 
+    # cache: จอไหน clear WG ไปแล้วรอบนี้ - ไม่ต้องทำซ้ำทุกไฟล์ (รีสตาร์ท process ค่อยทำใหม่)
+    _WG_CLEARED_DEVICES = set()
+
+    def _force_kill_wg_on_emu(self):
+        """KILL_VPN mode: clear WireGuard บน emulator เด็ดขาด ครั้งเดียวต่อ process
+        - ฆ่าแอป WireGuard (force-stop)
+        - disable tunnel ทั้งหมด (set-tunnel-down ทุก tunnel)
+        - clear app data (ลบ tunnel config หมด)
+        - ใช้ตอน user ย้ายไป ExpressVPN บน Windows แทน -> ไม่ต้องมี VPN บน emulator"""
+        dev = self.device_id
+        if dev in self._WG_CLEARED_DEVICES:
+            return   # ทำครบแล้ว ไม่ต้องทำซ้ำ
+        try:
+            print(f"[{dev}] [WG-CLEAR] kill WireGuard + clear all tunnels (KILL_VPN mode)")
+            # 1) kill WG app
+            try:
+                self.adb_shell(f"su -c 'am force-stop {self.WG_PKG}'", timeout=10)
+                self.adb_shell(f"am force-stop {self.WG_PKG}", timeout=10)
+            except Exception:
+                pass
+            # 2) set all possible tunnels down (broadcast)
+            for tun in (self.WG_TUNNEL, "lgr", "default"):
+                try:
+                    self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
+                                   f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {tun}'",
+                                   timeout=10)
+                except Exception:
+                    pass
+            # 3) clear WG app data - ลบ tunnel config หมด (ต้อง login ใหม่ถ้ากลับมาใช้)
+            try:
+                self.adb_shell(f"pm clear {self.WG_PKG}", timeout=15)
+            except Exception:
+                pass
+            self._WG_CLEARED_DEVICES.add(dev)
+            print(f"[{dev}] [WG-CLEAR] done - ExpressVPN บน Windows จะคุม IP แทน")
+        except Exception as e:
+            print(f"[{dev}] [WG-CLEAR] error (non-fatal): {e}")
+
     def _wg_down(self):
         """ปิด VPN ของจอนี้ "สนิท" ก่อนส่งไฟล์/เปิดเกม ให้ออกเน็ตด้วย IP ปกติ
 
@@ -3224,7 +3262,11 @@ class RangerGearBot(threading.Thread):
     def open_app(self):
         """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
         self.last_activity_time = time.time()
-        if int(config.get("wg_after_login", 0) or 0):
+        # KILL_VPN mode: ปิด WireGuard app + ลบ tunnel config บน emulator ก่อน
+        # (บางจอ WG app เปิดค้าง popup ทับเกม + tunnel 'lgr' ยัง config ค้าง)
+        if _no_proxy_mode():
+            self._force_kill_wg_on_emu()
+        elif int(config.get("wg_after_login", 0) or 0):
             self._wg_down()          # wg_after_login: ส่งไฟล์+ล็อกอินด้วยเน็ตปกติ แล้วค่อยต่อ VPN หลังเข้าเกม
         else:
             self._wg_must_be_up()    # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น) - ไม่ขึ้นห้ามเปิดเกม

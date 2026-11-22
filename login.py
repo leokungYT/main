@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.2.6"
+BOT_VERSION = "5.2.7"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -5413,6 +5413,41 @@ class RangerGearBot(threading.Thread):
         except Exception:
             return False
 
+    # cache: จอไหน clear WG ไปแล้วรอบนี้ - ไม่ต้องทำซ้ำทุกไฟล์
+    _WG_CLEARED_DEVICES = set()
+
+    def _force_kill_wg_on_emu(self):
+        """KILL_VPN mode: clear WireGuard บน emulator เด็ดขาด ครั้งเดียวต่อ process
+        - ฆ่าแอป WireGuard (force-stop)
+        - disable tunnel ทั้งหมด
+        - clear app data (ลบ tunnel config หมด)
+        - ใช้ตอน user ย้ายไป ExpressVPN บน Windows แทน"""
+        dev = self.device_id
+        if dev in self._WG_CLEARED_DEVICES:
+            return
+        try:
+            print(f"[{dev}] [WG-CLEAR] kill WireGuard + clear all tunnels (KILL_VPN mode)")
+            try:
+                self.adb_shell(f"su -c 'am force-stop {self.WG_PKG}'", timeout=10)
+                self.adb_shell(f"am force-stop {self.WG_PKG}", timeout=10)
+            except Exception:
+                pass
+            for tun in (self.WG_TUNNEL, "lgr", "default"):
+                try:
+                    self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
+                                   f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {tun}'",
+                                   timeout=10)
+                except Exception:
+                    pass
+            try:
+                self.adb_shell(f"pm clear {self.WG_PKG}", timeout=15)
+            except Exception:
+                pass
+            self._WG_CLEARED_DEVICES.add(dev)
+            print(f"[{dev}] [WG-CLEAR] done - ExpressVPN บน Windows คุม IP แทน")
+        except Exception as e:
+            print(f"[{dev}] [WG-CLEAR] error (non-fatal): {e}")
+
     def _wg_down(self, force=False):
         """ปิด VPN ของจอนี้ "สนิท" ก่อนส่งไฟล์/เปิดเกม ให้ออกเน็ตด้วย IP ปกติ
 
@@ -6119,7 +6154,10 @@ class RangerGearBot(threading.Thread):
         # reused emulator from keeping a previous IP/proxy binding across files.
         # (proxy ฟรีถูกถอดออกแล้ว - เหลือแค่ล้างของที่ค้างในอีมูฯ)
         self._clear_proxy_for_device()
-        if int(config.get("wg_after_login", 0) or 0):
+        # KILL_VPN mode: ฆ่า WG app + ลบ tunnel ค้างบน emulator (ใช้ ExpressVPN บน Windows แทน)
+        if _no_proxy_mode():
+            self._force_kill_wg_on_emu()
+        elif int(config.get("wg_after_login", 0) or 0):
             self._wg_down()          # wg_after_login: ส่งไฟล์+ล็อกอินด้วยเน็ตปกติ แล้วค่อยต่อ VPN หลังเข้าเกม
         else:
             self._wg_must_be_up()    # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น) - ไม่ขึ้นห้ามเปิดเกม
