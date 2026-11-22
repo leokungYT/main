@@ -1,9 +1,7 @@
 @echo off
-rem FIX-ALL.bat - one-click maintenance: pull latest + restart swap_bot + flush DNS
-rem วางที่ main\ ของเครื่องลูก - dashboard สั่งรันทีเดียวจบทุกเครื่อง
-rem (ASCII-only text to survive dashboard transport across machines)
+rem FIX-ALL.bat - one-click maintenance (deployed to each remote via main repo)
+rem Runs by dashboard: stop swap_bot -> flush DNS -> autoupdate -> restart swap_bot + agent
 
-chcp 65001 >nul
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
@@ -11,8 +9,8 @@ echo ============================================================
 echo   FIX-ALL: latest code + fresh swap_bot + network reset
 echo ============================================================
 
-rem --- 1) stop swap_bot (keep ExpressVPN; its tunnel is the game IP) ---
-echo [1/5] stop swap_bot.py (keep ExpressVPN tunnel)...
+rem --- 1) stop swap_bot (keep ExpressVPN tunnel) ---
+echo [1/5] stop swap_bot.py...
 wmic process where "name='python.exe' or name='pythonw.exe'" get ProcessId,CommandLine 2>nul | find /I "swap_bot.py" >nul
 if !errorlevel! equ 0 (
     for /f "tokens=1" %%P in ('wmic process where "name='python.exe' or name='pythonw.exe'" get CommandLine^,ProcessId ^| findstr /I "swap_bot.py"') do (
@@ -37,7 +35,7 @@ if exist "autoupdate-lg.bat" (
     echo       [SKIP] autoupdate-lg.bat not found
 )
 
-rem --- 4) restart swap_bot.py (new version with persistent routes) ---
+rem --- 4) restart swap_bot.py ---
 echo [4/5] restart swap_bot.py...
 if exist "%~dp0swap_bot\swap_bot.py" (
     start "" /D "%~dp0swap_bot" pythonw "%~dp0swap_bot\swap_bot.py"
@@ -46,7 +44,7 @@ if exist "%~dp0swap_bot\swap_bot.py" (
     echo       [SKIP] swap_bot\swap_bot.py not found
 )
 
-rem --- 5) remote-file agent self-repair (if present) ---
+rem --- 5) restart agent.py if present ---
 echo [5/5] restart agent.py (if present)...
 if exist "%USERPROFILE%\Downloads\remote\remote-file\agent.py" (
     wmic process where "name='python.exe' or name='pythonw.exe'" get CommandLine 2>nul | find /I "agent.py" >nul
@@ -65,6 +63,6 @@ echo ============================================================
 echo   FIX-ALL done - wait 30s then check dashboard
 echo ============================================================
 
-rem เว็บจะอ่าน log line แรกเพื่อรายงานผล
+rem dashboard reads first line to report result
 > "%~dp0autoupdate-lg.log" echo OK fix-all finished %date% %time%
 exit /b 0

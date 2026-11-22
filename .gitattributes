@@ -1,0 +1,22 @@
+* text=auto
+
+# Windows batch files MUST use CRLF or cmd.exe silently exits
+# This includes .bat and .cmd regardless of OS git is checked out on
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell scripts work with either but CRLF is safer on Windows
+*.ps1 text eol=crlf
+
+# Python / config files: LF is standard
+*.py text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binary: don't touch
+*.exe binary
+*.dll binary
+*.png binary
+*.jpg binary
+*.zip binary
