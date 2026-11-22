@@ -5991,8 +5991,18 @@ class RangerGearBot(threading.Thread):
                     continue
             
             sleep(0.5)
-            if loop_count > 500:
-                print(f"[{self.device_id}] Login timeout after 500 iterations")
+            # ทุก 100 รอบที่ไม่มีการ match (= ค้างหน้า splash/LINE login) -> restart app ครั้งเดียว
+            # แล้วถ้ายังไม่ขึ้นค่อย timeout ที่ 300 รอบ (= ~2.5 นาที) แทนรอครบ 500 (~4 นาที)
+            if loop_count == 100 and not event_passed:
+                print(f"[{self.device_id}] [STUCK] 100 iter no progress - force relaunch app")
+                try:
+                    self.clear_and_restart()
+                    self.open_app()
+                    sleep(3)
+                except Exception as e:
+                    print(f"[{self.device_id}] [STUCK] relaunch failed: {e}")
+            if loop_count > 300:
+                print(f"[{self.device_id}] Login timeout after 300 iterations (~2.5 min)")
                 status = "timeout"
                 return status
         

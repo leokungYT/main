@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.0.5"
+BOT_VERSION = "5.0.6"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -3963,7 +3963,7 @@ def kill_host_vpn():
     _q(["powershell", "-NoProfile", "-Command",
         "Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }"], 60)
     _q(["ipconfig", "/flushdns"])
-    print("[NET] ปิด Surfshark + Cloudflare WARP + Radmin VPN บนเครื่องหลักแล้ว (ไม่แตะ Tailscale)")
+    # silenced: dead line noise - kill_host_vpn ยังทำงาน แค่ไม่ปริ้นว่าทำอะไร
 
 
 def warn_host_vpn():
@@ -3972,8 +3972,10 @@ def warn_host_vpn():
     try:
         r = subprocess.run(["tasklist"], capture_output=True, text=True, timeout=15,
                            **({'creationflags': 0x08000000} if os.name == 'nt' else {}))
-        names = {"warp-svc.exe": "Cloudflare WARP", "Surfshark.exe": "Surfshark", "tailscaled.exe": "Tailscale",
-                 "tailscale-ipn.exe": "Tailscale", "RvRvpnGui.exe": "Radmin VPN"}
+        # ExpressVPN + Tailscale เป็นของที่ user เปิดเจตนา (ExpressVPN = exit IP, Tailscale = Remote Desktop)
+        # เตือนเฉพาะตัวที่เราไม่ได้ใช้และแกว่งเน็ตอีมู (Surfshark/Radmin); WARP+Tailscale เงียบไป
+        names = {"warp-svc.exe": "Cloudflare WARP", "Surfshark.exe": "Surfshark",
+                 "RvRvpnGui.exe": "Radmin VPN"}
         on = sorted({v for k, v in names.items() if k.lower() in (r.stdout or "").lower()})
         if on:
             print(f"[WARN] VPN บนเครื่องหลักเปิดอยู่: {', '.join(on)} - ทำเน็ต/adb ของอีมูแกว่งได้ ถ้าไม่ได้ใช้ให้ปิดก่อนรันบอท")
