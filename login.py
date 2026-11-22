@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.1.1"
+BOT_VERSION = "5.1.2"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -476,15 +476,16 @@ def _ip_meter_mark(ip):
 
 
 def _ip_meter_gate():
-    """เรียกก่อน login ทุกครั้ง: ถ้าชน cap -> รอจนหลุด แล้ว mark login ครั้งนี้"""
+    """เรียกก่อน login ทุกครั้ง: ถ้าชน cap -> ยิง trigger ให้ swap_bot สลับ IP แล้วรอสั้นๆ"""
     if not _no_proxy_mode() and not int(globals().get("config", {}).get("ip_meter_force", 0) or 0):
         return
     ip = _current_public_ip()
     wait = _ip_meter_cap_wait(ip)
     if wait > 0:
         mins = wait / 60.0
-        print(f"[IP-METER] IP {ip} ชน cap - รอ {mins:.1f} นาทีให้หลุดหน้าต่าง")
-        _real_sleep(min(wait + 5, 3 * 3600))   # เพดาน 3 ชม. ต่อครั้ง ไม่ให้บอตค้างยาว
+        _signal_host_vpn_rotate(f"ip-meter-cap {ip} wait={int(wait)}s")
+        print(f"[IP-METER] IP {ip} ชน cap - signal swap_bot rotate + รอ {mins:.1f} นาที (หรือจน IP เปลี่ยน)")
+        _real_sleep(min(wait + 5, 90))   # รอสั้น เพื่อให้รอบหน้า gate เช็ค IP ใหม่
     _ip_meter_mark(ip)
 
 

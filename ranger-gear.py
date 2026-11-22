@@ -1133,6 +1133,21 @@ def _no_proxy_mode():
         return False
 
 
+def _signal_host_vpn_rotate(reason=""):
+    """เขียนไฟล์ trigger เพื่อให้ swap_bot.exe (host_wg_rotator) สลับ IP ทันที
+    - ใช้ตอน IP โดน cap / login fail / fixnet detect
+    - swap_bot เช็คทุก 5 วิ เจอไฟล์ -> rotate + ลบไฟล์ (มี cool-off 30s กันสลับรัว)
+    - เขียนเสมอ ไม่ต้องสน VPN mode ถ้าไม่มี rotator ก็เขียนทิ้งไม่มีผล"""
+    try:
+        import os as _os
+        _script_dir = _os.path.dirname(_os.path.abspath(__file__))
+        _trigger = _os.path.join(_script_dir, ".host_wg_trigger")
+        with open(_trigger, "w", encoding="utf-8") as f:
+            f.write(str(reason)[:200])
+    except Exception:
+        pass
+
+
 def _ip_meter_load():
     try:
         with open(_IP_METER_PATH, "r", encoding="utf-8") as f:
@@ -1196,15 +1211,19 @@ def _ip_meter_mark(ip):
 
 
 def _ip_meter_gate():
-    """เรียกก่อน login ทุกครั้ง: ถ้าชน cap -> รอจนหลุด แล้ว mark login ครั้งนี้"""
+    """เรียกก่อน login ทุกครั้ง: ถ้าชน cap -> ยิง trigger ให้ swap_bot สลับ IP แล้วรอหลุด"""
     if not _no_proxy_mode() and not int(globals().get("config", {}).get("ip_meter_force", 0) or 0):
         return
     ip = _current_public_ip()
     wait = _ip_meter_cap_wait(ip)
     if wait > 0:
         mins = wait / 60.0
-        print(f"[IP-METER] IP {ip} ชน cap - รอ {mins:.1f} นาทีให้หลุดหน้าต่าง")
-        _real_sleep(min(wait + 5, 3 * 3600))
+        # ยิง trigger ให้ swap_bot สลับ IP ทันที (ดีกว่ารอ 59 นาที)
+        _signal_host_vpn_rotate(f"ip-meter-cap {ip} wait={int(wait)}s")
+        print(f"[IP-METER] IP {ip} ชน cap - signal swap_bot rotate + รอ {mins:.1f} นาที (หรือจน IP เปลี่ยน)")
+        # รอสั้นลง: ให้โอกาส swap_bot สลับก่อน แล้วค่อยลองใหม่
+        # เดิมรอทั้ง window (= 59 นาที) ตอนนี้รอแค่ 90s แล้วออก - รอบหน้า gate จะเช็ค IP ใหม่
+        _real_sleep(min(wait + 5, 90))
     _ip_meter_mark(ip)
 
 
@@ -1901,6 +1920,7 @@ def check_critical_errors(bot, adb_img, context=""):
         fixnet_pos = ImgSearchADB(adb_img, 'img/fixnet1.png') or ImgSearchADB(adb_img, 'img/fixnet.png')
         if fixnet_pos:
             print(f"[{bot.device_id}] 📶 พบปัญหาการเชื่อมต่อ (fixnet1/fixnet) ใน {context} - กำลังกด OK...")
+            _signal_host_vpn_rotate(f"fixnet {bot.device_id} {context}")
             bot.tap(fixnet_pos[0][0], fixnet_pos[0][1])
             time.sleep(1)
         
@@ -5938,6 +5958,7 @@ class RangerGearBot(threading.Thread):
             # Failed
             if self.exists_in_cache("img/login-failed.png"):
                 print(f"[{self.device_id}] Login failed (login-failed.png detected)")
+                _signal_host_vpn_rotate(f"login-failed {self.device_id}")
                 self._wg_strike("login failed")
                 self._login_fixid_count = 0
                 return "failed"
@@ -6003,6 +6024,7 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [STUCK] relaunch failed: {e}")
             if loop_count > 300:
                 print(f"[{self.device_id}] Login timeout after 300 iterations (~2.5 min)")
+                _signal_host_vpn_rotate(f"login-timeout {self.device_id}")
                 status = "timeout"
                 return status
         
