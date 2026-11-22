@@ -712,8 +712,59 @@ class VPNRotatorApp:
         self.log("กำลังรอให้รอบปัจจุบันหยุดทำงาน...")
         self.btn_stop.config(state=tk.DISABLED)
 
+def kill_other_instances():
+    """ฆ่า swap_bot.py instance อื่นที่รันค้างอยู่ (ไม่รวมตัวเราเอง)
+    กัน:
+    - user กดเปิดซ้ำ -> ซ้อนกันหลายตัว
+    - login.py / ranger-gear.py launch ซ้ำตอน restart
+    - PyInstaller exe + .py รันพร้อมกัน
+    -> UI หลายตัว + rotate ชนกัน + ฆ่า VPN connection คนอื่น"""
+    try:
+        me = os.getpid()
+        my_name = os.path.basename(__file__).lower() if __file__ else "swap_bot.py"
+        r = subprocess.run(
+            ["wmic", "process", "where",
+             "name='python.exe' or name='pythonw.exe' or name='swap_bot.exe'",
+             "get", "ProcessId,CommandLine", "/FORMAT:LIST"],
+            capture_output=True, text=True, timeout=15,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        kills = []
+        current_cmd = ""
+        current_pid = 0
+        for line in (r.stdout or "").splitlines():
+            line = line.strip()
+            if line.startswith("CommandLine="):
+                current_cmd = line[12:]
+            elif line.startswith("ProcessId="):
+                try:
+                    current_pid = int(line[10:])
+                except ValueError:
+                    current_pid = 0
+                # รอ pair ครบแล้วค่อย decide
+                if current_pid and current_pid != me:
+                    low = current_cmd.lower()
+                    if "swap_bot" in low and my_name in low or "swap_bot.exe" in low:
+                        kills.append((current_pid, current_cmd[:80]))
+                current_cmd = ""
+                current_pid = 0
+        for pid, cmd in kills:
+            try:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                               capture_output=True, timeout=10,
+                               creationflags=subprocess.CREATE_NO_WINDOW)
+                print(f"[SINGLETON] killed old instance PID={pid}: {cmd}")
+            except Exception:
+                pass
+        if kills:
+            time.sleep(1)   # ให้ OS cleanup
+    except Exception as e:
+        print(f"[SINGLETON] check failed (non-fatal): {e}")
+
+
 def main():
     ensure_admin()
+    kill_other_instances()
     root = tk.Tk()
     app = VPNRotatorApp(root)
     def on_close():
