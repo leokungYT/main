@@ -528,18 +528,38 @@ class VPNRotatorApp:
             return random.choice(candidates)
         return random.choice(ranked[:top_n])
 
-    def connect_vpn(self, location, retries=2):
+    # keyword ที่บอกว่า "server นี้เต็ม/ใช้ไม่ได้" -> ให้สลับ server ใหม่ทันที
+    # แทนที่จะ retry server เดิม (เสียเวลา)
+    _CONNECT_LIMIT_HINTS = (
+        "connection limit", "too many", "max connections", "limit reached",
+        "server full", "capacity", "overload", "rate limit",
+        "could not connect", "unable to connect", "failed to connect",
+        "connection refused", "timed out", "timeout",
+    )
+
+    def connect_vpn(self, location, retries=4):
+        current = location
         for attempt in range(1, retries + 1):
             if not self.is_running: return False
-            self.log(f"กำลังเชื่อมต่อ -> {location} (ครั้งที่ {attempt})")
-            rc, out = self.run_cli(["connect", location], timeout=180)
+            self.log(f"กำลังเชื่อมต่อ -> {current} (ครั้งที่ {attempt})")
+            rc, out = self.run_cli(["connect", current], timeout=180)
             if rc == 0 and self.is_connected():
-                self.log(f"เชื่อมต่อสำเร็จ: {location}")
-                # รอ ExpressVPN ปรับ routing table เสร็จ (2s) แล้วค่อย re-add
-                # กัน ExpressVPN ลบ LAN/TS bypass routes ทันทีหลังเราเพิ่ม
+                self.log(f"เชื่อมต่อสำเร็จ: {current}")
                 time.sleep(2)
                 return True
-            self.log(f"เชื่อมต่อล้มเหลว: {out.strip()[:100]}...")
+            msg = (out or "").strip()
+            low = msg.lower()
+            # ตรวจว่าเป็น "connect limit" / "server full" ไหม - ถ้าใช่สลับ server ใหม่ทันที
+            is_limit = any(h in low for h in self._CONNECT_LIMIT_HINTS)
+            if is_limit and attempt < retries:
+                # เก็บ server นี้ไว้ว่ามีปัญหา -> pick_next_location จะหลีกเลี่ยง
+                self.server_stats[current] = 99999
+                new_loc = self.pick_next_location(current) or current
+                self.log(f"[LIMIT] {current} เต็ม/connect ไม่ได้ ({msg[:60]}) -> สลับ {new_loc} ทันที")
+                current = new_loc
+                time.sleep(1)   # หน่วงสั้นๆ แทน 3s ปกติ
+                continue
+            self.log(f"เชื่อมต่อล้มเหลว: {msg[:100]}...")
             time.sleep(3)
         return False
 
