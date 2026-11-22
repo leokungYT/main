@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.2.4"
+BOT_VERSION = "5.2.5"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -8220,6 +8220,56 @@ class RangerGearBot(threading.Thread):
             pass
 
     def run(self):
+        """Supervisor: ล้อม _run_once() ใน loop - crash กี่ครั้งก็กลับมาทำงานต่อ
+        เดิม try ครอบทั้งหมด -> crash 1 ครั้ง thread ตายถาวร เครื่องนั้นเงียบไป"""
+        crash_count = 0
+        while getattr(self, "_running", True):
+            try:
+                self._run_once()
+                crash_count = 0   # จบปกติ (คิวหมด / app missing) - ไม่ restart
+                return
+            except Exception as e:
+                crash_count += 1
+                print(f"[{self.device_id}] Thread Crash #{crash_count}: {e} - recover", flush=True)
+                try:
+                    traceback.print_exc()
+                except Exception:
+                    pass
+                try:
+                    self._adb_recover_device()
+                except Exception as rec_e:
+                    print(f"[{self.device_id}] ADB recover failed: {rec_e}", flush=True)
+                delay = min(60, 5 * (2 ** min(crash_count - 1, 4)))
+                sleep(delay)
+
+    def _adb_recover_device(self):
+        """ปลุก ADB device ที่หลุด (หลัง VPN swap / emulator sleep)"""
+        dev = self.device_id
+        if ":" not in dev:
+            return
+        print(f"[{dev}] [RECOVER] adb reconnect...", flush=True)
+        try:
+            subprocess.run([adb_path, "disconnect", dev], capture_output=True, timeout=10)
+        except Exception:
+            pass
+        try:
+            r = subprocess.run([adb_path, "connect", dev], capture_output=True, text=True, timeout=10)
+            print(f"[{dev}] [RECOVER] {(r.stdout or '').strip()[:80]}", flush=True)
+        except Exception:
+            pass
+        try:
+            r = subprocess.run([adb_path, "-s", dev, "get-state"], capture_output=True, text=True, timeout=10)
+            if (r.stdout or "").strip() != "device":
+                print(f"[{dev}] [RECOVER] device offline -> restart ADB server", flush=True)
+                subprocess.run([adb_path, "kill-server"], capture_output=True, timeout=15)
+                sleep(2)
+                subprocess.run([adb_path, "start-server"], capture_output=True, timeout=15)
+                sleep(2)
+                subprocess.run([adb_path, "connect", dev], capture_output=True, timeout=10)
+        except Exception:
+            pass
+
+    def _run_once(self):
         try:
             print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
             self._signal_ready()   # พร้อมแล้ว -> ปล่อยเครื่องถัดไปได้เลย
@@ -8434,12 +8484,13 @@ class RangerGearBot(threading.Thread):
                     self._release_file_lock(xml_file)
                     sleep(5)
         except RestartTimeoutError:
-            # ตาข่ายชั้นสุดท้าย - ไม่ควรมาถึงตรงนี้ แต่ถ้ามาก็อย่าให้บอทตายเงียบ
-            print(f"[{self.device_id}] Thread หลุดด้วย 500s Timeout - เริ่ม thread ใหม่", flush=True)
-            sleep(5)
-            return self.run()
+            # ตาข่ายชั้นสุดท้าย - ไม่ควรมาถึงตรงนี้ แต่ถ้ามา -> raise ให้ supervisor restart
+            print(f"[{self.device_id}] Thread หลุดด้วย 500s Timeout - supervisor จะ restart", flush=True)
+            raise
         except Exception as e:
-            print(f"[{self.device_id}] Thread Crash: {e}", flush=True)
+            # ให้ supervisor run() catch เพื่อ ADB recover + restart loop
+            print(f"[{self.device_id}] Thread Crash: {e} (supervisor จะกู้คืน)", flush=True)
+            raise
 
     def _get_lock_path(self, xml_file):
         """Get lock file path in temp directory (ไม่รก backup folder)"""
