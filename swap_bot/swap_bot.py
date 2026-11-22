@@ -69,6 +69,9 @@ class VPNRotatorApp:
         self.protect_rdp_var = tk.BooleanVar(value=True)
         tk.Checkbutton(frame_top, text="ป้องกัน RDP หลุด (bypass VPN สำหรับ Remote Desktop)", variable=self.protect_rdp_var).grid(row=3, column=0, columnspan=3, sticky=tk.W)
 
+        self.bypass_lan_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(frame_top, text="Bypass LAN + Tailscale (ให้ Agent/UI 192.168.x + 100.x เข้าถึงได้)", variable=self.bypass_lan_var).grid(row=6, column=0, columnspan=3, sticky=tk.W)
+
         self.prefer_low_load_var = tk.BooleanVar(value=True)
         tk.Checkbutton(frame_top, text="เลือกเซิร์ฟเวอร์ที่คนน้อยก่อน (ping ต่ำ = โหลดเบา)", variable=self.prefer_low_load_var).grid(row=4, column=0, columnspan=3, sticky=tk.W)
 
@@ -284,6 +287,81 @@ class VPNRotatorApp:
         out = (r.stdout + r.stderr).strip()
         return r.returncode == 0 and "fail" not in out.lower(), out
 
+    def _add_subnet_route(self, net, mask, gw, ifidx):
+        """เพิ่ม route /subnet (ไม่ใช่ /32) - สำหรับ LAN/Tailscale ทั้ง range"""
+        subprocess.run(["route", "delete", net, "mask", mask],
+                       capture_output=True, text=True, timeout=10,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+        cmd = ["route", "add", net, "mask", mask, gw, "metric", "1"]
+        if ifidx:
+            cmd += ["IF", str(ifidx)]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        out = (r.stdout + r.stderr).strip()
+        return r.returncode == 0 and "fail" not in out.lower(), out
+
+    def _get_tailscale_iface(self):
+        """หา Tailscale interface index + gateway (ตัวมันเอง เพราะ TS เป็น virtual)"""
+        ps = (
+            "Get-NetAdapter | Where-Object { $_.InterfaceDescription -match 'Tailscale' -and $_.Status -eq 'Up' } | "
+            "Select-Object -First 1 | ForEach-Object { "
+            "  $ip = (Get-NetIPAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress; "
+            "  \"$ip|$($_.ifIndex)\" }"
+        )
+        try:
+            r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                               capture_output=True, text=True, timeout=10,
+                               creationflags=subprocess.CREATE_NO_WINDOW)
+            s = r.stdout.strip()
+            if "|" in s:
+                ip, ifidx = s.split("|", 1)
+                ip, ifidx = ip.strip(), ifidx.strip()
+                if ip and ifidx.isdigit():
+                    return ip, int(ifidx)
+        except Exception as e:
+            self.log(f"หา Tailscale iface ไม่ได้: {e}")
+        return None, None
+
+    def add_lan_tailscale_bypass(self):
+        """bypass LAN subnets + Tailscale CGNAT - ไม่ให้ ExpressVPN ดูด
+        เรียกตอน start + หลังสลับทุกครั้ง (VPN ชอบลบ route ทิ้ง)"""
+        if not self._cached_gw:
+            gw, ifidx = self.get_physical_gateway()
+            if not gw:
+                self.log("[LAN-BYPASS] หา gateway จริงไม่เจอ — ข้าม")
+                return
+            self._cached_gw, self._cached_if = gw, ifidx
+
+        lan = [
+            ("192.168.0.0", "255.255.0.0"),   # home LAN
+            ("10.0.0.0",    "255.0.0.0"),     # corp/private
+            ("172.16.0.0",  "255.240.0.0"),   # Docker/private
+        ]
+        for net, mask in lan:
+            ok, out = self._add_subnet_route(net, mask, self._cached_gw, self._cached_if)
+            if ok:
+                self.log(f"[LAN-BYPASS] {net}/{mask} -> {self._cached_gw} IF={self._cached_if}")
+
+        ts_ip, ts_if = self._get_tailscale_iface()
+        if ts_ip and ts_if:
+            ok, out = self._add_subnet_route("100.64.0.0", "255.192.0.0", ts_ip, ts_if)
+            if ok:
+                self.log(f"[TS-BYPASS] 100.64.0.0/10 -> Tailscale IF={ts_if} ({ts_ip})")
+        else:
+            self.log("[TS-BYPASS] ไม่พบ Tailscale adapter (ข้าม)")
+
+    def remove_lan_tailscale_bypass(self):
+        for net, mask in [("192.168.0.0", "255.255.0.0"),
+                          ("10.0.0.0", "255.0.0.0"),
+                          ("172.16.0.0", "255.240.0.0"),
+                          ("100.64.0.0", "255.192.0.0")]:
+            try:
+                subprocess.run(["route", "delete", net, "mask", mask],
+                               capture_output=True, text=True, timeout=10,
+                               creationflags=subprocess.CREATE_NO_WINDOW)
+            except Exception:
+                pass
+
     def add_rdp_bypass_routes(self):
         """เพิ่ม host route /32 + firewall allow rule ให้ RDP client ไม่หลุด"""
         targets = set(self.get_rdp_client_ips())
@@ -430,6 +508,8 @@ class VPNRotatorApp:
                 last = loc
                 if self.protect_rdp_var.get():
                     self.ensure_bypass_routes()
+                if self.bypass_lan_var.get():
+                    self.add_lan_tailscale_bypass()
                 if self.prefer_low_load_var.get():
                     ms = self.measure_latency()
                     if ms is not None:
@@ -471,6 +551,7 @@ class VPNRotatorApp:
             self.log("กำลังยกเลิกการเชื่อมต่อ VPN...")
             self.run_cli(["disconnect"])
         self.remove_rdp_bypass_routes()
+        self.remove_lan_tailscale_bypass()
         self.log("หยุดการทำงานเรียบร้อย")
         
         self.btn_start.config(state=tk.NORMAL)
@@ -491,6 +572,12 @@ class VPNRotatorApp:
             # ปิด Network Lock ก่อน (ถ้าเปิดไว้จะบล็อก RDP ตอนสลับ)
             self.disable_network_lock()
             self.add_rdp_bypass_routes()
+
+        if self.bypass_lan_var.get():
+            if not self._cached_gw:
+                gw, ifidx = self.get_physical_gateway()
+                self._cached_gw, self._cached_if = gw, ifidx
+            self.add_lan_tailscale_bypass()
 
         threading.Thread(target=self.rotation_loop, daemon=True).start()
 
