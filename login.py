@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.3.0"
+BOT_VERSION = "5.3.1"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -4884,6 +4884,45 @@ def check_hero_images(bot, adb_img):
     except: return False
 
 
+def wait_checkhero_with_event_fallback(bot, timeout_per_round=30, max_rounds=5):
+    """รอ checkhero1.png - ถ้าไม่เจอครบ 30 วิ -> ลองกด event1.png (or event.png)
+    1 รอบ แล้วรอใหม่. วนสูงสุด max_rounds รอบ. คืน True ถ้าเจอ checkhero1.png
+
+    user request: ถ้าไปหา checkhero1.png แล้วไม่เจอครบ 30 วิ ให้ลองกด
+    event1.png (หน้า popup event อาจทับอยู่) 1 ครั้ง แล้วหาใหม่"""
+    for round_idx in range(max_rounds):
+        t0 = time.time()
+        while time.time() - t0 < timeout_per_round:
+            try:
+                bot.capture_screen()
+                pos = ImgSearchADB(bot._screen_color, "img/checkhero1.png")
+                if pos:
+                    print(f"[{bot.device_id}] [CHECKHERO] พบ checkhero1.png (รอบ {round_idx+1})")
+                    return True
+            except Exception:
+                pass
+            sleep(1)
+        # 30s ผ่านไป - ลองกด event1.png (fallback: event.png)
+        clicked = False
+        for ev_img in ("img/event1.png", "img/event.png"):
+            try:
+                bot.capture_screen()
+                pos_ev = ImgSearchADB(bot._screen_color, ev_img)
+                if pos_ev:
+                    bot.tap(pos_ev[0], pos_ev[1])
+                    print(f"[{bot.device_id}] [CHECKHERO] ไม่เจอ checkhero1 ใน {timeout_per_round}s "
+                          f"-> กด {ev_img} 1 ครั้ง แล้วหาต่อ (รอบ {round_idx+1}/{max_rounds})")
+                    clicked = True
+                    sleep(2)   # รอ animation popup หาย
+                    break
+            except Exception:
+                pass
+        if not clicked:
+            print(f"[{bot.device_id}] [CHECKHERO] ไม่เจอทั้ง checkhero1 และ event - รอบ {round_idx+1}/{max_rounds}")
+    print(f"[{bot.device_id}] [CHECKHERO] ยอมแพ้หลัง {max_rounds} รอบ (~{timeout_per_round*max_rounds}s)")
+    return False
+
+
 # =============================================================
 # Hero_low - ตัวรอง เจอแล้วไม่จบงาน แค่จดชื่อไว้ใส่ในชื่อไฟล์
 # =============================================================
@@ -7258,7 +7297,8 @@ class RangerGearBot(threading.Thread):
                     self.tap(pos4[0], pos4[1])
                     sleep(0.3)
             
-            # Hero event scan
+            # Hero event scan - รอ checkhero1.png ก่อน (fallback กด event1.png ถ้าไม่เจอ 30s)
+            wait_checkhero_with_event_fallback(self, timeout_per_round=30, max_rounds=5)
             if check_hero_images(self, self._screen_color):
                 self.backup_game_data()
 

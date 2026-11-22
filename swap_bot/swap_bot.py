@@ -57,7 +57,7 @@ class VPNRotatorApp:
         frame_top.pack(fill=tk.X, padx=10)
 
         tk.Label(frame_top, text="Interval (วินาที):").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.interval_var = tk.IntVar(value=1800)
+        self.interval_var = tk.IntVar(value=800)
         tk.Entry(frame_top, textvariable=self.interval_var, width=10).grid(row=0, column=1, sticky=tk.W, pady=2)
 
         self.shuffle_var = tk.BooleanVar(value=True)
