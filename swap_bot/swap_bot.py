@@ -322,8 +322,63 @@ class VPNRotatorApp:
             self.log(f"หา Tailscale iface ไม่ได้: {e}")
         return None, None
 
+    def _find_agent_server_ips(self):
+        """สแกน config.json ของ remote-file agent + hosts ที่ตั้งเอง
+        คืน [(ip, hostname)] ที่ต้อง bypass - server ที่ agent เชื่อมอยู่ต้องถึงได้ตลอด
+        ไม่งั้นพอ VPN สลับ IP -> agent socketio หลุด -> dashboard เห็น disconnected"""
+        import json as _json
+        import socket as _socket
+        import re as _re
+        out_ips = []
+        seen = set()
+        here = os.path.dirname(os.path.abspath(sys.argv[0] if getattr(sys, "frozen", False) else __file__))
+        # ที่อยู่ที่น่าจะเจอ agent config.json
+        candidates = [
+            os.path.join(here, "..", "..", "..", "remote", "remote-file", "config.json"),
+            os.path.join(here, "..", "..", "remote", "remote-file", "config.json"),
+            os.path.join(os.path.expanduser("~"), "Downloads", "remote", "remote-file", "config.json"),
+            os.path.join(os.path.expanduser("~"), "Downloads", "remote-chan", "remote-file", "remote-file", "config.json"),
+            os.path.join(os.path.expanduser("~"), "Desktop", "remote-file", "config.json"),
+            # ที่ swap_bot จะอ่าน custom เพิ่ม
+            os.path.join(here, "bypass_hosts.txt"),
+            os.path.join(os.path.dirname(here), "bypass_hosts.txt"),
+        ]
+        urls = []
+        for p in candidates:
+            p = os.path.abspath(p)
+            if not os.path.isfile(p):
+                continue
+            try:
+                if p.endswith(".txt"):
+                    for line in open(p, encoding="utf-8"):
+                        s = line.strip()
+                        if s and not s.startswith("#"):
+                            urls.append(s)
+                else:
+                    cfg = _json.load(open(p, encoding="utf-8"))
+                    for u in (cfg.get("server_urls") or []):
+                        urls.append(u)
+                    if cfg.get("server_url"):
+                        urls.append(cfg["server_url"])
+            except Exception as e:
+                self.log(f"[AUTO-BYPASS] อ่าน {p} ไม่ได้: {e}")
+        # extract host จาก URL แล้ว resolve เป็น IP
+        for u in urls:
+            host = _re.sub(r"^\w+://", "", u.strip()).split("/")[0].split(":")[0]
+            if not host or host in ("localhost", "127.0.0.1", "0.0.0.0"):
+                continue
+            try:
+                ip = _socket.gethostbyname(host)
+                key = (ip, host)
+                if key not in seen:
+                    seen.add(key)
+                    out_ips.append(key)
+            except Exception:
+                pass
+        return out_ips
+
     def add_lan_tailscale_bypass(self):
-        """bypass LAN subnets + Tailscale CGNAT - ไม่ให้ ExpressVPN ดูด
+        """bypass LAN subnets + Tailscale CGNAT + agent server URL - ไม่ให้ ExpressVPN ดูด
         เรียกตอน start + หลังสลับทุกครั้ง (VPN ชอบลบ route ทิ้ง)"""
         if not self._cached_gw:
             gw, ifidx = self.get_physical_gateway()
@@ -349,6 +404,15 @@ class VPNRotatorApp:
                 self.log(f"[TS-BYPASS] 100.64.0.0/10 -> Tailscale IF={ts_if} ({ts_ip})")
         else:
             self.log("[TS-BYPASS] ไม่พบ Tailscale adapter (ข้าม)")
+
+        # ── bypass agent server URLs (กัน agent หลุดตอนสลับ IP) ──
+        for ip, host in self._find_agent_server_ips():
+            # LAN/Tailscale ครอบคลุมส่วนใหญ่แล้ว แต่ public IP ของ server ต้อง /32 เพิ่ม
+            if ip.startswith(("192.168.", "10.", "100.", "172.1", "172.2", "172.3")):
+                continue   # อยู่ใน subnet LAN/TS bypass แล้ว
+            ok, out = self._add_single_route(ip, self._cached_gw, self._cached_if)
+            if ok:
+                self.log(f"[SERVER-BYPASS] {host} ({ip}) -> {self._cached_gw}")
 
     def remove_lan_tailscale_bypass(self):
         for net, mask in [("192.168.0.0", "255.255.0.0"),
