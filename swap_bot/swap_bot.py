@@ -587,8 +587,10 @@ class VPNRotatorApp:
                 self.log("ข้ามไปเซิร์ฟเวอร์ถัดไป")
 
             # รอครบ interval หรือเจอ trigger file (จาก login.py: login-failed/fixnet/IP-blocked)
-            # - trigger -> ลบไฟล์ -> rotate ทันที (cool-off 30 วิ ไม่ให้สลับรัว)
-            MIN_COOLOFF = 30
+            # - trigger -> ลบไฟล์ -> rotate ทันที (cool-off 180 วิ กัน agent socket หลุดถี่)
+            # เดิม 30s แต่ agents ต้องการเวลา reconnect ~60-90s หลัง VPN swap
+            # ถ้า rotate ถี่กว่า reconnect window -> agents หลุดถาวร
+            MIN_COOLOFF = 180
             waited = 0
             trigger_fired = False
             while waited < interval and self.is_running:
