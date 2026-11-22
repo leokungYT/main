@@ -4,7 +4,7 @@ setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
 echo ============================================================
-echo   INSTALL-EXPRESSVPN - one-click installer + login helper
+echo   INSTALL-EXPRESSVPN - browser-assisted install
 echo ============================================================
 echo.
 
@@ -25,42 +25,39 @@ if not "!EVPN_EXE!"=="" (
     goto launch_and_login
 )
 
-rem --- 2) download installer ---
-echo [1/4] Downloading ExpressVPN installer...
-set "INSTALLER=%TEMP%\expressvpn_installer.exe"
-set "URL=https://www.expressvpn.com/clients/latest/windows"
-
-powershell -NoProfile -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '%URL%' -OutFile '%INSTALLER%' -UseBasicParsing -MaximumRedirection 10; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
-if errorlevel 1 (
-    echo [!] Download failed - get installer manually from:
-    echo     %URL%
-    pause
-    exit /b 1
-)
-echo       downloaded: %INSTALLER%
+rem --- 2) open download page in default browser (user signs in and gets installer) ---
+echo [1/3] Opening ExpressVPN download page in your browser...
+echo       - Sign in with your account (creds below)
+echo       - Click "Download for Windows"
+echo       - Run the downloaded installer (default settings, click Next)
+echo       - Come BACK here when install is complete
 echo.
 
-rem --- 3) silent install (ExpressVPN NSIS installer supports /S) ---
-echo [2/4] Installing silently... ^(takes 30-60 seconds^)
-echo       Click UAC Yes if prompted
-"%INSTALLER%" /S
-if errorlevel 1 (
-    echo [!] Silent install failed - try interactive
-    start "" "%INSTALLER%"
-    echo [*] Press Enter here AFTER install completes
-    pause >nul
+if exist evpn_creds.txt (
+    echo ============================================================
+    echo [SIGN-IN CREDENTIALS]
+    echo ============================================================
+    type evpn_creds.txt
+    echo ============================================================
+    echo.
 )
 
-rem --- 4) wait for install to finish, find exe ---
-echo [3/4] Waiting for ExpressVPN to appear...
-for /l %%i in (1,1,60) do (
+start "" "https://www.expressvpn.com/latest#windows"
+echo.
+echo       Press Enter here AFTER you installed ExpressVPN...
+pause >nul
+
+rem --- 3) wait for exe to appear ---
+echo [2/3] Checking for ExpressVPN.exe...
+for /l %%i in (1,1,30) do (
     if exist "!P1!" set "EVPN_EXE=!P1!" & goto found_exe
     if exist "!P2!" set "EVPN_EXE=!P2!" & goto found_exe
     if exist "!P3!" set "EVPN_EXE=!P3!" & goto found_exe
     if exist "!P4!" set "EVPN_EXE=!P4!" & goto found_exe
     timeout /t 2 /nobreak >nul
 )
-echo [!] ExpressVPN.exe not found after 2 min - install may have failed
+echo [!] ExpressVPN.exe not found in any known path
+echo     Check if install really finished then re-run this script
 pause
 exit /b 1
 
@@ -69,7 +66,7 @@ echo       found: !EVPN_EXE!
 echo.
 
 :launch_and_login
-echo [4/4] Launching ExpressVPN + loading credentials...
+echo [3/3] Launching ExpressVPN + loading credentials into clipboard...
 
 rem read email/password from local file
 set "EMAIL="
@@ -81,37 +78,40 @@ if exist evpn_creds.txt (
     )
 )
 
-rem launch ExpressVPN (new or existing window)
+rem launch ExpressVPN if not already running
 tasklist /FI "IMAGENAME eq ExpressVPN.exe" 2>nul | find /I "ExpressVPN.exe" >nul
 if !errorlevel! equ 1 start "" "!EVPN_EXE!"
 
 echo.
 echo ============================================================
-echo [DONE] ExpressVPN launched - sign-in window should open
+echo [STEP 1 of 2] EMAIL in clipboard
 echo ============================================================
-echo.
 if not "!EMAIL!"=="" (
-    rem copy email to clipboard for first step
     echo !EMAIL!| clip
-    echo [CLIPBOARD] EMAIL copied to clipboard: !EMAIL!
-    echo   -^> Click the email field in ExpressVPN, press Ctrl+V
+    echo   email: !EMAIL!
+    echo   -^> In ExpressVPN: click email field, Ctrl+V
     echo.
+    echo Press Enter AFTER pasting email...
     pause >nul
-    echo !PASSWORD!| clip
-    echo [CLIPBOARD] PASSWORD copied to clipboard
-    echo   -^> Click the password field, Ctrl+V, click "Sign In"
+
     echo.
-    echo Press any key after you clicked "Sign In"...
+    echo ============================================================
+    echo [STEP 2 of 2] PASSWORD in clipboard
+    echo ============================================================
+    echo !PASSWORD!| clip
+    echo   -^> In ExpressVPN: click password field, Ctrl+V, click "Sign In"
+    echo.
+    echo Press Enter AFTER you clicked Sign In...
     pause >nul
 ) else (
-    echo [!] evpn_creds.txt not found - enter credentials manually
+    echo [!] evpn_creds.txt not found - sign in manually
     pause
 )
 
 echo.
 echo ============================================================
-echo [ALL DONE] next time: just double-click loginสะสม.bat
-echo              it will auto-launch ExpressVPN + swap_bot + bot
+echo [DONE] next: double-click loginสะสม.bat
+echo              auto-launches ExpressVPN + swap_bot + python login.py
 echo ============================================================
 echo.
 pause
