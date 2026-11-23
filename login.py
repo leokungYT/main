@@ -5713,7 +5713,14 @@ class RangerGearBot(threading.Thread):
         strikes[cur] = strikes.get(cur, 0) + 1
         lim = int(config.get("wg_failover_after", 2))
         print(f"[{self.device_id}] [WG] เข้าเกมไม่ได้ ({reason}) บน {os.path.basename(cur)} - ครั้งที่ {strikes[cur]}/{lim}")
-        self._block_evidence(reason, cur)
+        ev = self._block_evidence(reason, cur)
+        ev_code = ev[1] if isinstance(ev, tuple) else "000"
+        # IP ban ยืนยัน (403/429/451) -> ไม่ต้องรอ strike ครบ สลับทันที
+        if ev_code in ("403", "429", "451"):
+            print(f"[{self.device_id}] [WG] IP ถูกแบน (code {ev_code}) - บังคับ failover ทันที")
+            self._wg_down()
+            self._wg_failover(cur, confirmed=True)
+            return True
         if strikes[cur] >= lim:
             self._wg_down()
             self._wg_failover(cur)
@@ -5762,9 +5769,11 @@ class RangerGearBot(threading.Thread):
 
     def _block_evidence(self, reason, conf=None):
         """เก็บหลักฐานตอนเข้าเกมไม่ได้ -> logs/block_log.csv + รูปจอ logs/block/ (ใช้หาว่าโดน block เพราะอะไร)
-        api = HTTP code จากเซิร์ฟเวอร์เกมผ่านเน็ตของจอนี้: 401 = IP ใช้ได้ปกติ / 403,429,000 = IP โดน block หรือเน็ตไม่ออก"""
+        api = HTTP code จากเซิร์ฟเวอร์เกมผ่านเน็ตของจอนี้: 401 = IP ใช้ได้ปกติ / 403,429,000 = IP โดน block หรือเน็ตไม่ออก
+        ถ้า code = 403/429/451 -> ยืนยันว่า IP โดน ban จริง -> บังคับ failover + จดลง banned_ips.txt"""
         if not int(config.get("block_log", 1) or 0):
-            return
+            return "-", "000"
+        ip, code = "-", "000"
         try:
             ip, code = self._net_probe()
             ts = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -5781,8 +5790,26 @@ class RangerGearBot(threading.Thread):
                     f.write("time,device,reason,server,exit_ip,api_code,screenshot" + chr(10))
                 f.write(f"{ts},{self.device_id},{reason},{_wg_endpoint(conf) if conf else '-'},{ip},{code},{shot}" + chr(10))
             print(f"[{self.device_id}] [BLOCK] {reason} | IP {ip} | game api {code} | {shot}")
+
+            # IP banned confirmation: 403/429/451 = เซิร์ฟเวอร์เกมปฏิเสธ IP นี้ตรงๆ
+            if code in ("403", "429", "451") and conf:
+                try:
+                    bad_file = os.path.join("logs", "banned_ips.txt")
+                    endpoint = _wg_endpoint(conf) if conf else "-"
+                    rec = f"{ts}\t{os.path.basename(conf)}\t{endpoint}\t{ip}\t{code}\n"
+                    exists = False
+                    if os.path.exists(bad_file):
+                        with open(bad_file, "r", encoding="utf-8") as bf:
+                            exists = os.path.basename(conf) in bf.read()
+                    if not exists:
+                        with open(bad_file, "a", encoding="utf-8") as bf:
+                            bf.write(rec)
+                    print(f"[{self.device_id}] [BAN] IP {ip} โดนเกมแบนจริง (code {code}) - ขึ้น banned_ips.txt + บังคับ failover")
+                except Exception:
+                    pass
         except Exception as e:
             print(f"[{self.device_id}] [BLOCK] เก็บหลักฐานไม่ได้: {e}")
+        return ip, code
 
     def _wg_ok(self):
         """ล็อกอินผ่านบนเซิร์ฟเวอร์นี้ -> ล้างตัวนับ (นับเฉพาะครั้งที่ล้มติดกัน) + ยึด IP ไว้ถาวร"""
@@ -6142,27 +6169,78 @@ class RangerGearBot(threading.Thread):
 
     def _resolve_game_activity(self):
         """หา launcher activity จริงของเกมจากเครื่อง (ชื่อเปลี่ยนตามเวอร์ชันเกม) แล้ว cache ไว้
-        - เดิม hardcode com.linecorp.common.activity.LineActivity ซึ่งเกมเวอร์ชันใหม่เปลี่ยนเป็น .LineRangersAdr แล้ว
-        - ถามจากเครื่องตรงๆ จะได้ไม่พังอีกเวลาเกมเปลี่ยนชื่อ activity"""
+        - เดิม hardcode .LineRangersAdr ซึ่งบางเวอร์ชัน/บาง emu ไม่มี -> Activity class does not exist
+        - ถาม pm/dumpsys หลายทาง + verify ด้วย pm dump ก่อน cache"""
         cached = getattr(self, "_game_activity", None)
         if cached:
             return cached
+
+        pkg = "com.linecorp.LGRGS"
+        candidates = []
+
+        # 1) cmd package resolve-activity --brief
         try:
             r = self.adb_run([
                 self.adb_cmd, "-s", self.device_id, "shell",
-                "cmd", "package", "resolve-activity", "--brief", "com.linecorp.LGRGS"
+                "cmd", "package", "resolve-activity", "--brief", pkg
             ], timeout=8)
             out = (r.stdout or b"").decode("utf-8", "ignore")
             for line in out.splitlines():
                 line = line.strip()
-                if line.startswith("com.linecorp.LGRGS/"):
-                    self._game_activity = line
-                    print(f"[{self.device_id}] [APP] Launcher activity: {line}")
-                    return line
+                if line.startswith(pkg + "/"):
+                    candidates.append(line)
         except Exception:
             pass
-        # fallback: ชื่อ activity ของเกมเวอร์ชันปัจจุบัน
-        self._game_activity = "com.linecorp.LGRGS/.LineRangersAdr"
+
+        # 2) dumpsys package -> android.intent.action.MAIN filters
+        if not candidates:
+            try:
+                r = self.adb_run([
+                    self.adb_cmd, "-s", self.device_id, "shell",
+                    "dumpsys", "package", pkg
+                ], timeout=10)
+                out = (r.stdout or b"").decode("utf-8", "ignore")
+                in_main = False
+                for raw in out.splitlines():
+                    s = raw.strip()
+                    if "android.intent.action.MAIN" in s:
+                        in_main = True
+                        continue
+                    if in_main and s.startswith(pkg + "/"):
+                        act = s.split()[0]
+                        if act not in candidates:
+                            candidates.append(act)
+                        in_main = False
+            except Exception:
+                pass
+
+        # 3) known fallbacks (เผื่อ dumpsys ตอบช้า/พัง)
+        for fb in (f"{pkg}/.LineRangersAdr",
+                   f"{pkg}/.LineRangers",
+                   f"{pkg}/com.linecorp.common.activity.LineActivity"):
+            if fb not in candidates:
+                candidates.append(fb)
+
+        # verify ด้วย pm dump: activity ต้องโผล่ใน output จริง ถึงจะใช้ได้
+        try:
+            r = self.adb_run([
+                self.adb_cmd, "-s", self.device_id, "shell",
+                "pm", "dump", pkg
+            ], timeout=10)
+            dump = (r.stdout or b"").decode("utf-8", "ignore")
+        except Exception:
+            dump = ""
+
+        for cand in candidates:
+            short = cand.split("/", 1)[1]
+            full = short if short.startswith(".") is False else pkg + short
+            if (short and short in dump) or (full and full in dump) or not dump:
+                self._game_activity = cand
+                print(f"[{self.device_id}] [APP] Launcher activity: {cand}")
+                return cand
+
+        self._game_activity = candidates[0]
+        print(f"[{self.device_id}] [APP] Launcher activity (unverified): {self._game_activity}")
         return self._game_activity
 
     def _check_device_identity(self):
