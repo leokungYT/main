@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import subprocess
 import os
-# à¸—à¸³à¸‡à¸²à¸™à¹ƒà¸™à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸‚à¸­à¸‡à¹„à¸Ÿà¸¥à¹Œà¸™à¸µà¹‰à¹€à¸ªà¸¡à¸­ - à¹€à¸›à¸´à¸”à¸ˆà¸²à¸à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸­à¸·à¹ˆà¸™ (à¹€à¸Šà¹ˆà¸™ VS Code à¸—à¸µà¹ˆà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¹à¸¡à¹ˆ) à¹à¸¥à¹‰à¸§à¸«à¸² img/... à¹„à¸¡à¹ˆà¹€à¸ˆà¸­
+# ทำงานในโฟลเดอร์ของไฟล์นี้เสมอ - เปิดจากโฟลเดอร์อื่น (เช่น VS Code ที่โฟลเดอร์แม่) แล้วหา img/... ไม่เจอ
 try:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 except Exception:
@@ -12,7 +12,7 @@ import hashlib
 import time
 from time import sleep
 import sys
-# à¸šà¸±à¸‡à¸„à¸±à¸š stdout/stderr à¹€à¸›à¹‡à¸™ UTF-8 à¸šà¸™ Windows - à¹à¸à¹‰ 'charmap' codec can't encode à¹€à¸§à¸¥à¸² print à¸ à¸²à¸©à¸²à¹„à¸—à¸¢
+# บังคับ stdout/stderr เป็น UTF-8 บน Windows - แก้ 'charmap' codec can't encode เวลา print ภาษาไทย
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -76,28 +76,28 @@ class SimpleUIStats:
         self.update_interval = 30
         self.device_statuses = {}
         self.hero_counts = {}
-        # Counter à¸ªà¸³à¸«à¸£à¸±à¸š hero found/not-found
+        # Counter สำหรับ hero found/not-found
         self.success_count = 0 # Matches bot success_count
         self.fail_count = 0    # Matches bot fail_count
         # hero found list with counts
         self.hero_found_list = {}  # {hero_combo: count} e.g. {'Yor': 1, 'Yor+Anya': 2}
-        # --- Disk sync throttling (à¸à¸±à¸™ UI à¸„à¹‰à¸²à¸‡à¸•à¸­à¸™à¸£à¸±à¸™à¸«à¸¥à¸²à¸¢à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™) ---
+        # --- Disk sync throttling (กัน UI ค้างตอนรันหลายเครื่องพร้อมกัน) ---
         self._last_save = 0.0
-        self._save_interval = 2.0   # à¹€à¸‚à¸µà¸¢à¸™ shared_stats.json à¸­à¸¢à¹ˆà¸²à¸‡à¸¡à¸²à¸à¸—à¸¸à¸ 2 à¸§à¸´
+        self._save_interval = 2.0   # เขียน shared_stats.json อย่างมากทุก 2 วิ
         self._last_load = 0.0
-        self._load_interval = 1.0   # à¸­à¹ˆà¸²à¸™ shared_stats.json à¸­à¸¢à¹ˆà¸²à¸‡à¸¡à¸²à¸à¸—à¸¸à¸ 1 à¸§à¸´
+        self._load_interval = 1.0   # อ่าน shared_stats.json อย่างมากทุก 1 วิ
         self._dirty = False
 
     def _get_shared_file(self):
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared_stats.json")
 
     def save_shared(self, force=False):
-        """Save stats to shared file (debounced + disk I/O à¸™à¸­à¸ lock à¸à¸±à¸™ UI à¸„à¹‰à¸²à¸‡)"""
+        """Save stats to shared file (debounced + disk I/O นอก lock กัน UI ค้าง)"""
         now = time.time()
-        # snapshot à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸•à¹‰ lock à¸­à¸¢à¹ˆà¸²à¸‡à¹€à¸£à¹‡à¸§ à¹à¸¥à¹‰à¸§à¸„à¹ˆà¸­à¸¢à¹€à¸‚à¸µà¸¢à¸™à¸”à¸´à¸ªà¸à¹Œà¸‚à¹‰à¸²à¸‡à¸™à¸­à¸
+        # snapshot ข้อมูลใต้ lock อย่างเร็ว แล้วค่อยเขียนดิสก์ข้างนอก
         with self.lock:
             if not force and (now - self._last_save) < self._save_interval:
-                self._dirty = True   # à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸–à¸¶à¸‡à¹€à¸§à¸¥à¸²à¹€à¸‚à¸µà¸¢à¸™ à¸„à¹ˆà¸­à¸¢à¹€à¸‚à¸µà¸¢à¸™à¸£à¸­à¸šà¸–à¸±à¸”à¹„à¸›
+                self._dirty = True   # ยังไม่ถึงเวลาเขียน ค่อยเขียนรอบถัดไป
                 return
             self._last_save = now
             self._dirty = False
@@ -108,10 +108,10 @@ class SimpleUIStats:
                 "device_statuses": dict(self.device_statuses),
                 "last_update": now
             }
-        # ---- disk I/O à¸­à¸¢à¸¹à¹ˆà¸™à¸­à¸ lock: à¹„à¸¡à¹ˆà¸šà¸¥à¹‡à¸­à¸ worker à¸­à¸·à¹ˆà¸™/GUI ----
+        # ---- disk I/O อยู่นอก lock: ไม่บล็อก worker อื่น/GUI ----
         try:
             path = self._get_shared_file()
-            tmp_path = f"{path}.{os.getpid()}.tmp"  # tmp à¹à¸¢à¸à¸•à¹ˆà¸­ process à¸à¸±à¸™à¸Šà¸™à¸à¸±à¸™
+            tmp_path = f"{path}.{os.getpid()}.tmp"  # tmp แยกต่อ process กันชนกัน
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             for _ in range(5):
@@ -127,7 +127,7 @@ class SimpleUIStats:
             print(f"[DEBUG] save_shared error: {e}")
 
     def load_shared(self, force=False):
-        """Load stats from shared file (throttled + parse à¸™à¸­à¸ lock à¸à¸±à¸™ UI à¸„à¹‰à¸²à¸‡)"""
+        """Load stats from shared file (throttled + parse นอก lock กัน UI ค้าง)"""
         now = time.time()
         with self.lock:
             if not force and (now - self._last_load) < self._load_interval:
@@ -139,7 +139,7 @@ class SimpleUIStats:
             return
 
         data = None
-        for _ in range(3):  # à¸­à¹ˆà¸²à¸™à¸”à¸´à¸ªà¸à¹Œà¸™à¸­à¸ lock
+        for _ in range(3):  # อ่านดิสก์นอก lock
             try:
                 with open(shared_file, "r", encoding="utf-8") as f:
                     content = f.read()
@@ -152,7 +152,7 @@ class SimpleUIStats:
         if data is None:
             return
 
-        with self.lock:  # merge à¹ƒà¸•à¹‰ lock (à¹€à¸£à¹‡à¸§ à¹„à¸¡à¹ˆà¸¡à¸µ disk I/O)
+        with self.lock:  # merge ใต้ lock (เร็ว ไม่มี disk I/O)
             self.success_count = max(self.success_count, data.get("success_count", 0))
             self.fail_count = max(self.fail_count, data.get("fail_count", 0))
             for h, count in data.get("hero_found_list", {}).items():
@@ -204,7 +204,7 @@ if GUI_AVAILABLE:
     class CollabConfigWindow(ctk.CTkToplevel):
         def __init__(self, parent):
             super().__init__(parent)
-            self.title("âš™ Config Settings")
+            self.title("⚙ Config Settings")
             self.geometry("350x660")
             self.resizable(False, False)
             self.transient(parent)
@@ -223,8 +223,8 @@ if GUI_AVAILABLE:
             self.add_switch("OCR Scans Debug (Images)", "debug_ocr")
             self.add_switch("Skip Kaiby Shop (3s)", "kaibyskip")
             self.add_switch("Force Kaiby Check (Proceed)", "kaibycheck")
-            self.add_switch("âš¡ Minitouch (à¸à¸”à¹€à¸£à¹‡à¸§)", "minitouch")
-            self.add_switch("ðŸ§  à¸ˆà¸³à¸•à¸³à¹à¸«à¸™à¹ˆà¸‡à¸›à¸¸à¹ˆà¸¡ (Pos Cache)", "pos_cache")
+            self.add_switch("⚡ Minitouch (กดเร็ว)", "minitouch")
+            self.add_switch("🧠 จำตำแหน่งปุ่ม (Pos Cache)", "pos_cache")
 
             # Thread delay entry
             delay_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -236,14 +236,14 @@ if GUI_AVAILABLE:
 
             scan_frame = ctk.CTkFrame(self, fg_color="transparent")
             scan_frame.pack(fill="x", padx=20, pady=5)
-            ctk.CTkLabel(scan_frame, text="à¸ªà¹à¸à¸™ error à¸—à¸¸à¸à¸à¸µà¹ˆà¸§à¸´ (0=à¸—à¸¸à¸à¹€à¸Ÿà¸£à¸¡):").pack(side="left")
+            ctk.CTkLabel(scan_frame, text="ตรวจหา error ทุกกี่วินาที (0=ทุกเฟรม):").pack(side="left")
             self.ent_scan = ctk.CTkEntry(scan_frame, width=60)
             self.ent_scan.insert(0, str(config.get("scan_interval", 1.0)))
             self.ent_scan.pack(side="right")
 
             loop_frame = ctk.CTkFrame(self, fg_color="transparent")
             loop_frame.pack(fill="x", padx=20, pady=5)
-            ctk.CTkLabel(loop_frame, text="à¸«à¸™à¹ˆà¸§à¸‡à¸¥à¸¹à¸›à¸«à¸²à¸›à¸¸à¹ˆà¸¡ (à¸§à¹ˆà¸²à¸‡=à¸„à¹ˆà¸²à¹€à¸”à¸´à¸¡):").pack(side="left")
+            ctk.CTkLabel(loop_frame, text="หน่วงการค้นหาปุ่ม (เว้นว่าง=ใช้ค่าเดิม):").pack(side="left")
             self.ent_loop = ctk.CTkEntry(loop_frame, width=60)
             if config.get("loop_delay") is not None:
                 self.ent_loop.insert(0, str(config.get("loop_delay")))
@@ -251,12 +251,12 @@ if GUI_AVAILABLE:
 
             stagger_frame = ctk.CTkFrame(self, fg_color="transparent")
             stagger_frame.pack(fill="x", padx=20, pady=5)
-            ctk.CTkLabel(stagger_frame, text="à¹€à¸£à¸´à¹ˆà¸¡à¸—à¸µà¸¥à¸°à¸ˆà¸­ à¸«à¸™à¹ˆà¸§à¸‡à¸à¸µà¹ˆà¸§à¸´ (à¸à¸±à¸™à¹€à¸™à¹‡à¸•à¸”à¸¶à¸‡):").pack(side="left")
+            ctk.CTkLabel(stagger_frame, text="หน่วงก่อนเริ่มจอถัดไปกี่วินาที (ลดการใช้งานเน็ตพร้อมกัน):").pack(side="left")
             self.ent_stagger = ctk.CTkEntry(stagger_frame, width=60)
             self.ent_stagger.insert(0, str(config.get("start_stagger", 5.0)))
             self.ent_stagger.pack(side="right")
 
-            ctk.CTkButton(self, text="ðŸ’¾ Save Changes", command=self.save_config, fg_color="#2cc985", hover_color="#229f69", height=32).pack(pady=20)
+            ctk.CTkButton(self, text="💾 Save Changes", command=self.save_config, fg_color="#2cc985", hover_color="#229f69", height=32).pack(pady=20)
             
         def add_switch(self, label, key):
             var = tk.IntVar(value=config.get(key, 0))
@@ -279,7 +279,7 @@ if GUI_AVAILABLE:
             except:
                 pass
 
-            # blank = à¹„à¸¡à¹ˆ override à¸›à¸¥à¹ˆà¸­à¸¢à¹ƒà¸«à¹‰à¹à¸•à¹ˆà¸¥à¸°à¸¥à¸¹à¸›à¹ƒà¸Šà¹‰à¸„à¹ˆà¸²à¹€à¸”à¸´à¸¡à¸‚à¸­à¸‡à¸¡à¸±à¸™
+            # blank = ไม่ override ปล่อยให้แต่ละลูปใช้ค่าเดิมของมัน
             loop_txt = self.ent_loop.get().strip()
             if not loop_txt:
                 config["loop_delay"] = None
@@ -306,7 +306,7 @@ if GUI_AVAILABLE:
     class HeroFoldersWindow(ctk.CTkToplevel):
         def __init__(self, parent):
             super().__init__(parent)
-            self.title("ðŸ¦¸ Hero Folders")
+            self.title("🦸 Hero Folders")
             self.geometry("320x400")
             self.parent = parent
             self.resizable(False, False)
@@ -324,7 +324,7 @@ if GUI_AVAILABLE:
             base_dir = os.path.join(os.getcwd(), "backup-id")
             if os.path.exists(base_dir):
                 for folder in os.listdir(base_dir):
-                    btn = ctk.CTkButton(self.scroll_frame, text=f"ðŸ“ {folder}", fg_color="#2a3a5c", height=28, anchor="w",
+                    btn = ctk.CTkButton(self.scroll_frame, text=f"📁 {folder}", fg_color="#2a3a5c", height=28, anchor="w",
                                         command=lambda f=folder: subprocess.Popen(f'explorer "{os.path.join(base_dir, f)}"'))
                     btn.pack(fill="x", pady=1)
 
@@ -344,7 +344,7 @@ if GUI_AVAILABLE:
             self.lbl_status = ctk.CTkLabel(self, text="Ready", font=ctk.CTkFont(size=10, weight="bold"), text_color="#4caf50", width=60)
             self.lbl_status.pack(side="right", padx=6)
             
-            ctk.CTkButton(self, text="â†º", width=22, height=20, font=ctk.CTkFont(size=11, weight="bold"), fg_color="#e53935").pack(side="right", padx=2)
+            ctk.CTkButton(self, text="↺", width=22, height=20, font=ctk.CTkFont(size=11, weight="bold"), fg_color="#e53935").pack(side="right", padx=2)
 
         def update_state(self, status=None, **kwargs):
             if status:
@@ -391,8 +391,8 @@ if GUI_AVAILABLE:
             self.setup_ui()
             
             # Setup console redirect to GUI log
-            # à¸„à¸£à¸­à¸š sys.stdout "à¸•à¸±à¸§à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™" (DeviceLogTee) à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆ sys.__stdout__
-            # à¹„à¸¡à¹ˆà¸‡à¸±à¹‰à¸™à¸•à¸±à¸§à¹€à¸à¹‡à¸š log à¸£à¸²à¸¢ device à¸ˆà¸°à¹‚à¸”à¸™à¸–à¸­à¸”à¸­à¸­à¸à¸—à¸±à¸™à¸—à¸µà¸—à¸µà¹ˆ GUI à¹€à¸›à¸´à¸”
+            # ครอบ sys.stdout "ตัวปัจจุบัน" (DeviceLogTee) ไม่ใช่ sys.__stdout__
+            # ไม่งั้นตัวเก็บ log ราย device จะโดนถอดออกทันทีที่ GUI เปิด
             self._log_queue = queue.Queue()
             sys.stdout = ConsoleRedirector(sys.stdout, self._log_queue)
             
@@ -413,10 +413,10 @@ if GUI_AVAILABLE:
                 self.lbl_auto_start.configure(text="[ DASHBOARD MODE ]", text_color="#ffae42")
             else:
                 self.lbl_auto_start.configure(text="[ WAITING FOR START ]", text_color="#aaaaaa")
-                # auto_start à¹ƒà¸™ config = 1 -> à¸à¸” START à¹ƒà¸«à¹‰à¹€à¸­à¸‡à¸«à¸¥à¸±à¸‡ GUI à¸‚à¸¶à¹‰à¸™ 2 à¸§à¸´
-                # (à¸•à¸±à¹‰à¸‡à¹ƒà¸™ ranger-gear_config.json, à¸„à¹ˆà¸²à¹€à¸£à¸´à¹ˆà¸¡à¸•à¹‰à¸™ 0 = à¸£à¸­à¸à¸”à¹€à¸­à¸‡)
+                # auto_start ใน config = 1 -> กด START ให้เองหลัง GUI ขึ้น 2 วิ
+                # (ตั้งใน ranger-gear_config.json, ค่าเริ่มต้น 0 = รอกดเอง)
                 if config.get("auto_start", 0):
-                    print("[GUI] auto_start=1 - à¸ˆà¸°à¹€à¸£à¸´à¹ˆà¸¡à¸šà¸­à¸—à¸­à¸±à¸•à¹‚à¸™à¸¡à¸±à¸•à¸´à¹ƒà¸™ 2 à¸§à¸´à¸™à¸²à¸—à¸µ")
+                    print("[GUI] auto_start=1 - จะเริ่มบอทอัตโนมัติใน 2 วินาที")
                     self.lbl_auto_start.configure(text="[ AUTO-START IN 2s ]", text_color="#ff9800")
                     self.after(2000, self.start_bot)
 
@@ -428,7 +428,7 @@ if GUI_AVAILABLE:
         def _bg_stats_counter_loop(self):
             while True:
                 try:
-                    # à¸™à¸±à¸šà¸—à¸¸à¸à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸„à¸´à¸§ + à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸¢à¹ˆà¸­à¸¢ à¹ƒà¸«à¹‰à¸•à¸£à¸‡à¸à¸±à¸šà¸—à¸µà¹ˆ _get_next_available_file() à¸«à¸¢à¸´à¸šà¹„à¸”à¹‰à¸ˆà¸£à¸´à¸‡
+                    # นับทุกโฟลเดอร์คิว + โฟลเดอร์ย่อย ให้ตรงกับที่ _get_next_available_file() หยิบได้จริง
                     qsize = 0
                     for source_folder in queue_folder_paths():
                         if not os.path.exists(source_folder):
@@ -446,10 +446,10 @@ if GUI_AVAILABLE:
             toolbar.pack(fill="x")
             toolbar.pack_propagate(False)
             
-            self.lbl_status = ctk.CTkLabel(toolbar, text=f"   â— ONLINE ({len(self.devices)})", font=ctk.CTkFont(size=12, weight="bold"), text_color="#4caf50")
+            self.lbl_status = ctk.CTkLabel(toolbar, text=f"   ● ONLINE ({len(self.devices)})", font=ctk.CTkFont(size=12, weight="bold"), text_color="#4caf50")
             self.lbl_status.pack(side="left", padx=5)
 
-            self.btn_start = ctk.CTkButton(toolbar, text="â–¶ START", font=ctk.CTkFont(size=12, weight="bold"), width=80, height=24, fg_color="#e53935", hover_color="#c62828", command=self.start_bot)
+            self.btn_start = ctk.CTkButton(toolbar, text="▶ START", font=ctk.CTkFont(size=12, weight="bold"), width=80, height=24, fg_color="#e53935", hover_color="#c62828", command=self.start_bot)
             self.btn_start.pack(side="left", padx=10)
             
             self.lbl_auto_start = ctk.CTkLabel(toolbar, text="[ WAITING FOR START ]", font=ctk.CTkFont(size=10, weight="bold"), text_color="#aaaaaa")
@@ -459,13 +459,13 @@ if GUI_AVAILABLE:
             counter_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
             counter_frame.pack(side="right", padx=8)
             
-            self.lbl_succ_count = ctk.CTkLabel(counter_frame, text="âœ… 0", font=ctk.CTkFont(size=12, weight="bold"), text_color="#4caf50")
+            self.lbl_succ_count = ctk.CTkLabel(counter_frame, text="✅ 0", font=ctk.CTkFont(size=12, weight="bold"), text_color="#4caf50")
             self.lbl_succ_count.pack(side="right", padx=6)
             
-            self.lbl_fail_count = ctk.CTkLabel(counter_frame, text="âŒ 0", font=ctk.CTkFont(size=12, weight="bold"), text_color="#ff5555")
+            self.lbl_fail_count = ctk.CTkLabel(counter_frame, text="❌ 0", font=ctk.CTkFont(size=12, weight="bold"), text_color="#ff5555")
             self.lbl_fail_count.pack(side="right", padx=6)
             
-            self.lbl_file_count = ctk.CTkLabel(counter_frame, text="ðŸ“ 0", font=ctk.CTkFont(size=12, weight="bold"), text_color="#aaaaaa")
+            self.lbl_file_count = ctk.CTkLabel(counter_frame, text="📁 0", font=ctk.CTkFont(size=12, weight="bold"), text_color="#aaaaaa")
             self.lbl_file_count.pack(side="right", padx=6)
             
             # 2. MAIN CONTENT
@@ -500,14 +500,14 @@ if GUI_AVAILABLE:
             
             title_row = ctk.CTkFrame(hero_header, fg_color="transparent", height=28)
             title_row.pack(fill="x")
-            ctk.CTkLabel(title_row, text="   ðŸ† HEROES FOUND", font=ctk.CTkFont(size=11, weight="bold"), text_color="#f2c94c", anchor="w").pack(side="left")
+            ctk.CTkLabel(title_row, text="   🏆 HEROES FOUND", font=ctk.CTkFont(size=11, weight="bold"), text_color="#f2c94c", anchor="w").pack(side="left")
             self.lbl_filter_count = ctk.CTkLabel(title_row, text="Filtered: 0", font=ctk.CTkFont(size=10), text_color="#aaaaaa")
             self.lbl_filter_count.pack(side="right", padx=10)
             
             # Filter Entry
             filter_frame = ctk.CTkFrame(hero_header, fg_color="transparent", height=24)
             filter_frame.pack(fill="x", padx=5, pady=2)
-            self.ent_filter = ctk.CTkEntry(filter_frame, placeholder_text="ðŸ” Search heroes or gear (e.g. lapel)...", font=ctk.CTkFont(size=11), height=22, fg_color="#1e1e1e", border_width=1)
+            self.ent_filter = ctk.CTkEntry(filter_frame, placeholder_text="🔍 Search heroes or gear (e.g. lapel)...", font=ctk.CTkFont(size=11), height=22, fg_color="#1e1e1e", border_width=1)
             self.ent_filter.pack(fill="x", expand=True)
             self.ent_filter.bind("<KeyRelease>", lambda e: self.on_filter_changed())
             
@@ -528,13 +528,13 @@ if GUI_AVAILABLE:
             bottom_bar.pack(fill="x")
             
             base_path = os.path.dirname(os.path.abspath(__file__))
-            backup_folder = queue_folder_paths()[0]   # à¸›à¸¸à¹ˆà¸¡ Backup à¹€à¸›à¸´à¸”à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸„à¸´à¸§
+            backup_folder = queue_folder_paths()[0]   # ปุ่ม Backup เปิดโฟลเดอร์คิว
             heroes_folder = os.path.join(base_path, "backup-id")
             
-            ctk.CTkButton(bottom_bar, text="ðŸ”Œ Connect Missing", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#4caf50", command=self.connect_missing_devices).pack(side="left", padx=3, pady=4)
-            ctk.CTkButton(bottom_bar, text="âš™ Config", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=self.open_config).pack(side="left", padx=3, pady=4)
-            ctk.CTkButton(bottom_bar, text="ðŸ“ Backup", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{backup_folder}"')).pack(side="left", padx=3, pady=4)
-            ctk.CTkButton(bottom_bar, text="ðŸ¦¸ Heroes", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{heroes_folder}"')).pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="🔌 Connect Missing", width=85, height=22, font=ctk.CTkFont(size=10), fg_color="#4caf50", command=self.connect_missing_devices).pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="⚙ Config", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=self.open_config).pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="📁 Backup", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{backup_folder}"')).pack(side="left", padx=3, pady=4)
+            ctk.CTkButton(bottom_bar, text="🦸 Heroes", width=70, height=22, font=ctk.CTkFont(size=10), fg_color="#555555", command=lambda: subprocess.Popen(f'explorer "{heroes_folder}"')).pack(side="left", padx=3, pady=4)
             ctk.CTkLabel(bottom_bar, text="v3.2.0", font=ctk.CTkFont(size=10), text_color="#888888").pack(side="right", padx=8)
 
         def connect_missing_devices(self):
@@ -564,7 +564,7 @@ if GUI_AVAILABLE:
                     self.log("SUCCESS", f"Connected new device: {dev}")
             
             if new_count > 0:
-                self.lbl_status.configure(text=f"   â— ONLINE ({len(self.devices)})")
+                self.lbl_status.configure(text=f"   ● ONLINE ({len(self.devices)})")
             else:
                 self.log("INFO", "No new devices found.")
 
@@ -597,43 +597,43 @@ if GUI_AVAILABLE:
             bot._ready_q = getattr(self, "_ready_q", None)
             bot.start()
             self.bot_threads.append(bot)
-            self.log("INFO", f"ðŸš€ Started bot on {device_id}")
+            self.log("INFO", f"🚀 Started bot on {device_id}")
 
         def _ramp_tick(self):
-            """à¸›à¸¥à¹ˆà¸­à¸¢à¸šà¸­à¸—à¸•à¸±à¸§à¸–à¸±à¸”à¹„à¸›à¸—à¸±à¸™à¸—à¸µà¸—à¸µà¹ˆà¸•à¸±à¸§à¸à¹ˆà¸­à¸™à¸«à¸™à¹‰à¸²à¸žà¸£à¹‰à¸­à¸¡ - à¹„à¸¡à¹ˆà¸™à¸­à¸™à¸£à¸­à¹€à¸§à¸¥à¸²à¹€à¸›à¸¥à¹ˆà¸² à¹†
+            """ปล่อยบอทตัวถัดไปทันทีที่ตัวก่อนหน้าพร้อม - ไม่นอนรอเวลาเปล่า ๆ
 
-            à¹€à¸”à¸´à¸¡à¸ˆà¸­à¸‡à¹€à¸§à¸¥à¸²à¹„à¸§à¹‰à¸¥à¹ˆà¸§à¸‡à¸«à¸™à¹‰à¸²à¸•à¸²à¸¢à¸•à¸±à¸§ (i // batch * delay) à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸—à¸µà¹ˆà¸žà¸£à¹‰à¸­à¸¡à¹€à¸£à¹‡à¸§
-            à¸à¹‡à¸¢à¸±à¸‡à¸•à¹‰à¸­à¸‡à¸£à¸­à¸ˆà¸™à¸„à¸£à¸šà¹€à¸§à¸¥à¸²à¸­à¸¢à¸¹à¹ˆà¸”à¸µ à¸•à¸­à¸™à¸™à¸µà¹‰ delay à¹€à¸«à¸¥à¸·à¸­à¹€à¸›à¹‡à¸™à¹à¸„à¹ˆà¹€à¸žà¸”à¸²à¸™à¸à¸±à¸™à¸„à¹‰à¸²à¸‡
+            เดิมจองเวลาไว้ล่วงหน้าตายตัว (i // batch * delay) เครื่องที่พร้อมเร็ว
+            ก็ยังต้องรอจนครบเวลาอยู่ดี ตอนนี้ delay เหลือเป็นแค่เพดานกันค้าง
             """
-            # 1) à¹€à¸à¹‡à¸šà¸ªà¸±à¸à¸à¸²à¸“ "à¸žà¸£à¹‰à¸­à¸¡à¹à¸¥à¹‰à¸§" à¸—à¸µà¹ˆà¸šà¸­à¸—à¸ªà¹ˆà¸‡à¸à¸¥à¸±à¸šà¸¡à¸²
+            # 1) เก็บสัญญาณ "พร้อมแล้ว" ที่บอทส่งกลับมา
             while True:
                 try:
                     dev = self._ready_q.get_nowait()
                 except Exception:
                     break
                 if self._starting.pop(dev, None) is not None:
-                    self.log("SUCCESS", f"âœ“ {dev} à¸žà¸£à¹‰à¸­à¸¡ (à¹€à¸«à¸¥à¸·à¸­à¸£à¸­à¸„à¸´à¸§ {len(self._pending)})")
-            # 2) à¸•à¸±à¸§à¸—à¸µà¹ˆà¹€à¸‡à¸µà¸¢à¸šà¹€à¸à¸´à¸™à¹€à¸žà¸”à¸²à¸™ à¹„à¸¡à¹ˆà¸£à¸­à¹à¸¥à¹‰à¸§ (emulator à¸„à¹‰à¸²à¸‡/à¸¢à¸±à¸‡à¸šà¸¹à¸•à¹„à¸¡à¹ˆà¹€à¸ªà¸£à¹‡à¸ˆ)
+                    self.log("SUCCESS", f"✓ {dev} พร้อม (เหลือรอคิว {len(self._pending)})")
+            # 2) ตัวที่เงียบเกินเพดาน ไม่รอแล้ว (emulator ค้าง/ยังบูตไม่เสร็จ)
             now = time.time()
             for dev, t0 in list(self._starting.items()):
                 if now - t0 > self._start_timeout:
                     self._starting.pop(dev, None)
-                    self.log("WARN", f"{dev} à¹„à¸¡à¹ˆà¸•à¸­à¸šà¹ƒà¸™ {self._start_timeout:.0f}s - à¸›à¸¥à¹ˆà¸­à¸¢à¸•à¸±à¸§à¸–à¸±à¸”à¹„à¸›à¹€à¸¥à¸¢")
-            # 3) à¸›à¸¥à¹ˆà¸­à¸¢à¸•à¸±à¸§à¸–à¸±à¸”à¹„à¸›: à¸•à¹‰à¸­à¸‡à¸¡à¸µà¸ªà¸¥à¹‡à¸­à¸•à¸§à¹ˆà¸²à¸‡ + à¸œà¹ˆà¸²à¸™à¹€à¸§à¸¥à¸²à¸«à¸™à¹ˆà¸§à¸‡à¸‚à¸±à¹‰à¸™à¸•à¹ˆà¸³ (à¸à¸±à¸™à¸«à¸¥à¸²à¸¢à¸ˆà¸­à¸¢à¸´à¸‡à¹€à¸™à¹‡à¸•à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™)
+                    self.log("WARN", f"{dev} ไม่ตอบใน {self._start_timeout:.0f}s - ปล่อยตัวถัดไปเลย")
+            # 3) ปล่อยตัวถัดไป: ต้องมีสล็อตว่าง + ผ่านเวลาหน่วงขั้นต่ำ (กันหลายจอยิงเน็ตพร้อมกัน)
             while self._pending and len(self._starting) < self._slots:
                 now = time.time()
                 if getattr(self, "_stagger", 0) > 0 and (now - self._last_start_ts) < self._stagger:
-                    break   # à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸–à¸¶à¸‡à¹€à¸§à¸¥à¸² à¸£à¸­ tick à¸–à¸±à¸”à¹„à¸› (poll à¸—à¸¸à¸ 200ms)
+                    break   # ยังไม่ถึงเวลา รอ tick ถัดไป (poll ทุก 200ms)
                 dev = self._pending.pop(0)
                 self._starting[dev] = now
                 self._last_start_ts = now
                 self._start_single_bot(dev)
-                self.log("INFO", f"â–¶ à¹€à¸£à¸´à¹ˆà¸¡à¸ˆà¸­ {dev} (à¹€à¸«à¸¥à¸·à¸­à¸„à¸´à¸§ {len(self._pending)})")
+                self.log("INFO", f"▶ เริ่มจอ {dev} (เหลือคิว {len(self._pending)})")
             if self._pending or self._starting:
                 self.after(200, self._ramp_tick)
             else:
-                self.log("SUCCESS", f"à¸›à¸¥à¹ˆà¸­à¸¢à¸šà¸­à¸—à¸„à¸£à¸š {len(self.devices)} à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹à¸¥à¹‰à¸§ "
-                                    f"(à¹ƒà¸Šà¹‰à¹€à¸§à¸¥à¸² {time.time() - self._ramp_started:.0f}s)")
+                self.log("SUCCESS", f"ปล่อยบอทครบ {len(self.devices)} เครื่องแล้ว "
+                                    f"(ใช้เวลา {time.time() - self._ramp_started:.0f}s)")
 
 
         def start_bot(self):
@@ -642,25 +642,25 @@ if GUI_AVAILABLE:
                 return
             self.is_started = True
             if hasattr(self, 'btn_start'):
-                self.btn_start.configure(state="disabled", fg_color="#555555", text="â³ RUNNING")
+                self.btn_start.configure(state="disabled", fg_color="#555555", text="⏳ RUNNING")
             self.lbl_auto_start.configure(text="[ BOT IS RUNNING ]", text_color="#4caf50")
             
-            # à¸›à¸¥à¹ˆà¸­à¸¢à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™ start_batch à¸•à¸±à¸§ à¹à¸¥à¹‰à¸§à¹€à¸•à¸´à¸¡à¸•à¸±à¸§à¸–à¸±à¸”à¹„à¸› "à¸—à¸±à¸™à¸—à¸µà¸—à¸µà¹ˆà¸•à¸±à¸§à¸à¹ˆà¸­à¸™à¸«à¸™à¹‰à¸²à¸žà¸£à¹‰à¸­à¸¡"
-            # à¹„à¸¡à¹ˆà¸«à¸™à¹ˆà¸§à¸‡à¸•à¸²à¸¡à¸™à¸²à¸¬à¸´à¸à¸²à¸­à¸µà¸ - thread_delay à¹€à¸«à¸¥à¸·à¸­à¹€à¸›à¹‡à¸™à¸à¸²à¸™à¸‚à¸­à¸‡à¹€à¸žà¸”à¸²à¸™à¸à¸±à¸™à¸„à¹‰à¸²à¸‡à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™
+            # ปล่อยพร้อมกัน start_batch ตัว แล้วเติมตัวถัดไป "ทันทีที่ตัวก่อนหน้าพร้อม"
+            # ไม่หน่วงตามนาฬิกาอีก - thread_delay เหลือเป็นฐานของเพดานกันค้างเท่านั้น
             self._ready_q = queue.Queue()
             self._pending = list(self.devices)
             self._starting = {}
             self._slots = max(1, int(config.get("start_batch", 1)))
             self._stagger = max(0.0, float(config.get("start_stagger", 5.0)))
-            self._last_start_ts = 0.0   # 0 = à¸ˆà¸­à¹à¸£à¸à¹€à¸£à¸´à¹ˆà¸¡à¹„à¸”à¹‰à¸—à¸±à¸™à¸—à¸µ
+            self._last_start_ts = 0.0   # 0 = จอแรกเริ่มได้ทันที
             self._start_timeout = float(config.get("start_timeout", float(config.get("thread_delay", 5)) * 4))
             self._ramp_started = time.time()
-            self.log("INFO", f"Starting {len(self._pending)} Bot Threads: à¹€à¸£à¸´à¹ˆà¸¡à¸—à¸µà¸¥à¸° {self._slots} à¸ˆà¸­ "
-                             f"à¸«à¸™à¹ˆà¸§à¸‡ {self._stagger:.0f}s/à¸ˆà¸­ à¸à¸±à¸™à¹€à¸™à¹‡à¸•à¸”à¸¶à¸‡ (à¹€à¸žà¸”à¸²à¸™ {self._start_timeout:.0f}s/à¸ˆà¸­)")
+            self.log("INFO", f"Starting {len(self._pending)} Bot Threads: เริ่มทีละ {self._slots} จอ "
+                             f"หน่วง {self._stagger:.0f}s/จอ กันเน็ตดึง (เพดาน {self._start_timeout:.0f}s/จอ)")
             self._ramp_tick()
 
         def on_closing(self):
-            if messagebox.askokcancel("Quit", "à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸«à¸¢à¸¸à¸”à¸šà¸­à¸—à¹à¸¥à¸°à¸›à¸´à¸”à¹‚à¸›à¸£à¹à¸à¸£à¸¡à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?\n(à¸ˆà¸°à¸—à¸³à¸à¸²à¸£ Kill ADB à¹à¸¥à¸° Python à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”)"):
+            if messagebox.askokcancel("Quit", "คุณต้องการหยุดบอทและปิดโปรแกรมใช่หรือไม่?\n(จะทำการ Kill ADB และ Python ทั้งหมด)"):
                 print("[GUI] Shutting down... Killing background processes.")
                 try:
                     # Kill ADB and Python processes on Windows
@@ -680,9 +680,9 @@ if GUI_AVAILABLE:
                     # Get cached file count from background thread
                     qsize = getattr(self, "qsize", 0)
                     
-                    self.lbl_file_count.configure(text=f"ðŸ“ {qsize}")
-                    self.lbl_succ_count.configure(text=f"âœ… {ui_stats.success_count}")
-                    self.lbl_fail_count.configure(text=f"âŒ {ui_stats.fail_count}")
+                    self.lbl_file_count.configure(text=f"📁 {qsize}")
+                    self.lbl_succ_count.configure(text=f"✅ {ui_stats.success_count}")
+                    self.lbl_fail_count.configure(text=f"❌ {ui_stats.fail_count}")
                     
                     for dev, stat in ui_stats.device_statuses.items():
                         if dev in self.device_monitors:
@@ -694,23 +694,23 @@ if GUI_AVAILABLE:
                     # 1. Handle Login Failures separately from Scan Failures
                     login_fail_count = ui_stats.fail_count
                     if login_fail_count > 0:
-                        hero_data["âŒ à¹€à¸‚à¹‰à¸²à¹„à¸¡à¹ˆà¹„à¸”à¹‰ (Login Failed)"] = login_fail_count
+                        hero_data["❌ เข้าไม่ได้ (Login Failed)"] = login_fail_count
                     
                     # 2. Handle "Success but No Hero/Gear Found"
-                    not_found_success = hero_data.pop("à¹„à¸¡à¹ˆà¹€à¸ˆà¸­", 0)
+                    not_found_success = hero_data.pop("ไม่เจอ", 0)
                     if not_found_success > 0:
-                        hero_data["ðŸ” à¸ªà¹à¸à¸™à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ (Not Found)"] = not_found_success
+                        hero_data["🔍 สแกนไม่เจอ (Not Found)"] = not_found_success
                     
                     for hero, count in hero_data.items():
                         if hero not in self.hero_stats_labels:
                             # Color coding: Red for failures/not found, Green for success
-                            is_error_row = any(x in hero for x in ["à¹€à¸‚à¹‰à¸²à¹„à¸¡à¹ˆà¹„à¸”à¹‰", "à¸ªà¹à¸à¸™à¹„à¸¡à¹ˆà¹€à¸ˆà¸­"])
+                            is_error_row = any(x in hero for x in ["เข้าไม่ได้", "สแกนไม่เจอ"])
                             self.add_hero_row(hero, is_error_row)
                         
                         self.hero_stats_labels[hero].configure(text=str(count))
                     
-                    # Explicitly hide old "à¹„à¸¡à¹ˆà¹€à¸ˆà¸­" or "âŒ à¹„à¸¡à¹ˆà¹€à¸ˆà¸­" rows if they exist from previous versions
-                    for old_key in ["à¹„à¸¡à¹ˆà¹€à¸ˆà¸­", "âŒ à¹„à¸¡à¹ˆà¹€à¸ˆà¸­"]:
+                    # Explicitly hide old "ไม่เจอ" or "❌ ไม่เจอ" rows if they exist from previous versions
+                    for old_key in ["ไม่เจอ", "❌ ไม่เจอ"]:
                         if old_key in self.hero_rows:
                             self.hero_rows[old_key].pack_forget()
                     
@@ -788,7 +788,7 @@ adb_path = "adb"
 # EasyOCR reader - loaded once globally
 _ocr_reader = None
 _ocr_lock = threading.Lock()      # Thread-safe OCR init
-_ocr_run_lock = threading.Lock()  # Serialize readtext à¸à¸±à¸™ CPU à¸•à¸±à¸™à¸•à¸­à¸™à¸£à¸±à¸™à¸«à¸¥à¸²à¸¢à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™
+_ocr_run_lock = threading.Lock()  # Serialize readtext กัน CPU ตันตอนรันหลายเครื่องพร้อมกัน
 
 # Guards the one-time minitouch startup. Module-level on purpose: bot instances
 # must stay picklable for the multiprocessing variant of this bot family.
@@ -801,7 +801,7 @@ def get_ocr_reader():
         with _ocr_lock:
             if _ocr_reader is None:
                 import easyocr
-                # à¸ˆà¸³à¸à¸±à¸” PyTorch à¹ƒà¸«à¹‰à¹ƒà¸Šà¹‰ 1 thread/à¸à¸²à¸£à¸­à¹ˆà¸²à¸™ à¸à¸±à¸™ CPU oversubscribe à¸•à¸­à¸™à¸£à¸±à¸™à¸«à¸¥à¸²à¸¢à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡
+                # จำกัด PyTorch ให้ใช้ 1 thread/การอ่าน กัน CPU oversubscribe ตอนรันหลายเครื่อง
                 try:
                     import torch
                     torch.set_num_threads(1)
@@ -817,7 +817,7 @@ _config_sig = None
 
 
 def queue_folder_paths():
-    """à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸„à¸´à¸§à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”à¸•à¸²à¸¡ config - à¹ƒà¸«à¹‰à¸•à¸±à¸§à¸™à¸±à¸šà¸šà¸™à¸ˆà¸­à¸à¸±à¸šà¸—à¸µà¹ˆà¸šà¸­à¸—à¸«à¸¢à¸´à¸šà¸ˆà¸£à¸´à¸‡à¸•à¸£à¸‡à¸à¸±à¸™à¹€à¸ªà¸¡à¸­"""
+    """โฟลเดอร์คิวทั้งหมดตาม config - ให้ตัวนับบนจอกับที่บอทหยิบจริงตรงกันเสมอ"""
     folders = config.get("queue_folders") or ["backup"]
     if isinstance(folders, str):
         folders = [folders]
@@ -825,14 +825,14 @@ def queue_folder_paths():
     return [os.path.join(script_dir, str(f)) for f in folders]
 
 
-# à¸ˆà¸³à¸à¸±à¸”à¸ˆà¸³à¸™à¸§à¸™à¸ˆà¸­à¸—à¸µà¹ˆà¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œà¹€à¸‚à¹‰à¸²à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™ - à¸«à¸¥à¸²à¸¢à¸ˆà¸­à¸¢à¸´à¸‡à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™à¸„à¸·à¸­à¸•à¹‰à¸™à¹€à¸«à¸•à¸¸ "à¹„à¸Ÿà¸¥à¹Œà¹€à¸‚à¹‰à¸²à¹„à¸¡à¹ˆà¹„à¸”à¹‰"
+# จำกัดจำนวนจอที่ส่งไฟล์เข้าเครื่องพร้อมกัน - หลายจอยิงพร้อมกันคือต้นเหตุ "ไฟล์เข้าไม่ได้"
 _inject_sem = None
 _inject_sem_lock = threading.Lock()
 
 
 @contextlib.contextmanager
 def _inject_gate():
-    """à¸„à¸´à¸§à¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œ: à¹ƒà¸«à¹‰à¸ªà¹ˆà¸‡à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™à¹„à¸”à¹‰à¹„à¸¡à¹ˆà¹€à¸à¸´à¸™ config "inject_max_concurrent" (0 = à¹„à¸¡à¹ˆà¸ˆà¸³à¸à¸±à¸”)"""
+    """คิวส่งไฟล์: ให้ส่งพร้อมกันได้ไม่เกิน config "inject_max_concurrent" (0 = ไม่จำกัด)"""
     global _inject_sem
     n = int(config.get("inject_max_concurrent", 2) or 0)
     if n <= 0:
@@ -854,10 +854,10 @@ _configmain_sig = None
 
 
 def load_config(quiet=False):
-    """quiet=True -> à¸žà¸´à¸¡à¸žà¹Œà¹€à¸‰à¸žà¸²à¸°à¸•à¸­à¸™à¹„à¸Ÿà¸¥à¹Œ config à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸ˆà¸£à¸´à¸‡
+    """quiet=True -> พิมพ์เฉพาะตอนไฟล์ config เปลี่ยนจริง
 
-    run() à¹€à¸£à¸µà¸¢à¸à¸Ÿà¸±à¸‡à¸à¹Œà¸Šà¸±à¸™à¸™à¸µà¹‰à¸—à¸¸à¸à¸§à¸´à¸™à¸²à¸—à¸µ à¹€à¸”à¸´à¸¡à¸žà¸´à¸¡à¸žà¹Œà¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡à¸ˆà¸™ log à¸à¸¥à¸²à¸¢à¹€à¸›à¹‡à¸™
-    [CONFIG] Base Loaded à¹„à¸¥à¹ˆà¸¢à¸²à¸§ à¸à¸¥à¸šà¸šà¸£à¸£à¸—à¸±à¸”à¸—à¸µà¹ˆà¸šà¸­à¸à¸ªà¸²à¹€à¸«à¸•à¸¸à¸ˆà¸£à¸´à¸‡à¸ˆà¸™à¹„à¸¥à¹ˆà¸›à¸±à¸à¸«à¸²à¹„à¸¡à¹ˆà¹„à¸”à¹‰
+    run() เรียกฟังก์ชันนี้ทุกวินาที เดิมพิมพ์ทุกครั้งจน log กลายเป็น
+    [CONFIG] Base Loaded ไล่ยาว กลบบรรทัดที่บอกสาเหตุจริงจนไล่ปัญหาไม่ได้
     """
     global config, _config_sig
     
@@ -878,8 +878,8 @@ def load_config(quiet=False):
     else:
         print(f"[WARN] Config not found: {main_config_file}")
 
-    # à¸„à¹ˆà¸² WireGuard (wg_*) à¸­à¸¢à¸¹à¹ˆà¹ƒà¸™ configmain.json à¹€à¸«à¸¡à¸·à¸­à¸™ login.py (login.py à¹‚à¸«à¸¥à¸”à¹„à¸Ÿà¸¥à¹Œà¸™à¸µà¹‰à¸—à¸±à¸š ranger-gear_config.json)
-    # à¸”à¸¶à¸‡à¸¡à¸²à¹€à¸‰à¸žà¸²à¸°à¸„à¸µà¸¢à¹Œ VPN/à¹€à¸™à¹‡à¸• - à¹„à¸¡à¹ˆà¹€à¸­à¸²à¸ªà¸§à¸´à¸•à¸Šà¹Œà¹‚à¸«à¸¡à¸”à¸­à¸·à¹ˆà¸™à¸‚à¸­à¸‡ login.py à¸¡à¸²à¸—à¸±à¸šà¸à¸²à¸£à¸—à¸³à¸‡à¸²à¸™à¸‚à¸­à¸‡ ranger-gear
+    # ค่า WireGuard (wg_*) อยู่ใน configmain.json เหมือน login.py (login.py โหลดไฟล์นี้ทับ ranger-gear_config.json)
+    # ดึงมาเฉพาะคีย์ VPN/เน็ต - ไม่เอาสวิตช์โหมดอื่นของ login.py มาทับการทำงานของ ranger-gear
     global _configmain_sig
     ui_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configmain.json")
     if os.path.exists(ui_config_file):
@@ -899,28 +899,28 @@ def load_config(quiet=False):
         except Exception as e:
             print(f"[WARN] Error loading configmain.json (wg_*): {e}")
 
-    # wg_profile: à¸ªà¸¥à¸±à¸šà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ IP - à¸‚à¹‰à¸²à¸¡à¸–à¹‰à¸² wg_enabled=0 (à¹„à¸¡à¹ˆà¹€à¸ªà¸µà¸¢à¹€à¸§à¸¥à¸² startup à¸Ÿà¸£à¸µ)
-    # KILL_VPN_HARDCODED=True -> à¸›à¸´à¸” VPN à¸–à¸²à¸§à¸£à¸—à¸±à¹ˆà¸§à¸—à¸±à¹‰à¸‡à¸à¸¹à¸‡ (à¸­à¹ˆà¸²à¸™à¹„à¸¡à¹ˆà¹€à¸­à¸²à¸„à¹ˆà¸²à¸ˆà¸²à¸ config remote)
-    # no_proxy_mode=1 -> kill switch à¸Šà¸™à¸°à¸—à¸¸à¸ flag à¸­à¸·à¹ˆà¸™ (à¸£à¸§à¸¡ wg_enabled=1 à¸—à¸µà¹ˆà¸„à¹‰à¸²à¸‡à¸ˆà¸²à¸à¸£à¸­à¸šà¹€à¸à¹ˆà¸²)
-    # use_host_vpn=1 -> à¸‚à¹‰à¸²à¸¡à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” (VPN à¸­à¸¢à¸¹à¹ˆà¸šà¸™ Windows host)
+    # wg_profile: สลับโฟลเดอร์ IP - ข้ามถ้า wg_enabled=0 (ไม่เสียเวลา startup ฟรี)
+    # KILL_VPN_HARDCODED=True -> ปิด VPN ถาวรทั่วทั้งฝูง (อ่านไม่เอาค่าจาก config remote)
+    # no_proxy_mode=1 -> kill switch ชนะทุก flag อื่น (รวม wg_enabled=1 ที่ค้างจากรอบเก่า)
+    # use_host_vpn=1 -> ข้ามทั้งหมด (VPN อยู่บน Windows host)
     if _no_proxy_mode():
-        print("[CONFIG] no_proxy_mode / KILL_VPN=on - à¸‚à¹‰à¸²à¸¡ wg_profile/FORCE Proton/wg_gen à¸—à¸¸à¸à¸­à¸¢à¹ˆà¸²à¸‡ (à¹ƒà¸Šà¹‰ IP à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸•à¸£à¸‡ à¹†)")
+        print("[CONFIG] no_proxy_mode / KILL_VPN=on - ข้าม wg_profile/FORCE Proton/wg_gen ทุกอย่าง (ใช้ IP เครื่องตรง ๆ)")
     elif int(config.get("use_host_vpn", 0) or 0):
-        print("[CONFIG] use_host_vpn=1 - à¸‚à¹‰à¸²à¸¡ wg_profile resolve + wg_gen (VPN à¸­à¸¢à¸¹à¹ˆà¸šà¸™ Windows host)")
+        print("[CONFIG] use_host_vpn=1 - ข้าม wg_profile resolve + wg_gen (VPN อยู่บน Windows host)")
     elif int(config.get("wg_enabled", 1) or 0):
         _wg_resolve_profile()
     else:
-        print("[CONFIG] wg_enabled=0 - à¸‚à¹‰à¸²à¸¡ wg_profile resolve + wg_gen (à¹ƒà¸Šà¹‰ IP à¸‚à¸­à¸‡ PC à¸•à¸£à¸‡ à¹†)")
+        print("[CONFIG] wg_enabled=0 - ข้าม wg_profile resolve + wg_gen (ใช้ IP ของ PC ตรง ๆ)")
 
 
 def _wg_resolve_profile():
-    """à¸­à¹ˆà¸²à¸™ config['wg_profile'] -> à¸•à¸±à¹‰à¸‡ config['wg_dir']  (sync à¸à¸±à¸š login.py à¹€à¸›à¹Šà¸° à¹†)
-    - string à¹€à¸”à¸µà¸¢à¸§: "ip-chan/main-1" -> wg_dir='wg/ip-chan/main-1'
-    - list / comma: ["ip-chan/main-1","ip-chan/main-2"] -> à¸£à¸§à¸¡ .conf à¸—à¸¸à¸à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¹€à¸‚à¹‰à¸² wg/.pool/
-      (blacklist/cooldown à¹€à¸‚à¸µà¸¢à¸™à¸—à¸µà¹ˆ pool - restart bot à¸à¹‡ rebuild à¹ƒà¸«à¹‰à¹ƒà¸«à¸¡à¹ˆ)
+    """อ่าน config['wg_profile'] -> ตั้ง config['wg_dir']  (sync กับ login.py เป๊ะ ๆ)
+    - string เดียว: "ip-chan/main-1" -> wg_dir='wg/ip-chan/main-1'
+    - list / comma: ["ip-chan/main-1","ip-chan/main-2"] -> รวม .conf ทุกโฟลเดอร์เข้า wg/.pool/
+      (blacklist/cooldown เขียนที่ pool - restart bot ก็ rebuild ให้ใหม่)
 
-    wg_profile_clear_on_start=1 (default 1): à¸¥à¸š Windscribe-*.conf à¸—à¸¸à¸ sub + .pool/ + .blocked.json
-      à¹€à¸à¹‡à¸šà¹€à¸‰à¸žà¸²à¸° key*.conf / template.conf (keypair à¸•à¹‰à¸™à¹à¸šà¸š) à¹à¸¥à¹‰à¸§à¹ƒà¸«à¹‰ wg_gen generate IP à¹ƒà¸«à¸¡à¹ˆà¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
+    wg_profile_clear_on_start=1 (default 1): ลบ Windscribe-*.conf ทุก sub + .pool/ + .blocked.json
+      เก็บเฉพาะ key*.conf / template.conf (keypair ต้นแบบ) แล้วให้ wg_gen generate IP ใหม่ทั้งหมด
     """
     prof = config.get("wg_profile", "")
     if isinstance(prof, (list, tuple)):
@@ -938,12 +938,12 @@ def _wg_resolve_profile():
                 resolved.append(cand.replace("\\", "/"))
                 break
         else:
-            print(f"[CONFIG] wg_profile='{p}' à¹„à¸¡à¹ˆà¸žà¸šà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ - à¸‚à¹‰à¸²à¸¡")
+            print(f"[CONFIG] wg_profile='{p}' ไม่พบโฟลเดอร์ - ข้าม")
     if not resolved:
-        print(f"[CONFIG] wg_profile: à¹„à¸¡à¹ˆà¸žà¸šà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸—à¸µà¹ˆà¹ƒà¸Šà¹‰à¹„à¸”à¹‰à¹€à¸¥à¸¢ ({profs}) - à¹ƒà¸Šà¹‰ wg_dir='{config.get('wg_dir', 'wg')}' à¹€à¸”à¸´à¸¡")
+        print(f"[CONFIG] wg_profile: ไม่พบโฟลเดอร์ที่ใช้ได้เลย ({profs}) - ใช้ wg_dir='{config.get('wg_dir', 'wg')}' เดิม")
         return
 
-    # === FORCE Proton mode: à¸šà¸±à¸‡à¸„à¸±à¸šà¹ƒà¸Šà¹‰ Proton à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™ - à¸›à¸´à¸” wg_gen + clear_on_start à¸—à¸¸à¸à¸à¸£à¸“à¸µ
+    # === FORCE Proton mode: บังคับใช้ Proton เท่านั้น - ปิด wg_gen + clear_on_start ทุกกรณี
     forced = []
     if int(config.get("wg_auto_gen", 1) or 0):
         config["wg_auto_gen"] = 0
@@ -962,8 +962,8 @@ def _wg_resolve_profile():
     else:
         print(f"[CONFIG] FORCE Proton mode - config already set")
 
-    # === FORCE Proton: à¸¥à¸šà¹„à¸Ÿà¸¥à¹Œ .conf à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆ proton-*.conf à¸­à¸­à¸à¸ˆà¸²à¸à¸—à¸¸à¸ sub-folder
-    # (Windscribe/wg_gen à¸ªà¸£à¹‰à¸²à¸‡à¸—à¸´à¹‰à¸‡à¹„à¸§à¹‰à¸ˆà¸²à¸à¸£à¸­à¸šà¸à¹ˆà¸­à¸™ - à¸•à¹‰à¸­à¸‡à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¹€à¸žà¸·à¹ˆà¸­à¹„à¸¡à¹ˆà¹ƒà¸«à¹‰ bot à¹„à¸›à¹ƒà¸Šà¹‰)
+    # === FORCE Proton: ลบไฟล์ .conf ที่ไม่ใช่ proton-*.conf ออกจากทุก sub-folder
+    # (Windscribe/wg_gen สร้างทิ้งไว้จากรอบก่อน - ต้องเคลียร์เพื่อไม่ให้ bot ไปใช้)
     try:
         purged = 0
         for d in resolved:
@@ -974,7 +974,7 @@ def _wg_resolve_profile():
                     if not low.endswith(".conf"):
                         continue
                     if low.startswith("proton-"):
-                        continue        # à¹€à¸à¹‡à¸šà¹„à¸Ÿà¸¥à¹Œ Proton
+                        continue        # เก็บไฟล์ Proton
                     try:
                         os.remove(os.path.join(d_abs, f))
                         purged += 1
@@ -983,9 +983,9 @@ def _wg_resolve_profile():
             except OSError:
                 continue
         if purged:
-            print(f"[CONFIG] FORCE Proton mode - à¸¥à¸š non-Proton .conf à¹€à¸à¹ˆà¸² {purged} à¹„à¸Ÿà¸¥à¹Œ (Windscribe/key*.conf)")
+            print(f"[CONFIG] FORCE Proton mode - ลบ non-Proton .conf เก่า {purged} ไฟล์ (Windscribe/key*.conf)")
     except Exception as e:
-        print(f"[CONFIG] FORCE Proton cleanup à¸¥à¹‰à¸¡à¹€à¸«à¸¥à¸§: {e}")
+        print(f"[CONFIG] FORCE Proton cleanup ล้มเหลว: {e}")
 
     # Auto-promote keypair.txt -> key.conf
     for d in resolved:
@@ -1001,11 +1001,11 @@ def _wg_resolve_profile():
             dst = os.path.join(d_abs, "key.conf")
             try:
                 shutil.copy2(src, dst)
-                print(f"[CONFIG] wg_profile: {d} à¹€à¸ˆà¸­ keypair.txt (à¹„à¸¡à¹ˆà¸¡à¸µ .conf) - copy à¹€à¸›à¹‡à¸™ key.conf à¹ƒà¸«à¹‰ wg_gen à¹ƒà¸Šà¹‰")
+                print(f"[CONFIG] wg_profile: {d} เจอ keypair.txt (ไม่มี .conf) - copy เป็น key.conf ให้ wg_gen ใช้")
             except OSError as e:
-                print(f"[CONFIG] wg_profile: {d} copy keypair.txt -> key.conf à¸¥à¹‰à¸¡à¹€à¸«à¸¥à¸§: {e}")
+                print(f"[CONFIG] wg_profile: {d} copy keypair.txt -> key.conf ล้มเหลว: {e}")
 
-    # à¸¥à¸š IP à¹€à¸”à¸´à¸¡à¸—à¸¸à¸à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸à¹ˆà¸­à¸™ generate à¹ƒà¸«à¸¡à¹ˆ (à¹€à¸à¹‡à¸šà¹€à¸‰à¸žà¸²à¸° key*.conf / template.conf = keypair à¸•à¹‰à¸™à¹à¸šà¸š)
+    # ลบ IP เดิมทุกโฟลเดอร์ก่อน generate ใหม่ (เก็บเฉพาะ key*.conf / template.conf = keypair ต้นแบบ)
     if int(config.get("wg_profile_clear_on_start", 1) or 0):
         total_deleted = 0
         for d in resolved:
@@ -1038,7 +1038,7 @@ def _wg_resolve_profile():
                     os.remove(junk)
             except OSError:
                 pass
-        print(f"[CONFIG] wg_profile_clear_on_start: à¸¥à¸š IP à¹€à¸à¹ˆà¸² {total_deleted} à¹„à¸Ÿà¸¥à¹Œ + .pool/ + blacklist - à¸ˆà¸° generate IP à¹ƒà¸«à¸¡à¹ˆà¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”")
+        print(f"[CONFIG] wg_profile_clear_on_start: ลบ IP เก่า {total_deleted} ไฟล์ + .pool/ + blacklist - จะ generate IP ใหม่ทั้งหมด")
     if len(resolved) == 1:
         config["wg_dir"] = resolved[0]
         print(f"[CONFIG] wg_profile -> wg_dir='{resolved[0]}'")
@@ -1055,7 +1055,7 @@ def _wg_resolve_profile():
                     pass
     except OSError:
         pass
-    # wg_auto_gen=0 (Proton mode) -> à¸‚à¹‰à¸²à¸¡ pre-generate (wg_gen à¹ƒà¸Šà¹‰à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸à¸±à¸š Proton + à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¹€à¸•à¸´à¸¡)
+    # wg_auto_gen=0 (Proton mode) -> ข้าม pre-generate (wg_gen ใช้ไม่ได้กับ Proton + ไม่ต้องเติม)
     if int(config.get("wg_auto_gen", 1) or 0):
         try:
             import wg_gen
@@ -1067,13 +1067,13 @@ def _wg_resolve_profile():
                 except OSError:
                     n_cur = 0
                 if n_cur == 0:
-                    print(f"[CONFIG] wg_profile: {d} à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œ .conf à¹€à¸¥à¸¢ - à¹‚à¸¢à¸™à¹„à¸Ÿà¸¥à¹Œà¸ˆà¸²à¸ Windscribe 1 à¹„à¸Ÿà¸¥à¹Œà¸¥à¸‡à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸™à¸µà¹‰")
+                    print(f"[CONFIG] wg_profile: {d} ไม่มีไฟล์ .conf เลย - โยนไฟล์จาก Windscribe 1 ไฟล์ลงโฟลเดอร์นี้")
                     continue
                 if n_cur < _per:
-                    print(f"[CONFIG] wg_profile: {d} à¸¡à¸µ {n_cur} à¹„à¸Ÿà¸¥à¹Œ (<{_per}) - generate à¹€à¸žà¸´à¹ˆà¸¡à¸ˆà¸²à¸ keypair à¸‚à¸­à¸‡ sub à¸™à¸µà¹‰")
+                    print(f"[CONFIG] wg_profile: {d} มี {n_cur} ไฟล์ (<{_per}) - generate เพิ่มจาก keypair ของ sub นี้")
                     wg_gen.generate(_per, config.get("wg_gen_countries") or None, d, 0, "", 0)
         except Exception as e:
-            print(f"[CONFIG] wg_profile pre-generate à¸¥à¹‰à¸¡à¹€à¸«à¸¥à¸§: {e}")
+            print(f"[CONFIG] wg_profile pre-generate ล้มเหลว: {e}")
     n = 0
     for d in resolved:
         d_abs = os.path.join(script_dir, d)
@@ -1092,22 +1092,22 @@ def _wg_resolve_profile():
         except OSError:
             pass
     config["wg_dir"] = pool
-    print(f"[CONFIG] wg_profile -> à¸£à¸§à¸¡ {n} à¹„à¸Ÿà¸¥à¹Œà¸ˆà¸²à¸ {len(resolved)} à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ ({', '.join(resolved)}) -> wg_dir='{pool}'")
+    print(f"[CONFIG] wg_profile -> รวม {n} ไฟล์จาก {len(resolved)} โฟลเดอร์ ({', '.join(resolved)}) -> wg_dir='{pool}'")
 
 
 # =========================================================
-# WireGuard (VPN à¹à¸¢à¸à¸•à¹ˆà¸­à¸ˆà¸­) - à¸žà¸­à¸£à¹Œà¸•à¸¡à¸²à¸ˆà¸²à¸ login.py à¹ƒà¸«à¹‰à¸—à¸³à¸‡à¸²à¸™à¹€à¸«à¸¡à¸·à¸­à¸™à¸à¸±à¸™
+# WireGuard (VPN แยกต่อจอ) - พอร์ตมาจาก login.py ให้ทำงานเหมือนกัน
 # =========================================================
-_real_sleep = time.sleep   # à¸žà¸±à¸à¸ˆà¸£à¸´à¸‡ (à¹„à¸¡à¹ˆà¸œà¹ˆà¸²à¸™à¸•à¸±à¸§à¸›à¸£à¸±à¸šà¸„à¸§à¸²à¸¡à¹€à¸£à¹‡à¸§) à¹ƒà¸«à¹‰à¹€à¸«à¸¡à¸·à¸­à¸™ login.py
+_real_sleep = time.sleep   # พักจริง (ไม่ผ่านตัวปรับความเร็ว) ให้เหมือน login.py
 
 
 # ============================================================
-# IP-METER / NO-PROXY / LOGIN-PACE  - sync 100% à¸à¸±à¸š login.py
+# IP-METER / NO-PROXY / LOGIN-PACE  - sync 100% กับ login.py
 # configmain.json:
-#   no_proxy_mode        1 = à¹ƒà¸Šà¹‰ IP à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸•à¸£à¸‡ à¹† (à¸›à¸´à¸” VPN) + à¹€à¸›à¸´à¸” ip_meter + login_pace
-#   ip_meter_endpoint    URL à¸”à¸¶à¸‡ public IP (default https://api.ipify.org, "" = à¹ƒà¸Šà¹‰à¸„à¸µà¸¢à¹Œ 'local')
-#   ip_meter_force       1 = à¹€à¸›à¸´à¸” ip_meter à¹à¸¡à¹‰à¹„à¸¡à¹ˆ no_proxy_mode (à¹ƒà¸Šà¹‰à¸•à¸­à¸™ VPN à¹€à¸žà¸·à¹ˆà¸­à¸•à¸±à¸” cap à¸•à¹ˆà¸­ IP à¸‚à¸²à¸­à¸­à¸)
-#   login_min_gap_sec    à¹€à¸§à¹‰à¸™à¸£à¸°à¸¢à¸°à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡ login à¸‚à¸­à¸‡à¸šà¸­à¸•à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™ (default 45s, jitter 0-30%)
+#   no_proxy_mode        1 = ใช้ IP เครื่องตรง ๆ (ปิด VPN) + เปิด ip_meter + login_pace
+#   ip_meter_endpoint    URL ดึง public IP (default https://api.ipify.org, "" = ใช้คีย์ 'local')
+#   ip_meter_force       1 = เปิด ip_meter แม้ไม่ no_proxy_mode (ใช้ตอน VPN เพื่อตัด cap ต่อ IP ขาออก)
+#   login_min_gap_sec    เว้นระยะระหว่าง login ของบอตเดียวกัน (default 45s, jitter 0-30%)
 # ============================================================
 import json as _json_ipm
 import random as _random_ipm
@@ -1118,9 +1118,9 @@ _IP_METER_LOCK = _threading_ipm.Lock()
 _IP_WINDOWS = [(3600, 3), (6 * 3600, 8), (24 * 3600, 20)]
 
 
-# === HARDCODED KILL SWITCH: à¸›à¸´à¸” VPN à¸–à¸²à¸§à¸£à¸—à¸±à¹ˆà¸§à¸—à¸±à¹‰à¸‡à¸à¸¹à¸‡à¸šà¸­à¸• (à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¹à¸à¹‰ config à¸£à¸²à¸¢ remote) ===
-# à¹€à¸«à¸•à¸¸à¸œà¸¥: configmain.json à¸–à¸¹à¸ untrack à¹à¸¥à¹‰à¸§ à¸šà¸­à¸• remote config à¸•à¹ˆà¸²à¸‡à¸à¸±à¸™ -> code-level à¸Šà¸±à¸§à¸£à¹Œà¸à¸§à¹ˆà¸²
-# à¸–à¹‰à¸²à¸­à¸¢à¸²à¸à¹€à¸›à¸´à¸” VPN à¸à¸¥à¸±à¸š: à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ True -> False à¹à¸¥à¹‰à¸§ git push
+# === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
+# เหตุผล: configmain.json ถูก untrack แล้ว บอต remote config ต่างกัน -> code-level ชัวร์กว่า
+# ถ้าอยากเปิด VPN กลับ: เปลี่ยน True -> False แล้ว git push
 KILL_VPN_HARDCODED = True
 
 
@@ -1134,10 +1134,10 @@ def _no_proxy_mode():
 
 
 def _signal_host_vpn_rotate(reason=""):
-    """à¹€à¸‚à¸µà¸¢à¸™à¹„à¸Ÿà¸¥à¹Œ trigger à¹€à¸žà¸·à¹ˆà¸­à¹ƒà¸«à¹‰ swap_bot.exe (host_wg_rotator) à¸ªà¸¥à¸±à¸š IP à¸—à¸±à¸™à¸—à¸µ
-    - à¹ƒà¸Šà¹‰à¸•à¸­à¸™ IP à¹‚à¸”à¸™ cap / login fail / fixnet detect
-    - swap_bot à¹€à¸Šà¹‡à¸„à¸—à¸¸à¸ 5 à¸§à¸´ à¹€à¸ˆà¸­à¹„à¸Ÿà¸¥à¹Œ -> rotate + à¸¥à¸šà¹„à¸Ÿà¸¥à¹Œ (à¸¡à¸µ cool-off 30s à¸à¸±à¸™à¸ªà¸¥à¸±à¸šà¸£à¸±à¸§)
-    - à¹€à¸‚à¸µà¸¢à¸™à¹€à¸ªà¸¡à¸­ à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸ªà¸™ VPN mode à¸–à¹‰à¸²à¹„à¸¡à¹ˆà¸¡à¸µ rotator à¸à¹‡à¹€à¸‚à¸µà¸¢à¸™à¸—à¸´à¹‰à¸‡à¹„à¸¡à¹ˆà¸¡à¸µà¸œà¸¥"""
+    """เขียนไฟล์ trigger เพื่อให้ swap_bot.exe (host_wg_rotator) สลับ IP ทันที
+    - ใช้ตอน IP โดน cap / login fail / fixnet detect
+    - swap_bot เช็คทุก 5 วิ เจอไฟล์ -> rotate + ลบไฟล์ (มี cool-off 30s กันสลับรัว)
+    - เขียนเสมอ ไม่ต้องสน VPN mode ถ้าไม่มี rotator ก็เขียนทิ้งไม่มีผล"""
     try:
         import os as _os
         _script_dir = _os.path.dirname(_os.path.abspath(__file__))
@@ -1149,9 +1149,9 @@ def _signal_host_vpn_rotate(reason=""):
 
 
 def _ensure_swap_bot_running():
-    """à¹€à¸Šà¹‡à¸„ swap_bot.py à¸§à¹ˆà¸²à¸£à¸±à¸™à¸­à¸¢à¸¹à¹ˆà¹„à¸«à¸¡ - à¸–à¹‰à¸²à¹„à¸¡à¹ˆ à¹€à¸›à¸´à¸”à¹ƒà¸«à¹‰ (à¸£à¸±à¸™ .py à¸•à¸£à¸‡à¹† à¹„à¸¡à¹ˆà¹ƒà¸Šà¹‰ .exe)
-    - à¸£à¸±à¸™à¹„à¸”à¹‰à¸—à¸±à¹‰à¸‡à¸ˆà¸²à¸ ranger-gear.py / .bat à¸•à¹ˆà¸²à¸‡à¹†
-    - à¹€à¸‡à¸µà¸¢à¸š: à¹„à¸¡à¹ˆ error à¸–à¹‰à¸²à¸«à¸² .py à¹„à¸¡à¹ˆà¹€à¸ˆà¸­"""
+    """เช็ค swap_bot.py ว่ารันอยู่ไหม - ถ้าไม่ เปิดให้ (รัน .py ตรงๆ ไม่ใช้ .exe)
+    - รันได้ทั้งจาก ranger-gear.py / .bat ต่างๆ
+    - เงียบ: ไม่ error ถ้าหา .py ไม่เจอ"""
     try:
         import os as _os
         import sys as _sys
@@ -1163,7 +1163,7 @@ def _ensure_swap_bot_running():
                         capture_output=True, text=True, timeout=15,
                         creationflags=_CREATE_NO_WINDOW)
             if "swap_bot.py" in (r.stdout or "").lower():
-                print("[SWAP_BOT] already running - à¹„à¸¡à¹ˆà¹€à¸›à¸´à¸”à¸‹à¹‰à¸³")
+                print("[SWAP_BOT] already running - ไม่เปิดซ้ำ")
                 return
         except Exception:
             pass
@@ -1174,7 +1174,7 @@ def _ensure_swap_bot_running():
         ]
         py = next((p for p in candidates if _os.path.isfile(p)), None)
         if not py:
-            print("[SWAP_BOT] à¹„à¸¡à¹ˆà¸žà¸š swap_bot.py (à¸ˆà¸°à¸‚à¹‰à¸²à¸¡ - trigger à¹€à¸‚à¸µà¸¢à¸™à¸—à¸´à¹‰à¸‡à¹€à¸‰à¸¢à¹†)")
+            print("[SWAP_BOT] ไม่พบ swap_bot.py (จะข้าม - trigger เขียนทิ้งเฉยๆ)")
             return
         exe_dir = _os.path.dirname(_sys.executable)
         pyw = _os.path.join(exe_dir, "pythonw.exe")
@@ -1185,7 +1185,7 @@ def _ensure_swap_bot_running():
                   close_fds=True, stdin=_sp.DEVNULL,
                   stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
     except Exception as e:
-        print(f"[SWAP_BOT] launch à¸¥à¹‰à¸¡à¹€à¸«à¸¥à¸§ (à¹„à¸¡à¹ˆà¸à¸£à¸°à¸—à¸šà¸šà¸­à¸—): {e}")
+        print(f"[SWAP_BOT] launch ล้มเหลว (ไม่กระทบบอท): {e}")
 
 
 _ensure_swap_bot_running()
@@ -1211,8 +1211,8 @@ def _ip_meter_save(d):
 
 
 def _current_public_ip():
-    """à¸”à¸¶à¸‡ public IP à¸‚à¸­à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸™à¸µà¹‰ - à¹ƒà¸Šà¹‰à¹à¸¢à¸ bucket per-IP à¹ƒà¸™ state file
-    (à¸›à¸´à¸”à¹„à¸”à¹‰à¸”à¹‰à¸§à¸¢ ip_meter_endpoint = "" à¹ƒà¸™ config -> à¹ƒà¸Šà¹‰ 'local' à¹€à¸›à¹‡à¸™à¸„à¸µà¸¢à¹Œà¹à¸—à¸™)"""
+    """ดึง public IP ของเครื่องนี้ - ใช้แยก bucket per-IP ใน state file
+    (ปิดได้ด้วย ip_meter_endpoint = "" ใน config -> ใช้ 'local' เป็นคีย์แทน)"""
     url = str(globals().get("config", {}).get("ip_meter_endpoint", "https://api.ipify.org") or "")
     if not url:
         return "local"
@@ -1228,7 +1228,7 @@ def _current_public_ip():
 
 
 def _ip_meter_cap_wait(ip):
-    """à¸Šà¸™ cap à¸«à¸™à¹‰à¸²à¸•à¹ˆà¸²à¸‡à¹„à¸«à¸™ -> à¸„à¸·à¸™à¸§à¸´à¸™à¸²à¸—à¸µà¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸£à¸­à¹ƒà¸«à¹‰à¸«à¸¥à¸¸à¸”à¸«à¸™à¹‰à¸²à¸•à¹ˆà¸²à¸‡à¸™à¸±à¹‰à¸™ (à¹€à¸­à¸²à¸¡à¸²à¸à¸—à¸µà¹ˆà¸ªà¸¸à¸”). 0 = à¸¢à¸´à¸‡à¹„à¸”à¹‰"""
+    """ชน cap หน้าต่างไหน -> คืนวินาทีที่ต้องรอให้หลุดหน้าต่างนั้น (เอามากที่สุด). 0 = ยิงได้"""
     with _IP_METER_LOCK:
         d = _ip_meter_load()
         hist = [t for t in d.get(ip, []) if t > time.time() - 48 * 3600]
@@ -1254,25 +1254,25 @@ def _ip_meter_mark(ip):
 
 
 def _ip_meter_gate():
-    """à¹€à¸£à¸µà¸¢à¸à¸à¹ˆà¸­à¸™ login à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡: à¸–à¹‰à¸²à¸Šà¸™ cap -> à¸¢à¸´à¸‡ trigger à¹ƒà¸«à¹‰ swap_bot à¸ªà¸¥à¸±à¸š IP à¹à¸¥à¹‰à¸§à¸£à¸­à¸«à¸¥à¸¸à¸”"""
+    """เรียกก่อน login ทุกครั้ง: ถ้าชน cap -> ยิง trigger ให้ swap_bot สลับ IP แล้วรอหลุด"""
     if not _no_proxy_mode() and not int(globals().get("config", {}).get("ip_meter_force", 0) or 0):
         return
     ip = _current_public_ip()
     wait = _ip_meter_cap_wait(ip)
     if wait > 0:
         mins = wait / 60.0
-        # à¸¢à¸´à¸‡ trigger à¹ƒà¸«à¹‰ swap_bot à¸ªà¸¥à¸±à¸š IP à¸—à¸±à¸™à¸—à¸µ (à¸”à¸µà¸à¸§à¹ˆà¸²à¸£à¸­ 59 à¸™à¸²à¸—à¸µ)
+        # ยิง trigger ให้ swap_bot สลับ IP ทันที (ดีกว่ารอ 59 นาที)
         _signal_host_vpn_rotate(f"ip-meter-cap {ip} wait={int(wait)}s")
-        print(f"[IP-METER] IP {ip} à¸Šà¸™ cap - signal swap_bot rotate + à¸£à¸­ {mins:.1f} à¸™à¸²à¸—à¸µ (à¸«à¸£à¸·à¸­à¸ˆà¸™ IP à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™)")
-        # à¸£à¸­à¸ªà¸±à¹‰à¸™à¸¥à¸‡: à¹ƒà¸«à¹‰à¹‚à¸­à¸à¸²à¸ª swap_bot à¸ªà¸¥à¸±à¸šà¸à¹ˆà¸­à¸™ à¹à¸¥à¹‰à¸§à¸„à¹ˆà¸­à¸¢à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ
-        # à¹€à¸”à¸´à¸¡à¸£à¸­à¸—à¸±à¹‰à¸‡ window (= 59 à¸™à¸²à¸—à¸µ) à¸•à¸­à¸™à¸™à¸µà¹‰à¸£à¸­à¹à¸„à¹ˆ 90s à¹à¸¥à¹‰à¸§à¸­à¸­à¸ - à¸£à¸­à¸šà¸«à¸™à¹‰à¸² gate à¸ˆà¸°à¹€à¸Šà¹‡à¸„ IP à¹ƒà¸«à¸¡à¹ˆ
+        print(f"[IP-METER] IP {ip} ชน cap - signal swap_bot rotate + รอ {mins:.1f} นาที (หรือจน IP เปลี่ยน)")
+        # รอสั้นลง: ให้โอกาส swap_bot สลับก่อน แล้วค่อยลองใหม่
+        # เดิมรอทั้ง window (= 59 นาที) ตอนนี้รอแค่ 90s แล้วออก - รอบหน้า gate จะเช็ค IP ใหม่
         _real_sleep(min(wait + 5, 90))
     _ip_meter_mark(ip)
 
 
 _LAST_LOGIN_T = [0.0]
 def _login_pace():
-    """à¹€à¸§à¹‰à¸™à¸Šà¹ˆà¸§à¸‡à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡ login à¸‚à¸­à¸‡à¸šà¸­à¸•à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™ - IP à¹€à¸”à¸µà¸¢à¸§à¸¢à¸´à¸‡à¸–à¸µà¹ˆ = à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¸¡à¸­à¸‡à¹€à¸›à¹‡à¸™ bot à¹à¸™à¹ˆà¸™à¸­à¸™"""
+    """เว้นช่วงระหว่าง login ของบอตเดียวกัน - IP เดียวยิงถี่ = เซิร์ฟมองเป็น bot แน่นอน"""
     if not _no_proxy_mode():
         return
     try:
@@ -1286,9 +1286,9 @@ def _login_pace():
 
 
 def _pool_pick_ip(wg_dir="wg"):
-    """à¹€à¸¥à¸·à¸­à¸ IP à¸ˆà¸²à¸ wg/ pool à¸—à¸µà¹ˆ 'à¹ƒà¸à¸¥à¹‰à¸§à¹ˆà¸²à¸‡à¸ªà¸¸à¸”' (à¸£à¸­à¸™à¹‰à¸­à¸¢à¸ªà¸¸à¸”)
-    à¸„à¸·à¸™ (conf_path, endpoint_ip, wait_seconds). à¸§à¹ˆà¸²à¸‡à¸—à¸±à¸™à¸—à¸µ wait=0.
-    à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œà¹€à¸¥à¸¢ -> à¸„à¸·à¸™ (None, 'local', wait=per-IP cap à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™)"""
+    """เลือก IP จาก wg/ pool ที่ 'ใกล้ว่างสุด' (รอน้อยสุด)
+    คืน (conf_path, endpoint_ip, wait_seconds). ว่างทันที wait=0.
+    ไม่มีไฟล์เลย -> คืน (None, 'local', wait=per-IP cap ปัจจุบัน)"""
     confs = _wg_list_configs(wg_dir) if "_wg_list_configs" in globals() else []
     if not confs:
         return None, "local", _ip_meter_cap_wait("local")
@@ -1307,12 +1307,12 @@ def _pool_pick_ip(wg_dir="wg"):
 
 
 class RestartTimeoutError(Exception):
-    """wg_required: à¸•à¹ˆà¸­ VPN à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™ -> à¹€à¸”à¹‰à¸‡à¸­à¸­à¸à¸ˆà¸²à¸à¹„à¸Ÿà¸¥à¹Œà¸™à¸µà¹‰ (_main_loop à¸ˆà¸±à¸šà¹à¸¥à¹‰à¸§à¸›à¸¥à¹ˆà¸­à¸¢à¸¥à¹‡à¸­à¸ à¸«à¸¢à¸´à¸šà¹„à¸Ÿà¸¥à¹Œà¹ƒà¸«à¸¡à¹ˆ)
-    à¹ƒà¸Šà¹‰ Exception (à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆ BaseException à¹à¸šà¸š login.py) à¹€à¸žà¸·à¹ˆà¸­à¹ƒà¸«à¹‰ except à¸‚à¸­à¸‡ _main_loop à¸ˆà¸±à¸šà¹„à¸”à¹‰ à¹„à¸¡à¹ˆà¹ƒà¸«à¹‰ thread à¸•à¸²à¸¢"""
+    """wg_required: ต่อ VPN ไม่ขึ้น -> เด้งออกจากไฟล์นี้ (_main_loop จับแล้วปล่อยล็อก หยิบไฟล์ใหม่)
+    ใช้ Exception (ไม่ใช่ BaseException แบบ login.py) เพื่อให้ except ของ _main_loop จับได้ ไม่ให้ thread ตาย"""
 
 
 def _wg_endpoint(conf):
-    """host à¸‚à¸­à¸‡ Endpoint à¹ƒà¸™à¹„à¸Ÿà¸¥à¹Œ .conf (= IP à¸‚à¸²à¸­à¸­à¸à¸‚à¸­à¸‡ VPN)"""
+    """host ของ Endpoint ในไฟล์ .conf (= IP ขาออกของ VPN)"""
     try:
         with open(conf, encoding="utf-8-sig") as f:
             for l in f:
@@ -1324,8 +1324,8 @@ def _wg_endpoint(conf):
 
 
 def _wg_generate_more(wg_dir, want, dev=""):
-    """à¸ªà¸£à¹‰à¸²à¸‡à¹„à¸Ÿà¸¥à¹Œà¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸žà¸´à¹ˆà¸¡à¹ƒà¸«à¹‰à¸¡à¸µ want à¹„à¸Ÿà¸¥à¹Œ (à¸¥à¹‡à¸­à¸à¹ƒà¸«à¹‰à¸ªà¸£à¹‰à¸²à¸‡à¸—à¸µà¸¥à¸°à¸ˆà¸­) - à¸„à¸·à¸™ True à¸–à¹‰à¸²à¸¡à¸µà¹„à¸Ÿà¸¥à¹Œà¹€à¸žà¸´à¹ˆà¸¡à¸ˆà¸£à¸´à¸‡"""
-    os.makedirs(wg_dir, exist_ok=True)   # à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸«à¸²à¸¢ -> à¸ªà¸£à¹‰à¸²à¸‡à¹„à¸Ÿà¸¥à¹Œà¸¥à¹‡à¸­à¸à¹„à¸¡à¹ˆà¹„à¸”à¹‰ à¹à¸¥à¹‰à¸§à¹€à¸¥à¸´à¸à¹€à¸‡à¸µà¸¢à¸š à¹†
+    """สร้างไฟล์เซิร์ฟเวอร์เพิ่มให้มี want ไฟล์ (ล็อกให้สร้างทีละจอ) - คืน True ถ้ามีไฟล์เพิ่มจริง"""
+    os.makedirs(wg_dir, exist_ok=True)   # โฟลเดอร์หาย -> สร้างไฟล์ล็อกไม่ได้ แล้วเลิกเงียบ ๆ
     lock = os.path.join(wg_dir, ".gen.lock")
     try:
         if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
@@ -1341,7 +1341,7 @@ def _wg_generate_more(wg_dir, want, dev=""):
         if managed and not os.path.exists(kp) and confs:
             with open(confs[0], "rb") as f_src, open(kp, "wb") as f_dst:
                 f_dst.write(f_src.read())
-        print(f"[{dev}] [WG] à¹„à¸Ÿà¸¥à¹Œ VPN à¸§à¹ˆà¸²à¸‡à¹„à¸¡à¹ˆà¸žà¸­ - à¸ªà¸£à¹‰à¸²à¸‡à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹ƒà¸«à¸¡à¹ˆà¹€à¸žà¸´à¹ˆà¸¡ (à¸¡à¸µ {before} -> {want})")
+        print(f"[{dev}] [WG] ไฟล์ VPN ว่างไม่พอ - สร้างเซิร์ฟเวอร์ใหม่เพิ่ม (มี {before} -> {want})")
         import wg_gen
         if managed:
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
@@ -1352,7 +1352,7 @@ def _wg_generate_more(wg_dir, want, dev=""):
                             int(config.get("wg_total_machines", 30) or 30))
         return len(_wg_list_configs(wg_dir)) > before
     except Exception as e:
-        print(f"[{dev}] [WG] à¸ªà¸£à¹‰à¸²à¸‡à¹„à¸Ÿà¸¥à¹Œà¹€à¸žà¸´à¹ˆà¸¡à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {e}")
+        print(f"[{dev}] [WG] สร้างไฟล์เพิ่มไม่สำเร็จ: {e}")
         return False
     finally:
         try:
@@ -1362,22 +1362,22 @@ def _wg_generate_more(wg_dir, want, dev=""):
 
 
 def _wg_replace_blocked(conf, dev=""):
-    """à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¸™à¸µà¹‰à¹‚à¸”à¸™à¹€à¸à¸¡à¸šà¸¥à¹‡à¸­à¸ -> à¸ˆà¸”à¸¥à¸‡ wg/.blocked.json (wg_gen à¹„à¸¡à¹ˆà¸ªà¸£à¹‰à¸²à¸‡à¸‹à¹‰à¸³), à¸¥à¸šà¹„à¸Ÿà¸¥à¹Œà¸—à¸´à¹‰à¸‡,
-    à¹à¸¥à¹‰à¸§à¸ªà¸±à¹ˆà¸‡ wg_gen à¸ªà¸£à¹‰à¸²à¸‡à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹ƒà¸«à¸¡à¹ˆà¸¡à¸²à¹à¸—à¸™à¹ƒà¸«à¹‰à¸ˆà¸³à¸™à¸§à¸™à¹„à¸Ÿà¸¥à¹Œà¹€à¸—à¹ˆà¸²à¹€à¸”à¸´à¸¡
-    (à¸‚à¹‰à¸²à¸¡à¸–à¹‰à¸²à¹„à¸Ÿà¸¥à¹Œà¸¡à¸²à¸ˆà¸²à¸ server RemoteFileManager (.managed) ; à¸«à¸¥à¸²à¸¢à¸ˆà¸­à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™ -> à¸¥à¹‡à¸­à¸à¹ƒà¸«à¹‰à¸ªà¸£à¹‰à¸²à¸‡à¸—à¸µà¸¥à¸°à¸ˆà¸­)"""
+    """เซิร์ฟเวอร์นี้โดนเกมบล็อก -> จดลง wg/.blocked.json (wg_gen ไม่สร้างซ้ำ), ลบไฟล์ทิ้ง,
+    แล้วสั่ง wg_gen สร้างเซิร์ฟเวอร์ใหม่มาแทนให้จำนวนไฟล์เท่าเดิม
+    (ข้ามถ้าไฟล์มาจาก server RemoteFileManager (.managed) ; หลายจอพร้อมกัน -> ล็อกให้สร้างทีละจอ)"""
     wg_dir = os.path.dirname(conf) or "."
     managed = os.path.exists(os.path.join(wg_dir, ".managed"))
     if not os.path.exists(conf) or (managed and not int(config.get("wg_regen_managed", 1) or 0)):
         return
-    os.makedirs(wg_dir, exist_ok=True)   # à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸«à¸²à¸¢ -> à¸ªà¸£à¹‰à¸²à¸‡à¹„à¸Ÿà¸¥à¹Œà¸¥à¹‡à¸­à¸à¹„à¸¡à¹ˆà¹„à¸”à¹‰ à¹à¸¥à¹‰à¸§à¹€à¸¥à¸´à¸à¹€à¸‡à¸µà¸¢à¸š à¹†
+    os.makedirs(wg_dir, exist_ok=True)   # โฟลเดอร์หาย -> สร้างไฟล์ล็อกไม่ได้ แล้วเลิกเงียบ ๆ
     lock = os.path.join(wg_dir, ".gen.lock")
     try:
         if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 300:
-            os.remove(lock)                 # à¸¥à¹‡à¸­à¸à¸„à¹‰à¸²à¸‡à¸ˆà¸²à¸ process à¸—à¸µà¹ˆà¸•à¸²à¸¢à¹„à¸›
+            os.remove(lock)                 # ล็อกค้างจาก process ที่ตายไป
         fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         os.close(fd)
     except Exception:
-        return                              # à¸ˆà¸­à¸­à¸·à¹ˆà¸™à¸à¸³à¸¥à¸±à¸‡à¸ªà¸£à¹‰à¸²à¸‡à¸­à¸¢à¸¹à¹ˆ - à¸£à¸­à¸šà¸™à¸±à¹‰à¸™à¸ˆà¸°à¹€à¸•à¸´à¸¡à¹ƒà¸«à¹‰à¸„à¸£à¸šà¹€à¸­à¸‡
+        return                              # จออื่นกำลังสร้างอยู่ - รอบนั้นจะเติมให้ครบเอง
     try:
         ep = _wg_endpoint(conf)
         bp = os.path.join(wg_dir, ".blocked.json")
@@ -1392,20 +1392,20 @@ def _wg_replace_blocked(conf, dev=""):
         want = len(_wg_list_configs(wg_dir))
         kp = os.path.join(wg_dir, "keypair.txt")
         if managed and not os.path.exists(kp):
-            # à¹„à¸Ÿà¸¥à¹Œà¸ˆà¸²à¸ server: à¹€à¸à¹‡à¸šà¸à¸¸à¸à¹à¸ˆà¹„à¸§à¹‰à¸à¹ˆà¸­à¸™à¸¥à¸š -> à¹„à¸Ÿà¸¥à¹Œà¹ƒà¸™ wg/ à¸«à¸¡à¸”à¹€à¸à¸¥à¸µà¹‰à¸¢à¸‡à¸à¹‡à¸¢à¸±à¸‡à¸ªà¸£à¹‰à¸²à¸‡à¹ƒà¸«à¸¡à¹ˆà¹„à¸”à¹‰
+            # ไฟล์จาก server: เก็บกุญแจไว้ก่อนลบ -> ไฟล์ใน wg/ หมดเกลี้ยงก็ยังสร้างใหม่ได้
             with open(conf, "rb") as f_src, open(kp, "wb") as f_dst:
                 f_dst.write(f_src.read())
-        # à¹„à¸Ÿà¸¥à¹Œà¸—à¸µà¹ˆà¸­à¸­à¸ IP à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™ (à¹à¸Šà¸£à¹Œà¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¸«à¸¥à¸²à¸¢à¸ˆà¸­ à¸„à¸™à¸¥à¸°à¸à¸¸à¸à¹à¸ˆ) à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸à¸”à¹‰à¸§à¸¢à¸à¸±à¸™à¸«à¸¡à¸” -> à¸¥à¸šà¸—à¸¸à¸à¸•à¸±à¸§
+        # ไฟล์ที่ออก IP เดียวกัน (แชร์เซิร์ฟเวอร์หลายจอ คนละกุญแจ) โดนบล็อกด้วยกันหมด -> ลบทุกตัว
         gone = [c for c in _wg_list_configs(wg_dir) if _wg_endpoint(c) == ep] or [conf]
         for c in gone:
             try:
                 os.remove(c)
             except OSError:
                 pass
-        print(f"[{dev}] [WG] à¸¥à¸š {', '.join(os.path.basename(c) for c in gone)} (à¹€à¸à¸¡à¸šà¸¥à¹‡à¸­à¸ IP {ep}) - à¸ªà¸£à¹‰à¸²à¸‡à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹ƒà¸«à¸¡à¹ˆà¸¡à¸²à¹à¸—à¸™")
+        print(f"[{dev}] [WG] ลบ {', '.join(os.path.basename(c) for c in gone)} (เกมบล็อก IP {ep}) - สร้างเซิร์ฟเวอร์ใหม่มาแทน")
         import wg_gen
         if managed:
-            # à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸—à¸µà¹ˆà¸£à¸±à¸šà¹„à¸Ÿà¸¥à¹Œà¸ˆà¸²à¸ server: à¹ƒà¸Šà¹‰à¸à¸¸à¸à¹à¸ˆà¹€à¸”à¸´à¸¡à¸‚à¸­à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (keypair.txt) à¸ªà¸£à¹‰à¸²à¸‡à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹ƒà¸«à¸¡à¹ˆà¸—à¸µà¹ˆà¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¡à¸µà¹ƒà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡
+            # เครื่องที่รับไฟล์จาก server: ใช้กุญแจเดิมของเครื่อง (keypair.txt) สร้างเซิร์ฟเวอร์ใหม่ที่ยังไม่มีในเครื่อง
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir, 0, "", 0, managed_ok=True)
         else:
             wg_gen.generate(want, config.get("wg_gen_countries") or None, wg_dir,
@@ -1413,7 +1413,7 @@ def _wg_replace_blocked(conf, dev=""):
                             str(config.get("wg_account", "") or "").strip() or None,
                             int(config.get("wg_total_machines", 30) or 30))
     except Exception as e:
-        print(f"[{dev}] [WG] à¸ªà¸£à¹‰à¸²à¸‡à¹„à¸Ÿà¸¥à¹Œà¹à¸—à¸™à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {e}")
+        print(f"[{dev}] [WG] สร้างไฟล์แทนไม่สำเร็จ: {e}")
     finally:
         try:
             os.remove(lock)
@@ -1422,7 +1422,7 @@ def _wg_replace_blocked(conf, dev=""):
 
 
 def _wg_cooldown_load(wg_dir):
-    """{endpoint: à¸«à¸¡à¸”à¹€à¸§à¸¥à¸²à¸žà¸±à¸} à¸—à¸µà¹ˆà¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸«à¸¡à¸” (à¹ƒà¸Šà¹‰à¸£à¹ˆà¸§à¸¡à¸—à¸¸à¸à¸ˆà¸­à¸œà¹ˆà¸²à¸™à¹„à¸Ÿà¸¥à¹Œ wg/.cooldown.json)"""
+    """{endpoint: หมดเวลาพัก} ที่ยังไม่หมด (ใช้ร่วมทุกจอผ่านไฟล์ wg/.cooldown.json)"""
     try:
         with open(os.path.join(wg_dir, ".cooldown.json"), encoding="utf-8") as f:
             d = json.load(f)
@@ -1448,12 +1448,12 @@ def _wg_cooldown_add(wg_dir, endpoint):
 
 
 def _wg_list_configs(wg_dir=None):
-    """à¸£à¸²à¸¢à¸à¸²à¸£à¹„à¸Ÿà¸¥à¹Œ config WireGuard à¸•à¸²à¸¡à¸¥à¸³à¸”à¸±à¸šà¸ˆà¸­ (path à¹ƒà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡)
+    """รายการไฟล์ config WireGuard ตามลำดับจอ (path ในเครื่อง)
 
-    1) wg/wg.txt (Notepad à¹„à¸Ÿà¸¥à¹Œà¹€à¸”à¸µà¸¢à¸§) - à¸§à¸²à¸‡ config à¸•à¹ˆà¸­à¸à¸±à¸™à¹„à¸”à¹‰à¸«à¸¥à¸²à¸¢à¸­à¸±à¸™ à¹à¸•à¹ˆà¸¥à¸°à¸­à¸±à¸™à¹€à¸£à¸´à¹ˆà¸¡à¸”à¹‰à¸§à¸¢ [Interface]
-       à¸­à¸±à¸™à¹à¸£à¸ = à¸ˆà¸­ 1, à¸­à¸±à¸™à¸—à¸µà¹ˆà¸ªà¸­à¸‡ = à¸ˆà¸­ 2 ... à¸šà¸£à¸£à¸—à¸±à¸”à¸—à¸µà¹ˆà¸‚à¸¶à¹‰à¸™à¸•à¹‰à¸™à¸”à¹‰à¸§à¸¢ # à¸„à¸·à¸­à¸«à¸¡à¸²à¸¢à¹€à¸«à¸•à¸¸ à¹„à¸¡à¹ˆà¸ªà¸™à¹ƒà¸ˆ
-       (à¹à¸¢à¸à¹€à¸à¹‡à¸šà¹€à¸›à¹‡à¸™à¹„à¸Ÿà¸¥à¹Œà¹„à¸§à¹‰à¹ƒà¸™ wg/.split/ à¹ƒà¸«à¹‰à¸šà¸­à¸—à¸ªà¹ˆà¸‡à¹€à¸‚à¹‰à¸²à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡)
-    2) à¸•à¸²à¸¡à¸”à¹‰à¸§à¸¢à¹„à¸Ÿà¸¥à¹Œ *.conf à¹ƒà¸™à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ wg/ à¹€à¸£à¸µà¸¢à¸‡à¸•à¸²à¸¡à¸Šà¸·à¹ˆà¸­
+    1) wg/wg.txt (Notepad ไฟล์เดียว) - วาง config ต่อกันได้หลายอัน แต่ละอันเริ่มด้วย [Interface]
+       อันแรก = จอ 1, อันที่สอง = จอ 2 ... บรรทัดที่ขึ้นต้นด้วย # คือหมายเหตุ ไม่สนใจ
+       (แยกเก็บเป็นไฟล์ไว้ใน wg/.split/ ให้บอทส่งเข้าเครื่อง)
+    2) ตามด้วยไฟล์ *.conf ในโฟลเดอร์ wg/ เรียงตามชื่อ
     """
     if wg_dir is None:
         wg_dir = str(config.get("wg_dir", "wg"))
@@ -1484,13 +1484,13 @@ def _wg_list_configs(wg_dir=None):
                         f.write(text + "\n")
                 out.append(p)
         except Exception as e:
-            print(f"[WG] à¸­à¹ˆà¸²à¸™ wg.txt à¹„à¸¡à¹ˆà¹„à¸”à¹‰: {e}")
+            print(f"[WG] อ่าน wg.txt ไม่ได้: {e}")
     try:
         out += [os.path.join(wg_dir, f) for f in sorted(os.listdir(wg_dir)) if f.lower().endswith(".conf")]
     except Exception:
         pass
-    # à¸•à¸±à¸”à¹„à¸Ÿà¸¥à¹Œà¸—à¸µà¹ˆà¸‚à¹‰à¸²à¸‡à¹ƒà¸™à¸‹à¹‰à¸³à¸à¸±à¸™: à¸à¸¸à¸à¹à¸ˆ (PrivateKey) à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™ + à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ (Endpoint) à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™
-    # à¸•à¹ˆà¸­à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™à¸«à¸¥à¸²à¸¢à¸ˆà¸­ = à¹à¸¢à¹ˆà¸‡à¸à¸±à¸™à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¸—à¸¸à¸à¸ˆà¸­ (à¹€à¸Šà¹ˆà¸™à¹‚à¸«à¸¥à¸” Singapore à¸‹à¹‰à¸³ à¹† à¸”à¹‰à¸§à¸¢ Key Pair à¹€à¸”à¸´à¸¡) -> à¹ƒà¸Šà¹‰à¹„à¸”à¹‰à¹à¸„à¹ˆà¹„à¸Ÿà¸¥à¹Œà¹€à¸”à¸µà¸¢à¸§
+    # ตัดไฟล์ที่ข้างในซ้ำกัน: กุญแจ (PrivateKey) เดียวกัน + เซิร์ฟเวอร์ (Endpoint) เดียวกัน
+    # ต่อพร้อมกันหลายจอ = แย่งกันเน็ตหลุดทุกจอ (เช่นโหลด Singapore ซ้ำ ๆ ด้วย Key Pair เดิม) -> ใช้ได้แค่ไฟล์เดียว
     seen, uniq, dup = {}, [], []
     for p in out:
         try:
@@ -1510,14 +1510,14 @@ def _wg_list_configs(wg_dir=None):
         uniq.append(p)
     if dup and not _wg_dup_warned:
         _wg_dup_warned.append(1)
-        print(f"[WG] à¹€à¸•à¸·à¸­à¸™: à¸¡à¸µ {len(dup)} à¹„à¸Ÿà¸¥à¹Œà¸‹à¹‰à¸³ (à¸à¸¸à¸à¹à¸ˆ+à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™ à¹ƒà¸Šà¹‰à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™à¹„à¸¡à¹ˆà¹„à¸”à¹‰) - à¹„à¸¡à¹ˆà¹ƒà¸Šà¹‰à¹„à¸Ÿà¸¥à¹Œà¸žà¸§à¸à¸™à¸µà¹‰:")
+        print(f"[WG] เตือน: มี {len(dup)} ไฟล์ซ้ำ (กุญแจ+เซิร์ฟเวอร์เดียวกัน ใช้พร้อมกันไม่ได้) - ไม่ใช้ไฟล์พวกนี้:")
         for a, b in dup:
-            print(f"[WG]   {a}  à¸‹à¹‰à¸³à¸à¸±à¸š  {b}")
-        print("[WG]   à¹à¸à¹‰: à¹‚à¸«à¸¥à¸”à¹ƒà¸«à¸¡à¹ˆà¹€à¸›à¹‡à¸™ 'à¸„à¸™à¸¥à¸°à¹€à¸¡à¸·à¸­à¸‡' à¸«à¸£à¸·à¸­à¹€à¸¡à¸·à¸­à¸‡à¹€à¸”à¸´à¸¡à¹à¸•à¹ˆà¹€à¸¥à¸·à¸­à¸ New Key Pair")
+            print(f"[WG]   {a}  ซ้ำกับ  {b}")
+        print("[WG]   แก้: โหลดใหม่เป็น 'คนละเมือง' หรือเมืองเดิมแต่เลือก New Key Pair")
     return uniq
 
 
-_wg_dup_warned = []   # à¹€à¸•à¸·à¸­à¸™à¹„à¸Ÿà¸¥à¹Œà¸‹à¹‰à¸³à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§à¸•à¹ˆà¸­ process
+_wg_dup_warned = []   # เตือนไฟล์ซ้ำครั้งเดียวต่อ process
 
 
 WG_APK_URL = "https://download.wireguard.com/android-client/com.wireguard.android-1.0.20260315.apk"
@@ -1525,9 +1525,9 @@ _wg_apk_lock = threading.Lock()
 
 
 def _wg_apk_path():
-    """à¹„à¸Ÿà¸¥à¹Œà¸•à¸´à¸”à¸•à¸±à¹‰à¸‡à¹à¸­à¸› WireGuard (Android) - sync à¸à¸±à¸š login.py: à¸«à¸²à¸ˆà¸²à¸ central à¸à¹ˆà¸­à¸™
-    à¸¥à¸³à¸”à¸±à¸š: script_dir/wg/wireguard.apk, wg/wireguard.apk, <wg_dir>/wireguard.apk
-    à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ -> à¹‚à¸«à¸¥à¸”à¸¥à¸‡ wg/wireguard.apk (central) à¸—à¸¸à¸ sub à¹ƒà¸Šà¹‰à¸£à¹ˆà¸§à¸¡"""
+    """ไฟล์ติดตั้งแอป WireGuard (Android) - sync กับ login.py: หาจาก central ก่อน
+    ลำดับ: script_dir/wg/wireguard.apk, wg/wireguard.apk, <wg_dir>/wireguard.apk
+    ไม่เจอ -> โหลดลง wg/wireguard.apk (central) ทุก sub ใช้ร่วม"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     wg_dir = str(config.get("wg_dir", "wg"))
     candidates = [
@@ -1543,33 +1543,33 @@ def _wg_apk_path():
         try:
             os.makedirs(central_dir, exist_ok=True)
             import urllib.request
-            print("[WG] à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”à¹à¸­à¸› WireGuard (à¸„à¸£à¸±à¹‰à¸‡à¹à¸£à¸à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§) à¸¥à¸‡ wg/wireguard.apk...")
+            print("[WG] กำลังโหลดแอป WireGuard (ครั้งแรกครั้งเดียว) ลง wg/wireguard.apk...")
             path = os.path.join(central_dir, "wireguard.apk")
             tmp = path + ".part"
             urllib.request.urlretrieve(str(config.get("wg_apk_url", WG_APK_URL)), tmp)
             os.replace(tmp, path)
             return path
         except Exception as e:
-            print(f"[WG] à¹‚à¸«à¸¥à¸”à¹à¸­à¸› WireGuard à¹„à¸¡à¹ˆà¹„à¸”à¹‰: {e}")
+            print(f"[WG] โหลดแอป WireGuard ไม่ได้: {e}")
             return None
 
 
 def reset_network_all(devices):
-    """à¸à¹ˆà¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡à¸šà¸­à¸—: à¸¥à¹‰à¸²à¸‡à¸‚à¸­à¸‡à¸„à¹‰à¸²à¸‡à¸—à¸¸à¸à¸ˆà¸­ (à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™) - tunnel WireGuard, à¹à¸­à¸› WireGuard, proxy
-    à¹à¸¥à¹‰à¸§ ping 1.1.1.1 à¸ˆà¸²à¸à¹ƒà¸™à¸­à¸µà¸¡à¸¹à¸¯ à¸šà¸­à¸à¹ƒà¸™ log à¸§à¹ˆà¸²à¸ˆà¸­à¹„à¸«à¸™à¹€à¸™à¹‡à¸•à¹ƒà¸Šà¹‰à¹„à¸”à¹‰/à¹„à¸¡à¹ˆà¹„à¸”à¹‰
-    à¸›à¸´à¸”à¹„à¸”à¹‰à¸”à¹‰à¸§à¸¢ config "reset_network_on_start": 0
+    """ก่อนเริ่มบอท: ล้างของค้างทุกจอ (พร้อมกัน) - tunnel WireGuard, แอป WireGuard, proxy
+    แล้ว ping 1.1.1.1 จากในอีมูฯ บอกใน log ว่าจอไหนเน็ตใช้ได้/ไม่ได้
+    ปิดได้ด้วย config "reset_network_on_start": 0
 
-    wg_enabled=0 (proxy mode): à¸‚à¹‰à¸²à¸¡à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” - à¹„à¸¡à¹ˆà¸¥à¹‰à¸²à¸‡ http_proxy à¸‚à¸­à¸‡ Android
-      (à¸—à¸µà¹ˆ proxy_switcher.py à¸•à¸±à¹‰à¸‡à¹„à¸§à¹‰à¹ƒà¸«à¹‰ emulator à¸§à¸´à¹ˆà¸‡à¸œà¹ˆà¸²à¸™ TOT/ISP à¹„à¸—à¸¢)
+    wg_enabled=0 (proxy mode): ข้ามทั้งหมด - ไม่ล้าง http_proxy ของ Android
+      (ที่ proxy_switcher.py ตั้งไว้ให้ emulator วิ่งผ่าน TOT/ISP ไทย)
     """
     if not int(config.get("reset_network_on_start", 1) or 0):
         return
     if _no_proxy_mode():
-        print("[NET-RESET] no_proxy_mode / KILL_VPN=on - à¸‚à¹‰à¸²à¸¡ VPN reset / WG-INSTALL / hard-reset à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” (à¹ƒà¸Šà¹‰ IP à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸•à¸£à¸‡ à¹†)")
+        print("[NET-RESET] no_proxy_mode / KILL_VPN=on - ข้าม VPN reset / WG-INSTALL / hard-reset ทั้งหมด (ใช้ IP เครื่องตรง ๆ)")
         return
     if int(config.get("use_host_vpn", 0) or 0):
-        print("[NET-RESET] use_host_vpn=1 - host_wg_rotator à¸„à¸¸à¸¡à¸šà¸™ Windows (à¸‚à¹‰à¸²à¸¡ VPN setup à¹ƒà¸™à¸­à¸µà¸¡à¸¹à¸¯)")
-        # à¸à¸³à¸ˆà¸±à¸” WireGuard app à¸„à¹‰à¸²à¸‡à¹ƒà¸™à¸—à¸¸à¸à¸­à¸µà¸¡à¸¹ - à¸›à¹‰à¸­à¸‡à¸à¸±à¸™à¸«à¸™à¹‰à¸²à¸ˆà¸­à¹à¸­à¸› WG à¹‚à¸œà¸¥à¹ˆ/à¸„à¹‰à¸²à¸‡à¸ˆà¸²à¸à¸£à¸­à¸šà¸à¹ˆà¸­à¸™
+        print("[NET-RESET] use_host_vpn=1 - host_wg_rotator คุมบน Windows (ข้าม VPN setup ในอีมูฯ)")
+        # กำจัด WireGuard app ค้างในทุกอีมู - ป้องกันหน้าจอแอป WG โผล่/ค้างจากรอบก่อน
         if int(config.get("host_vpn_purge_emu_wg", 1) or 0):
             pkg = "com.wireguard.android"
             kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
@@ -1585,7 +1585,7 @@ def reset_network_all(devices):
                                            capture_output=True, text=True, timeout=30, **kw)
                         out = (r.stdout or "") + (r.stderr or "")
                         if "Success" in out:
-                            print(f"[NET-RESET] {dev}: à¸–à¸­à¸™à¹à¸­à¸› WireGuard à¸­à¸­à¸à¸ˆà¸²à¸à¸­à¸µà¸¡à¸¹à¹à¸¥à¹‰à¸§ âœ“")
+                            print(f"[NET-RESET] {dev}: ถอนแอป WireGuard ออกจากอีมูแล้ว ✓")
                 except Exception:
                     pass
             _threads = []
@@ -1597,8 +1597,8 @@ def reset_network_all(devices):
                 t.join(timeout=35)
         return
     if not int(config.get("wg_enabled", 1) or 0):
-        print("[NET-RESET] wg_enabled=0 (proxy mode) - à¸‚à¹‰à¸²à¸¡ VPN reset à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”")
-        print("            Android http_proxy à¸—à¸µà¹ˆ proxy_switcher à¸•à¸±à¹‰à¸‡à¹„à¸§à¹‰à¸„à¸‡à¸­à¸¢à¸¹à¹ˆ")
+        print("[NET-RESET] wg_enabled=0 (proxy mode) - ข้าม VPN reset ทั้งหมด")
+        print("            Android http_proxy ที่ proxy_switcher ตั้งไว้คงอยู่")
         return
     pkg = "com.wireguard.android"
     kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
@@ -1611,38 +1611,38 @@ def reset_network_all(devices):
             return ""
 
     def ensure_wg_installed(dev):
-        """à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡à¹à¸­à¸› WireGuard à¸¥à¸‡à¸­à¸µà¸¡à¸¹à¸¯ à¸–à¹‰à¸²à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¡à¸µ (sync à¸à¸±à¸š login.py)
-        à¹€à¸Šà¹‡à¸„ 2 à¸Šà¸±à¹‰à¸™: pm path (à¹€à¸£à¹‡à¸§ à¹„à¸¡à¹ˆà¸žà¸¶à¹ˆà¸‡ su) -> fallback su test -d"""
+        """ติดตั้งแอป WireGuard ลงอีมูฯ ถ้ายังไม่มี (sync กับ login.py)
+        เช็ค 2 ชั้น: pm path (เร็ว ไม่พึ่ง su) -> fallback su test -d"""
         if not int(config.get("wg_enabled", 1) or 0):
             return
         got = sh(dev, f"pm path {pkg}", timeout=8)
         if "package:" in (got or "").lower():
-            print(f"[WG-INSTALL] {dev}: à¸¡à¸µà¹à¸­à¸› WireGuard à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ âœ“")
+            print(f"[WG-INSTALL] {dev}: มีแอป WireGuard อยู่แล้ว ✓")
             return
         got2 = sh(dev, f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=10)
         if "YES" in (got2 or ""):
-            print(f"[WG-INSTALL] {dev}: à¸¡à¸µà¹à¸­à¸› WireGuard à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ âœ“ (via su)")
+            print(f"[WG-INSTALL] {dev}: มีแอป WireGuard อยู่แล้ว ✓ (via su)")
             return
         apk = _wg_apk_path()
         if not apk:
-            print(f"[WG-INSTALL] {dev}: à¹„à¸¡à¹ˆà¸žà¸šà¹à¸­à¸› + à¹‚à¸«à¸¥à¸”à¹„à¸Ÿà¸¥à¹Œ wg/wireguard.apk à¹„à¸¡à¹ˆà¹„à¸”à¹‰ - à¸‚à¹‰à¸²à¸¡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸™à¸µà¹‰")
+            print(f"[WG-INSTALL] {dev}: ไม่พบแอป + โหลดไฟล์ wg/wireguard.apk ไม่ได้ - ข้ามเครื่องนี้")
             return
-        print(f"[WG-INSTALL] {dev}: à¹„à¸¡à¹ˆà¸žà¸šà¹à¸­à¸› WireGuard - à¸à¸³à¸¥à¸±à¸‡à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡à¸ˆà¸²à¸ {apk}...")
+        print(f"[WG-INSTALL] {dev}: ไม่พบแอป WireGuard - กำลังติดตั้งจาก {apk}...")
         try:
             r = subprocess.run([adb_path, "-s", dev, "install", "-r", apk],
                                capture_output=True, text=True, errors="replace",
                                timeout=180, **kw)
             out = (r.stdout or "") + (r.stderr or "")
             if "Success" in out:
-                print(f"[WG-INSTALL] {dev}: à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡ WireGuard à¸ªà¸³à¹€à¸£à¹‡à¸ˆ âœ“")
+                print(f"[WG-INSTALL] {dev}: ติดตั้ง WireGuard สำเร็จ ✓")
             else:
-                print(f"[WG-INSTALL] {dev}: à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ -> {out.strip()[:200]}")
+                print(f"[WG-INSTALL] {dev}: ติดตั้งไม่สำเร็จ -> {out.strip()[:200]}")
         except Exception as e:
-            print(f"[WG-INSTALL] {dev}: à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡à¸œà¸´à¸”à¸žà¸¥à¸²à¸” {e}")
+            print(f"[WG-INSTALL] {dev}: ติดตั้งผิดพลาด {e}")
 
     def hard_reset_vpn(dev):
-        """hard reset VPN state (sync à¸à¸±à¸š login.py) - à¹„à¸¡à¹ˆ pm clear à¹€à¸žà¸£à¸²à¸°à¸ˆà¸°à¸—à¸³à¹ƒà¸«à¹‰ apk à¸«à¸²à¸¢ -> reinstall timeout
-        à¸£à¸§à¸¡à¸—à¸¸à¸à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¹€à¸›à¹‡à¸™ script à¹€à¸”à¸µà¸¢à¸§ timeout 15s - à¸›à¸¥à¸­à¸”à¸ à¸±à¸¢à¸–à¹‰à¸² adb/emulator à¹€à¸™à¹ˆà¸²"""
+        """hard reset VPN state (sync กับ login.py) - ไม่ pm clear เพราะจะทำให้ apk หาย -> reinstall timeout
+        รวมทุกคำสั่งเป็น script เดียว timeout 15s - ปลอดภัยถ้า adb/emulator เน่า"""
         print(f"[NET-RESET-HARD] {dev}: hard reset VPN state (keep app)...")
         script = (
             f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr 2>/dev/null; "
@@ -1664,7 +1664,7 @@ def reset_network_all(devices):
         )
         out = sh(dev, script, timeout=15)
         done = "DONE_HARD_RESET" in (out or "")
-        tag = "à¸¥à¹‰à¸²à¸‡ tunnels/configs/iptables/DNS/proxy - WG app à¸¢à¸±à¸‡à¸­à¸¢à¸¹à¹ˆ" if done else "à¸¥à¹‰à¸²à¸‡à¸„à¹‰à¸²à¸‡ - à¸šà¸²à¸‡à¸„à¸³à¸ªà¸±à¹ˆà¸‡ timeout (à¸‚à¹‰à¸²à¸¡à¹„à¸›à¸•à¹ˆà¸­)"
+        tag = "ล้าง tunnels/configs/iptables/DNS/proxy - WG app ยังอยู่" if done else "ล้างค้าง - บางคำสั่ง timeout (ข้ามไปต่อ)"
         print(f"[NET-RESET-HARD] {dev}: {tag}")
 
     def one(dev):
@@ -1673,10 +1673,10 @@ def reset_network_all(devices):
         ensure_wg_installed(dev)
         had = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
         if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_once", 1) or 0):
-            # wg_once: VPN à¸•à¹‰à¸­à¸‡à¹€à¸›à¸´à¸”à¹à¸Šà¹ˆà¹„à¸§à¹‰ - à¸•à¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡à¸«à¹‰à¸²à¸¡à¸›à¸´à¸” tunnel à¸—à¸µà¹ˆà¹€à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆ à¸¥à¹‰à¸²à¸‡à¹à¸„à¹ˆ proxy à¸„à¹‰à¸²à¸‡
+            # wg_once: VPN ต้องเปิดแช่ไว้ - ตอนเริ่มห้ามปิด tunnel ที่เปิดอยู่ ล้างแค่ proxy ค้าง
             sh(dev, "settings put global http_proxy :0; settings delete global http_proxy; "
                     "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
-            print(f"[NET-RESET] {dev}: VPN {'à¹€à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ - à¹„à¸¡à¹ˆà¸¢à¸¸à¹ˆà¸‡' if had else 'à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆ - à¸ˆà¸°à¹€à¸›à¸´à¸”à¹ƒà¸«à¹‰à¸à¹ˆà¸­à¸™à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡'}")
+            print(f"[NET-RESET] {dev}: VPN {'เปิดอยู่แล้ว - ไม่ยุ่ง' if had else 'ปิดอยู่ - จะเปิดให้ก่อนเข้าเกม'}")
             return
         sh(dev, f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_DOWN --es tunnel lgr'")
         time.sleep(1.5)
@@ -1685,10 +1685,10 @@ def reset_network_all(devices):
                 "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port")
         still = bool(sh(dev, "ip -o link show 2>/dev/null | grep -E ' tun[0-9]+:' || true").strip())
         ping = sh(dev, "ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1 && echo OK || echo FAIL", timeout=10).strip()
-        state = ("à¸›à¸´à¸” VPN à¸„à¹‰à¸²à¸‡à¹à¸¥à¹‰à¸§" if had else "à¹„à¸¡à¹ˆà¸¡à¸µ VPN à¸„à¹‰à¸²à¸‡") + (" (à¹à¸•à¹ˆ tunnel à¸¢à¸±à¸‡à¸­à¸¢à¸¹à¹ˆ!)" if still else "")
-        print(f"[NET-RESET] {dev}: {state} | à¹€à¸™à¹‡à¸•: {'à¹ƒà¸Šà¹‰à¹„à¸”à¹‰' if ping == 'OK' else 'à¸­à¸­à¸à¹€à¸™à¹‡à¸•à¹„à¸¡à¹ˆà¹„à¸”à¹‰!'}")
+        state = ("ปิด VPN ค้างแล้ว" if had else "ไม่มี VPN ค้าง") + (" (แต่ tunnel ยังอยู่!)" if still else "")
+        print(f"[NET-RESET] {dev}: {state} | เน็ต: {'ใช้ได้' if ping == 'OK' else 'ออกเน็ตไม่ได้!'}")
 
-    print(f"[NET-RESET] à¸¥à¹‰à¸²à¸‡ VPN/proxy à¸„à¹‰à¸²à¸‡à¸—à¸¸à¸à¸ˆà¸­à¸à¹ˆà¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡ ({len(devices)} à¸ˆà¸­)...")
+    print(f"[NET-RESET] ล้าง VPN/proxy ค้างทุกจอก่อนเริ่ม ({len(devices)} จอ)...")
     ts = [threading.Thread(target=one, args=(d,), daemon=True) for d in devices]
     for t in ts:
         t.start()
@@ -1696,9 +1696,9 @@ def reset_network_all(devices):
         t.join(60)
     wait = float(config.get("net_reset_wait", 30) or 0)
     if int(config.get("wg_enabled", 1) or 0) and int(config.get("wg_once", 1) or 0):
-        wait = 0                     # wg_once: à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸›à¸´à¸” VPN -> à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸£à¸­à¹€à¸™à¹‡à¸•à¸™à¸´à¹ˆà¸‡
+        wait = 0                     # wg_once: ไม่ได้ปิด VPN -> ไม่ต้องรอเน็ตนิ่ง
     if wait > 0:
-        print(f"[NET-RESET] à¸›à¸´à¸” VPN à¸—à¸¸à¸à¸ˆà¸­à¹à¸¥à¹‰à¸§ - à¸£à¸­à¹€à¸™à¹‡à¸•à¸™à¸´à¹ˆà¸‡ {wait:.0f} à¸§à¸´ à¸à¹ˆà¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡à¸—à¸³à¸‡à¸²à¸™...")
+        print(f"[NET-RESET] ปิด VPN ทุกจอแล้ว - รอเน็ตนิ่ง {wait:.0f} วิ ก่อนเริ่มทำงาน...")
         time.sleep(wait)
 
 
@@ -1793,7 +1793,7 @@ def connect_known_ports():
         subprocess.run([adb_path, "start-server"], capture_output=True, timeout=3)
         time.sleep(0.5)
 
-        # à¸ªà¹à¸à¸™à¸žà¸­à¸£à¹Œà¸•à¸„à¸µà¹ˆà¸•à¸±à¹‰à¸‡à¹à¸•à¹ˆ 5555-5755 (à¸£à¸­à¸‡à¸£à¸±à¸š 100 à¸ˆà¸­ MuMu)
+        # สแกนพอร์ตคี่ตั้งแต่ 5555-5755 (รองรับ 100 จอ MuMu)
         ports = list(range(5555, 5756, 2))  # [5555, 5557, 5559, ..., 5755]
 
         print(f"\n--- [ADB] Auto-scanning {len(ports)} ports (5555-5755 odd) ---")
@@ -1801,7 +1801,7 @@ def connect_known_ports():
         connected = []
         
         def try_connect_port(port):
-            """à¸¢à¸´à¸‡à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­à¸—à¸µà¸¥à¸°à¸žà¸­à¸£à¹Œà¸•"""
+            """ยิงเชื่อมต่อทีละพอร์ต"""
             try:
                 addr = f"127.0.0.1:{port}"
                 result = subprocess.run(
@@ -1815,7 +1815,7 @@ def connect_known_ports():
                 pass
             return None
 
-        # à¸¢à¸´à¸‡à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™
+        # ยิงเชื่อมต่อพร้อมกัน
         with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
             futures = {executor.submit(try_connect_port, p): p for p in ports}
             for future in concurrent.futures.as_completed(futures):
@@ -1834,7 +1834,7 @@ def connect_known_ports():
 
 
 def get_connected_devices():
-    """à¸”à¸¶à¸‡à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­ devices à¸—à¸µà¹ˆ online à¸ˆà¸²à¸ adb devices (à¹„à¸¡à¹ˆà¸ˆà¸³à¸à¸±à¸”à¸ˆà¸³à¸™à¸§à¸™, à¸à¸£à¸­à¸‡à¸‹à¹‰à¸³)"""
+    """ดึงรายชื่อ devices ที่ online จาก adb devices (ไม่จำกัดจำนวน, กรองซ้ำ)"""
     try:
         result = subprocess.run(
             [adb_path, "devices"],
@@ -1850,8 +1850,8 @@ def get_connected_devices():
         if not raw_devices:
             return []
                 
-        # à¸à¸£à¸­à¸‡à¸‹à¹‰à¸³: à¸–à¹‰à¸²à¸¡à¸µ emulator-5556 à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¹€à¸­à¸² 127.0.0.1:5557 à¸­à¸µà¸
-        emulator_adb_ports = set()  # à¹€à¸à¹‡à¸šà¸žà¸­à¸£à¹Œà¸• ADB (à¸„à¸µà¹ˆ) à¸—à¸µà¹ˆ emulator-xxx à¸„à¸£à¸­à¸‡
+        # กรองซ้ำ: ถ้ามี emulator-5556 อยู่แล้ว ไม่ต้องเอา 127.0.0.1:5557 อีก
+        emulator_adb_ports = set()  # เก็บพอร์ต ADB (คี่) ที่ emulator-xxx ครอง
         for d in raw_devices:
             if d.startswith("emulator-"):
                 try:
@@ -1865,12 +1865,12 @@ def get_connected_devices():
         for d in raw_devices:
             if d in seen:
                 continue
-            # à¸–à¹‰à¸²à¹€à¸›à¹‡à¸™ 127.0.0.1:port à¹à¸¥à¹‰à¸§à¸¡à¸µ emulator- à¸„à¸£à¸­à¸‡à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ -> à¸‚à¹‰à¸²à¸¡
+            # ถ้าเป็น 127.0.0.1:port แล้วมี emulator- ครองอยู่แล้ว -> ข้าม
             if d.startswith("127.0.0.1:"):
                 try:
                     port = int(d.split(":")[1])
                     if port in emulator_adb_ports:
-                        continue  # à¸‹à¹‰à¸³à¸à¸±à¸š emulator-xxxx
+                        continue  # ซ้ำกับ emulator-xxxx
                 except ValueError:
                     pass
             seen.add(d)
@@ -1920,7 +1920,7 @@ class NetworkMonitor:
         if current_time - self.last_check >= self.check_interval:
             fixnet_pos = ImgSearchADB(adb_img, 'img/fixnet.png')
             if fixnet_pos:
-                print(f"[{bot.device_id}] à¸žà¸šà¸›à¸±à¸à¸«à¸²à¸à¸²à¸£à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­ (fixnet.png)")
+                print(f"[{bot.device_id}] พบปัญหาการเชื่อมต่อ (fixnet.png)")
                 bot.tap(fixnet_pos[0][0], fixnet_pos[0][1])
                 time.sleep(1)
                 return True
@@ -1929,40 +1929,40 @@ class NetworkMonitor:
 
 def check_critical_errors(bot, adb_img, context=""):
     """
-    à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸š fixid.png, fixunkown.png, apple.png
+    ตรวจสอบ fixid.png, fixunkown.png, apple.png
     """
     try:
-        # à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸š fixid.png
+        # ตรวจสอบ fixid.png
         fixid_pos = ImgSearchADB(adb_img, 'img/fixid.png')
         if fixid_pos:
-            print(f"[{bot.device_id}] âš ï¸ Found fixid.png in {context}!")
+            print(f"[{bot.device_id}] ⚠️ Found fixid.png in {context}!")
             bot.backup_to_backupxml()
             bot.clear_and_restart()
             time.sleep(6)
             return "fixid"
         
-        # à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸š fixunkown.png
+        # ตรวจสอบ fixunkown.png
         fixunkown_pos = ImgSearchADB(adb_img, 'img/fixunkown.png')
         if fixunkown_pos:
-            print(f"[{bot.device_id}] âš ï¸ Found fixunkown.png in {context}!")
+            print(f"[{bot.device_id}] ⚠️ Found fixunkown.png in {context}!")
             bot.backup_to_backupxml()
             bot.clear_and_restart()
             time.sleep(6)
             return "fixunkown"
         
-        # à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸š apple.png
+        # ตรวจสอบ apple.png
         apple_pos = ImgSearchADB(adb_img, 'img/apple.png')
         if apple_pos:
-            print(f"[{bot.device_id}] âš ï¸ Found apple.png in {context}!")
+            print(f"[{bot.device_id}] ⚠️ Found apple.png in {context}!")
             bot.backup_failed_login()
             bot.clear_and_restart()
             time.sleep(6)
             return "apple"
             
-        # à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸š fixnet1.png / fixnet.png (à¸›à¸±à¸à¸«à¸²à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¹€à¸”à¹‰à¸‡à¸›à¹Šà¸­à¸›à¸­à¸±à¸ž)
+        # ตรวจสอบ fixnet1.png / fixnet.png (ปัญหาเน็ตหลุดเด้งป๊อปอัพ)
         fixnet_pos = ImgSearchADB(adb_img, 'img/fixnet1.png') or ImgSearchADB(adb_img, 'img/fixnet.png')
         if fixnet_pos:
-            print(f"[{bot.device_id}] ðŸ“¶ à¸žà¸šà¸›à¸±à¸à¸«à¸²à¸à¸²à¸£à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­ (fixnet1/fixnet) à¹ƒà¸™ {context} - à¸à¸³à¸¥à¸±à¸‡à¸à¸” OK...")
+            print(f"[{bot.device_id}] 📶 พบปัญหาการเชื่อมต่อ (fixnet1/fixnet) ใน {context} - กำลังกด OK...")
             _signal_host_vpn_rotate(f"fixnet {bot.device_id} {context}")
             bot.tap(fixnet_pos[0][0], fixnet_pos[0][1])
             time.sleep(1)
@@ -2003,7 +2003,7 @@ class RangerGearBot(threading.Thread):
             return default
 
     def _adb_backoff(self):
-        """à¹€à¸£à¹‡à¸§à¸ªà¸¸à¸”à¹à¸•à¹ˆà¹„à¸¡à¹ˆà¹ƒà¸«à¹‰ offline: à¹à¸„à¸›à¸ˆà¸­ timeout -> à¸Šà¸°à¸¥à¸­ adb_backoff_delay à¸§à¸´ à¸™à¸²à¸™ adb_backoff_sec à¸§à¸´ à¹à¸¥à¹‰à¸§à¸à¸¥à¸±à¸šà¸¡à¸²à¹€à¸£à¹‡à¸§à¹€à¸­à¸‡"""
+        """เร็วสุดแต่ไม่ให้ offline: แคปจอ timeout -> ชะลอ adb_backoff_delay วิ นาน adb_backoff_sec วิ แล้วกลับมาเร็วเอง"""
         t = getattr(self, "_adb_slow_until", 0)
         return float(config.get("adb_backoff_delay", 1.0)) if time.time() < t else 0.0
 
@@ -2100,11 +2100,11 @@ class RangerGearBot(threading.Thread):
         self.monitor_thread = threading.Thread(target=self._popup_monitor_loop, daemon=True)
         self.monitor_thread.start()
 
-    # à¸£à¸¹à¸›à¹„à¸à¹ˆà¸šà¸µà¹‰à¸—à¸¸à¸à¹à¸šà¸š - à¹€à¸žà¸´à¹ˆà¸¡à¸•à¸±à¸§à¹ƒà¸«à¸¡à¹ˆà¸—à¸µà¹ˆà¸™à¸µà¹ˆà¸—à¸µà¹ˆà¹€à¸”à¸µà¸¢à¸§ à¸—à¸¸à¸à¸ˆà¸¸à¸”à¸—à¸µà¹ˆà¹€à¸Šà¹‡à¸„à¹ƒà¸Šà¹‰à¸¥à¸´à¸ªà¸•à¹Œà¸™à¸µà¹‰à¸£à¹ˆà¸§à¸¡à¸à¸±à¸™
+    # รูปไก่บี้ทุกแบบ - เพิ่มตัวใหม่ที่นี่ที่เดียว ทุกจุดที่เช็คใช้ลิสต์นี้ร่วมกัน
     KAIBY_IMAGES = ("img/kaiby.png", "img/kaiby1.png", "img/kaiby2.bmp")
 
     def find_kaiby(self, similarity=0.95):
-        """à¸„à¸·à¸™à¸Šà¸·à¹ˆà¸­à¸£à¸¹à¸›à¹„à¸à¹ˆà¸šà¸µà¹‰à¸•à¸±à¸§à¹à¸£à¸à¸—à¸µà¹ˆà¹€à¸ˆà¸­à¸šà¸™à¸ˆà¸­à¸—à¸µà¹ˆà¸ˆà¸±à¸šà¹„à¸§à¹‰ (None = à¹„à¸¡à¹ˆà¹€à¸ˆà¸­)"""
+        """คืนชื่อรูปไก่บี้ตัวแรกที่เจอบนจอที่จับไว้ (None = ไม่เจอ)"""
         for path in self.KAIBY_IMAGES:
             if self.exists_in_cache(path, similarity=similarity):
                 return os.path.basename(path)
@@ -2120,15 +2120,15 @@ class RangerGearBot(threading.Thread):
         self._pos_cache_logged_at = now
         print(f"[{self.device_id}] {self._pos_mem.summary()}")
 
-    # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸”à¸›à¸´à¸”à¹ƒà¸«à¹‰à¹„à¸”à¹‰ à¹„à¸¡à¹ˆà¸§à¹ˆà¸²à¸šà¸­à¸—à¸ˆà¸°à¸­à¸¢à¸¹à¹ˆà¸¥à¸¹à¸›à¹„à¸«à¸™
-    NET_POPUPS = ("img/fixnet-tiket.png", "img/fixnet1.png", "img/fixnet.png",   # à¸•à¸±à¸§à¹à¸£à¸ = à¸£à¸¹à¸›à¸ˆà¸²à¸ bot-tiket
-                  "img/fixplay.png")   # PLAY: à¹€à¸Šà¹‡à¸„à¸•à¸¥à¸­à¸”à¹€à¸«à¸¡à¸·à¸­à¸™ fixnet (à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸ˆà¸±à¸šà¸ˆà¸­ + monitor à¹€à¸šà¸·à¹‰à¸­à¸‡à¸«à¸¥à¸±à¸‡ à¸à¸”à¸‹à¹‰à¸³à¸ˆà¸™à¸«à¸²à¸¢)
-    NET_POPUP_LIMIT = 10   # à¸à¸”à¸„à¸£à¸šà¹€à¸—à¹ˆà¸²à¸™à¸µà¹‰à¹à¸¥à¹‰à¸§à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸«à¸²à¸¢ = à¹€à¸”à¹‰à¸‡à¹à¸­à¸›à¹ƒà¸«à¸¡à¹ˆ à¸”à¸µà¸à¸§à¹ˆà¸²à¸„à¹‰à¸²à¸‡à¸£à¸­à¹€à¸‰à¸¢ à¹†
-    # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¸—à¸µà¹ˆà¸à¸”à¸›à¸´à¸”à¹à¸¥à¹‰à¸§à¸¡à¸µà¸«à¸™à¹‰à¸²à¸•à¹ˆà¸²à¸‡à¸•à¹ˆà¸­à¸—à¹‰à¸²à¸¢à¹ƒà¸«à¹‰à¸à¸”à¸­à¸µà¸à¸—à¸µ: à¸Šà¸·à¹ˆà¸­à¸£à¸¹à¸›à¸—à¸µà¹ˆà¸à¸” -> (à¸£à¸¹à¸›à¸›à¸¸à¹ˆà¸¡à¸•à¹ˆà¸­à¸—à¹‰à¸²à¸¢, à¸£à¸­à¸ªà¸¹à¸‡à¸ªà¸¸à¸”à¸à¸µà¹ˆà¸§à¸´)
-    NET_FOLLOWUP = {"fixplay.png": ("img/check-ok1.png", 120)}   # à¸à¸” PLAY à¹à¸¥à¹‰à¸§à¸•à¹‰à¸­à¸‡à¸£à¸­à¸à¸” OK à¸•à¹ˆà¸­
+    # ป๊อปอัพเน็ตหลุดที่ต้องกดปิดให้ได้ ไม่ว่าบอทจะอยู่ลูปไหน
+    NET_POPUPS = ("img/fixnet-tiket.png", "img/fixnet1.png", "img/fixnet.png",   # ตัวแรก = รูปจาก bot-tiket
+                  "img/fixplay.png")   # PLAY: เช็คตลอดเหมือน fixnet (ทุกครั้งที่จับจอ + monitor เบื้องหลัง กดซ้ำจนหาย)
+    NET_POPUP_LIMIT = 10   # กดครบเท่านี้แล้วยังไม่หาย = เด้งแอปใหม่ ดีกว่าค้างรอเฉย ๆ
+    # ป๊อปอัพเน็ตที่กดปิดแล้วมีหน้าต่างต่อท้ายให้กดอีกที: ชื่อรูปที่กด -> (รูปปุ่มต่อท้าย, รอสูงสุดกี่วิ)
+    NET_FOLLOWUP = {"fixplay.png": ("img/check-ok1.png", 120)}   # กด PLAY แล้วต้องรอกด OK ต่อ
 
     def _match_score(self, template_path):
-        """à¸„à¸°à¹à¸™à¸™ match à¸ªà¸¹à¸‡à¸ªà¸¸à¸”à¸‚à¸­à¸‡à¸£à¸¹à¸›à¸šà¸™à¸ˆà¸­à¸¥à¹ˆà¸²à¸ªà¸¸à¸” (0-1) - à¹„à¸§à¹‰à¸šà¸­à¸à¹ƒà¸™ log à¸§à¹ˆà¸² 'à¹€à¸à¸·à¸­à¸šà¹€à¸ˆà¸­' à¸«à¸£à¸·à¸­ 'à¹„à¸¡à¹ˆà¹€à¸ˆà¸­à¹€à¸¥à¸¢'"""
+        """คะแนน match สูงสุดของรูปบนจอล่าสุด (0-1) - ไว้บอกใน log ว่า 'เกือบเจอ' หรือ 'ไม่เจอเลย'"""
         try:
             tmpl = self._get_template(template_path)
             if self._screen is None or tmpl is None:
@@ -2142,9 +2142,9 @@ class RangerGearBot(threading.Thread):
             return 0.0
 
     def _save_debug_screen(self, reason):
-        """à¹€à¸à¹‡à¸šà¸ à¸²à¸žà¸ˆà¸­à¸¥à¹ˆà¸²à¸ªà¸¸à¸”à¹„à¸§à¹‰à¸”à¸¹à¸§à¹ˆà¸²à¸„à¹‰à¸²à¸‡/à¸«à¸²à¹„à¸¡à¹ˆà¹€à¸ˆà¸­à¸­à¸¢à¸¹à¹ˆà¸«à¸™à¹‰à¸²à¹„à¸«à¸™ (à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ debug-timeout/)"""
+        """เก็บภาพจอล่าสุดไว้ดูว่าค้าง/หาไม่เจออยู่หน้าไหน (โฟลเดอร์ debug-timeout/)"""
         if not int(config.get("debug_screens", 0) or 0):
-            return None   # à¸›à¸´à¸”à¹„à¸§à¹‰: 15 à¸ˆà¸­à¹€à¸‚à¸µà¸¢à¸™à¸ à¸²à¸žà¸¥à¸‡à¸”à¸´à¸ªà¸à¹Œà¸šà¹ˆà¸­à¸¢à¹€à¸à¸´à¸™ à¹€à¸›à¸¥à¸·à¸­à¸‡à¸”à¸´à¸ªà¸à¹Œ+à¹€à¸§à¸¥à¸² (à¹€à¸›à¸´à¸”à¸”à¹‰à¸§à¸¢ "debug_screens": 1)
+            return None   # ปิดไว้: 15 จอเขียนภาพลงดิสก์บ่อยเกิน เปลืองดิสก์+เวลา (เปิดด้วย "debug_screens": 1)
         screen = getattr(self, "_screen_color", None)
         if screen is None:
             return None
@@ -2157,13 +2157,13 @@ class RangerGearBot(threading.Thread):
         except Exception:
             return None
 
-    # template à¸—à¸¸à¸à¸£à¸¹à¸›à¹ƒà¸™ img/ à¸–à¸¹à¸à¸•à¸±à¸”à¸¡à¸²à¸ˆà¸²à¸à¸ˆà¸­ 960x540 (à¹€à¸«à¸¡à¸·à¸­à¸™ bot-tiket à¸—à¸µà¹ˆà¸šà¸±à¸‡à¸„à¸±à¸š "à¸•à¹‰à¸­à¸‡à¹€à¸›à¹‡à¸™ 960x540")
-    # à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹„à¸«à¸™à¸•à¸±à¹‰à¸‡à¸„à¸§à¸²à¸¡à¸¥à¸°à¹€à¸­à¸µà¸¢à¸”à¸­à¸·à¹ˆà¸™ à¸›à¸¸à¹ˆà¸¡à¸šà¸™à¸ˆà¸­à¸ˆà¸°à¹ƒà¸«à¸à¹ˆ/à¹€à¸¥à¹‡à¸à¸à¸§à¹ˆà¸²à¸£à¸¹à¸› -> matchTemplate à¸«à¸²à¹„à¸¡à¹ˆà¹€à¸ˆà¸­à¸—à¸±à¹‰à¸‡à¹„à¸Ÿà¸¥à¹Œ
+    # template ทุกรูปใน img/ ถูกตัดมาจากจอ 960x540 (เหมือน bot-tiket ที่บังคับ "ต้องเป็น 960x540")
+    # เครื่องไหนตั้งความละเอียดอื่น ปุ่มบนจอจะใหญ่/เล็กกว่ารูป -> matchTemplate หาไม่เจอทั้งไฟล์
     BASE_W, BASE_H = 960, 540
 
     def _normalize_frame(self):
-        """à¸¢à¹ˆà¸­/à¸‚à¸¢à¸²à¸¢à¹€à¸Ÿà¸£à¸¡à¹ƒà¸«à¹‰à¹€à¸›à¹‡à¸™ 960x540 à¹€à¸ªà¸¡à¸­ à¹à¸¥à¹‰à¸§à¸ˆà¸³à¸­à¸±à¸•à¸£à¸²à¸ªà¹ˆà¸§à¸™à¹„à¸§à¹‰à¸ªà¹€à¸à¸¥à¸ˆà¸¸à¸”à¸à¸”à¸à¸¥à¸±à¸šà¹€à¸›à¹‡à¸™à¸žà¸´à¸à¸±à¸”à¸ˆà¸£à¸´à¸‡"""
-        self._screen_ts = time.time()   # à¹€à¸§à¸¥à¸²à¸—à¸µà¹ˆà¹„à¸”à¹‰à¹€à¸Ÿà¸£à¸¡à¸¥à¹ˆà¸²à¸ªà¸¸à¸” (monitor à¹ƒà¸Šà¹‰à¸”à¸¹à¸§à¹ˆà¸²à¹€à¸Ÿà¸£à¸¡à¸„à¹‰à¸²à¸‡à¹„à¸«à¸¡)
+        """ย่อ/ขยายเฟรมให้เป็น 960x540 เสมอ แล้วจำอัตราส่วนไว้สเกลจุดกดกลับเป็นพิกัดจริง"""
+        self._screen_ts = time.time()   # เวลาที่ได้เฟรมล่าสุด (monitor ใช้ดูว่าเฟรมค้างไหม)
         scr = self._screen
         if scr is None:
             self._tap_scale = (1.0, 1.0)
@@ -2175,44 +2175,44 @@ class RangerGearBot(threading.Thread):
         sx, sy = w / self.BASE_W, h / self.BASE_H
         if getattr(self, "_res_notice", None) != (w, h):
             self._res_notice = (w, h)
-            print(f"[{self.device_id}] [SCREEN] à¸ˆà¸­ {w}x{h} à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆ 960x540 -> à¸¢à¹ˆà¸­à¸ à¸²à¸žà¹ƒà¸«à¹‰à¸•à¸£à¸‡ template "
-                  f"à¹à¸¥à¸°à¸ªà¹€à¸à¸¥à¸ˆà¸¸à¸”à¸à¸” x{sx:.2f}/x{sy:.2f} à¹ƒà¸«à¹‰à¸­à¸±à¸•à¹‚à¸™à¸¡à¸±à¸•à¸´")
+            print(f"[{self.device_id}] [SCREEN] จอ {w}x{h} ไม่ใช่ 960x540 -> ย่อภาพให้ตรง template "
+                  f"และสเกลจุดกด x{sx:.2f}/x{sy:.2f} ให้อัตโนมัติ")
         self._screen = cv2.resize(scr, (self.BASE_W, self.BASE_H), interpolation=cv2.INTER_AREA)
         if getattr(self, "_screen_color", None) is not None:
             self._screen_color = cv2.resize(self._screen_color, (self.BASE_W, self.BASE_H), interpolation=cv2.INTER_AREA)
         self._tap_scale = (sx, sy)
 
     def _dev_xy(self, x, y):
-        """à¸žà¸´à¸à¸±à¸”à¸šà¸™à¸ à¸²à¸ž 960x540 -> à¸žà¸´à¸à¸±à¸”à¸ˆà¸£à¸´à¸‡à¸šà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (à¸ªà¸³à¸«à¸£à¸±à¸š adb input tap/swipe)"""
+        """พิกัดบนภาพ 960x540 -> พิกัดจริงบนเครื่อง (สำหรับ adb input tap/swipe)"""
         sx, sy = getattr(self, "_tap_scale", (1.0, 1.0))
         return int(round(x * sx)), int(round(y * sy))
 
     def _adb_tap(self, x, y):
-        """à¸à¸”à¸”à¹‰à¸§à¸¢ adb shell input tap à¸•à¸£à¸‡ à¹† (à¹„à¸¡à¹ˆà¸œà¹ˆà¸²à¸™ minitouch) - à¹€à¸«à¸¡à¸·à¸­à¸™ bot-tiket
+        """กดด้วย adb shell input tap ตรง ๆ (ไม่ผ่าน minitouch) - เหมือน bot-tiket
 
-        minitouch à¸„à¸·à¸™ True à¹à¸„à¹ˆ 'à¸ªà¹ˆà¸‡à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸¥à¸‡ socket à¹„à¸”à¹‰' à¹„à¸¡à¹ˆà¸£à¸¹à¹‰à¸§à¹ˆà¸²à¸ªà¸±à¸¡à¸œà¸±à¸ªà¸–à¸¶à¸‡à¸ˆà¸­à¸ˆà¸£à¸´à¸‡à¹„à¸«à¸¡
-        à¸žà¸­ minitouch à¸„à¹‰à¸²à¸‡ à¸šà¸­à¸—à¸ˆà¸°à¸„à¸´à¸”à¸§à¹ˆà¸²à¸à¸”à¹à¸¥à¹‰à¸§à¸—à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¸¢à¸±à¸‡à¸­à¸¢à¸¹à¹ˆ (log: à¸à¸”à¸›à¸´à¸”à¹ƒà¸«à¹‰à¹à¸¥à¹‰à¸§ #3 à¹à¸•à¹ˆà¹„à¸¡à¹ˆà¸«à¸²à¸¢)
-        à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¸ªà¸³à¸„à¸±à¸à¹€à¸à¸´à¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¹€à¸ªà¸µà¹ˆà¸¢à¸‡ à¸ˆà¸¶à¸‡à¸¢à¸´à¸‡ input tap à¸•à¸£à¸‡ à¹† à¹€à¸ªà¸¡à¸­
+        minitouch คืน True แค่ 'ส่งคำสั่งลง socket ได้' ไม่รู้ว่าสัมผัสถึงจอจริงไหม
+        พอ minitouch ค้าง บอทจะคิดว่ากดแล้วทั้งที่ป๊อปอัพยังอยู่ (log: กดปิดให้แล้ว #3 แต่ไม่หาย)
+        ป๊อปอัพเน็ตสำคัญเกินกว่าจะเสี่ยง จึงยิง input tap ตรง ๆ เสมอ
         """
         dx, dy = self._dev_xy(x, y)
         try:
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "input", "tap", str(dx), str(dy)], timeout=8)
             return True
         except Exception as e:
-            print(f"[{self.device_id}] [NET] adb input tap à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {e}")
+            print(f"[{self.device_id}] [NET] adb input tap ไม่สำเร็จ: {e}")
             return False
 
-    # à¸ªà¹€à¸à¸¥à¸—à¸µà¹ˆ monitor à¹€à¸šà¸·à¹‰à¸­à¸‡à¸«à¸¥à¸±à¸‡à¸¥à¸­à¸‡à¹„à¸¥à¹ˆ (à¹€à¸œà¸·à¹ˆà¸­à¹€à¸à¸¡à¸§à¸²à¸” UI à¹ƒà¸«à¸à¹ˆ/à¹€à¸¥à¹‡à¸à¸à¸§à¹ˆà¸²à¸£à¸¹à¸›à¸—à¸µà¹ˆà¸•à¸±à¸”à¹„à¸§à¹‰ à¹à¸¡à¹‰à¸ˆà¸­à¸ˆà¸° 960x540)
-    # à¹„à¸¥à¹ˆà¸–à¸µà¹ˆà¸‚à¸¶à¹‰à¸™: à¹€à¸­à¸²à¸£à¸¹à¸› RETRY 3 à¹€à¸§à¸­à¸£à¹Œà¸Šà¸±à¸™à¸¡à¸² match à¸à¸±à¸™à¹€à¸­à¸‡ à¸ªà¹€à¸à¸¥à¹€à¸žà¸µà¹‰à¸¢à¸™à¹à¸„à¹ˆ 5% à¸„à¸°à¹à¸™à¸™à¸à¹‡à¸•à¸à¹€à¸«à¸¥à¸·à¸­ ~0.80 à¸žà¸­à¸”à¸µà¹€à¸à¸“à¸‘à¹Œà¹à¸¥à¹‰à¸§
-    # à¸Šà¸¸à¸”à¹€à¸”à¸´à¸¡à¸à¸£à¸°à¹‚à¸”à¸”à¸ˆà¸²à¸ 1.0 à¹„à¸› 1.33 à¹€à¸¥à¸¢ à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸—à¸µà¹ˆà¸§à¸²à¸” UI à¹ƒà¸«à¸à¹ˆà¸à¸§à¹ˆà¸²à¸£à¸¹à¸› 10-25% à¸ˆà¸¶à¸‡à¸žà¸¥à¸²à¸”à¸—à¸¸à¸à¸ªà¹€à¸à¸¥à¹à¸šà¸šà¹€à¸‡à¸µà¸¢à¸š à¹† (fixnet à¹„à¸¡à¹ˆà¸à¸”)
+    # สเกลที่ monitor เบื้องหลังลองไล่ (เผื่อเกมวาด UI ใหญ่/เล็กกว่ารูปที่ตัดไว้ แม้จอจะ 960x540)
+    # ไล่ถี่ขึ้น: เอารูป RETRY 3 เวอร์ชันมา match กันเอง สเกลเพี้ยนแค่ 5% คะแนนก็ตกเหลือ ~0.80 พอดีเกณฑ์แล้ว
+    # ชุดเดิมกระโดดจาก 1.0 ไป 1.33 เลย เครื่องที่วาด UI ใหญ่กว่ารูป 10-25% จึงพลาดทุกสเกลแบบเงียบ ๆ (fixnet ไม่กด)
     NET_SCALES = (1.0, 1.1, 0.9, 1.2, 1.25, 0.8, 1.33, 1.4, 0.75, 1.5, 0.67, 0.6, 1.67, 2.0, 0.5)
-    NET_SIM_GREEN = 0.65   # à¸›à¸¸à¹ˆà¸¡à¹ƒà¸™ NET_POPUPS à¹€à¸›à¹‡à¸™à¸›à¸¸à¹ˆà¸¡à¹€à¸‚à¸µà¸¢à¸§à¸ªà¸”à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”: à¸ˆà¸¸à¸”à¸—à¸µà¹ˆà¹€à¸ˆà¸­à¹€à¸›à¹‡à¸™à¸ªà¸µà¹€à¸‚à¸µà¸¢à¸§à¸ˆà¸£à¸´à¸‡ (à¹€à¸Šà¹‡à¸„à¸ˆà¸²à¸à¸ à¸²à¸žà¸ªà¸µ) à¸¢à¸­à¸¡à¸£à¸±à¸šà¸„à¸°à¹à¸™à¸™à¸•à¹ˆà¸³à¸¥à¸‡à¹„à¸”à¹‰
-    NET_NEAR_MISS = 0.55   # à¸„à¸°à¹à¸™à¸™à¸•à¸±à¹‰à¸‡à¹à¸•à¹ˆà¸™à¸µà¹‰à¹à¸•à¹ˆà¹„à¸¡à¹ˆà¸–à¸¶à¸‡à¹€à¸à¸“à¸‘à¹Œ = "à¹€à¸à¸·à¸­à¸šà¹€à¸ˆà¸­" -> log + à¹€à¸à¹‡à¸šà¸ à¸²à¸žà¹„à¸§à¹‰à¹ƒà¸«à¹‰à¸”à¸¹ (à¹„à¸¡à¹ˆà¸à¸”)
-    # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¸—à¸µà¹ˆ 'à¸£à¸¹à¸›à¸•à¸£à¸§à¸ˆà¸ˆà¸±à¸š' à¸à¸±à¸š 'à¸›à¸¸à¹ˆà¸¡à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸”' à¹€à¸›à¹‡à¸™à¸„à¸™à¸¥à¸°à¸£à¸¹à¸›: à¹€à¸ˆà¸­à¸•à¸±à¸§à¸‹à¹‰à¸²à¸¢ -> à¸«à¸²à¹à¸¥à¹‰à¸§à¸à¸”à¸•à¸±à¸§à¸‚à¸§à¸²
+    NET_SIM_GREEN = 0.65   # ปุ่มใน NET_POPUPS เป็นปุ่มเขียวสดทั้งหมด: จุดที่เจอเป็นสีเขียวจริง (เช็คจากภาพสี) ยอมรับคะแนนต่ำลงได้
+    NET_NEAR_MISS = 0.55   # คะแนนตั้งแต่นี้แต่ไม่ถึงเกณฑ์ = "เกือบเจอ" -> log + เก็บภาพไว้ให้ดู (ไม่กด)
+    # ป๊อปอัพที่ 'รูปตรวจจับ' กับ 'ปุ่มที่ต้องกด' เป็นคนละรูป: เจอตัวซ้าย -> หาแล้วกดตัวขวา
     NET_DETECT_THEN_TAP = (("img/fixnetv2.png", "img/fixnetv2ok.png"),)
 
     def _best_match(self, screen, path, similarity, scales):
-        """à¸„à¸·à¸™ (score, cx, cy, scale) à¸—à¸µà¹ˆà¸”à¸µà¸—à¸µà¹ˆà¸ªà¸¸à¸”à¸‚à¸­à¸‡à¸£à¸¹à¸›à¸šà¸™à¸ˆà¸­ à¸«à¸£à¸·à¸­ None à¸–à¹‰à¸²à¸•à¹ˆà¸³à¸à¸§à¹ˆà¸² similarity"""
+        """คืน (score, cx, cy, scale) ที่ดีที่สุดของรูปบนจอ หรือ None ถ้าต่ำกว่า similarity"""
         tmpl0 = self._get_template(path)
         if tmpl0 is None:
             return None
@@ -2232,13 +2232,13 @@ class RangerGearBot(threading.Thread):
                 best = (max_val, max_loc[0] + tw // 2, max_loc[1] + th // 2, sc)
         return best
 
-    NET_RETRY_ROUNDS = 25   # à¸à¸”à¸‹à¹‰à¸³à¸ªà¸¹à¸‡à¸ªà¸¸à¸”à¸•à¹ˆà¸­à¸£à¸­à¸š (à¸«à¹ˆà¸²à¸‡à¸à¸±à¸™ ~1.2 à¸§à¸´ = à¸£à¸²à¸§ 30 à¸§à¸´) à¸à¹ˆà¸­à¸™à¸›à¸¥à¹ˆà¸­à¸¢à¹ƒà¸«à¹‰à¸£à¸­à¸šà¸–à¸±à¸”à¹„à¸›à¸¥à¸­à¸‡à¸•à¹ˆà¸­
+    NET_RETRY_ROUNDS = 25   # กดซ้ำสูงสุดต่อรอบ (ห่างกัน ~1.2 วิ = ราว 30 วิ) ก่อนปล่อยให้รอบถัดไปลองต่อ
 
     def _clear_net_popup_loop(self, first_hit):
-        """à¸à¸”à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¸‹à¹‰à¸³ à¹† à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¸«à¸²à¸¢à¹„à¸›à¸ˆà¸²à¸à¸ˆà¸­ (à¹€à¸™à¹‡à¸•à¸ªà¸°à¸”à¸¸à¸” RETRY à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§à¸¡à¸±à¸à¹„à¸¡à¹ˆà¸žà¸­)
+        """กดป๊อปอัพเน็ตซ้ำ ๆ จนกว่าจะหายไปจากจอ (เน็ตสะดุด RETRY ครั้งเดียวมักไม่พอ)
 
-        à¹€à¸£à¸µà¸¢à¸à¸«à¸¥à¸±à¸‡à¸ˆà¸²à¸à¸à¸”à¸„à¸£à¸±à¹‰à¸‡à¹à¸£à¸à¹„à¸›à¹à¸¥à¹‰à¸§: à¸£à¸­ -> à¸ˆà¸±à¸šà¸ˆà¸­à¹ƒà¸«à¸¡à¹ˆ -> à¸¢à¸±à¸‡à¹€à¸«à¹‡à¸™à¸­à¸¢à¸¹à¹ˆà¸à¹‡à¸à¸”à¸­à¸µà¸ à¸§à¸™à¸ˆà¸™à¸«à¸²à¸¢
-        à¸«à¸£à¸·à¸­à¸„à¸£à¸š NET_RETRY_ROUNDS à¹à¸¥à¹‰à¸§à¸›à¸¥à¹ˆà¸­à¸¢ (monitor à¹€à¸šà¸·à¹‰à¸­à¸‡à¸«à¸¥à¸±à¸‡à¸ˆà¸°à¹€à¸à¹‡à¸šà¸•à¹ˆà¸­ / à¹€à¸à¸´à¸™ limit à¸ˆà¸°à¹€à¸”à¹‰à¸‡à¹à¸­à¸›)
+        เรียกหลังจากกดครั้งแรกไปแล้ว: รอ -> จับจอใหม่ -> ยังเห็นอยู่ก็กดอีก วนจนหาย
+        หรือครบ NET_RETRY_ROUNDS แล้วปล่อย (monitor เบื้องหลังจะเก็บต่อ / เกิน limit จะเด้งแอป)
         """
         rounds = 1
         while rounds < self.NET_RETRY_ROUNDS:
@@ -2247,30 +2247,30 @@ class RangerGearBot(threading.Thread):
                 self._raw_capture()
             except Exception:
                 pass
-            self._netpopup_last_click = 0          # à¹ƒà¸«à¹‰à¸à¸”à¸‹à¹‰à¸³à¹„à¸”à¹‰à¸—à¸±à¸™à¸—à¸µ à¹„à¸¡à¹ˆà¸•à¸´à¸” cooldown
+            self._netpopup_last_click = 0          # ให้กดซ้ำได้ทันที ไม่ติด cooldown
             hit = self._dismiss_net_popup(self._screen, scales=(getattr(self, "_net_scale", 1.0),))
             if not hit:
-                print(f"[{self.device_id}] [NET] {first_hit} à¸«à¸²à¸¢à¹à¸¥à¹‰à¸§à¸«à¸¥à¸±à¸‡à¸à¸” {rounds} à¸„à¸£à¸±à¹‰à¸‡")
-                self._net_followup(first_hit)   # à¹€à¸Šà¹ˆà¸™ PLAY à¸«à¸²à¸¢à¹à¸¥à¹‰à¸§à¸•à¹‰à¸­à¸‡à¸£à¸­à¸à¸” OK à¸•à¹ˆà¸­ (NET_FOLLOWUP)
+                print(f"[{self.device_id}] [NET] {first_hit} หายแล้วหลังกด {rounds} ครั้ง")
+                self._net_followup(first_hit)   # เช่น PLAY หายแล้วต้องรอกด OK ต่อ (NET_FOLLOWUP)
                 return True
             rounds += 1
-        print(f"[{self.device_id}] [NET] à¸à¸” {first_hit} à¹„à¸› {rounds} à¸„à¸£à¸±à¹‰à¸‡à¹à¸¥à¹‰à¸§à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸«à¸²à¸¢ (à¹€à¸™à¹‡à¸•à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸à¸¥à¸±à¸šà¸¡à¸²) - à¸›à¸¥à¹ˆà¸­à¸¢à¹ƒà¸«à¹‰à¸£à¸­à¸šà¸–à¸±à¸”à¹„à¸›à¸¥à¸­à¸‡à¸•à¹ˆà¸­")
+        print(f"[{self.device_id}] [NET] กด {first_hit} ไป {rounds} ครั้งแล้วยังไม่หาย (เน็ตยังไม่กลับมา) - ปล่อยให้รอบถัดไปลองต่อ")
         return False
 
     def _net_followup(self, first_hit):
-        """à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¸šà¸²à¸‡à¸•à¸±à¸§à¸à¸”à¸›à¸´à¸”à¹à¸¥à¹‰à¸§à¸¡à¸µà¸«à¸™à¹‰à¸²à¸•à¹ˆà¸²à¸‡à¸•à¹ˆà¸­à¸—à¹‰à¸²à¸¢à¹ƒà¸«à¹‰à¸à¸”à¸­à¸µà¸à¸—à¸µ (PLAY -> OK) à¸”à¸¹ NET_FOLLOWUP
+        """ป๊อปอัพเน็ตบางตัวกดปิดแล้วมีหน้าต่างต่อท้ายให้กดอีกที (PLAY -> OK) ดู NET_FOLLOWUP
 
-        à¹€à¸£à¸µà¸¢à¸à¸«à¸¥à¸±à¸‡à¸ˆà¸²à¸ _clear_net_popup_loop à¹€à¸«à¹‡à¸™à¸§à¹ˆà¸²à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¸«à¸²à¸¢à¹à¸¥à¹‰à¸§: à¸ˆà¸±à¸šà¸ˆà¸­à¸§à¸™à¸£à¸­à¸ˆà¸™à¹€à¸ˆà¸­à¸›à¸¸à¹ˆà¸¡à¸•à¹ˆà¸­à¸—à¹‰à¸²à¸¢
-        à¹à¸¥à¹‰à¸§à¸à¸”à¸œà¹ˆà¸²à¸™ adb à¸•à¸£à¸‡ à¹† (à¹€à¸«à¸¡à¸·à¸­à¸™à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¸•à¸±à¸§à¸­à¸·à¹ˆà¸™) à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡à¸£à¸­à¸–à¹‰à¸²à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¹€à¸”à¹‰à¸‡à¸à¸¥à¸±à¸šà¸¡à¸²
-        (PLAY à¸­à¸µà¸à¸£à¸­à¸š / RETRY) à¸à¹‡à¸à¸”à¹ƒà¸«à¹‰à¹€à¸¥à¸¢ à¸£à¸­à¸ˆà¸™à¸«à¸¡à¸”à¹€à¸§à¸¥à¸²à¹à¸¥à¹‰à¸§à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¹€à¸ˆà¸­à¸à¹‡à¸›à¸¥à¹ˆà¸­à¸¢à¸œà¹ˆà¸²à¸™à¹ƒà¸«à¹‰à¸šà¸­à¸—à¸—à¸³à¸‡à¸²à¸™à¸•à¹ˆà¸­
-        à¸œà¸¹à¹‰à¹€à¸£à¸µà¸¢à¸à¸—à¸¸à¸à¸—à¸²à¸‡à¸–à¸·à¸­ _in_net_check à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ _raw_capture à¸‚à¹‰à¸²à¸‡à¹ƒà¸™à¸ˆà¸¶à¸‡à¹„à¸¡à¹ˆà¸§à¸™à¸à¸¥à¸±à¸šà¸¡à¸²à¹€à¸Šà¹‡à¸„à¹€à¸™à¹‡à¸•à¸‹à¹‰à¸­à¸™
+        เรียกหลังจาก _clear_net_popup_loop เห็นว่าป๊อปอัพหายแล้ว: จับจอวนรอจนเจอปุ่มต่อท้าย
+        แล้วกดผ่าน adb ตรง ๆ (เหมือนป๊อปอัพเน็ตตัวอื่น) ระหว่างรอถ้าป๊อปอัพเน็ตเด้งกลับมา
+        (PLAY อีกรอบ / RETRY) ก็กดให้เลย รอจนหมดเวลาแล้วยังไม่เจอก็ปล่อยผ่านให้บอททำงานต่อ
+        ผู้เรียกทุกทางถือ _in_net_check อยู่แล้ว _raw_capture ข้างในจึงไม่วนกลับมาเช็คเน็ตซ้อน
         """
         spec = self.NET_FOLLOWUP.get(first_hit)
         if not spec:
             return False
         target, wait_sec = spec
         name = os.path.basename(target)
-        print(f"[{self.device_id}] [NET] {first_hit} à¸«à¸²à¸¢à¹à¸¥à¹‰à¸§ -> à¸£à¸­à¸à¸” {name} à¸•à¹ˆà¸­ (à¸ªà¸¹à¸‡à¸ªà¸¸à¸” {wait_sec} à¸§à¸´)")
+        print(f"[{self.device_id}] [NET] {first_hit} หายแล้ว -> รอกด {name} ต่อ (สูงสุด {wait_sec} วิ)")
         deadline = time.time() + wait_sec
         while time.time() < deadline and getattr(self, "_running", True):
             try:
@@ -2283,22 +2283,22 @@ class RangerGearBot(threading.Thread):
                 if b:
                     score, cx, cy, _ = b
                     self._adb_tap(cx, cy)
-                    print(f"[{self.device_id}] [NET] à¸žà¸š {name} à¸«à¸¥à¸±à¸‡ {first_hit} (score {score:.2f}) -> adb tap ({cx}, {cy})")
+                    print(f"[{self.device_id}] [NET] พบ {name} หลัง {first_hit} (score {score:.2f}) -> adb tap ({cx}, {cy})")
                     sleep(1)
                     try:
-                        self._raw_capture()   # à¸„à¸·à¸™à¸ à¸²à¸žà¸¥à¹ˆà¸²à¸ªà¸¸à¸”à¹ƒà¸«à¹‰à¸œà¸¹à¹‰à¹€à¸£à¸µà¸¢à¸
+                        self._raw_capture()   # คืนภาพล่าสุดให้ผู้เรียก
                     except Exception:
                         pass
                     return True
-                # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¹€à¸”à¹‰à¸‡à¸à¸¥à¸±à¸šà¸¡à¸²à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡à¸£à¸­ (PLAY à¸­à¸µà¸à¸£à¸­à¸š / RETRY) -> à¸à¸”à¹ƒà¸«à¹‰à¹€à¸¥à¸¢ à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸£à¸­à¸£à¸­à¸šà¸–à¸±à¸”à¹„à¸›
+                # ป๊อปอัพเน็ตเด้งกลับมาระหว่างรอ (PLAY อีกรอบ / RETRY) -> กดให้เลย ไม่ต้องรอรอบถัดไป
                 self._netpopup_last_click = 0
                 self._dismiss_net_popup(scr)
             sleep(1)
-        print(f"[{self.device_id}] [NET] à¸£à¸­ {name} à¸«à¸¥à¸±à¸‡ {first_hit} à¸ˆà¸™à¸«à¸¡à¸”à¹€à¸§à¸¥à¸² {wait_sec} à¸§à¸´ à¹à¸¥à¹‰à¸§à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ - à¸—à¸³à¸‡à¸²à¸™à¸•à¹ˆà¸­")
+        print(f"[{self.device_id}] [NET] รอ {name} หลัง {first_hit} จนหมดเวลา {wait_sec} วิ แล้วไม่เจอ - ทำงานต่อ")
         return False
 
     def _best_match_any(self, screen, path, scales):
-        """à¹€à¸«à¸¡à¸·à¸­à¸™ _best_match à¹à¸•à¹ˆà¸„à¸·à¸™à¸•à¸±à¸§à¸—à¸µà¹ˆà¸”à¸µà¸—à¸µà¹ˆà¸ªà¸¸à¸”à¹€à¸ªà¸¡à¸­à¹„à¸¡à¹ˆà¸¡à¸µà¹€à¸à¸“à¸‘à¹Œ: (score, cx, cy, scale, tw, th) à¸«à¸£à¸·à¸­ None"""
+        """เหมือน _best_match แต่คืนตัวที่ดีที่สุดเสมอไม่มีเกณฑ์: (score, cx, cy, scale, tw, th) หรือ None"""
         tmpl0 = self._get_template(path)
         if tmpl0 is None:
             return None
@@ -2319,10 +2319,10 @@ class RangerGearBot(threading.Thread):
         return best
 
     def _is_green_button(self, cx, cy, tw, th):
-        """à¸à¸£à¸­à¸šà¸—à¸µà¹ˆ match à¹€à¸›à¹‡à¸™à¸›à¸¸à¹ˆà¸¡à¸ªà¸µà¹€à¸‚à¸µà¸¢à¸§à¸ˆà¸£à¸´à¸‡à¹„à¸«à¸¡ - à¸”à¸¹à¸ˆà¸²à¸à¸ à¸²à¸žà¸ªà¸µà¸¥à¹ˆà¸²à¸ªà¸¸à¸”à¸•à¸£à¸‡à¸‚à¸­à¸šà¸‹à¹‰à¸²à¸¢/à¸‚à¸§à¸²/à¸šà¸™/à¸¥à¹ˆà¸²à¸‡ (à¹€à¸¥à¸µà¹ˆà¸¢à¸‡à¸•à¸±à¸§à¸«à¸™à¸±à¸‡à¸ªà¸·à¸­à¸‚à¸²à¸§à¸•à¸£à¸‡à¸à¸¥à¸²à¸‡)
+        """กรอบที่ match เป็นปุ่มสีเขียวจริงไหม - ดูจากภาพสีล่าสุดตรงขอบซ้าย/ขวา/บน/ล่าง (เลี่ยงตัวหนังสือขาวตรงกลาง)
 
-        à¸›à¸¸à¹ˆà¸¡ RETRY / PLAY / OK à¸‚à¸­à¸‡à¹€à¸à¸¡à¸žà¸·à¹‰à¸™à¹€à¸‚à¸µà¸¢à¸§à¸ªà¸” (B,G,R à¸£à¸²à¸§ 49,194,8) à¸•à¹‰à¸­à¸‡à¹€à¸‚à¸µà¸¢à¸§à¸­à¸¢à¹ˆà¸²à¸‡à¸™à¹‰à¸­à¸¢ 3 à¹ƒà¸™ 4 à¸ˆà¸¸à¸”
-        à¹„à¸¡à¹ˆà¸¡à¸µà¸ à¸²à¸žà¸ªà¸µ (à¹€à¸Ÿà¸£à¸¡à¹€à¸à¹ˆà¸²/decode à¹„à¸¡à¹ˆà¹„à¸”à¹‰) -> False = à¹ƒà¸Šà¹‰à¹€à¸à¸“à¸‘à¹Œà¸›à¸à¸•à¸´
+        ปุ่ม RETRY / PLAY / OK ของเกมพื้นเขียวสด (B,G,R ราว 49,194,8) ต้องเขียวอย่างน้อย 3 ใน 4 จุด
+        ไม่มีภาพสี (เฟรมเก่า/decode ไม่ได้) -> False = ใช้เกณฑ์ปกติ
         """
         color = getattr(self, "_screen_color", None)
         if color is None or getattr(color, "ndim", 0) != 3:
@@ -2340,7 +2340,7 @@ class RangerGearBot(threading.Thread):
         return ok >= 3
 
     def _net_popup_paths(self):
-        """NET_POPUPS à¸—à¸µà¹ˆà¸•à¸±à¸”à¸£à¸¹à¸›à¸‹à¹‰à¸³à¸­à¸­à¸ (à¹€à¸™à¸·à¹‰à¸­à¸«à¸²à¹€à¸«à¸¡à¸·à¸­à¸™à¸à¸±à¸™à¹€à¸›à¹Šà¸° à¹€à¸Šà¹ˆà¸™ fixnet.png à¸à¸±à¸š fixnet-tiket.png) - à¸›à¸£à¸°à¸«à¸¢à¸±à¸” matchTemplate"""
+        """NET_POPUPS ที่ตัดรูปซ้ำออก (เนื้อหาเหมือนกันเป๊ะ เช่น fixnet.png กับ fixnet-tiket.png) - ประหยัด matchTemplate"""
         cached = getattr(self, "_net_paths_cache", None)
         if cached is not None:
             return cached
@@ -2357,9 +2357,9 @@ class RangerGearBot(threading.Thread):
         return self._net_paths_cache
 
     def _log_net_near_miss(self, score, path, sc):
-        """à¹€à¸«à¹‡à¸™à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¹à¸šà¸š "à¹€à¸à¸·à¸­à¸šà¹€à¸ˆà¸­" (à¸„à¸°à¹à¸™à¸™à¹„à¸¡à¹ˆà¸–à¸¶à¸‡à¹€à¸à¸“à¸‘à¹Œ) - à¸šà¸­à¸à¹ƒà¸™ log à¸—à¸¸à¸ 30 à¸§à¸´ + à¹€à¸à¹‡à¸šà¸ à¸²à¸žà¸—à¸¸à¸ 5 à¸™à¸²à¸—à¸µ
+        """เห็นป๊อปอัพเน็ตแบบ "เกือบเจอ" (คะแนนไม่ถึงเกณฑ์) - บอกใน log ทุก 30 วิ + เก็บภาพทุก 5 นาที
 
-        à¹„à¸§à¹‰à¹„à¸¥à¹ˆà¸ˆà¸²à¸ log à¹„à¸”à¹‰à¹€à¸¥à¸¢à¸§à¹ˆà¸²à¸£à¸¹à¸›à¸•à¸±à¸”à¹„à¸¡à¹ˆà¸•à¸£à¸‡/à¸ªà¹€à¸à¸¥à¹„à¸¡à¹ˆà¸•à¸£à¸‡à¸à¸±à¸šà¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸™à¸±à¹‰à¸™ à¹‚à¸”à¸¢à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¹„à¸›à¸™à¸±à¹ˆà¸‡à¹€à¸à¹‰à¸²à¸«à¸™à¹‰à¸²à¸ˆà¸­
+        ไว้ไล่จาก log ได้เลยว่ารูปตัดไม่ตรง/สเกลไม่ตรงกับเครื่องนั้น โดยไม่ต้องไปนั่งเฝ้าหน้าจอ
         """
         now = time.time()
         if now - getattr(self, "_net_near_logged", 0) < 30:
@@ -2369,25 +2369,25 @@ class RangerGearBot(threading.Thread):
         if now - getattr(self, "_net_near_shot", 0) > 300:
             self._net_near_shot = now
             shot = self._save_debug_screen("net-nearmiss")
-        print(f"[{self.device_id}] [NET] à¹€à¸à¸·à¸­à¸šà¹€à¸ˆà¸­ {os.path.basename(path)} (score {score:.2f} à¸—à¸µà¹ˆà¸ªà¹€à¸à¸¥ x{sc:.2f} / "
-              f"à¸•à¹‰à¸­à¸‡à¸à¸²à¸£ 0.80 à¸«à¸£à¸·à¸­ {self.NET_SIM_GREEN:.2f}+à¸›à¸¸à¹ˆà¸¡à¹€à¸‚à¸µà¸¢à¸§) à¹„à¸¡à¹ˆà¸à¸” - à¸£à¸¹à¸›à¸­à¸²à¸ˆà¸•à¸±à¸”à¹„à¸¡à¹ˆà¸•à¸£à¸‡à¸à¸±à¸šà¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸™à¸µà¹‰"
-              + (f" à¹€à¸à¹‡à¸šà¸ à¸²à¸žà¹„à¸§à¹‰à¸—à¸µà¹ˆ {shot}" if shot else ""))
+        print(f"[{self.device_id}] [NET] เกือบเจอ {os.path.basename(path)} (score {score:.2f} ที่สเกล x{sc:.2f} / "
+              f"ต้องการ 0.80 หรือ {self.NET_SIM_GREEN:.2f}+ปุ่มเขียว) ไม่กด - รูปอาจตัดไม่ตรงกับเครื่องนี้"
+              + (f" เก็บภาพไว้ที่ {shot}" if shot else ""))
 
     def _dismiss_net_popup(self, screen, similarity=0.8, scales=None):
-        """à¸«à¸²à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸• (RETRY / PLAY / network-OK) à¸šà¸™à¸ˆà¸­à¸—à¸µà¹ˆà¹ƒà¸«à¹‰à¸¡à¸²à¹à¸¥à¹‰à¸§à¸à¸”à¸›à¸´à¸” - à¸„à¸·à¸™à¸Šà¸·à¹ˆà¸­à¸£à¸¹à¸›à¸—à¸µà¹ˆà¸à¸” à¸«à¸£à¸·à¸­ None
+        """หาป๊อปอัพเน็ต (RETRY / PLAY / network-OK) บนจอที่ให้มาแล้วกดปิด - คืนชื่อรูปที่กด หรือ None
 
-        à¸à¸”à¸”à¹‰à¸§à¸¢ adb input tap à¸•à¸£à¸‡ à¹† à¹€à¸ªà¸¡à¸­ (à¹„à¸¡à¹ˆà¸œà¹ˆà¸²à¸™ minitouch) à¹€à¸«à¸¡à¸·à¸­à¸™ bot-tiket
-        scales=None       -> à¹ƒà¸Šà¹‰à¸ªà¹€à¸à¸¥à¸—à¸µà¹ˆà¹€à¸„à¸¢à¹€à¸ˆà¸­ (à¹€à¸£à¸´à¹ˆà¸¡ 1.0) à¸£à¸²à¸„à¸²à¸–à¸¹à¸ à¹€à¸£à¸µà¸¢à¸à¹„à¸”à¹‰à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸ˆà¸±à¸šà¸ˆà¸­
-        scales=NET_SCALES -> à¹„à¸¥à¹ˆà¸—à¸¸à¸à¸ªà¹€à¸à¸¥ (monitor à¹€à¸šà¸·à¹‰à¸­à¸‡à¸«à¸¥à¸±à¸‡à¹ƒà¸Šà¹‰) à¹€à¸ˆà¸­à¸ªà¹€à¸à¸¥à¹„à¸«à¸™à¸ˆà¸³à¹„à¸§à¹‰à¹ƒà¸«à¹‰à¸£à¸­à¸šà¸•à¹ˆà¸­à¹„à¸›
-        à¸„à¸°à¹à¸™à¸™à¹„à¸¡à¹ˆà¸–à¸¶à¸‡ similarity à¹à¸•à¹ˆ >= NET_SIM_GREEN à¹à¸¥à¸°à¸à¸£à¸­à¸šà¸™à¸±à¹‰à¸™à¹€à¸›à¹‡à¸™à¸›à¸¸à¹ˆà¸¡à¹€à¸‚à¸µà¸¢à¸§à¸ˆà¸£à¸´à¸‡ -> à¸™à¸±à¸šà¸§à¹ˆà¸²à¹€à¸ˆà¸­ (à¸—à¸™à¸£à¸¹à¸›à¹€à¸žà¸µà¹‰à¸¢à¸™à¹€à¸¥à¹‡à¸à¸™à¹‰à¸­à¸¢)
-        à¹„à¸¡à¹ˆà¸–à¸¶à¸‡à¸—à¸±à¹‰à¸‡à¸„à¸¹à¹ˆà¹à¸•à¹ˆ >= NET_NEAR_MISS à¸•à¸­à¸™à¹„à¸¥à¹ˆà¸«à¸¥à¸²à¸¢à¸ªà¹€à¸à¸¥ -> log "à¹€à¸à¸·à¸­à¸šà¹€à¸ˆà¸­" + à¹€à¸à¹‡à¸šà¸ à¸²à¸ž à¹ƒà¸«à¹‰à¹„à¸¥à¹ˆà¸ªà¸²à¹€à¸«à¸•à¸¸à¸ˆà¸²à¸ log à¹„à¸”à¹‰
+        กดด้วย adb input tap ตรง ๆ เสมอ (ไม่ผ่าน minitouch) เหมือน bot-tiket
+        scales=None       -> ใช้สเกลที่เคยเจอ (เริ่ม 1.0) ราคาถูก เรียกได้ทุกครั้งที่จับจอ
+        scales=NET_SCALES -> ไล่ทุกสเกล (monitor เบื้องหลังใช้) เจอสเกลไหนจำไว้ให้รอบต่อไป
+        คะแนนไม่ถึง similarity แต่ >= NET_SIM_GREEN และกรอบนั้นเป็นปุ่มเขียวจริง -> นับว่าเจอ (ทนรูปเพี้ยนเล็กน้อย)
+        ไม่ถึงทั้งคู่แต่ >= NET_NEAR_MISS ตอนไล่หลายสเกล -> log "เกือบเจอ" + เก็บภาพ ให้ไล่สาเหตุจาก log ได้
         """
         if screen is None:
             return None
         if scales is None:
             scales = (getattr(self, "_net_scale", 1.0),)
         hit = None    # (score, path_to_report, cx, cy, scale)
-        near = None   # (score, path, scale) à¸”à¸µà¸ªà¸¸à¸”à¸—à¸µà¹ˆà¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸–à¸¶à¸‡à¹€à¸à¸“à¸‘à¹Œ
+        near = None   # (score, path, scale) ดีสุดที่ยังไม่ถึงเกณฑ์
         for path in self._net_popup_paths():
             b = self._best_match_any(screen, path, scales)
             if not b:
@@ -2407,29 +2407,29 @@ class RangerGearBot(threading.Thread):
                 if t:
                     hit = (t[0], target, t[1], t[2], t[3])
                 else:
-                    print(f"[{self.device_id}] [NET] à¹€à¸ˆà¸­ {os.path.basename(detect)} à¹à¸•à¹ˆà¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¹€à¸«à¹‡à¸™à¸›à¸¸à¹ˆà¸¡ {os.path.basename(target)} - à¸£à¸­à¹€à¸Ÿà¸£à¸¡à¸–à¸±à¸”à¹„à¸›")
+                    print(f"[{self.device_id}] [NET] เจอ {os.path.basename(detect)} แต่ยังไม่เห็นปุ่ม {os.path.basename(target)} - รอเฟรมถัดไป")
                 break
         if hit is None:
-            if near is not None and len(scales) > 1:   # log à¹€à¸‰à¸žà¸²à¸°à¸•à¸­à¸™à¸à¸§à¸²à¸”à¸«à¸¥à¸²à¸¢à¸ªà¹€à¸à¸¥ (monitor) à¹„à¸¡à¹ˆà¹ƒà¸«à¹‰à¸—à¹ˆà¸§à¸¡à¸—à¸¸à¸à¹€à¸Ÿà¸£à¸¡
+            if near is not None and len(scales) > 1:   # log เฉพาะตอนกวาดหลายสเกล (monitor) ไม่ให้ท่วมทุกเฟรม
                 self._log_net_near_miss(*near)
             return None
         score, path, cx, cy, sc = hit
         now = time.time()
         if now - getattr(self, "_netpopup_last_click", 0) < 1.0:
-            return None          # à¹€à¸žà¸´à¹ˆà¸‡à¸à¸”à¹„à¸› à¸£à¸­à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¸«à¸²à¸¢à¸à¹ˆà¸­à¸™ à¹„à¸¡à¹ˆà¸à¸”à¸£à¸±à¸§ (cooldown 1 à¸§à¸´)
+            return None          # เพิ่งกดไป รอป๊อปอัพหายก่อน ไม่กดรัว (cooldown 1 วิ)
         self._netpopup_last_click = now
         if sc != getattr(self, "_net_scale", None):
             if getattr(self, "_net_scale", None) is not None or sc != 1.0:
-                print(f"[{self.device_id}] [NET] à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¸šà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸™à¸µà¹‰à¸ªà¹€à¸à¸¥ x{sc:.2f} à¸‚à¸­à¸‡à¸£à¸¹à¸› - à¸ˆà¸³à¹„à¸§à¹‰à¹ƒà¸Šà¹‰à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡")
-            self._net_scale = sc   # à¸ˆà¸³à¹€à¸ªà¸¡à¸­ (à¸£à¸§à¸¡ 1.0) monitor à¸ˆà¸°à¹„à¸”à¹‰à¹€à¸¥à¸´à¸à¸à¸§à¸²à¸”à¸—à¸¸à¸à¸ªà¹€à¸à¸¥à¸—à¸¸à¸à¸£à¸­à¸š
-        # fixnet1 à¸šà¸™à¸ˆà¸­à¸—à¸µà¹ˆà¸•à¹ˆà¸­ VPN -> à¹„à¸¡à¹ˆà¸à¸” RETRY: à¸›à¸´à¸”à¹€à¸à¸¡ + à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ IP à¸—à¸±à¸™à¸—à¸µ + à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹ƒà¸«à¸¡à¹ˆ (config "wg_fixnet1_switch")
+                print(f"[{self.device_id}] [NET] ป๊อปอัพเน็ตบนเครื่องนี้สเกล x{sc:.2f} ของรูป - จำไว้ใช้ทุกครั้ง")
+            self._net_scale = sc   # จำเสมอ (รวม 1.0) monitor จะได้เลิกกวาดทุกสเกลทุกรอบ
+        # fixnet1 บนจอที่ต่อ VPN -> ไม่กด RETRY: ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (config "wg_fixnet1_switch")
         if (os.path.basename(path) in ("fixnet1.png", "fixnet.png") and int(config.get("wg_fixnet1_switch", 1) or 0)
                 and self._wg_request_net_recover("fixnet1", switch_now=True)):
             return os.path.basename(path)
-        # à¸ˆà¸‡à¹ƒà¸ˆà¹„à¸¡à¹ˆà¹ƒà¸«à¹‰à¸à¸²à¸£à¸à¸”à¸™à¸µà¹‰à¸™à¸±à¸šà¹€à¸›à¹‡à¸™ activity (à¹€à¸«à¸¡à¸·à¸­à¸™ bot-tiket): à¸–à¹‰à¸²à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¸§à¸™à¹„à¸¡à¹ˆà¸ˆà¸š
-        # à¸•à¸±à¸§à¸ˆà¸±à¸šà¹€à¸§à¸¥à¸²à¸à¸±à¸™à¸„à¹‰à¸²à¸‡ 500 à¸§à¸´ à¸ˆà¸°à¹„à¸”à¹‰à¸¢à¸±à¸‡à¸—à¸³à¸‡à¸²à¸™à¹à¸¥à¸°à¹€à¸”à¹‰à¸‡à¹„à¸›à¹„à¸Ÿà¸¥à¹Œà¸–à¸±à¸”à¹„à¸›à¹€à¸­à¸‡
+        # จงใจไม่ให้การกดนี้นับเป็น activity (เหมือน bot-tiket): ถ้าเน็ตหลุดวนไม่จบ
+        # ตัวจับเวลากันค้าง 500 วิ จะได้ยังทำงานและเด้งไปไฟล์ถัดไปเอง
         self._adb_tap(cx, cy)
-        print(f"[{self.device_id}] [NET] à¸žà¸š {os.path.basename(path)} (score {score:.2f}, x{sc:.2f}) -> adb tap à¸—à¸±à¸™à¸—à¸µ ({cx}, {cy})")
+        print(f"[{self.device_id}] [NET] พบ {os.path.basename(path)} (score {score:.2f}, x{sc:.2f}) -> adb tap ทันที ({cx}, {cy})")
         return os.path.basename(path)
     def _popup_monitor_loop(self):
         """Background thread to monitor fixnetv3.png - reuses main thread's screen to save CPU"""
@@ -2437,7 +2437,7 @@ class RangerGearBot(threading.Thread):
             self._log_pos_cache()
             try:
                 # Reuse the main thread's last captured screen instead of doing a separate screencap
-                # thread à¸«à¸¥à¸±à¸à¸•à¸²à¸¢/à¸„à¹‰à¸²à¸‡à¹ƒà¸™à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸¢à¸²à¸§ -> à¹€à¸Ÿà¸£à¸¡à¹„à¸¡à¹ˆà¸‚à¸¢à¸±à¸š monitor à¸ˆà¸±à¸šà¸ˆà¸­à¹€à¸­à¸‡à¸ˆà¸°à¹„à¸”à¹‰à¸¢à¸±à¸‡à¹€à¸«à¹‡à¸™à¸›à¹Šà¸­à¸›à¸­à¸±à¸ž
+                # thread หลักตาย/ค้างในคำสั่งยาว -> เฟรมไม่ขยับ monitor จับจอเองจะได้ยังเห็นป๊อปอัพ
                 if time.time() - getattr(self, "_screen_ts", 0) > 5 and not getattr(self, "_in_net_check", False):
                     self._in_net_check = True
                     try:
@@ -2448,30 +2448,30 @@ class RangerGearBot(threading.Thread):
                         self._in_net_check = False
                 mon_screen = self._screen
                 if mon_screen is not None:
-                    # fixnet1/fixnet/fixplay (NET_POPUPS): à¸à¸”à¸›à¸´à¸”à¸ˆà¸²à¸à¸•à¸£à¸‡à¸™à¸µà¹‰à¸”à¹‰à¸§à¸¢ à¹€à¸žà¸£à¸²à¸°à¸¥à¸¹à¸›à¸£à¸­à¸ªà¹ˆà¸§à¸™à¹ƒà¸«à¸à¹ˆà¹„à¸¡à¹ˆà¹„à¸”à¹‰
-                    # à¹€à¸£à¸µà¸¢à¸ check_floating_popups() à¹€à¸­à¸‡
-                    # à¸–à¸·à¸­ _in_net_check à¹„à¸§à¹‰à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡à¸—à¸³ - thread à¸«à¸¥à¸±à¸à¸à¸³à¸¥à¸±à¸‡à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¸­à¸¢à¸¹à¹ˆà¸à¹‡à¸‚à¹‰à¸²à¸¡à¸£à¸­à¸šà¸™à¸µà¹‰
-                    # (à¹„à¸¡à¹ˆà¸‡à¸±à¹‰à¸™à¸ªà¸­à¸‡à¸à¸±à¹ˆà¸‡à¸à¸”à¸‹à¹‰à¸³/à¸£à¸­à¸›à¸¸à¹ˆà¸¡à¸•à¹ˆà¸­à¸—à¹‰à¸²à¸¢à¸‹à¹‰à¸­à¸™à¸à¸±à¸™)
+                    # fixnet1/fixnet/fixplay (NET_POPUPS): กดปิดจากตรงนี้ด้วย เพราะลูปรอส่วนใหญ่ไม่ได้
+                    # เรียก check_floating_popups() เอง
+                    # ถือ _in_net_check ไว้ระหว่างทำ - thread หลักกำลังเคลียร์อยู่ก็ข้ามรอบนี้
+                    # (ไม่งั้นสองฝั่งกดซ้ำ/รอปุ่มต่อท้ายซ้อนกัน)
                     hit = None
                     skipped = getattr(self, "_in_net_check", False)
                     if not skipped:
                         self._in_net_check = True
                         try:
-                            # à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¹€à¸„à¸¢à¹€à¸ˆà¸­ = à¸à¸§à¸²à¸”à¸—à¸¸à¸à¸ªà¹€à¸à¸¥à¸—à¸¸à¸à¸£à¸­à¸š / à¸£à¸¹à¹‰à¸ªà¹€à¸à¸¥à¸‚à¸­à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹à¸¥à¹‰à¸§ = à¹€à¸Šà¹‡à¸„à¸ªà¹€à¸à¸¥à¸™à¸±à¹‰à¸™
-                            # à¹à¸¥à¸°à¸à¸§à¸²à¸”à¸—à¸¸à¸à¸ªà¹€à¸à¸¥à¸‹à¹‰à¸³à¸—à¸¸à¸à¸£à¸­à¸šà¸—à¸µà¹ˆ 5 (~15 à¸§à¸´) à¹€à¸œà¸·à¹ˆà¸­à¹€à¸à¸¡à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸‚à¸™à¸²à¸” UI
+                            # ยังไม่เคยเจอ = กวาดทุกสเกลทุกรอบ / รู้สเกลของเครื่องแล้ว = เช็คสเกลนั้น
+                            # และกวาดทุกสเกลซ้ำทุกรอบที่ 5 (~15 วิ) เผื่อเกมเปลี่ยนขนาด UI
                             self._mon_round = getattr(self, "_mon_round", 0) + 1
                             learned = getattr(self, "_net_scale", None)
                             sweep = self.NET_SCALES if (learned is None or self._mon_round % 5 == 0) else (learned,)
                             hit = self._dismiss_net_popup(mon_screen, scales=sweep)
                             if hit:
-                                self._clear_net_popup_loop(hit)   # à¸à¸”à¸‹à¹‰à¸³à¸ˆà¸™à¸«à¸²à¸¢ (à¹à¸¥à¹‰à¸§à¸£à¸­à¸à¸”à¸›à¸¸à¹ˆà¸¡à¸•à¹ˆà¸­à¸—à¹‰à¸²à¸¢à¸–à¹‰à¸²à¸¡à¸µ)
+                                self._clear_net_popup_loop(hit)   # กดซ้ำจนหาย (แล้วรอกดปุ่มต่อท้ายถ้ามี)
                         finally:
                             self._in_net_check = False
                     if hit:
                         self._netpopup_count = getattr(self, "_netpopup_count", 0) + 1
-                        print(f"[{self.device_id}] [MONITOR] {hit} à¹€à¸”à¹‰à¸‡ (#{self._netpopup_count}) - à¸à¸”à¸›à¸´à¸”à¹ƒà¸«à¹‰à¹à¸¥à¹‰à¸§")
+                        print(f"[{self.device_id}] [MONITOR] {hit} เด้ง (#{self._netpopup_count}) - กดปิดให้แล้ว")
                         if self._netpopup_count >= self.NET_POPUP_LIMIT:
-                            print(f"[{self.device_id}] [MONITOR] {hit} à¸à¸”à¹„à¸› {self.NET_POPUP_LIMIT} à¸„à¸£à¸±à¹‰à¸‡à¹à¸¥à¹‰à¸§à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸«à¸²à¸¢ - à¹€à¸”à¹‰à¸‡à¹à¸­à¸›à¹ƒà¸«à¸¡à¹ˆ")
+                            print(f"[{self.device_id}] [MONITOR] {hit} กดไป {self.NET_POPUP_LIMIT} ครั้งแล้วยังไม่หาย - เด้งแอปใหม่")
                             self._need_restart = True
                             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell",
                                           "am", "force-stop", "com.linecorp.LGRGS"])
@@ -2487,7 +2487,7 @@ class RangerGearBot(threading.Thread):
                         if max_val >= 0.8:
                             self._fixnetv3_count += 1
                             print(f"[{self.device_id}] [MONITOR] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
-                            self._adb_tap(472, 361)   # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•: à¸à¸”à¸œà¹ˆà¸²à¸™ adb à¸•à¸£à¸‡ à¹† à¹€à¸«à¸¡à¸·à¸­à¸™ bot-tiket
+                            self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
                             
                             if self._fixnetv3_count >= 8:
                                 print(f"[{self.device_id}] [MONITOR] fixnetv3.png persists after 8 clicks! Force-stopping app...")
@@ -2503,22 +2503,22 @@ class RangerGearBot(threading.Thread):
             time.sleep(3)  # Check every 3 seconds (lighter than 2.5)
 
     # =========================================================
-    # WireGuard à¸•à¹ˆà¸­à¸ˆà¸­ (IP à¹„à¸¡à¹ˆà¸‹à¹‰à¸³à¸à¸±à¸™à¹à¸•à¹ˆà¸¥à¸°à¸­à¸µà¸¡à¸¹à¸¯) - à¹ƒà¸Šà¹‰à¹„à¸Ÿà¸¥à¹Œ .conf à¸ˆà¸²à¸ Windscribe Config Generator
-    # à¸§à¸²à¸‡à¹„à¸Ÿà¸¥à¹Œà¹„à¸§à¹‰à¹ƒà¸™à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ wg/ (à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™ git) à¸ˆà¸­à¸—à¸µà¹ˆ i à¹„à¸”à¹‰à¹„à¸Ÿà¸¥à¹Œà¸—à¸µà¹ˆ i à¸•à¸²à¸¡à¸¥à¸³à¸”à¸±à¸šà¸Šà¸·à¹ˆà¸­
-    # à¸«à¸£à¸·à¸­à¸à¸³à¸«à¸™à¸”à¹€à¸­à¸‡à¹ƒà¸™ config "wg_per_device": {"127.0.0.1:16384": "Tokyo.conf", ...}
-    # à¸‚à¸±à¹‰à¸™à¸•à¸­à¸™ (à¸•à¹‰à¸­à¸‡ root): à¸¥à¸‡à¹à¸­à¸› WireGuard -> à¹€à¸‚à¸µà¸¢à¸™à¹„à¸Ÿà¸¥à¹Œ tunnel à¸¥à¸‡ data à¸‚à¸­à¸‡à¹à¸­à¸› ->
-    #   à¹€à¸›à¸´à¸” "allow remote control" + à¸­à¸™à¸¸à¸à¸²à¸• VPN à¸¥à¹ˆà¸§à¸‡à¸«à¸™à¹‰à¸² -> à¸¢à¸´à¸‡ intent SET_TUNNEL_UP
+    # WireGuard ต่อจอ (IP ไม่ซ้ำกันแต่ละอีมูฯ) - ใช้ไฟล์ .conf จาก Windscribe Config Generator
+    # วางไฟล์ไว้ในโฟลเดอร์ wg/ (ไม่ขึ้น git) จอที่ i ได้ไฟล์ที่ i ตามลำดับชื่อ
+    # หรือกำหนดเองใน config "wg_per_device": {"127.0.0.1:16384": "Tokyo.conf", ...}
+    # ขั้นตอน (ต้อง root): ลงแอป WireGuard -> เขียนไฟล์ tunnel ลง data ของแอป ->
+    #   เปิด "allow remote control" + อนุญาต VPN ล่วงหน้า -> ยิง intent SET_TUNNEL_UP
     # =========================================================
     WG_PKG = "com.wireguard.android"
     WG_TUNNEL = "lgr"
 
     def _wg_conf_for_device(self):
-        """à¹„à¸Ÿà¸¥à¹Œ .conf à¸‚à¸­à¸‡à¸ˆà¸­à¸™à¸µà¹‰ (None = à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œ/à¹„à¸¡à¹ˆà¹€à¸›à¸´à¸”à¹ƒà¸Šà¹‰)
+        """ไฟล์ .conf ของจอนี้ (None = ไม่มีไฟล์/ไม่เปิดใช้)
 
-        wg_stick_on_success=1 (default 1): IP à¹„à¸«à¸™ login à¸œà¹ˆà¸²à¸™à¹à¸¥à¹‰à¸§ (._wg_ok() fired)
-          -> à¸¢à¸¶à¸” IP à¸™à¸±à¹‰à¸™à¸–à¸²à¸§à¸£ à¹„à¸¡à¹ˆà¸ªà¸¥à¸±à¸š à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¹€à¸ˆà¸­ fixnet1 à¸—à¸µà¹ˆ start à¹€à¸à¸¡ (_wg_failover clear)
+        wg_stick_on_success=1 (default 1): IP ไหน login ผ่านแล้ว (._wg_ok() fired)
+          -> ยึด IP นั้นถาวร ไม่สลับ จนกว่าจะเจอ fixnet1 ที่ start เกม (_wg_failover clear)
         """
-        # sticky: à¹€à¸„à¸¢ login à¸œà¹ˆà¸²à¸™à¸”à¹‰à¸§à¸¢ IP à¸™à¸µà¹‰ -> à¹ƒà¸Šà¹‰à¸‹à¹‰à¸³à¹„à¸›à¹€à¸£à¸·à¹ˆà¸­à¸¢ à¹† à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸„à¸³à¸™à¸§à¸“à¹ƒà¸«à¸¡à¹ˆ
+        # sticky: เคย login ผ่านด้วย IP นี้ -> ใช้ซ้ำไปเรื่อย ๆ ไม่ต้องคำนวณใหม่
         stuck = getattr(self, "_wg_stuck_conf", None)
         if stuck and os.path.exists(stuck) and int(config.get("wg_stick_on_success", 1) or 0):
             return stuck
@@ -2530,14 +2530,14 @@ class RangerGearBot(threading.Thread):
         confs = _wg_list_configs(wg_dir)
         if (not confs and int(config.get("wg_regen_blocked", 1) or 0)
                 and time.time() - getattr(self, "_wg_empty_gen_t", 0) > 60):
-            # à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œ IP à¹€à¸¥à¸¢ (à¸–à¸¹à¸à¸¥à¸š/à¸«à¸²à¸¢) -> à¸ªà¸£à¹‰à¸²à¸‡à¹ƒà¸«à¸¡à¹ˆà¹€à¸­à¸‡à¸—à¸±à¸™à¸—à¸µ (à¹‚à¸«à¸¡à¸”à¸šà¸±à¸à¸Šà¸µà¹„à¸¡à¹ˆà¸¡à¸µ keypair.txt à¸à¹‡à¸ªà¸£à¹‰à¸²à¸‡à¹„à¸”à¹‰)
+            # ไม่มีไฟล์ IP เลย (ถูกลบ/หาย) -> สร้างใหม่เองทันที (โหมดบัญชีไม่มี keypair.txt ก็สร้างได้)
             self._wg_empty_gen_t = time.time()
-            # à¹„à¸Ÿà¸¥à¹Œà¹ƒà¸™ wg/ à¸«à¸¡à¸” (à¸¥à¸šà¸•à¸±à¸§à¸—à¸µà¹ˆà¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸à¹„à¸›à¸«à¸¡à¸”) à¹à¸•à¹ˆà¸¢à¸±à¸‡à¸¡à¸µà¸à¸¸à¸à¹à¸ˆ -> à¸ªà¸£à¹‰à¸²à¸‡à¸Šà¸¸à¸”à¹ƒà¸«à¸¡à¹ˆ
+            # ไฟล์ใน wg/ หมด (ลบตัวที่โดนบล็อกไปหมด) แต่ยังมีกุญแจ -> สร้างชุดใหม่
             _wg_generate_more(wg_dir, int(config.get("wg_gen_extra", 5)) + 10, self.device_id)
             confs = _wg_list_configs(wg_dir)
 
-        # Sub-folder round-robin: sync à¸à¸±à¸š login.py - à¸¥à¹‡à¸­à¸ sub à¹€à¸”à¸µà¸¢à¸§à¸•à¹ˆà¸­à¸£à¸­à¸š
-        # fixnet1 -> _wg_failover à¸‚à¸¢à¸±à¸š _wg_sub_idx -> à¸£à¸­à¸šà¸«à¸™à¹‰à¸²à¹„à¸› sub à¸–à¸±à¸”à¹„à¸›
+        # Sub-folder round-robin: sync กับ login.py - ล็อก sub เดียวต่อรอบ
+        # fixnet1 -> _wg_failover ขยับ _wg_sub_idx -> รอบหน้าไป sub ถัดไป
         if int(config.get("wg_sub_round_robin", 1) or 0) and confs:
             subs = []
             for c in confs:
@@ -2563,14 +2563,14 @@ class RangerGearBot(threading.Thread):
                     confs = filtered
         if not confs:
             return None
-        # à¹à¸•à¹ˆà¸¥à¸°à¸ˆà¸­ "à¸ˆà¸­à¸‡" à¹„à¸Ÿà¸¥à¹Œà¸‚à¸­à¸‡à¸•à¸±à¸§à¹€à¸­à¸‡ à¹„à¸¡à¹ˆà¹ƒà¸Šà¹‰à¸‹à¹‰à¸³à¸à¸±à¸šà¸ˆà¸­à¸­à¸·à¹ˆà¸™ (à¸à¸¸à¸à¹à¸ˆà¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™à¸•à¹ˆà¸­à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™ = à¸•à¸µà¸à¸±à¸™à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”)
-        # à¸¥à¸­à¸‡à¹„à¸Ÿà¸¥à¹Œà¸•à¸²à¸¡à¸¥à¸³à¸”à¸±à¸šà¸ˆà¸­ MuMu à¸à¹ˆà¸­à¸™ (à¸žà¸­à¸£à¹Œà¸• 16384 + 32*i) à¸ˆà¸°à¹„à¸”à¹‰à¹„à¸Ÿà¸¥à¹Œà¹€à¸”à¸´à¸¡à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¹€à¸›à¸´à¸”à¸šà¸­à¸•
+        # แต่ละจอ "จอง" ไฟล์ของตัวเอง ไม่ใช้ซ้ำกับจออื่น (กุญแจเดียวกันต่อพร้อมกัน = ตีกันเน็ตหลุด)
+        # ลองไฟล์ตามลำดับจอ MuMu ก่อน (พอร์ต 16384 + 32*i) จะได้ไฟล์เดิมทุกครั้งที่เปิดบอต
         try:
             port = int(self.device_id.rsplit(":", 1)[1])
             idx = (port - 16384) // 32 if port >= 16384 else port
         except Exception:
             idx = sum(map(ord, self.device_id))
-        # à¹à¸•à¹ˆà¸¥à¸°à¸ˆà¸­à¹€à¸›à¹‡à¸™à¸„à¸™à¸¥à¸° process -> à¸ˆà¸­à¸‡à¸”à¹‰à¸§à¸¢à¹„à¸Ÿà¸¥à¹Œà¸¥à¹‡à¸­à¸ wg/.claims/<à¸Šà¸·à¹ˆà¸­à¹„à¸Ÿà¸¥à¹Œ>.lock (à¸ªà¸£à¹‰à¸²à¸‡à¹à¸šà¸š O_EXCL = à¹„à¸”à¹‰à¸„à¸™à¹€à¸”à¸µà¸¢à¸§)
+        # แต่ละจอเป็นคนละ process -> จองด้วยไฟล์ล็อก wg/.claims/<ชื่อไฟล์>.lock (สร้างแบบ O_EXCL = ได้คนเดียว)
         claim_dir = os.path.join(wg_dir, ".claims")
         os.makedirs(claim_dir, exist_ok=True)
 
@@ -2581,11 +2581,11 @@ class RangerGearBot(threading.Thread):
             except Exception:
                 return None
 
-        bad = set(getattr(self, "_wg_bad", set()))   # à¹„à¸Ÿà¸¥à¹Œà¸—à¸µà¹ˆà¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¸‹à¹‰à¸³à¸šà¸™à¸ˆà¸­à¸™à¸µà¹‰ (auto failover) - à¹„à¸¡à¹ˆà¸à¸¥à¸±à¸šà¹„à¸›à¹ƒà¸Šà¹‰
-        # à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ (IP à¸‚à¸²à¸­à¸­à¸) à¸—à¸µà¹ˆà¸ˆà¸­à¹„à¸«à¸™à¸à¹‡à¸•à¸²à¸¡à¹€à¸žà¸´à¹ˆà¸‡à¹‚à¸”à¸™ block -> à¸žà¸±à¸à¹„à¸§à¹‰ wg_cooldown_hours à¸Šà¸¡. à¸—à¸¸à¸à¸ˆà¸­à¹€à¸¥à¸µà¹ˆà¸¢à¸‡
+        bad = set(getattr(self, "_wg_bad", set()))   # ไฟล์ที่เน็ตหลุดซ้ำบนจอนี้ (auto failover) - ไม่กลับไปใช้
+        # เซิร์ฟเวอร์ (IP ขาออก) ที่จอไหนก็ตามเพิ่งโดน block -> พักไว้ wg_cooldown_hours ชม. ทุกจอเลี่ยง
         cool = {} if getattr(self, "_wg_ignore_cool", False) else _wg_cooldown_load(wg_dir)
         bad |= {c for c in confs if _wg_endpoint(c) in cool}
-        # à¸ˆà¸³à¸à¸±à¸”à¸ˆà¸³à¸™à¸§à¸™à¸ˆà¸­à¸•à¹ˆà¸­à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™ (IP à¸‚à¸²à¸­à¸­à¸à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™) ; 0 = à¹„à¸¡à¹ˆà¸ˆà¸³à¸à¸±à¸”
+        # จำกัดจำนวนจอต่อเซิร์ฟเวอร์เดียวกัน (IP ขาออกเดียวกัน) ; 0 = ไม่จำกัด
         max_ip = int(config.get("wg_max_per_ip", 0) or 0)
         if max_ip > 0:
             used = {}
@@ -2597,7 +2597,7 @@ class RangerGearBot(threading.Thread):
             full = {c for c in confs if used.get(_wg_endpoint(c), 0) >= max_ip}
             if len(full | bad) < len(confs):
                 bad |= full
-        for p in confs:                      # à¸ˆà¸­à¸‡à¹„à¸§à¹‰à¹à¸¥à¹‰à¸§à¸ˆà¸²à¸à¸£à¸­à¸šà¸à¹ˆà¸­à¸™ -> à¹ƒà¸Šà¹‰à¸­à¸±à¸™à¹€à¸”à¸´à¸¡
+        for p in confs:                      # จองไว้แล้วจากรอบก่อน -> ใช้อันเดิม
             if _owner(p) == self.device_id and p not in bad:
                 return p
         order = confs[idx % len(confs):] + confs[:idx % len(confs)]
@@ -2615,9 +2615,9 @@ class RangerGearBot(threading.Thread):
                 f.write(self.device_id)
             return p
         if (not getattr(self, "_wg_gen_tried", False) and int(config.get("wg_regen_blocked", 1) or 0)
-                and time.time() - getattr(self, "_wg_gen_last_t", 0) > 600):   # à¸ªà¸£à¹‰à¸²à¸‡à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¹à¸¥à¹‰à¸§ à¸­à¸¢à¹ˆà¸²à¸¥à¸­à¸‡à¸‹à¹‰à¸³à¸—à¸¸à¸à¸£à¸­à¸š (à¹€à¸ªà¸µà¸¢à¹€à¸§à¸¥à¸²à¹‚à¸«à¸¥à¸”à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ)
+                and time.time() - getattr(self, "_wg_gen_last_t", 0) > 600):   # สร้างไม่ได้แล้ว อย่าลองซ้ำทุกรอบ (เสียเวลาโหลดรายชื่อเซิร์ฟเวอร์)
             self._wg_gen_last_t = time.time()
-            # à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œà¸§à¹ˆà¸²à¸‡à¹ƒà¸«à¹‰à¹ƒà¸Šà¹‰à¹€à¸¥à¸¢ (à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸/à¸žà¸±à¸/à¸ˆà¸­à¸‡à¹€à¸•à¹‡à¸¡) -> à¸ªà¸£à¹‰à¸²à¸‡à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹ƒà¸«à¸¡à¹ˆà¹€à¸žà¸´à¹ˆà¸¡à¹à¸¥à¹‰à¸§à¸¥à¸­à¸‡à¸­à¸µà¸à¸£à¸­à¸š (à¹„à¸¡à¹ˆà¸›à¸¥à¹ˆà¸­à¸¢à¸ˆà¸­à¹„à¸›à¹ƒà¸Šà¹‰à¹€à¸™à¹‡à¸•à¸šà¹‰à¸²à¸™)
+            # ไม่มีไฟล์ว่างให้ใช้เลย (โดนบล็อก/พัก/จองเต็ม) -> สร้างเซิร์ฟเวอร์ใหม่เพิ่มแล้วลองอีกรอบ (ไม่ปล่อยจอไปใช้เน็ตบ้าน)
             self._wg_gen_tried = True
             try:
                 if _wg_generate_more(wg_dir, len(confs) + int(config.get("wg_gen_extra", 5)), self.device_id):
@@ -2625,20 +2625,20 @@ class RangerGearBot(threading.Thread):
             finally:
                 self._wg_gen_tried = False
         if bad and len(bad) >= len(confs):
-            # à¸¥à¸­à¸‡à¸„à¸£à¸šà¸—à¸¸à¸à¹„à¸Ÿà¸¥à¹Œà¹à¸¥à¹‰à¸§ -> à¹ƒà¸«à¹‰à¹‚à¸­à¸à¸²à¸ªà¹ƒà¸«à¸¡à¹ˆà¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” (à¸§à¸™à¸£à¸­à¸šà¹ƒà¸«à¸¡à¹ˆ) à¹à¸—à¸™à¸—à¸µà¹ˆà¸ˆà¸°à¹„à¸¡à¹ˆà¸¡à¸µ VPN
-            print(f"[{self.device_id}] [WG] à¸¥à¸­à¸‡à¸„à¸£à¸šà¸—à¸¸à¸à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹à¸¥à¹‰à¸§ - à¹€à¸£à¸´à¹ˆà¸¡à¸§à¸™à¹ƒà¸«à¸¡à¹ˆ")
+            # ลองครบทุกไฟล์แล้ว -> ให้โอกาสใหม่ทั้งหมด (วนรอบใหม่) แทนที่จะไม่มี VPN
+            print(f"[{self.device_id}] [WG] ลองครบทุกเซิร์ฟเวอร์แล้ว - เริ่มวนใหม่")
             if not getattr(self, "_wg_bad", None):
-                # à¸—à¸¸à¸à¸•à¸±à¸§à¸•à¸´à¸”à¸žà¸±à¸ -> à¸¢à¸­à¸¡à¹ƒà¸Šà¹‰à¸•à¸±à¸§à¸—à¸µà¹ˆà¸•à¸´à¸”à¸žà¸±à¸à¹„à¸›à¸à¹ˆà¸­à¸™ à¸”à¸µà¸à¸§à¹ˆà¸²à¹„à¸¡à¹ˆà¸¡à¸µ VPN à¹€à¸¥à¸¢ (wg_required à¸«à¹‰à¸²à¸¡à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¸”à¹‰à¸§à¸¢à¹€à¸™à¹‡à¸•à¸šà¹‰à¸²à¸™)
+                # ทุกตัวติดพัก -> ยอมใช้ตัวที่ติดพักไปก่อน ดีกว่าไม่มี VPN เลย (wg_required ห้ามเข้าเกมด้วยเน็ตบ้าน)
                 if getattr(self, "_wg_ignore_cool", False):
                     if int(config.get("wg_lock", 1) or 0) and confs:
-                        # wg_lock: à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œà¸§à¹ˆà¸²à¸‡ -> à¸«à¹‰à¸²à¸¡à¸›à¸¥à¹ˆà¸­à¸¢à¸ˆà¸­à¹„à¸¡à¹ˆà¸¡à¸µ IP: à¹ƒà¸Šà¹‰ IP à¹€à¸”à¸´à¸¡à¸‚à¸­à¸‡à¸ˆà¸­ à¸–à¹‰à¸²à¹„à¸¡à¹ˆà¸¡à¸µà¸à¹‡à¹ƒà¸Šà¹‰à¹„à¸Ÿà¸¥à¹Œà¸£à¹ˆà¸§à¸¡à¸à¸±à¸šà¸ˆà¸­à¸­à¸·à¹ˆà¸™
+                        # wg_lock: ไม่มีไฟล์ว่าง -> ห้ามปล่อยจอไม่มี IP: ใช้ IP เดิมของจอ ถ้าไม่มีก็ใช้ไฟล์ร่วมกับจออื่น
                         last = getattr(self, "_wg_last_conf", None)
                         pick = last if last and os.path.isfile(last) else confs[idx % len(confs)]
                         if not getattr(self, "_wg_share_warned", False):
                             self._wg_share_warned = True
-                            print(f"[{self.device_id}] [WG] à¹„à¸Ÿà¸¥à¹Œà¸§à¹ˆà¸²à¸‡à¹„à¸¡à¹ˆà¸žà¸­ - à¹ƒà¸Šà¹‰ {os.path.basename(pick)} à¸£à¹ˆà¸§à¸¡à¸à¸±à¸šà¸ˆà¸­à¸­à¸·à¹ˆà¸™à¹„à¸›à¸à¹ˆà¸­à¸™ (à¹„à¸¡à¹ˆà¸›à¸¥à¹ˆà¸­à¸¢à¹ƒà¸«à¹‰à¹„à¸¡à¹ˆà¸¡à¸µ IP)")
+                            print(f"[{self.device_id}] [WG] ไฟล์ว่างไม่พอ - ใช้ {os.path.basename(pick)} ร่วมกับจออื่นไปก่อน (ไม่ปล่อยให้ไม่มี IP)")
                         return pick
-                    return None              # à¹„à¸¡à¹ˆà¸ªà¸™à¸à¸²à¸£à¸žà¸±à¸à¹à¸¥à¹‰à¸§à¸à¹‡à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸§à¹ˆà¸²à¸‡ = à¹„à¸Ÿà¸¥à¹Œà¸–à¸¹à¸à¸ˆà¸­à¸­à¸·à¹ˆà¸™à¸ˆà¸­à¸‡à¸«à¸¡à¸”à¸ˆà¸£à¸´à¸‡
+                    return None              # ไม่สนการพักแล้วก็ยังไม่ว่าง = ไฟล์ถูกจออื่นจองหมดจริง
                 self._wg_ignore_cool = True
                 try:
                     return self._wg_conf_for_device()
@@ -2648,27 +2648,27 @@ class RangerGearBot(threading.Thread):
             return self._wg_conf_for_device()
         if not getattr(self, "_wg_short_warned", False):
             self._wg_short_warned = True
-            print(f"[{self.device_id}] [WG] à¹„à¸Ÿà¸¥à¹Œ config à¹„à¸¡à¹ˆà¸žà¸­ ({len(confs)} à¹„à¸Ÿà¸¥à¹Œ à¸–à¸¹à¸à¸ˆà¸­à¸­à¸·à¹ˆà¸™à¸ˆà¸­à¸‡à¸«à¸¡à¸”à¹à¸¥à¹‰à¸§) - à¸ˆà¸­à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¸•à¹ˆà¸­ VPN "
-                  f"(à¹‚à¸«à¸¥à¸” .conf à¹€à¸žà¸´à¹ˆà¸¡à¸¡à¸²à¹ƒà¸ªà¹ˆ {wg_dir}/)")
+            print(f"[{self.device_id}] [WG] ไฟล์ config ไม่พอ ({len(confs)} ไฟล์ ถูกจออื่นจองหมดแล้ว) - จอนี้ไม่ต่อ VPN "
+                  f"(โหลด .conf เพิ่มมาใส่ {wg_dir}/)")
         if int(config.get("wg_lock", 1) or 0) and confs:
-            # wg_lock: à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œà¸§à¹ˆà¸²à¸‡ -> à¸«à¹‰à¸²à¸¡à¸›à¸¥à¹ˆà¸­à¸¢à¸ˆà¸­à¹„à¸¡à¹ˆà¸¡à¸µ IP: à¹ƒà¸Šà¹‰ IP à¹€à¸”à¸´à¸¡à¸‚à¸­à¸‡à¸ˆà¸­ à¸–à¹‰à¸²à¹„à¸¡à¹ˆà¸¡à¸µà¸à¹‡à¹ƒà¸Šà¹‰à¹„à¸Ÿà¸¥à¹Œà¸£à¹ˆà¸§à¸¡à¸à¸±à¸šà¸ˆà¸­à¸­à¸·à¹ˆà¸™
+            # wg_lock: ไม่มีไฟล์ว่าง -> ห้ามปล่อยจอไม่มี IP: ใช้ IP เดิมของจอ ถ้าไม่มีก็ใช้ไฟล์ร่วมกับจออื่น
             last = getattr(self, "_wg_last_conf", None)
             pick = last if last and os.path.isfile(last) else confs[idx % len(confs)]
             if not getattr(self, "_wg_share_warned", False):
                 self._wg_share_warned = True
-                print(f"[{self.device_id}] [WG] à¹„à¸Ÿà¸¥à¹Œà¸§à¹ˆà¸²à¸‡à¹„à¸¡à¹ˆà¸žà¸­ - à¹ƒà¸Šà¹‰ {os.path.basename(pick)} à¸£à¹ˆà¸§à¸¡à¸à¸±à¸šà¸ˆà¸­à¸­à¸·à¹ˆà¸™à¹„à¸›à¸à¹ˆà¸­à¸™ (à¹„à¸¡à¹ˆà¸›à¸¥à¹ˆà¸­à¸¢à¹ƒà¸«à¹‰à¹„à¸¡à¹ˆà¸¡à¸µ IP)")
+                print(f"[{self.device_id}] [WG] ไฟล์ว่างไม่พอ - ใช้ {os.path.basename(pick)} ร่วมกับจออื่นไปก่อน (ไม่ปล่อยให้ไม่มี IP)")
             return pick
         return None
 
     def _wg_after_refresh(self):
-        """wg_after_login: à¸à¸” refresh à¹à¸¥à¹‰à¸§ -> à¸•à¹ˆà¸­ VPN à¸•à¸£à¸‡à¸™à¸µà¹‰à¹€à¸¥à¸¢ (à¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œ/à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹„à¸›à¸”à¹‰à¸§à¸¢à¹€à¸™à¹‡à¸•à¸›à¸à¸•à¸´à¹à¸¥à¹‰à¸§)"""
+        """wg_after_login: กด refresh แล้ว -> ต่อ VPN ตรงนี้เลย (ส่งไฟล์/เปิดเกมไปด้วยเน็ตปกติแล้ว)"""
         if int(config.get("use_host_vpn", 0) or 0):
-            return   # host VPN mode: VPN à¸­à¸¢à¸¹à¹ˆà¸™à¸­à¸à¸­à¸µà¸¡à¸¹à¸¯ à¹„à¸¡à¹ˆà¹à¸•à¸°
+            return   # host VPN mode: VPN อยู่นอกอีมูฯ ไม่แตะ
         if int(config.get("wg_after_login", 0) or 0):
             self._ensure_wireguard()
 
     def _wg_vpn_active(self):
-        """Android à¸¢à¸±à¸‡à¸¡à¸µ VPN à¸•à¹ˆà¸­à¸­à¸¢à¸¹à¹ˆà¹„à¸«à¸¡ (à¸”à¸¹à¸—à¸±à¹‰à¸‡ tun interface à¹à¸¥à¸° VPN network à¹ƒà¸™ connectivity)"""
+        """Android ยังมี VPN ต่ออยู่ไหม (ดูทั้ง tun interface และ VPN network ใน connectivity)"""
         if self._wg_is_up():
             return True
         r = self.adb_shell("dumpsys connectivity 2>/dev/null | grep -c 'VPN CONNECTED' || true", timeout=15)
@@ -2677,18 +2677,18 @@ class RangerGearBot(threading.Thread):
         except Exception:
             return False
 
-    # cache: à¸ˆà¸­à¹„à¸«à¸™ clear WG à¹„à¸›à¹à¸¥à¹‰à¸§à¸£à¸­à¸šà¸™à¸µà¹‰ - à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸—à¸³à¸‹à¹‰à¸³à¸—à¸¸à¸à¹„à¸Ÿà¸¥à¹Œ (à¸£à¸µà¸ªà¸•à¸²à¸£à¹Œà¸— process à¸„à¹ˆà¸­à¸¢à¸—à¸³à¹ƒà¸«à¸¡à¹ˆ)
+    # cache: จอไหน clear WG ไปแล้วรอบนี้ - ไม่ต้องทำซ้ำทุกไฟล์ (รีสตาร์ท process ค่อยทำใหม่)
     _WG_CLEARED_DEVICES = set()
 
     def _force_kill_wg_on_emu(self):
-        """KILL_VPN mode: clear WireGuard à¸šà¸™ emulator à¹€à¸”à¹‡à¸”à¸‚à¸²à¸” à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§à¸•à¹ˆà¸­ process
-        - à¸†à¹ˆà¸²à¹à¸­à¸› WireGuard (force-stop)
-        - disable tunnel à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” (set-tunnel-down à¸—à¸¸à¸ tunnel)
-        - clear app data (à¸¥à¸š tunnel config à¸«à¸¡à¸”)
-        - à¹ƒà¸Šà¹‰à¸•à¸­à¸™ user à¸¢à¹‰à¸²à¸¢à¹„à¸› ExpressVPN à¸šà¸™ Windows à¹à¸—à¸™ -> à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸¡à¸µ VPN à¸šà¸™ emulator"""
+        """KILL_VPN mode: clear WireGuard บน emulator เด็ดขาด ครั้งเดียวต่อ process
+        - ฆ่าแอป WireGuard (force-stop)
+        - disable tunnel ทั้งหมด (set-tunnel-down ทุก tunnel)
+        - clear app data (ลบ tunnel config หมด)
+        - ใช้ตอน user ย้ายไป ExpressVPN บน Windows แทน -> ไม่ต้องมี VPN บน emulator"""
         dev = self.device_id
         if dev in self._WG_CLEARED_DEVICES:
-            return   # à¸—à¸³à¸„à¸£à¸šà¹à¸¥à¹‰à¸§ à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸—à¸³à¸‹à¹‰à¸³
+            return   # ทำครบแล้ว ไม่ต้องทำซ้ำ
         try:
             print(f"[{dev}] [WG-CLEAR] kill WireGuard + clear all tunnels (KILL_VPN mode)")
             # 1) kill WG app
@@ -2705,26 +2705,26 @@ class RangerGearBot(threading.Thread):
                                    timeout=10)
                 except Exception:
                     pass
-            # 3) clear WG app data - à¸¥à¸š tunnel config à¸«à¸¡à¸” (à¸•à¹‰à¸­à¸‡ login à¹ƒà¸«à¸¡à¹ˆà¸–à¹‰à¸²à¸à¸¥à¸±à¸šà¸¡à¸²à¹ƒà¸Šà¹‰)
+            # 3) clear WG app data - ลบ tunnel config หมด (ต้อง login ใหม่ถ้ากลับมาใช้)
             try:
                 self.adb_shell(f"pm clear {self.WG_PKG}", timeout=15)
             except Exception:
                 pass
             self._WG_CLEARED_DEVICES.add(dev)
-            print(f"[{dev}] [WG-CLEAR] done - ExpressVPN à¸šà¸™ Windows à¸ˆà¸°à¸„à¸¸à¸¡ IP à¹à¸—à¸™")
+            print(f"[{dev}] [WG-CLEAR] done - ExpressVPN บน Windows จะคุม IP แทน")
         except Exception as e:
             print(f"[{dev}] [WG-CLEAR] error (non-fatal): {e}")
 
     def _wg_down(self):
-        """à¸›à¸´à¸” VPN à¸‚à¸­à¸‡à¸ˆà¸­à¸™à¸µà¹‰ "à¸ªà¸™à¸´à¸—" à¸à¹ˆà¸­à¸™à¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œ/à¹€à¸›à¸´à¸”à¹€à¸à¸¡ à¹ƒà¸«à¹‰à¸­à¸­à¸à¹€à¸™à¹‡à¸•à¸”à¹‰à¸§à¸¢ IP à¸›à¸à¸•à¸´
+        """ปิด VPN ของจอนี้ "สนิท" ก่อนส่งไฟล์/เปิดเกม ให้ออกเน็ตด้วย IP ปกติ
 
-        à¸—à¸³à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡ (à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆà¹€à¸‰à¸žà¸²à¸°à¸•à¸­à¸™à¹€à¸«à¹‡à¸™ tun): à¸ªà¸±à¹ˆà¸‡à¸›à¸´à¸” tunnel -> à¸†à¹ˆà¸²à¹à¸­à¸› WireGuard ->
-        à¸£à¸­à¸ˆà¸™ Android à¹„à¸¡à¹ˆà¸¡à¸µ VPN à¸„à¹‰à¸²à¸‡ -> à¸£à¸­à¸ˆà¸™à¸­à¸­à¸à¹€à¸™à¹‡à¸•à¹„à¸”à¹‰à¸ˆà¸£à¸´à¸‡ (ping) -> à¸žà¸±à¸à¹ƒà¸«à¹‰à¹€à¸™à¹‡à¸•à¸™à¸´à¹ˆà¸‡ à¹à¸¥à¹‰à¸§à¸„à¹ˆà¸­à¸¢à¹„à¸›à¸•à¹ˆà¸­
+        ทำทุกครั้ง (ไม่ใช่เฉพาะตอนเห็น tun): สั่งปิด tunnel -> ฆ่าแอป WireGuard ->
+        รอจน Android ไม่มี VPN ค้าง -> รอจนออกเน็ตได้จริง (ping) -> พักให้เน็ตนิ่ง แล้วค่อยไปต่อ
         """
         if int(config.get("use_host_vpn", 0) or 0):
-            return None   # host VPN mode: VPN à¸­à¸¢à¸¹à¹ˆà¸™à¸­à¸à¸­à¸µà¸¡à¸¹à¸¯ à¹„à¸¡à¹ˆà¹à¸•à¸°
+            return None   # host VPN mode: VPN อยู่นอกอีมูฯ ไม่แตะ
         if int(config.get("wg_lock", 1) or 0):
-            return None   # wg_lock: à¸«à¹‰à¸²à¸¡à¸›à¸´à¸” VPN à¹€à¸”à¹‡à¸”à¸‚à¸²à¸” (à¸›à¸´à¸”à¹à¸¥à¹‰à¸§à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰)
+            return None   # wg_lock: ห้ามปิด VPN เด็ดขาด (ปิดแล้วเข้าเกมไม่ได้)
         if not int(config.get("wg_enabled", 1) or 0):
             return
         try:
@@ -2748,117 +2748,117 @@ class RangerGearBot(threading.Thread):
                     break
                 _real_sleep(1)
             if was or not gone or not net:
-                _real_sleep(float(config.get("wg_down_settle", 0.5)))   # à¹€à¸™à¹‡à¸•à¹€à¸žà¸´à¹ˆà¸‡à¸ªà¸¥à¸±à¸š - à¸žà¸±à¸à¹ƒà¸«à¹‰à¸™à¸´à¹ˆà¸‡à¸à¹ˆà¸­à¸™à¹€à¸›à¸´à¸”à¹€à¸à¸¡
-                print(f"[{self.device_id}] [WG] à¸›à¸´à¸” VPN à¸à¹ˆà¸­à¸™à¹€à¸›à¸´à¸”à¹€à¸à¸¡: "
-                      f"{'à¸›à¸´à¸”à¸ªà¸™à¸´à¸—à¹à¸¥à¹‰à¸§' if gone else 'à¸¢à¸±à¸‡à¹€à¸«à¹‡à¸™ VPN à¸„à¹‰à¸²à¸‡!'} | à¹€à¸™à¹‡à¸•: {'à¹ƒà¸Šà¹‰à¹„à¸”à¹‰' if net else 'à¸¢à¸±à¸‡à¸­à¸­à¸à¹„à¸¡à¹ˆà¹„à¸”à¹‰!'}")
+                _real_sleep(float(config.get("wg_down_settle", 0.5)))   # เน็ตเพิ่งสลับ - พักให้นิ่งก่อนเปิดเกม
+                print(f"[{self.device_id}] [WG] ปิด VPN ก่อนเปิดเกม: "
+                      f"{'ปิดสนิทแล้ว' if gone else 'ยังเห็น VPN ค้าง!'} | เน็ต: {'ใช้ได้' if net else 'ยังออกไม่ได้!'}")
         except Exception as e:
-            print(f"[{self.device_id}] [WG] à¸›à¸´à¸” VPN à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {e}")
+            print(f"[{self.device_id}] [WG] ปิด VPN ไม่สำเร็จ: {e}")
 
     def _wg_request_net_recover(self, where, switch_now=False):
-        """à¹€à¸ˆà¸­ Unstable network (fixnetv3) à¸šà¸™à¸ˆà¸­à¸—à¸µà¹ˆà¸•à¹ˆà¸­ VPN à¸­à¸¢à¸¹à¹ˆ -> à¸—à¸³à¸—à¸±à¸™à¸—à¸µà¸•à¸£à¸‡à¸™à¸µà¹‰ (à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸£à¸­à¸¥à¸¹à¸›à¸¥à¹‡à¸­à¸à¸­à¸´à¸™):
-        à¸›à¸´à¸”à¹€à¸à¸¡ -> à¸›à¸´à¸” VPN à¸ªà¸™à¸´à¸— -> à¹€à¸›à¸´à¸” VPN à¹ƒà¸«à¸¡à¹ˆ -> à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹ƒà¸«à¸¡à¹ˆ
-        à¹„à¸¡à¹ˆà¸¥à¹‰à¸²à¸‡ shared_prefs (à¹„à¸Ÿà¸¥à¹Œà¸šà¸±à¸à¸Šà¸µà¸—à¸µà¹ˆà¸ªà¹ˆà¸‡à¹€à¸‚à¹‰à¸²à¹„à¸›à¸¢à¸±à¸‡à¸­à¸¢à¸¹à¹ˆ à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹à¸¥à¹‰à¸§à¹€à¸›à¹‡à¸™à¹„à¸­à¸”à¸µà¹€à¸”à¸´à¸¡)
-        à¸„à¸·à¸™ True = à¸ˆà¸±à¸”à¸à¸²à¸£à¹à¸¥à¹‰à¸§ (à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸à¸” RETRY) ; à¸ˆà¸­à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸•à¹ˆà¸­ VPN / à¸„à¸£à¸šà¹‚à¸„à¸§à¸•à¸² -> False (à¸à¸” RETRY à¹à¸šà¸šà¹€à¸”à¸´à¸¡)"""
+        """เจอ Unstable network (fixnetv3) บนจอที่ต่อ VPN อยู่ -> ทำทันทีตรงนี้ (ไม่ต้องรอลูปล็อกอิน):
+        ปิดเกม -> ปิด VPN สนิท -> เปิด VPN ใหม่ -> เปิดเกมใหม่
+        ไม่ล้าง shared_prefs (ไฟล์บัญชีที่ส่งเข้าไปยังอยู่ เปิดเกมแล้วเป็นไอดีเดิม)
+        คืน True = จัดการแล้ว (ไม่ต้องกด RETRY) ; จอที่ไม่ได้ต่อ VPN / ครบโควตา -> False (กด RETRY แบบเดิม)"""
         if int(config.get("wg_lock", 1) or 0):
-            return False   # wg_lock: à¹„à¸¡à¹ˆà¸›à¸´à¸”/à¸ªà¸¥à¸±à¸š VPN à¸•à¸­à¸™à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸” -> à¸à¸” RETRY à¹à¸šà¸šà¹€à¸”à¸´à¸¡
+            return False   # wg_lock: ไม่ปิด/สลับ VPN ตอนเน็ตหลุด -> กด RETRY แบบเดิม
         if not int(config.get("wg_enabled", 1) or 0):
             return False
         if int(config.get("wg_once", 1) or 0):
-            # wg_once: à¹€à¸™à¹‡à¸•à¹à¸à¸§à¹ˆà¸‡à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§à¹„à¸¡à¹ˆà¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ IP (à¸à¸” RETRY) à¹à¸•à¹ˆà¸–à¹‰à¸²à¹€à¸ˆà¸­à¸‹à¹‰à¸³à¸„à¸£à¸š wg_net_switch_after à¸„à¸£à¸±à¹‰à¸‡
-            # = IP à¸™à¸µà¹‰à¹ƒà¸Šà¹‰à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¹à¸¥à¹‰à¸§ -> à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ IP à¸—à¸±à¸™à¸—à¸µ (VPN à¸›à¸´à¸”à¹à¸„à¹ˆà¸Šà¹ˆà¸§à¸‡à¸ªà¸¥à¸±à¸š à¹à¸¥à¹‰à¸§à¸•à¹ˆà¸­à¸•à¸±à¸§à¹ƒà¸«à¸¡à¹ˆà¸à¹ˆà¸­à¸™à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹€à¸ªà¸¡à¸­)
+            # wg_once: เน็ตแกว่งครั้งเดียวไม่เปลี่ยน IP (กด RETRY) แต่ถ้าเจอซ้ำครบ wg_net_switch_after ครั้ง
+            # = IP นี้ใช้ไม่ได้แล้ว -> เปลี่ยน IP ทันที (VPN ปิดแค่ช่วงสลับ แล้วต่อตัวใหม่ก่อนเปิดเกมเสมอ)
             self._wg_net_hits = getattr(self, "_wg_net_hits", 0) + 1
-            lim = int(config.get("wg_net_switch_after", 1) or 1)   # 1 = à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¸„à¸£à¸±à¹‰à¸‡à¹à¸£à¸à¸à¹‡ à¸›à¸´à¸”à¹à¸­à¸› -> IP à¹ƒà¸«à¸¡à¹ˆ -> à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹ƒà¸«à¸¡à¹ˆ
+            lim = int(config.get("wg_net_switch_after", 1) or 1)   # 1 = เน็ตหลุดครั้งแรกก็ ปิดแอป -> IP ใหม่ -> เปิดเกมใหม่
             if self._wg_net_hits < lim:
-                # à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸„à¸£à¸š -> à¸›à¸´à¸”à¹à¸­à¸›à¹à¸¥à¹‰à¸§à¹€à¸›à¸´à¸”à¹ƒà¸«à¸¡à¹ˆà¸”à¹‰à¸§à¸¢ IP à¹€à¸”à¸´à¸¡à¸à¹ˆà¸­à¸™ (VPN à¹„à¸¡à¹ˆà¹à¸•à¸° à¹€à¸›à¸´à¸”à¸„à¹‰à¸²à¸‡à¹„à¸§à¹‰)
-                print(f"[{self.device_id}] [WG] à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸” ({where}) {self._wg_net_hits}/{lim} - à¸›à¸´à¸”à¹à¸­à¸›à¹€à¸‚à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆ (IP à¹€à¸”à¸´à¸¡) à¸„à¸£à¸šà¹à¸¥à¹‰à¸§à¸ˆà¸°à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ IP")
+                # ยังไม่ครบ -> ปิดแอปแล้วเปิดใหม่ด้วย IP เดิมก่อน (VPN ไม่แตะ เปิดค้างไว้)
+                print(f"[{self.device_id}] [WG] เน็ตหลุด ({where}) {self._wg_net_hits}/{lim} - ปิดแอปเข้าใหม่ (IP เดิม) ครบแล้วจะเปลี่ยน IP")
                 try:
                     self.last_activity_time = time.time()
                     self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
                     _real_sleep(2)
-                    self._wg_must_be_up()     # VPN à¸¢à¸±à¸‡à¸•à¹ˆà¸­à¸­à¸¢à¸¹à¹ˆ = à¸‚à¹‰à¸²à¸¡à¹€à¸£à¹‡à¸§ ; à¸«à¸¥à¸¸à¸” = à¸•à¹ˆà¸­à¹ƒà¸«à¸¡à¹ˆà¸à¹ˆà¸­à¸™à¹€à¸›à¸´à¸”à¹€à¸à¸¡
+                    self._wg_must_be_up()     # VPN ยังต่ออยู่ = ข้ามเร็ว ; หลุด = ต่อใหม่ก่อนเปิดเกม
                     self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "start", "-n", "com.linecorp.LGRGS/com.linecorp.common.activity.LineActivity"], timeout=15)
                     self.last_activity_time = time.time()
                     _real_sleep(3)
                     return True
                 except Exception as e:
-                    print(f"[{self.device_id}] [WG] à¸›à¸´à¸”à¹à¸­à¸›à¹€à¸‚à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆà¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {e}")
+                    print(f"[{self.device_id}] [WG] ปิดแอปเข้าใหม่ไม่สำเร็จ: {e}")
                     return False
             self._wg_net_hits = 0
             switch_now = True
         if not getattr(self, "_wg_conf_applied", None):
-            return False                      # à¸ˆà¸­à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸•à¹ˆà¸­ VPN -> à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆà¹€à¸£à¸·à¹ˆà¸­à¸‡ VPN
+            return False                      # จอนี้ไม่ได้ต่อ VPN -> ไม่ใช่เรื่อง VPN
         lock = self.__dict__.setdefault("_wg_recover_lock", threading.Lock())
         if not lock.acquire(blocking=False):
-            return True                       # à¸­à¸µà¸à¹€à¸˜à¸£à¸”à¸à¸³à¸¥à¸±à¸‡à¸à¸¹à¹‰à¸­à¸¢à¸¹à¹ˆ -> à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸à¸”à¸­à¸°à¹„à¸£
+            return True                       # อีกเธรดกำลังกู้อยู่ -> ไม่ต้องกดอะไร
         try:
             n = getattr(self, "_wg_recover_n", 0)
             if n >= int(config.get("wg_net_recover_max", 10)):
-                return False                  # à¸„à¸£à¸šà¹‚à¸„à¸§à¸•à¸²à¹à¸¥à¹‰à¸§ -> à¸à¸¥à¸±à¸šà¹„à¸›à¸à¸” RETRY à¹à¸šà¸šà¹€à¸”à¸´à¸¡
+                return False                  # ครบโควตาแล้ว -> กลับไปกด RETRY แบบเดิม
             self._wg_recover_n = n + 1
-            print(f"[{self.device_id}] [WG] à¹€à¸ˆà¸­ Unstable network ({where}) - à¸›à¸´à¸”à¹€à¸à¸¡ + à¸›à¸´à¸”/à¹€à¸›à¸´à¸” VPN à¹ƒà¸«à¸¡à¹ˆ + à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹ƒà¸«à¸¡à¹ˆ "
-                  f"(à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆ {n + 1})")
+            print(f"[{self.device_id}] [WG] เจอ Unstable network ({where}) - ปิดเกม + ปิด/เปิด VPN ใหม่ + เปิดเกมใหม่ "
+                  f"(ครั้งที่ {n + 1})")
             self.last_activity_time = time.time()
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
             self._wg_down()
             if switch_now:
-                # fixnet1: à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ IP à¸—à¸±à¸™à¸—à¸µ (à¹„à¸¡à¹ˆà¸£à¸­à¸™à¸±à¸š 2 à¸„à¸£à¸±à¹‰à¸‡) - à¸žà¸±à¸à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¸™à¸µà¹‰à¹„à¸§à¹‰ à¹à¸•à¹ˆà¹„à¸¡à¹ˆà¸¥à¸šà¹„à¸Ÿà¸¥à¹Œ
+                # fixnet1: เปลี่ยน IP ทันที (ไม่รอนับ 2 ครั้ง) - พักเซิร์ฟเวอร์นี้ไว้ แต่ไม่ลบไฟล์
                 cur = getattr(self, "_wg_last_conf", None)
                 if cur:
                     self.__dict__.setdefault("_wg_bad", set()).add(cur)
                     if not str(where).startswith("fixnet"):
-                        # à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸” (fixnet) à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆà¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸ -> à¹„à¸¡à¹ˆà¸žà¸±à¸à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ 6 à¸Šà¸¡. (à¹€à¸„à¸¢à¸žà¸±à¸à¸ˆà¸™à¸«à¸¡à¸”à¸—à¸¸à¸à¸•à¸±à¸§ à¹„à¸¡à¹ˆà¹€à¸«à¸¥à¸·à¸­à¹ƒà¸«à¹‰à¸•à¹ˆà¸­)
+                        # เน็ตหลุด (fixnet) ไม่ใช่โดนบล็อก -> ไม่พักเซิร์ฟเวอร์ 6 ชม. (เคยพักจนหมดทุกตัว ไม่เหลือให้ต่อ)
                         _wg_cooldown_add(os.path.dirname(cur), _wg_endpoint(cur))
                     try:
                         os.remove(os.path.join(os.path.dirname(cur), ".claims", os.path.basename(cur) + ".lock"))
                     except OSError:
                         pass
                     self._wg_conf_written = None
-                    print(f"[{self.device_id}] [WG] {where}: à¹€à¸¥à¸´à¸à¹ƒà¸Šà¹‰ {os.path.basename(cur)} - à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ IP")
+                    print(f"[{self.device_id}] [WG] {where}: เลิกใช้ {os.path.basename(cur)} - เปลี่ยน IP")
             else:
-                # à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¸‹à¹‰à¸³à¸šà¸™à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸”à¸´à¸¡ -> à¸ªà¸¥à¸±à¸šà¹„à¸›à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¸ªà¸³à¸£à¸­à¸‡à¸—à¸µà¹ˆà¸§à¹ˆà¸²à¸‡à¸­à¸¢à¸¹à¹ˆ (auto failover)
+                # เน็ตหลุดซ้ำบนเซิร์ฟเวอร์เดิม -> สลับไปเซิร์ฟเวอร์สำรองที่ว่างอยู่ (auto failover)
                 self._wg_strike("Unstable network")
             self._wg_must_be_up()
             self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "start", "-n",
                           "com.linecorp.LGRGS/com.linecorp.common.activity.LineActivity"], timeout=15)
             self.last_activity_time = time.time()
-            print(f"[{self.device_id}] [WG] à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹ƒà¸«à¸¡à¹ˆà¹à¸¥à¹‰à¸§ (VPN: {os.path.basename(str(getattr(self, '_wg_conf_applied', '') or '-'))})")
+            print(f"[{self.device_id}] [WG] เปิดเกมใหม่แล้ว (VPN: {os.path.basename(str(getattr(self, '_wg_conf_applied', '') or '-'))})")
             _real_sleep(3)
             return True
         except Exception as e:
-            print(f"[{self.device_id}] [WG] à¸à¸¹à¹‰à¹€à¸™à¹‡à¸•à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {e}")
+            print(f"[{self.device_id}] [WG] กู้เน็ตไม่สำเร็จ: {e}")
             return False
         finally:
             lock.release()
 
     def _wg_auth_failed(self):
-        """Authentication failed (fixid) à¸•à¸­à¸™à¸•à¹ˆà¸­ VPN -> à¸”à¹ˆà¸²à¸™ login à¸‚à¸­à¸‡ LINE à¹„à¸¡à¹ˆà¸£à¸±à¸š IP à¸‚à¸­à¸‡ VPN
-        à¹€à¸ˆà¸­à¸„à¸£à¸š wg_auth_fallback à¹„à¸­à¸”à¸µ (default 2) -> à¸›à¸´à¸” VPN à¸‚à¸­à¸‡à¸ˆà¸­à¸™à¸µà¹‰à¹„à¸›à¸ˆà¸™à¸›à¸´à¸”à¸šà¸­à¸— à¹ƒà¸Šà¹‰à¹€à¸™à¹‡à¸•à¸šà¹‰à¸²à¸™à¹à¸—à¸™ (0 = à¹„à¸¡à¹ˆà¸›à¸´à¸”)"""
+        """Authentication failed (fixid) ตอนต่อ VPN -> ด่าน login ของ LINE ไม่รับ IP ของ VPN
+        เจอครบ wg_auth_fallback ไอดี (default 2) -> ปิด VPN ของจอนี้ไปจนปิดบอท ใช้เน็ตบ้านแทน (0 = ไม่ปิด)"""
         if int(config.get("wg_lock", 1) or 0):
-            return None   # wg_lock: à¹„à¸¡à¹ˆà¸›à¸´à¸” VPN à¹à¸¡à¹‰ login à¹„à¸¡à¹ˆà¸œà¹ˆà¸²à¸™
+            return None   # wg_lock: ไม่ปิด VPN แม้ login ไม่ผ่าน
         if not int(config.get("wg_enabled", 1) or 0) or not getattr(self, "_wg_conf_applied", None):
             return
         lim = int(config.get("wg_auth_fallback", 0) or 0)
         if lim <= 0:
             return
         self._wg_auth_fail = getattr(self, "_wg_auth_fail", 0) + 1
-        print(f"[{self.device_id}] [WG] Authentication failed à¸œà¹ˆà¸²à¸™ VPN ({self._wg_auth_fail}/{lim})")
+        print(f"[{self.device_id}] [WG] Authentication failed ผ่าน VPN ({self._wg_auth_fail}/{lim})")
         if self._wg_auth_fail >= lim:
             self._wg_off = True
             self._wg_down()
-            print(f"[{self.device_id}] [WG] à¸”à¹ˆà¸²à¸™ login LINE à¹„à¸¡à¹ˆà¸£à¸±à¸š IP VPN - à¸›à¸´à¸” VPN à¸ˆà¸­à¸™à¸µà¹‰ à¹ƒà¸Šà¹‰à¹€à¸™à¹‡à¸•à¸šà¹‰à¸²à¸™à¹à¸—à¸™ (à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¹€à¸›à¸´à¸”à¸šà¸­à¸—à¹ƒà¸«à¸¡à¹ˆ)")
+            print(f"[{self.device_id}] [WG] ด่าน login LINE ไม่รับ IP VPN - ปิด VPN จอนี้ ใช้เน็ตบ้านแทน (จนกว่าจะเปิดบอทใหม่)")
 
     def _wg_strike(self, reason, now_switch=False):
-        """à¸ˆà¸­à¸™à¸µà¹‰à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸šà¸™à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ VPN à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™ 1 à¸„à¸£à¸±à¹‰à¸‡ (Unstable network / fixid à¸„à¸£à¸š / LINE GAME à¸„à¹‰à¸²à¸‡ /
-        à¸ˆà¸­à¸”à¸³ / login failed) - à¸„à¸£à¸š wg_failover_after (2) à¸„à¸£à¸±à¹‰à¸‡à¸šà¸™à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸”à¸´à¸¡ -> à¹€à¸¥à¸´à¸à¹ƒà¸Šà¹‰ à¹à¸¥à¹‰à¸§à¸ˆà¸­à¸‡à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¸­à¸·à¹ˆà¸™
-        (à¸¡à¸µà¸œà¸¥à¸•à¸­à¸™à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¸„à¸£à¸±à¹‰à¸‡à¸–à¸±à¸”à¹„à¸›: open_app à¸ˆà¸°à¸•à¹ˆà¸­ VPN à¸•à¸±à¸§à¹ƒà¸«à¸¡à¹ˆà¹ƒà¸«à¹‰à¹€à¸­à¸‡) ; à¸„à¸·à¸™ True = à¸ªà¸¥à¸±à¸šà¹à¸¥à¹‰à¸§"""
+        """จอนี้เข้าเกมไม่ได้บนเซิร์ฟเวอร์ VPN ปัจจุบัน 1 ครั้ง (Unstable network / fixid ครบ / LINE GAME ค้าง /
+        จอดำ / login failed) - ครบ wg_failover_after (2) ครั้งบนเซิร์ฟเวอร์เดิม -> เลิกใช้ แล้วจองเซิร์ฟเวอร์อื่น
+        (มีผลตอนเปิดเกมครั้งถัดไป: open_app จะต่อ VPN ตัวใหม่ให้เอง) ; คืน True = สลับแล้ว"""
         if int(config.get("wg_lock", 1) or 0):
-            # wg_lock: à¹ƒà¸Šà¹‰ IP à¹€à¸”à¸´à¸¡à¸•à¹ˆà¸­à¹„à¸› - à¸¢à¸à¹€à¸§à¹‰à¸™à¸„à¹‰à¸²à¸‡à¸«à¸™à¹‰à¸² LINE GAME à¸‹à¹‰à¸³ (LINE à¹„à¸¡à¹ˆà¸£à¸±à¸š IP à¸™à¸µà¹‰ = à¹„à¸¡à¹ˆà¸¡à¸µà¸—à¸²à¸‡à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹„à¸”à¹‰)
-            if not any(k in str(reason) for k in ("LINE GAME", "fixid", "login failed")):   # fixid/login failed à¸„à¸£à¸š = LINE à¹„à¸¡à¹ˆà¸£à¸±à¸š IP à¸™à¸µà¹‰ -> à¸ªà¸¥à¸±à¸šà¸”à¹‰à¸§à¸¢
+            # wg_lock: ใช้ IP เดิมต่อไป - ยกเว้นค้างหน้า LINE GAME ซ้ำ (LINE ไม่รับ IP นี้ = ไม่มีทางเข้าเกมได้)
+            if not any(k in str(reason) for k in ("LINE GAME", "fixid", "login failed")):   # fixid/login failed ครบ = LINE ไม่รับ IP นี้ -> สลับด้วย
                 return False
             self._wg_line_stuck = getattr(self, "_wg_line_stuck", 0) + 1
             lim = int(config.get("wg_line_stuck_switch", 2) or 2)
             cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
-            print(f"[{self.device_id}] [WG] à¸„à¹‰à¸²à¸‡à¸«à¸™à¹‰à¸² LINE GAME {self._wg_line_stuck}/{lim} à¸šà¸™ {os.path.basename(str(cur or '-'))}")
+            print(f"[{self.device_id}] [WG] ค้างหน้า LINE GAME {self._wg_line_stuck}/{lim} บน {os.path.basename(str(cur or '-'))}")
             if self._wg_line_stuck < lim or not cur or not os.path.isfile(str(cur)):
                 return False
             self._wg_line_stuck = 0
@@ -2867,21 +2867,21 @@ class RangerGearBot(threading.Thread):
                 os.remove(os.path.join(os.path.dirname(cur), ".claims", os.path.basename(cur) + ".lock"))
             except OSError:
                 pass
-            self._wg_conf_applied = None      # open_app à¸„à¸£à¸±à¹‰à¸‡à¸–à¸±à¸”à¹„à¸›à¸ˆà¸°à¸•à¹ˆà¸­ IP à¸•à¸±à¸§à¹ƒà¸«à¸¡à¹ˆ (VPN à¹„à¸¡à¹ˆà¸›à¸´à¸” à¹à¸„à¹ˆà¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¹„à¸Ÿà¸¥à¹Œ)
+            self._wg_conf_applied = None      # open_app ครั้งถัดไปจะต่อ IP ตัวใหม่ (VPN ไม่ปิด แค่เปลี่ยนไฟล์)
             self._wg_conf_written = None
-            print(f"[{self.device_id}] [WG] LINE à¹„à¸¡à¹ˆà¸£à¸±à¸š IP {os.path.basename(cur)} - à¸ªà¸¥à¸±à¸š IP à¹ƒà¸«à¸¡à¹ˆà¸•à¸­à¸™à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¸£à¸­à¸šà¸«à¸™à¹‰à¸²")
+            print(f"[{self.device_id}] [WG] LINE ไม่รับ IP {os.path.basename(cur)} - สลับ IP ใหม่ตอนเปิดเกมรอบหน้า")
             return True
         if not int(config.get("wg_enabled", 1) or 0) or getattr(self, "_wg_off", False):
             return False
         if int(config.get("wg_once", 1) or 0) and not any(k in str(reason) for k in ("fixid", "login failed")):
-            return False                      # wg_once: à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸‰à¸žà¸²à¸°à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸ (fixid / login failed) - à¹€à¸™à¹‡à¸•à¹à¸à¸§à¹ˆà¸‡/à¸ˆà¸­à¸”à¸³/à¸„à¹‰à¸²à¸‡ à¹„à¸¡à¹ˆà¸™à¸±à¸š
+            return False                      # wg_once: เปลี่ยนเซิร์ฟเวอร์เฉพาะโดนบล็อก (fixid / login failed) - เน็ตแกว่ง/จอดำ/ค้าง ไม่นับ
         cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
         if not cur:
             return False
         strikes = self.__dict__.setdefault("_wg_strikes", {})
         strikes[cur] = strikes.get(cur, 0) + 1
         lim = int(config.get("wg_failover_after", 2))
-        print(f"[{self.device_id}] [WG] à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰ ({reason}) à¸šà¸™ {os.path.basename(cur)} - à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆ {strikes[cur]}/{lim}")
+        print(f"[{self.device_id}] [WG] เข้าเกมไม่ได้ ({reason}) บน {os.path.basename(cur)} - ครั้งที่ {strikes[cur]}/{lim}")
         self._block_evidence(reason, cur)
         if strikes[cur] >= lim:
             self._wg_down()
@@ -2890,26 +2890,26 @@ class RangerGearBot(threading.Thread):
         return False
 
     def _net_probe(self):
-        """(IP à¸‚à¸²à¸­à¸­à¸, HTTP code à¸‚à¸­à¸‡à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸à¸¡) à¸œà¹ˆà¸²à¸™à¹€à¸™à¹‡à¸•à¸—à¸µà¹ˆà¹€à¸à¸¡à¹ƒà¸Šà¹‰à¸ˆà¸£à¸´à¸‡
-        à¸§à¸±à¸”à¸”à¹‰à¸§à¸¢ UID à¸‚à¸­à¸‡à¹€à¸à¸¡ (com.linecorp.LGRGS) à¹‚à¸”à¸¢à¸•à¸£à¸‡ - split tunnel IncludedApplications à¹ƒà¸Šà¹‰ UID filter
-        à¸–à¹‰à¸²à¹ƒà¸Šà¹‰ UID 0 (root) à¸ˆà¸°à¹„à¸”à¹‰ IP à¸ˆà¸£à¸´à¸‡à¹€à¸ªà¸¡à¸­à¹€à¸žà¸£à¸²à¸° root à¹„à¸¡à¹ˆà¸­à¸¢à¸¹à¹ˆà¹ƒà¸™ IncludedApplications
-        code: 401 = à¸•à¹ˆà¸­à¹„à¸”à¹‰à¸›à¸à¸•à¸´ (à¹à¸„à¹ˆà¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸¥à¹‡à¸­à¸à¸­à¸´à¸™) / 000 = à¹„à¸¡à¹ˆà¸•à¸­à¸š (IP à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸à¸«à¸£à¸·à¸­à¹€à¸™à¹‡à¸•à¹„à¸¡à¹ˆà¸­à¸­à¸) / 403,429 = à¸–à¸¹à¸à¸›à¸à¸´à¹€à¸ªà¸˜"""
+        """(IP ขาออก, HTTP code ของเซิร์ฟเวอร์เกม) ผ่านเน็ตที่เกมใช้จริง
+        วัดด้วย UID ของเกม (com.linecorp.LGRGS) โดยตรง - split tunnel IncludedApplications ใช้ UID filter
+        ถ้าใช้ UID 0 (root) จะได้ IP จริงเสมอเพราะ root ไม่อยู่ใน IncludedApplications
+        code: 401 = ต่อได้ปกติ (แค่ไม่ได้ล็อกอิน) / 000 = ไม่ตอบ (IP โดนบล็อกหรือเน็ตไม่ออก) / 403,429 = ถูกปฏิเสธ"""
         safe = self.device_id.replace(":", "_")
         sh = f"/data/local/tmp/probe_{safe}.sh"
         local = os.path.join(tempfile.gettempdir(), f"probe_{safe}.sh")
         script = chr(10).join([
             "command -v curl >/dev/null 2>&1 || { echo 'P NA NA'; rm -f " + sh + "; exit 0; }",
-            # à¸«à¸² UID à¸‚à¸­à¸‡à¹€à¸à¸¡ LGR - split tunnel à¹ƒà¸Šà¹‰ UID filter à¸œà¹ˆà¸²à¸™ IncludedApplications
+            # หา UID ของเกม LGR - split tunnel ใช้ UID filter ผ่าน IncludedApplications
             "UID=$(stat -c %u /data/data/com.linecorp.LGRGS 2>/dev/null)",
             "if [ -z \"$UID\" ] || [ \"$UID\" = \"0\" ]; then",
-            "  # à¹„à¸¡à¹ˆà¸¡à¸µà¹€à¸à¸¡ -> probe UID 0 à¹à¸šà¸šà¹€à¸”à¸´à¸¡ (à¹ƒà¸Šà¹‰ ip rule trick)",
+            "  # ไม่มีเกม -> probe UID 0 แบบเดิม (ใช้ ip rule trick)",
             "  R=0",
             "  if ip -o link | grep -q ' tun0'; then ip rule add pref 10500 uidrange 0-0 lookup tun0 2>/dev/null && R=1; fi",
             "  IP=$(curl -s -m 8 https://api.ipify.org)",
             "  C=$(curl -s -m 12 -o /dev/null -w '%{http_code}' https://rangers-api.line-apps.com/v12.3/home)",
             "  [ $R = 1 ] && ip rule del pref 10500",
             "else",
-            "  # à¸¢à¸´à¸‡ curl à¸œà¹ˆà¸²à¸™ UID à¸‚à¸­à¸‡à¹€à¸à¸¡ - traffic à¸ˆà¸°à¹€à¸‚à¹‰à¸² split tunnel à¹€à¸«à¸¡à¸·à¸­à¸™à¹€à¸à¸¡à¸ˆà¸£à¸´à¸‡",
+            "  # ยิง curl ผ่าน UID ของเกม - traffic จะเข้า split tunnel เหมือนเกมจริง",
             "  IP=$(su $UID -c 'curl -s -m 8 https://api.ipify.org' 2>/dev/null)",
             "  [ -z \"$IP\" ] && IP=$(su -c \"su $UID -c 'curl -s -m 8 https://api.ipify.org'\" 2>/dev/null)",
             "  C=$(su $UID -c 'curl -s -m 12 -o /dev/null -w %{http_code} https://rangers-api.line-apps.com/v12.3/home' 2>/dev/null)",
@@ -2930,8 +2930,8 @@ class RangerGearBot(threading.Thread):
         return "-", "000"
 
     def _block_evidence(self, reason, conf=None):
-        """à¹€à¸à¹‡à¸šà¸«à¸¥à¸±à¸à¸à¸²à¸™à¸•à¸­à¸™à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰ -> logs/block_log.csv + à¸£à¸¹à¸›à¸ˆà¸­ logs/block/ (à¹ƒà¸Šà¹‰à¸«à¸²à¸§à¹ˆà¸²à¹‚à¸”à¸™ block à¹€à¸žà¸£à¸²à¸°à¸­à¸°à¹„à¸£)
-        api = HTTP code à¸ˆà¸²à¸à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸à¸¡à¸œà¹ˆà¸²à¸™à¹€à¸™à¹‡à¸•à¸‚à¸­à¸‡à¸ˆà¸­à¸™à¸µà¹‰: 401 = IP à¹ƒà¸Šà¹‰à¹„à¸”à¹‰à¸›à¸à¸•à¸´ / 403,429,000 = IP à¹‚à¸”à¸™ block à¸«à¸£à¸·à¸­à¹€à¸™à¹‡à¸•à¹„à¸¡à¹ˆà¸­à¸­à¸"""
+        """เก็บหลักฐานตอนเข้าเกมไม่ได้ -> logs/block_log.csv + รูปจอ logs/block/ (ใช้หาว่าโดน block เพราะอะไร)
+        api = HTTP code จากเซิร์ฟเวอร์เกมผ่านเน็ตของจอนี้: 401 = IP ใช้ได้ปกติ / 403,429,000 = IP โดน block หรือเน็ตไม่ออก"""
         if not int(config.get("block_log", 1) or 0):
             return
         try:
@@ -2951,22 +2951,22 @@ class RangerGearBot(threading.Thread):
                 f.write(f"{ts},{self.device_id},{reason},{_wg_endpoint(conf) if conf else '-'},{ip},{code},{shot}" + chr(10))
             print(f"[{self.device_id}] [BLOCK] {reason} | IP {ip} | game api {code} | {shot}")
         except Exception as e:
-            print(f"[{self.device_id}] [BLOCK] à¹€à¸à¹‡à¸šà¸«à¸¥à¸±à¸à¸à¸²à¸™à¹„à¸¡à¹ˆà¹„à¸”à¹‰: {e}")
+            print(f"[{self.device_id}] [BLOCK] เก็บหลักฐานไม่ได้: {e}")
 
     def _wg_ok(self):
-        """à¸¥à¹‡à¸­à¸à¸­à¸´à¸™à¸œà¹ˆà¸²à¸™à¸šà¸™à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¸™à¸µà¹‰ -> à¸¥à¹‰à¸²à¸‡à¸•à¸±à¸§à¸™à¸±à¸š (à¸™à¸±à¸šà¹€à¸‰à¸žà¸²à¸°à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸¥à¹‰à¸¡à¸•à¸´à¸”à¸à¸±à¸™) + à¸¢à¸¶à¸” IP à¹„à¸§à¹‰à¸–à¸²à¸§à¸£"""
+        """ล็อกอินผ่านบนเซิร์ฟเวอร์นี้ -> ล้างตัวนับ (นับเฉพาะครั้งที่ล้มติดกัน) + ยึด IP ไว้ถาวร"""
         cur = getattr(self, "_wg_conf_applied", None) or getattr(self, "_wg_last_conf", None)
         if cur:
             self.__dict__.setdefault("_wg_strikes", {})[cur] = 0
-            # sticky: à¸¢à¸¶à¸” IP à¸™à¸µà¹‰à¸–à¸²à¸§à¸£ - _wg_conf_for_device à¸ˆà¸°à¸„à¸·à¸™ cur à¹€à¸ªà¸¡à¸­ à¸ˆà¸™à¸à¸§à¹ˆà¸² _wg_failover
-            # à¸ˆà¸° clear (à¹€à¸‰à¸žà¸²à¸°à¸•à¸­à¸™à¹€à¸ˆà¸­ fixnet1 à¸—à¸µà¹ˆ start à¹€à¸à¸¡)
+            # sticky: ยึด IP นี้ถาวร - _wg_conf_for_device จะคืน cur เสมอ จนกว่า _wg_failover
+            # จะ clear (เฉพาะตอนเจอ fixnet1 ที่ start เกม)
             if int(config.get("wg_stick_on_success", 1) or 0):
                 prev = getattr(self, "_wg_stuck_conf", None)
                 if prev != cur:
                     self._wg_stuck_conf = cur
-                    print(f"[{self.device_id}] [WG] à¸¥à¹‡à¸­à¸ IP à¸™à¸µà¹‰à¹„à¸§à¹‰à¸–à¸²à¸§à¸£ ({os.path.basename(cur)}) - à¸ˆà¸°à¸ªà¸¥à¸±à¸šà¹€à¸‰à¸žà¸²à¸°à¹€à¸ˆà¸­ fixnet1")
-            # à¸ªà¸¥à¸±à¸š IP à¹€à¸›à¹‡à¸™à¸Šà¹ˆà¸§à¸‡: à¹ƒà¸Šà¹‰à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸”à¸´à¸¡à¸„à¸£à¸š wg_rotate_logins à¸£à¸­à¸š -> à¸›à¸¥à¹ˆà¸­à¸¢à¹„à¸Ÿà¸¥à¹Œà¸™à¸µà¹‰à¹ƒà¸«à¹‰à¸ˆà¸­à¸­à¸·à¹ˆà¸™
-            # à¹à¸¥à¹‰à¸§à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¸£à¸­à¸šà¸«à¸™à¹‰à¸²à¸ˆà¸°à¸•à¹ˆà¸­à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹ƒà¸«à¸¡à¹ˆ (à¹„à¸¡à¹ˆà¸•à¸±à¸”à¹€à¸™à¹‡à¸•à¸•à¸­à¸™à¸à¸³à¸¥à¸±à¸‡à¹€à¸¥à¹ˆà¸™ ; à¹„à¸¡à¹ˆà¸™à¸±à¸šà¹€à¸›à¹‡à¸™à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸ à¹„à¸¡à¹ˆà¸•à¸´à¸”à¸žà¸±à¸)
+                    print(f"[{self.device_id}] [WG] ล็อก IP นี้ไว้ถาวร ({os.path.basename(cur)}) - จะสลับเฉพาะเจอ fixnet1")
+            # สลับ IP เป็นช่วง: ใช้เซิร์ฟเวอร์เดิมครบ wg_rotate_logins รอบ -> ปล่อยไฟล์นี้ให้จออื่น
+            # แล้วเปิดเกมรอบหน้าจะต่อเซิร์ฟเวอร์ใหม่ (ไม่ตัดเน็ตตอนกำลังเล่น ; ไม่นับเป็นโดนบล็อก ไม่ติดพัก)
             n = int(config.get("wg_rotate_logins", 0) or 0)
             if n > 0:
                 used = self.__dict__.setdefault("_wg_uses", {})
@@ -2978,30 +2978,30 @@ class RangerGearBot(threading.Thread):
                         os.remove(os.path.join(os.path.dirname(cur), ".claims", os.path.basename(cur) + ".lock"))
                     except OSError:
                         pass
-                    print(f"[{self.device_id}] [WG] à¹ƒà¸Šà¹‰ {os.path.basename(cur)} à¸„à¸£à¸š {n} à¸£à¸­à¸š - à¸£à¸­à¸šà¸«à¸™à¹‰à¸²à¸ªà¸¥à¸±à¸š IP")
+                    print(f"[{self.device_id}] [WG] ใช้ {os.path.basename(cur)} ครบ {n} รอบ - รอบหน้าสลับ IP")
 
     def _wg_failover(self, conf, confirmed=False):
-        """à¹€à¸¥à¸´à¸à¹ƒà¸Šà¹‰à¹„à¸Ÿà¸¥à¹Œà¸™à¸µà¹‰à¸šà¸™à¸ˆà¸­à¸™à¸µà¹‰ (à¸›à¸¥à¹ˆà¸­à¸¢à¸à¸²à¸£à¸ˆà¸­à¸‡) -> à¸£à¸­à¸šà¸«à¸™à¹‰à¸² _wg_conf_for_device à¸ˆà¸°à¸ˆà¸­à¸‡à¹„à¸Ÿà¸¥à¹Œà¸ªà¸³à¸£à¸­à¸‡à¸­à¸±à¸™à¸­à¸·à¹ˆà¸™à¹ƒà¸«à¹‰"""
+        """เลิกใช้ไฟล์นี้บนจอนี้ (ปล่อยการจอง) -> รอบหน้า _wg_conf_for_device จะจองไฟล์สำรองอันอื่นให้"""
         if _no_proxy_mode():
-            return None   # KILL_VPN: à¹„à¸¡à¹ˆà¸¡à¸µ WG à¹ƒà¸«à¹‰ failover
+            return None   # KILL_VPN: ไม่มี WG ให้ failover
         if int(config.get("wg_lock", 1) or 0):
-            return None   # wg_lock: à¹„à¸¡à¹ˆà¸ªà¸¥à¸±à¸šà¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ
-        # clear sticky lock - IP à¸—à¸µà¹ˆà¹€à¸„à¸¢à¸¢à¸¶à¸”à¹„à¸§à¹‰à¸•à¸­à¸™ login success à¸•à¸­à¸™à¸™à¸µà¹‰ fail -> à¸›à¸¥à¹ˆà¸­à¸¢à¹ƒà¸«à¹‰à¸ªà¸¥à¸±à¸šà¹„à¸”à¹‰
+            return None   # wg_lock: ไม่สลับเซิร์ฟเวอร์
+        # clear sticky lock - IP ที่เคยยึดไว้ตอน login success ตอนนี้ fail -> ปล่อยให้สลับได้
         if getattr(self, "_wg_stuck_conf", None) == conf:
-            print(f"[{self.device_id}] [WG] à¸›à¸¥à¸”à¸¥à¹‡à¸­à¸ IP ({os.path.basename(conf)}) - à¸ˆà¸°à¸«à¸²à¹ƒà¸«à¸¡à¹ˆ")
+            print(f"[{self.device_id}] [WG] ปลดล็อก IP ({os.path.basename(conf)}) - จะหาใหม่")
             self._wg_stuck_conf = None
-        # sub-folder round-robin: à¸‚à¸¢à¸±à¸š sub -> à¸£à¸­à¸šà¸«à¸™à¹‰à¸²à¹„à¸› sub à¸–à¸±à¸”à¹„à¸› (sync à¸à¸±à¸š login.py)
+        # sub-folder round-robin: ขยับ sub -> รอบหน้าไป sub ถัดไป (sync กับ login.py)
         if int(config.get("wg_sub_round_robin", 1) or 0):
             cur_idx = getattr(self, "_wg_sub_idx", 0)
             self._wg_sub_idx = cur_idx + 1
             bn = os.path.basename(conf)
             parts = bn.split("__")
             cur_sub = "__".join(parts[:3]) if len(parts) >= 4 else "?"
-            print(f"[{self.device_id}] [WG] à¸ªà¸¥à¸±à¸š sub-pool: {cur_sub} -> next (idx {self._wg_sub_idx})")
+            print(f"[{self.device_id}] [WG] สลับ sub-pool: {cur_sub} -> next (idx {self._wg_sub_idx})")
         self.__dict__.setdefault("_wg_bad", set()).add(conf)
         _wg_cooldown_add(os.path.dirname(conf), _wg_endpoint(conf))
-        # à¸¥à¸šà¹„à¸Ÿà¸¥à¹Œ + à¸ˆà¸”à¸§à¹ˆà¸²à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸ 7 à¸§à¸±à¸™ à¹€à¸‰à¸žà¸²à¸°à¸•à¸­à¸™ "à¸¢à¸·à¸™à¸¢à¸±à¸™à¹à¸¥à¹‰à¸§" (à¸—à¸”à¸ªà¸­à¸šà¸œà¹ˆà¸²à¸™ VPN à¹„à¸”à¹‰ IP à¸ˆà¸£à¸´à¸‡à¹à¸•à¹ˆà¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸à¸¡à¹„à¸¡à¹ˆà¸•à¸­à¸š)
-        # à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¹€à¸‰à¸¢ à¹† à¸­à¸²à¸ˆà¹€à¸›à¹‡à¸™à¹€à¸™à¹‡à¸•à¸à¸£à¸°à¸•à¸¸à¸/à¹„à¸­à¸”à¸µà¹€à¸ªà¸µà¸¢ -> à¹à¸„à¹ˆà¸žà¸±à¸à¹„à¸§à¹‰ (cooldown) à¹„à¸¡à¹ˆà¸¥à¸šà¸—à¸´à¹‰à¸‡
+        # ลบไฟล์ + จดว่าโดนบล็อก 7 วัน เฉพาะตอน "ยืนยันแล้ว" (ทดสอบผ่าน VPN ได้ IP จริงแต่เซิร์ฟเวอร์เกมไม่ตอบ)
+        # เข้าเกมไม่ได้เฉย ๆ อาจเป็นเน็ตกระตุก/ไอดีเสีย -> แค่พักไว้ (cooldown) ไม่ลบทิ้ง
         if confirmed and int(config.get("wg_regen_blocked", 1) or 0):
             _wg_replace_blocked(conf, self.device_id)
         try:
@@ -3010,18 +3010,18 @@ class RangerGearBot(threading.Thread):
             pass
         self._wg_conf_applied = None
         self._wg_conf_written = None
-        print(f"[{self.device_id}] [WG] à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸‹à¹‰à¸³à¸šà¸™ {os.path.basename(conf)} - à¸ªà¸¥à¸±à¸šà¹„à¸›à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ/à¸›à¸£à¸°à¹€à¸—à¸¨à¸­à¸·à¹ˆà¸™")
+        print(f"[{self.device_id}] [WG] เข้าเกมไม่ได้ซ้ำบน {os.path.basename(conf)} - สลับไปเซิร์ฟเวอร์/ประเทศอื่น")
 
     def _wg_tuned_conf(self, conf):
-        """à¸›à¸£à¸±à¸šà¹„à¸Ÿà¸¥à¹Œà¸à¹ˆà¸­à¸™à¸ªà¹ˆà¸‡à¹€à¸‚à¹‰à¸²à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (à¹„à¸¡à¹ˆà¹à¸à¹‰à¹„à¸Ÿà¸¥à¹Œà¸•à¹‰à¸™à¸‰à¸šà¸±à¸š):
-        - IncludedApplications = à¹€à¸à¸¡  -> à¹ƒà¸«à¹‰à¹€à¸‰à¸žà¸²à¸°à¹€à¸à¸¡à¸œà¹ˆà¸²à¸™ VPN (split tunnel) à¸£à¸°à¸šà¸š/à¹à¸­à¸›à¸­à¸·à¹ˆà¸™à¹ƒà¸Šà¹‰à¹€à¸™à¹‡à¸•à¸›à¸à¸•à¸´
-        - PersistentKeepalive = 25    -> à¸ªà¹ˆà¸‡à¸ªà¸±à¸à¸à¸²à¸“à¹€à¸¥à¸µà¹‰à¸¢à¸‡ tunnel à¸à¸±à¸™à¹€à¸£à¸²à¹€à¸•à¸­à¸£à¹Œ/NAT à¸•à¸±à¸”à¸—à¸´à¹‰à¸‡à¸•à¸­à¸™à¹€à¸à¸¡à¹€à¸‡à¸µà¸¢à¸š"""
+        """ปรับไฟล์ก่อนส่งเข้าเครื่อง (ไม่แก้ไฟล์ต้นฉบับ):
+        - IncludedApplications = เกม  -> ให้เฉพาะเกมผ่าน VPN (split tunnel) ระบบ/แอปอื่นใช้เน็ตปกติ
+        - PersistentKeepalive = 25    -> ส่งสัญญาณเลี้ยง tunnel กันเราเตอร์/NAT ตัดทิ้งตอนเกมเงียบ"""
         try:
             with open(conf, encoding="utf-8-sig") as f:
                 lines = f.read().replace(chr(13), "").split(chr(10))
         except Exception:
             return conf
-        apps = str(config.get("wg_split_apps", "com.linecorp.LGRGS") or "").strip()   # à¸”à¸µà¸Ÿà¸­à¸¥à¸•à¹Œ = à¹€à¸‰à¸žà¸²à¸°à¹€à¸à¸¡à¸œà¹ˆà¸²à¸™ VPN - à¸–à¹‰à¸²à¸—à¸±à¹‰à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸œà¹ˆà¸²à¸™ VPN adbd à¸•à¸­à¸šà¸à¸¥à¸±à¸šà¹„à¸¡à¹ˆà¸–à¸¶à¸‡à¸žà¸µà¸‹à¸µ -> adb offline/not found à¸—à¸¸à¸à¸ˆà¸­ ("" = à¸—à¸±à¹‰à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡)
+        apps = str(config.get("wg_split_apps", "com.linecorp.LGRGS") or "").strip()   # ดีฟอลต์ = เฉพาะเกมผ่าน VPN - ถ้าทั้งเครื่องผ่าน VPN adbd ตอบกลับไม่ถึงพีซี -> adb offline/not found ทุกจอ ("" = ทั้งเครื่อง)
         ka = int(config.get("wg_keepalive", 25) or 0)
         low = [l.strip().lower() for l in lines]
         out = []
@@ -3047,69 +3047,69 @@ class RangerGearBot(threading.Thread):
         return bool((r.stdout or b"").strip())
 
     def _ensure_wireguard(self):
-        """à¸•à¹ˆà¸­ WireGuard à¹ƒà¸™à¸­à¸µà¸¡à¸¹à¸¯ à¸ˆà¸­à¸™à¸µà¹‰ (à¹€à¸£à¸µà¸¢à¸à¸à¹ˆà¸­à¸™à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡ - à¸•à¹ˆà¸­à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§à¸ˆà¸°à¸‚à¹‰à¸²à¸¡à¹€à¸£à¹‡à¸§)"""
+        """ต่อ WireGuard ในอีมูฯ จอนี้ (เรียกก่อนเปิดเกมทุกครั้ง - ต่ออยู่แล้วจะข้ามเร็ว)"""
         if _no_proxy_mode():
             self._wg_off = True
-            return   # KILL_VPN_HARDCODED / no_proxy_mode: à¹ƒà¸Šà¹‰à¹€à¸™à¹‡à¸•à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡/exness VPN - à¹„à¸¡à¹ˆà¸•à¹ˆà¸­ WG à¹ƒà¸™à¸­à¸µà¸¡à¸¹à¸¯
+            return   # KILL_VPN_HARDCODED / no_proxy_mode: ใช้เน็ตเครื่อง/exness VPN - ไม่ต่อ WG ในอีมูฯ
         if int(config.get("use_host_vpn", 0) or 0):
             self._wg_off = True
-            return   # host VPN mode: VPN à¸­à¸¢à¸¹à¹ˆà¸™à¸­à¸à¸­à¸µà¸¡à¸¹à¸¯ à¹„à¸¡à¹ˆà¸•à¹ˆà¸­à¹ƒà¸™
+            return   # host VPN mode: VPN อยู่นอกอีมูฯ ไม่ต่อใน
         if not int(config.get("wg_enabled", 1) or 0) or getattr(self, "_wg_off", False):
             return
         conf = self._wg_conf_for_device()
         if not conf and not getattr(self, "_wg_down_done", False):
-            # à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¹„à¸Ÿà¸¥à¹Œà¸£à¸­à¸šà¸™à¸µà¹‰ à¹à¸•à¹ˆ tunnel à¹€à¸à¹ˆà¸²à¸ˆà¸²à¸à¸£à¸­à¸šà¸à¹ˆà¸­à¸™à¸¢à¸±à¸‡à¸„à¹‰à¸²à¸‡ (à¸­à¸²à¸ˆà¹ƒà¸Šà¹‰à¸à¸¸à¸à¹à¸ˆà¸Šà¸™à¸à¸±à¸šà¸ˆà¸­à¸­à¸·à¹ˆà¸™) -> à¸›à¸´à¸”à¸—à¸´à¹‰à¸‡
+            # ไม่ได้ไฟล์รอบนี้ แต่ tunnel เก่าจากรอบก่อนยังค้าง (อาจใช้กุญแจชนกับจออื่น) -> ปิดทิ้ง
             self._wg_down_done = True
-            if self._wg_is_up() and not int(config.get("wg_lock", 1) or 0):   # wg_lock: tunnel à¸—à¸µà¹ˆà¹€à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆà¸«à¹‰à¸²à¸¡à¸›à¸´à¸”
+            if self._wg_is_up() and not int(config.get("wg_lock", 1) or 0):   # wg_lock: tunnel ที่เปิดอยู่ห้ามปิด
                 self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {self.WG_PKG} "
                                f"-a {self.WG_PKG}.action.SET_TUNNEL_DOWN --es tunnel {self.WG_TUNNEL}'", timeout=20)
-                print(f"[{self.device_id}] [WG] à¸›à¸´à¸” tunnel à¹€à¸à¹ˆà¸²à¸—à¸µà¹ˆà¸„à¹‰à¸²à¸‡à¸­à¸¢à¸¹à¹ˆ (à¸ˆà¸­à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œ config à¸‚à¸­à¸‡à¸•à¸±à¸§à¹€à¸­à¸‡)")
+                print(f"[{self.device_id}] [WG] ปิด tunnel เก่าที่ค้างอยู่ (จอนี้ไม่มีไฟล์ config ของตัวเอง)")
         if not conf:
             if not getattr(self, "_wg_warned", False):
                 self._wg_warned = True
-                print(f"[{self.device_id}] [WG] à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œ .conf à¹ƒà¸™à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ {config.get('wg_dir', 'wg')}/ - à¸‚à¹‰à¸²à¸¡ (à¹ƒà¸Šà¹‰à¹€à¸™à¹‡à¸•à¸›à¸à¸•à¸´)")
+                print(f"[{self.device_id}] [WG] ไม่มีไฟล์ .conf ในโฟลเดอร์ {config.get('wg_dir', 'wg')}/ - ข้าม (ใช้เน็ตปกติ)")
             return
         if getattr(self, "_wg_conf_applied", None) == conf and self._wg_is_up():
             return
         if getattr(self, "_wg_fail", 0) >= 2:
-            return                          # à¸ˆà¸­à¸™à¸µà¹‰à¸•à¹ˆà¸­ VPN à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™à¸¡à¸² 2 à¸£à¸­à¸šà¹à¸¥à¹‰à¸§ - à¹€à¸¥à¸´à¸à¸¥à¸­à¸‡ (à¹„à¸¡à¹ˆà¹€à¸ªà¸µà¸¢à¹€à¸§à¸¥à¸²à¸—à¸¸à¸à¹„à¸­à¸”à¸µ)
+            return                          # จอนี้ต่อ VPN ไม่ขึ้นมา 2 รอบแล้ว - เลิกลอง (ไม่เสียเวลาทุกไอดี)
         try:
             self._wg_setup(conf)
             if getattr(self, "_wg_conf_applied", None) == conf and int(config.get("wg_probe", 1) or 0):
-                # à¸•à¹ˆà¸­à¹à¸¥à¹‰à¸§ -> à¸¢à¸´à¸‡à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸à¸¡à¸œà¹ˆà¸²à¸™ VPN à¸—à¸±à¸™à¸—à¸µ: à¹„à¸¡à¹ˆà¸•à¸­à¸š/à¸–à¸¹à¸à¸›à¸à¸´à¹€à¸ªà¸˜ = IP à¸™à¸µà¹‰à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸ -> à¸ªà¸¥à¸±à¸šà¹€à¸¥à¸¢ à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸£à¸­à¹€à¸à¸¡à¸žà¸±à¸‡
+                # ต่อแล้ว -> ยิงเซิร์ฟเวอร์เกมผ่าน VPN ทันที: ไม่ตอบ/ถูกปฏิเสธ = IP นี้โดนบล็อก -> สลับเลย ไม่ต้องรอเกมพัง
                 ip, code = self._net_probe()
-                # à¸—à¸”à¸ªà¸­à¸šà¹„à¸¡à¹ˆà¹„à¸”à¹‰ (à¹„à¸¡à¹ˆà¸¡à¸µ curl / ip rule à¹ƒà¸Šà¹‰à¹„à¸¡à¹ˆà¹„à¸”à¹‰ -> IP à¹€à¸›à¹‡à¸™ "-") = à¹„à¸¡à¹ˆà¸•à¸±à¸”à¸ªà¸´à¸™ à¸›à¸¥à¹ˆà¸­à¸¢à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡
-                # (à¹€à¸”à¸´à¸¡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸—à¸µà¹ˆà¸—à¸”à¸ªà¸­à¸šà¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸–à¸¹à¸à¸™à¸±à¸šà¸§à¹ˆà¸²à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸à¸—à¸¸à¸à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ -> à¸ªà¸¥à¸±à¸šà¸§à¸™à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹€à¸¥à¸¢)
+                # ทดสอบไม่ได้ (ไม่มี curl / ip rule ใช้ไม่ได้ -> IP เป็น "-") = ไม่ตัดสิน ปล่อยเข้าเกม
+                # (เดิมเครื่องที่ทดสอบไม่ได้ถูกนับว่าโดนบล็อกทุกเซิร์ฟเวอร์ -> สลับวนไม่ได้เข้าเกมเลย)
                 if code == "NA" or ip in ("-", "", "NA"):
-                    print(f"[{self.device_id}] [WG] à¸—à¸”à¸ªà¸­à¸šà¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸šà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸™à¸µà¹‰ (IP {ip}) - à¸‚à¹‰à¸²à¸¡à¸à¸²à¸£à¸—à¸”à¸ªà¸­à¸š à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹€à¸¥à¸¢")
+                    print(f"[{self.device_id}] [WG] ทดสอบเซิร์ฟเวอร์เกมไม่ได้บนเครื่องนี้ (IP {ip}) - ข้ามการทดสอบ เข้าเกมเลย")
                     code = "skip"
-                if code in ("000", "403", "429") and not int(config.get("wg_lock", 1) or 0):   # wg_lock: à¹‚à¸”à¸™ block à¸à¹‡à¹ƒà¸Šà¹‰à¸•à¹ˆà¸­
-                    print(f"[{self.device_id}] [WG] à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸à¸¡à¹„à¸¡à¹ˆà¸£à¸±à¸š IP {ip} ({os.path.basename(conf)}, code {code}) - à¸ªà¸¥à¸±à¸šà¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ")
+                if code in ("000", "403", "429") and not int(config.get("wg_lock", 1) or 0):   # wg_lock: โดน block ก็ใช้ต่อ
+                    print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมไม่รับ IP {ip} ({os.path.basename(conf)}, code {code}) - สลับเซิร์ฟเวอร์")
                     self._wg_down()
                     self._wg_failover(conf, confirmed=True)
                     tries = getattr(self, "_wg_probe_tries", 0) + 1
                     self._wg_probe_tries = tries
                     if tries < int(config.get("wg_probe_max", 5)):
                         return self._ensure_wireguard()
-                    print(f"[{self.device_id}] [WG] à¸¥à¸­à¸‡à¹à¸¥à¹‰à¸§ {tries} à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸œà¹ˆà¸²à¸™ - à¹€à¸¥à¹ˆà¸™à¸•à¹ˆà¸­à¹à¸šà¸šà¹„à¸¡à¹ˆà¸¡à¸µ VPN à¸£à¸­à¸šà¸™à¸µà¹‰")
+                    print(f"[{self.device_id}] [WG] ลองแล้ว {tries} เซิร์ฟเวอร์ยังไม่ผ่าน - เล่นต่อแบบไม่มี VPN รอบนี้")
                     self._wg_probe_tries = 0
                     return
                 self._wg_probe_tries = 0
-                print(f"[{self.device_id}] [WG] à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹€à¸à¸¡à¸•à¸­à¸šà¸›à¸à¸•à¸´à¸œà¹ˆà¸²à¸™ IP {ip} (code {code})")
+                print(f"[{self.device_id}] [WG] เซิร์ฟเวอร์เกมตอบปกติผ่าน IP {ip} (code {code})")
             if getattr(self, "_wg_conf_applied", None) == conf:
                 self._wg_fail = 0
             else:
                 self._wg_fail = getattr(self, "_wg_fail", 0) + 1
                 if self._wg_fail >= 2:
-                    print(f"[{self.device_id}] [WG] à¸•à¹ˆà¸­ VPN à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™ 2 à¸£à¸­à¸šà¸•à¸´à¸” - à¸›à¸´à¸” VPN à¸‚à¸­à¸‡à¸ˆà¸­à¸™à¸µà¹‰à¹„à¸›à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¹€à¸›à¸´à¸”à¸šà¸­à¸—à¹ƒà¸«à¸¡à¹ˆ "
-                          f"(à¸–à¹‰à¸²à¹€à¸ˆà¸­ 'pm à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¹€à¸ˆà¸­à¹à¸­à¸›' à¸”à¹‰à¸§à¸¢ = MuMu à¸ˆà¸­à¸™à¸µà¹‰à¸„à¹‰à¸²à¸‡ à¹ƒà¸«à¹‰à¸£à¸µà¸ªà¸•à¸²à¸£à¹Œà¸—à¸ˆà¸­)")
+                    print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น 2 รอบติด - ปิด VPN ของจอนี้ไปจนกว่าจะเปิดบอทใหม่ "
+                          f"(ถ้าเจอ 'pm ยังไม่เจอแอป' ด้วย = MuMu จอนี้ค้าง ให้รีสตาร์ทจอ)")
         except Exception as e:
-            print(f"[{self.device_id}] [WG] à¸•à¹ˆà¸­à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {e} - à¹€à¸¥à¹ˆà¸™à¸•à¹ˆà¸­à¸”à¹‰à¸§à¸¢à¹€à¸™à¹‡à¸•à¸›à¸à¸•à¸´")
+            print(f"[{self.device_id}] [WG] ต่อไม่สำเร็จ: {e} - เล่นต่อด้วยเน็ตปกติ")
 
     def _wg_device_is_split(self):
-        """tunnel à¸—à¸µà¹ˆà¹€à¸›à¸´à¸”à¸„à¹‰à¸²à¸‡à¹ƒà¸™à¸ˆà¸­à¹€à¸›à¹‡à¸™à¹à¸šà¸š "à¹€à¸‰à¸žà¸²à¸°à¹€à¸à¸¡" à¹„à¸«à¸¡ (à¸¡à¸µ IncludedApplications)
-        à¹„à¸Ÿà¸¥à¹Œà¸—à¸µà¹ˆà¹€à¸‚à¸µà¸¢à¸™à¸Šà¹ˆà¸§à¸‡ 4-8 à¸•.à¸„. à¹€à¸›à¹‡à¸™à¹à¸šà¸šà¸—à¸±à¹‰à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ -> adbd à¸•à¸­à¸šà¸à¸¥à¸±à¸šà¹„à¸¡à¹ˆà¸–à¸¶à¸‡à¸žà¸µà¸‹à¸µ = adb timeout/offline
-        à¸–à¹‰à¸²à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆà¹à¸šà¸šà¹€à¸‰à¸žà¸²à¸°à¹€à¸à¸¡ -> à¸„à¸·à¸™ False à¹ƒà¸«à¹‰à¹€à¸‚à¸µà¸¢à¸™à¹„à¸Ÿà¸¥à¹Œà¹ƒà¸«à¸¡à¹ˆà¸—à¸±à¸š (à¸–à¹‰à¸²à¸•à¸±à¹‰à¸‡ wg_split_apps à¹€à¸›à¹‡à¸™ "" = à¸—à¸±à¹‰à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹‚à¸”à¸¢à¸•à¸±à¹‰à¸‡à¹ƒà¸ˆ à¸à¹‡à¸›à¸¥à¹ˆà¸­à¸¢)"""
+        """tunnel ที่เปิดค้างในจอเป็นแบบ "เฉพาะเกม" ไหม (มี IncludedApplications)
+        ไฟล์ที่เขียนช่วง 4-8 ต.ค. เป็นแบบทั้งเครื่อง -> adbd ตอบกลับไม่ถึงพีซี = adb timeout/offline
+        ถ้าไม่ใช่แบบเฉพาะเกม -> คืน False ให้เขียนไฟล์ใหม่ทับ (ถ้าตั้ง wg_split_apps เป็น "" = ทั้งเครื่องโดยตั้งใจ ก็ปล่อย)"""
         if not str(config.get("wg_split_apps", "com.linecorp.LGRGS") or "").strip():
             return True
         try:
@@ -3118,36 +3118,36 @@ class RangerGearBot(threading.Thread):
         except Exception:
             n = 0
         if n <= 0:
-            print(f"[{self.device_id}] [WG] tunnel à¸—à¸µà¹ˆà¹€à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆà¹€à¸›à¹‡à¸™à¹à¸šà¸šà¸—à¸±à¹‰à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (à¸—à¸³ adb à¸«à¸¥à¸¸à¸”) - à¹€à¸‚à¸µà¸¢à¸™à¹ƒà¸«à¸¡à¹ˆà¹€à¸›à¹‡à¸™à¹à¸šà¸šà¹€à¸‰à¸žà¸²à¸°à¹€à¸à¸¡")
+            print(f"[{self.device_id}] [WG] tunnel ที่เปิดอยู่เป็นแบบทั้งเครื่อง (ทำ adb หลุด) - เขียนใหม่เป็นแบบเฉพาะเกม")
         return n > 0
 
     def _wg_must_be_up(self):
-        """wg_required (default 1): à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹„à¸”à¹‰à¹€à¸‰à¸žà¸²à¸°à¸•à¸­à¸™ VPN à¸•à¹ˆà¸­à¸­à¸¢à¸¹à¹ˆ - à¹€à¸™à¹‡à¸•à¸šà¹‰à¸²à¸™à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰
-        à¸¥à¹‰à¸²à¸‡à¸•à¸±à¸§à¸™à¸±à¸šà¸—à¸µà¹ˆà¸—à¸³à¹ƒà¸«à¹‰ _ensure_wireguard à¸¢à¸­à¸¡à¹à¸žà¹‰ (_wg_fail / _wg_off / probe) à¹à¸¥à¹‰à¸§à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¹€à¸£à¸·à¹ˆà¸­à¸¢ à¹†
-        à¸„à¸£à¸š wg_required_tries à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™ -> RestartTimeoutError (clear + à¹€à¸£à¸´à¹ˆà¸¡à¹ƒà¸«à¸¡à¹ˆ) à¹à¸—à¸™à¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¸”à¹‰à¸§à¸¢à¹€à¸™à¹‡à¸•à¸šà¹‰à¸²à¸™"""
+        """wg_required (default 1): เปิดเกมได้เฉพาะตอน VPN ต่ออยู่ - เน็ตบ้านเข้าเกมไม่ได้
+        ล้างตัวนับที่ทำให้ _ensure_wireguard ยอมแพ้ (_wg_fail / _wg_off / probe) แล้วลองใหม่เรื่อย ๆ
+        ครบ wg_required_tries ยังไม่ขึ้น -> RestartTimeoutError (clear + เริ่มใหม่) แทนการเข้าเกมด้วยเน็ตบ้าน"""
         if _no_proxy_mode():
-            # KILL_VPN / no_proxy_mode: à¹ƒà¸Šà¹‰ IP à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸•à¸£à¸‡ à¹† - ip_meter_gate à¸à¸±à¸™ cap + login_pace jitter
+            # KILL_VPN / no_proxy_mode: ใช้ IP เครื่องตรง ๆ - ip_meter_gate กัน cap + login_pace jitter
             _ip_meter_gate()
             _login_pace()
             return
         if int(config.get("use_host_vpn", 0) or 0):
-            return   # host VPN mode: VPN à¸­à¸¢à¸¹à¹ˆà¸šà¸™ Windows host - à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¹€à¸Šà¹‡à¸„ tunnel à¹ƒà¸™à¸­à¸µà¸¡à¸¹à¸¯
+            return   # host VPN mode: VPN อยู่บน Windows host - ไม่ต้องเช็ค tunnel ในอีมูฯ
         if not int(config.get("wg_enabled", 1) or 0):
             return
-        if not int(config.get("wg_required", 0) or 0):   # 0 = VPN à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™à¸à¹‡à¹€à¸¥à¹ˆà¸™à¸•à¹ˆà¸­à¸”à¹‰à¸§à¸¢à¹€à¸™à¹‡à¸•à¸šà¹‰à¸²à¸™ (à¹à¸šà¸šà¹€à¸”à¸´à¸¡)
+        if not int(config.get("wg_required", 0) or 0):   # 0 = VPN ไม่ขึ้นก็เล่นต่อด้วยเน็ตบ้าน (แบบเดิม)
             return self._ensure_wireguard()
         if (int(config.get("wg_once", 1) or 0) and not getattr(self, "_wg_conf_applied", None)
                 and not getattr(self, "_wg_started", False) and self._wg_is_up()
                 and self._wg_device_is_split()):
-            # à¸•à¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡: tunnel à¹€à¸›à¸´à¸”à¹à¸Šà¹ˆà¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ -> à¹ƒà¸Šà¹‰à¸•à¹ˆà¸­à¹€à¸¥à¸¢ à¸«à¹‰à¸²à¸¡à¸¢à¸¸à¹ˆà¸‡ (à¹„à¸¡à¹ˆà¹€à¸‚à¸µà¸¢à¸™à¹„à¸Ÿà¸¥à¹Œà¹ƒà¸«à¸¡à¹ˆ/à¹„à¸¡à¹ˆà¸›à¸´à¸”à¹€à¸›à¸´à¸”)
+            # ตอนเริ่ม: tunnel เปิดแช่อยู่แล้ว -> ใช้ต่อเลย ห้ามยุ่ง (ไม่เขียนไฟล์ใหม่/ไม่ปิดเปิด)
             self._wg_started = True
-            self._wg_conf_applied = self._wg_conf_for_device() or "(à¹€à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§)"
+            self._wg_conf_applied = self._wg_conf_for_device() or "(เปิดอยู่แล้ว)"
             self._wg_last_conf = self._wg_conf_applied if os.path.isfile(str(self._wg_conf_applied)) else None
-            print(f"[{self.device_id}] [WG] VPN à¹€à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ - à¹ƒà¸Šà¹‰à¸•à¹ˆà¸­ à¹„à¸¡à¹ˆà¸¢à¸¸à¹ˆà¸‡")
+            print(f"[{self.device_id}] [WG] VPN เปิดอยู่แล้ว - ใช้ต่อ ไม่ยุ่ง")
             return
         if (int(config.get("wg_once", 1) or 0) and getattr(self, "_wg_started", False)
                 and getattr(self, "_wg_conf_applied", None) and self._wg_is_up()):
-            return                          # à¹€à¸›à¸´à¸”à¹à¸Šà¹ˆà¸­à¸¢à¸¹à¹ˆ -> à¸«à¹‰à¸²à¸¡à¸¢à¸¸à¹ˆà¸‡ (à¹à¸¡à¹‰à¹„à¸Ÿà¸¥à¹Œà¹ƒà¸™ wg/ à¸–à¸¹à¸à¸ªà¸£à¹‰à¸²à¸‡à¹ƒà¸«à¸¡à¹ˆà¸•à¸²à¸¡à¸£à¸­à¸šà¹à¸¥à¹‰à¸§à¸à¹‡à¸•à¸²à¸¡)
+            return                          # เปิดแช่อยู่ -> ห้ามยุ่ง (แม้ไฟล์ใน wg/ ถูกสร้างใหม่ตามรอบแล้วก็ตาม)
         self._wg_started = True
         tries = int(config.get("wg_required_tries", 10) or 10)
         for n in range(1, tries + 1):
@@ -3159,28 +3159,28 @@ class RangerGearBot(threading.Thread):
             if getattr(self, "_wg_conf_applied", None) and self._wg_is_up():
                 return
             _c = self._wg_conf_for_device()
-            _why = ("à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œ .conf à¹ƒà¸™ " + str(config.get("wg_dir", "wg")) + "/") if not _c else ("à¹ƒà¸Šà¹‰ " + os.path.basename(_c) + " à¹à¸•à¹ˆ tunnel à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™")
-            print(f"[{self.device_id}] [WG] VPN à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™ ({n}/{tries}) - {_why} - à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ...")
+            _why = ("ไม่มีไฟล์ .conf ใน " + str(config.get("wg_dir", "wg")) + "/") if not _c else ("ใช้ " + os.path.basename(_c) + " แต่ tunnel ไม่ขึ้น")
+            print(f"[{self.device_id}] [WG] VPN ยังไม่ขึ้น ({n}/{tries}) - {_why} - ลองใหม่...")
             if _c:
                 self.__dict__.setdefault("_wg_bad", set()).add(_c)
                 self._wg_rand_conf = None
-                # sub-round-robin: VPN à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™ 2 à¸£à¸­à¸š -> à¸‚à¸¢à¸±à¸š sub-pool
+                # sub-round-robin: VPN ไม่ขึ้น 2 รอบ -> ขยับ sub-pool
                 if int(config.get("wg_sub_round_robin", 1) or 0) and n >= 2:
                     cur_idx = getattr(self, "_wg_sub_idx", 0)
                     self._wg_sub_idx = cur_idx + 1
-                    print(f"[{self.device_id}] [WG] VPN à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™ {n} à¸£à¸­à¸š -> à¸ªà¸¥à¸±à¸š sub-pool (idx {self._wg_sub_idx})")
+                    print(f"[{self.device_id}] [WG] VPN ไม่ขึ้น {n} รอบ -> สลับ sub-pool (idx {self._wg_sub_idx})")
             else:
-                self._wg_bad = set()        # à¹ƒà¸«à¹‰à¸§à¸™à¸à¸¥à¸±à¸šà¹„à¸›à¸¥à¸­à¸‡à¸—à¸¸à¸à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œà¹„à¸”à¹‰à¸­à¸µà¸
+                self._wg_bad = set()        # ให้วนกลับไปลองทุกเซิร์ฟเวอร์ได้อีก
             _real_sleep(5)
-        print(f"[{self.device_id}] [WG] à¸•à¹ˆà¸­ VPN à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™ {tries} à¸£à¸­à¸š - à¸£à¸µà¸ªà¸•à¸²à¸£à¹Œà¸—à¹„à¸Ÿà¸¥à¹Œà¸™à¸µà¹‰à¹à¸—à¸™à¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡à¸”à¹‰à¸§à¸¢à¹€à¸™à¹‡à¸•à¸šà¹‰à¸²à¸™")
+        print(f"[{self.device_id}] [WG] ต่อ VPN ไม่ขึ้น {tries} รอบ - รีสตาร์ทไฟล์นี้แทนการเข้าเกมด้วยเน็ตบ้าน")
         raise RestartTimeoutError("wg_required: VPN not up")
 
     def _wg_setup(self, conf):
         if _no_proxy_mode():
-            return   # KILL_VPN: à¹„à¸¡à¹ˆà¸•à¹ˆà¸­ WG à¹ƒà¸” à¹†
+            return   # KILL_VPN: ไม่ต่อ WG ใด ๆ
         pkg, name = self.WG_PKG, self.WG_TUNNEL
-        # à¸—à¸²à¸‡à¸¥à¸±à¸”: à¹„à¸Ÿà¸¥à¹Œ config à¸™à¸µà¹‰à¹€à¸„à¸¢à¹€à¸‚à¸µà¸¢à¸™à¸¥à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹à¸¥à¹‰à¸§ (à¹à¸„à¹ˆà¸›à¸´à¸”à¹„à¸›à¸•à¸­à¸™à¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œ) -> à¸ªà¸±à¹ˆà¸‡à¹€à¸›à¸´à¸” tunnel à¸­à¸¢à¹ˆà¸²à¸‡à¹€à¸”à¸µà¸¢à¸§ à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œà¹ƒà¸«à¸¡à¹ˆ
-        # (à¹€à¸—à¸µà¸¢à¸šà¹€à¸§à¸¥à¸²à¹à¸à¹‰à¹„à¸Ÿà¸¥à¹Œà¸”à¹‰à¸§à¸¢ - server à¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œà¸Šà¸·à¹ˆà¸­à¹€à¸”à¸´à¸¡à¹à¸•à¹ˆà¹€à¸™à¸·à¹‰à¸­à¸«à¸²à¹ƒà¸«à¸¡à¹ˆà¸¡à¸² à¸•à¹‰à¸­à¸‡à¹€à¸‚à¸µà¸¢à¸™à¸¥à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ)
+        # ทางลัด: ไฟล์ config นี้เคยเขียนลงเครื่องแล้ว (แค่ปิดไปตอนส่งไฟล์) -> สั่งเปิด tunnel อย่างเดียว ไม่ต้องส่งไฟล์ใหม่
+        # (เทียบเวลาแก้ไฟล์ด้วย - server ส่งไฟล์ชื่อเดิมแต่เนื้อหาใหม่มา ต้องเขียนลงเครื่องใหม่)
         if getattr(self, "_wg_conf_written", None) == (conf, os.path.getmtime(conf)):
             self.adb_shell(f"su -c 'am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}'",
                            timeout=20)
@@ -3188,41 +3188,41 @@ class RangerGearBot(threading.Thread):
                 _real_sleep(0.5)
                 if self._wg_is_up():
                     self._wg_conf_applied = conf
-                    print(f"[{self.device_id}] [WG] à¸•à¹ˆà¸­ VPN à¹à¸¥à¹‰à¸§ ({os.path.basename(conf)})")
+                    print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
                     return
-            self._wg_conf_written = None    # à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™ -> à¸£à¸­à¸šà¸™à¸µà¹‰à¸—à¸³à¹à¸šà¸šà¹€à¸•à¹‡à¸¡à¸•à¹ˆà¸­à¹€à¸¥à¸¢
-        # 1) à¸¥à¸‡à¹à¸­à¸› WireGuard à¸–à¹‰à¸²à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¡à¸µ - à¹€à¸Šà¹‡à¸„à¸ˆà¸²à¸à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¹à¸­à¸›à¹ƒà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (à¹„à¸¡à¹ˆà¸žà¸¶à¹ˆà¸‡ pm à¸—à¸µà¹ˆà¸•à¸­à¸šà¸Šà¹‰à¸²à¸•à¸­à¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹‚à¸«à¸¥à¸”à¸«à¸™à¸±à¸)
-        #    à¹€à¸„à¸¢à¹€à¸ˆà¸­: pm à¸•à¸­à¸šà¹„à¸¡à¹ˆà¸—à¸±à¸™ -> à¸™à¸¶à¸à¸§à¹ˆà¸²à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¥à¸‡ -> à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡ 17 MB à¸‹à¹‰à¸³à¸—à¸¸à¸à¸ˆà¸­à¸—à¸¸à¸à¸£à¸­à¸š -> pm à¸¢à¸´à¹ˆà¸‡à¸Šà¹‰à¸² à¸«à¸²à¹à¸¡à¹‰à¹à¸•à¹ˆà¸•à¸±à¸§à¹€à¸à¸¡à¹„à¸¡à¹ˆà¹€à¸ˆà¸­
+            self._wg_conf_written = None    # ไม่ขึ้น -> รอบนี้ทำแบบเต็มต่อเลย
+        # 1) ลงแอป WireGuard ถ้ายังไม่มี - เช็คจากโฟลเดอร์แอปในเครื่อง (ไม่พึ่ง pm ที่ตอบช้าตอนเครื่องโหลดหนัก)
+        #    เคยเจอ: pm ตอบไม่ทัน -> นึกว่ายังไม่ลง -> ติดตั้ง 17 MB ซ้ำทุกจอทุกรอบ -> pm ยิ่งช้า หาแม้แต่ตัวเกมไม่เจอ
         if not getattr(self, "_wg_installed", False):
             r = self.adb_shell(f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=15)
             if b"YES" in (r.stdout or b""):
                 self._wg_installed = True
             elif getattr(self, "_wg_install_tried", False):
-                print(f"[{self.device_id}] [WG] à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡ WireGuard à¹„à¸›à¹à¸¥à¹‰à¸§à¸£à¸­à¸šà¸™à¸µà¹‰à¹à¸•à¹ˆà¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¹€à¸«à¹‡à¸™à¹à¸­à¸› - à¹„à¸¡à¹ˆà¸•à¸´à¸”à¸•à¸±à¹‰à¸‡à¸‹à¹‰à¸³ (à¸‚à¹‰à¸²à¸¡ VPN à¸‚à¸­à¸‡à¸ˆà¸­à¸™à¸µà¹‰à¹„à¸›à¸à¹ˆà¸­à¸™)")
+                print(f"[{self.device_id}] [WG] ติดตั้ง WireGuard ไปแล้วรอบนี้แต่ยังไม่เห็นแอป - ไม่ติดตั้งซ้ำ (ข้าม VPN ของจอนี้ไปก่อน)")
                 return
             else:
                 apk = _wg_apk_path()
                 if not apk:
-                    print(f"[{self.device_id}] [WG] à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œà¹à¸­à¸› WireGuard (à¹‚à¸«à¸¥à¸”à¹„à¸¡à¹ˆà¹„à¸”à¹‰) - à¸‚à¹‰à¸²à¸¡")
+                    print(f"[{self.device_id}] [WG] ไม่มีไฟล์แอป WireGuard (โหลดไม่ได้) - ข้าม")
                     return
                 self._wg_install_tried = True
-                print(f"[{self.device_id}] [WG] à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡à¹à¸­à¸› WireGuard (à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§)...")
+                print(f"[{self.device_id}] [WG] ติดตั้งแอป WireGuard (ครั้งเดียว)...")
                 self.adb_run([self.adb_cmd, "-s", self.device_id, "install", "-r", apk], timeout=180)
                 r = self.adb_shell(f"su -c 'test -d /data/data/{pkg} && echo YES'", timeout=15)
                 self._wg_installed = b"YES" in (r.stdout or b"")
 
-        # 2) à¹€à¸‚à¸µà¸¢à¸™à¹„à¸Ÿà¸¥à¹Œ tunnel + à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸²à¹à¸­à¸› (à¸•à¹‰à¸­à¸‡à¸›à¸´à¸”à¹à¸­à¸›à¸à¹ˆà¸­à¸™ à¹„à¸¡à¹ˆà¸‡à¸±à¹‰à¸™à¸¡à¸±à¸™à¹€à¸‚à¸µà¸¢à¸™à¸—à¸±à¸š)
+        # 2) เขียนไฟล์ tunnel + ตั้งค่าแอป (ต้องปิดแอปก่อน ไม่งั้นมันเขียนทับ)
         self.adb_shell(f"am force-stop {pkg}")
         safe_dev = self.device_id.replace(":", "_")
         tmp_conf = f"/data/local/tmp/wg_{safe_dev}.conf"
         tmp_pb = f"/data/local/tmp/wg_{safe_dev}.pb"
         local_pb = os.path.join(tempfile.gettempdir(), f"wg_{safe_dev}.pb")
-        # DataStore (protobuf) à¸‚à¸­à¸‡à¹à¸­à¸›: allow_remote_control_intents = true
+        # DataStore (protobuf) ของแอป: allow_remote_control_intents = true
         key = b"allow_remote_control_intents"
         entry = b"\x0a" + bytes([len(key)]) + key + b"\x12\x02\x08\x01"
         with open(local_pb, "wb") as f:
             f.write(b"\x0a" + bytes([len(entry)]) + entry)
-        # à¸„à¸³à¸ªà¸±à¹ˆà¸‡ root à¹€à¸‚à¸µà¸¢à¸™à¹€à¸›à¹‡à¸™à¸ªà¸„à¸£à¸´à¸›à¸•à¹Œà¹à¸¥à¹‰à¸§à¸£à¸±à¸™à¸—à¸µà¹€à¸”à¸µà¸¢à¸§ - su à¸‚à¸­à¸‡ MuMu à¸à¸´à¸™ $ / quote à¸–à¹‰à¸²à¸ªà¹ˆà¸‡à¹€à¸›à¹‡à¸™à¸ªà¸•à¸£à¸´à¸‡à¸•à¸£à¸‡ à¹†
+        # คำสั่ง root เขียนเป็นสคริปต์แล้วรันทีเดียว - su ของ MuMu กิน $ / quote ถ้าส่งเป็นสตริงตรง ๆ
         d = f"/data/data/{pkg}"
         tmp_sh = f"/data/local/tmp/wg_{safe_dev}.sh"
         local_sh = os.path.join(tempfile.gettempdir(), f"wg_{safe_dev}.sh")
@@ -3235,41 +3235,41 @@ class RangerGearBot(threading.Thread):
             f"chmod -R 700 {d}/files",
             f"restorecon -R {d}/files 2>/dev/null",
             f"rm -f {tmp_conf} {tmp_pb}",
-            # à¸­à¸™à¸¸à¸à¸²à¸•à¸ªà¸£à¹‰à¸²à¸‡ VPN à¸¥à¹ˆà¸§à¸‡à¸«à¸™à¹‰à¸² (à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸à¸”à¸¢à¸·à¸™à¸¢à¸±à¸™à¸šà¸™à¸ˆà¸­)
+            # อนุญาตสร้าง VPN ล่วงหน้า (ไม่ต้องกดยืนยันบนจอ)
             f"cmd appops set {pkg} ACTIVATE_VPN allow",
-            # Android 12 à¸«à¹‰à¸²à¸¡à¹à¸­à¸›à¹€à¸›à¸´à¸” VpnService à¸ˆà¸²à¸à¹€à¸šà¸·à¹‰à¸­à¸‡à¸«à¸¥à¸±à¸‡ -> à¹ƒà¸ªà¹ˆà¹„à¸§à¹‰à¹ƒà¸™à¸£à¸²à¸¢à¸à¸²à¸£à¸¢à¸à¹€à¸§à¹‰à¸™à¸›à¸£à¸°à¸«à¸¢à¸±à¸”à¹à¸šà¸• (à¸—à¸”à¸ªà¸­à¸šà¸šà¸™ MuMu à¹à¸¥à¹‰à¸§à¸œà¹ˆà¸²à¸™)
+            # Android 12 ห้ามแอปเปิด VpnService จากเบื้องหลัง -> ใส่ไว้ในรายการยกเว้นประหยัดแบต (ทดสอบบน MuMu แล้วผ่าน)
             f"cmd deviceidle whitelist +{pkg}",
-            # à¸ªà¸±à¹ˆà¸‡à¹€à¸›à¸´à¸” tunnel à¹€à¸›à¹‡à¸™ root (à¸œà¹ˆà¸²à¸™à¸ªà¸´à¸—à¸˜à¸´à¹Œ CONTROL_TUNNELS) ; -f 0x20 = à¸ªà¹ˆà¸‡à¸–à¸¶à¸‡à¹à¸­à¸›à¸—à¸µà¹ˆà¸–à¸¹à¸ force-stop
+            # สั่งเปิด tunnel เป็น root (ผ่านสิทธิ์ CONTROL_TUNNELS) ; -f 0x20 = ส่งถึงแอปที่ถูก force-stop
             f"am broadcast -f 0x20 -p {pkg} -a {pkg}.action.SET_TUNNEL_UP --es tunnel {name}",
             f"rm -f {tmp_sh}",
             "",
         ])
-        with open(local_sh, "w", newline=chr(10)) as f:   # à¹„à¸Ÿà¸¥à¹Œ sh à¸•à¹‰à¸­à¸‡à¹€à¸›à¹‡à¸™ LF
+        with open(local_sh, "w", newline=chr(10)) as f:   # ไฟล์ sh ต้องเป็น LF
             f.write(script)
         self._wg_last_conf = conf
         for src, dst in ((self._wg_tuned_conf(conf), tmp_conf), (local_pb, tmp_pb), (local_sh, tmp_sh)):
             self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, dst], timeout=30)
-        self.adb_shell(f"su -c 'sh {tmp_sh}'", timeout=30)   # à¸•à¹‰à¸­à¸‡à¸„à¸£à¸­à¸š quote: su à¸‚à¸­à¸‡ MuMu à¸£à¸±à¸šà¹à¸„à¹ˆà¸„à¸³à¸–à¸±à¸”à¹„à¸›à¸„à¸³à¹€à¸”à¸µà¸¢à¸§
+        self.adb_shell(f"su -c 'sh {tmp_sh}'", timeout=30)   # ต้องครอบ quote: su ของ MuMu รับแค่คำถัดไปคำเดียว
         for _ in range(10):
             _real_sleep(1)
             if self._wg_is_up():
                 self._wg_conf_applied = conf
                 self._wg_conf_written = (conf, os.path.getmtime(conf))
-                print(f"[{self.device_id}] [WG] à¸•à¹ˆà¸­ VPN à¹à¸¥à¹‰à¸§ ({os.path.basename(conf)})")
+                print(f"[{self.device_id}] [WG] ต่อ VPN แล้ว ({os.path.basename(conf)})")
                 return
-        print(f"[{self.device_id}] [WG] à¸ªà¸±à¹ˆà¸‡à¸•à¹ˆà¸­à¹à¸¥à¹‰à¸§à¹à¸•à¹ˆà¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¹€à¸«à¹‡à¸™ tunnel à¸ à¸²à¸¢à¹ƒà¸™ 10 à¸§à¸´ ({os.path.basename(conf)})")
+        print(f"[{self.device_id}] [WG] สั่งต่อแล้วแต่ยังไม่เห็น tunnel ภายใน 10 วิ ({os.path.basename(conf)})")
 
     def open_app(self):
-        """à¹€à¸›à¸´à¸”à¹à¸­à¸› LINE Rangers à¸”à¹‰à¸§à¸¢à¸„à¸³à¸ªà¸±à¹ˆà¸‡ am start / monkey (à¹€à¸£à¹‡à¸§à¸à¸§à¹ˆà¸²à¸„à¸¥à¸´à¸ icon.png)"""
+        """เปิดแอป LINE Rangers ด้วยคำสั่ง am start / monkey (เร็วกว่าคลิก icon.png)"""
         self.last_activity_time = time.time()
-        # KILL_VPN mode: à¸›à¸´à¸” WireGuard app + à¸¥à¸š tunnel config à¸šà¸™ emulator à¸à¹ˆà¸­à¸™
-        # (à¸šà¸²à¸‡à¸ˆà¸­ WG app à¹€à¸›à¸´à¸”à¸„à¹‰à¸²à¸‡ popup à¸—à¸±à¸šà¹€à¸à¸¡ + tunnel 'lgr' à¸¢à¸±à¸‡ config à¸„à¹‰à¸²à¸‡)
+        # KILL_VPN mode: ปิด WireGuard app + ลบ tunnel config บน emulator ก่อน
+        # (บางจอ WG app เปิดค้าง popup ทับเกม + tunnel 'lgr' ยัง config ค้าง)
         if _no_proxy_mode():
             self._force_kill_wg_on_emu()
         elif int(config.get("wg_after_login", 0) or 0):
-            self._wg_down()          # wg_after_login: à¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œ+à¸¥à¹‡à¸­à¸à¸­à¸´à¸™à¸”à¹‰à¸§à¸¢à¹€à¸™à¹‡à¸•à¸›à¸à¸•à¸´ à¹à¸¥à¹‰à¸§à¸„à¹ˆà¸­à¸¢à¸•à¹ˆà¸­ VPN à¸«à¸¥à¸±à¸‡à¹€à¸‚à¹‰à¸²à¹€à¸à¸¡
+            self._wg_down()          # wg_after_login: ส่งไฟล์+ล็อกอินด้วยเน็ตปกติ แล้วค่อยต่อ VPN หลังเข้าเกม
         else:
-            self._wg_must_be_up()    # wg_enabled: à¸•à¹ˆà¸­ VPN à¹à¸¢à¸à¸‚à¸­à¸‡à¸ˆà¸­à¸™à¸µà¹‰ (IP à¹„à¸¡à¹ˆà¸‹à¹‰à¸³à¸ˆà¸­à¸­à¸·à¹ˆà¸™) - à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™à¸«à¹‰à¸²à¸¡à¹€à¸›à¸´à¸”à¹€à¸à¸¡
+            self._wg_must_be_up()    # wg_enabled: ต่อ VPN แยกของจอนี้ (IP ไม่ซ้ำจออื่น) - ไม่ขึ้นห้ามเปิดเกม
         attempt = 0
         while attempt < 5:
             attempt += 1
@@ -3299,10 +3299,10 @@ class RangerGearBot(threading.Thread):
                     pid = ""
                 
                 if pid:
-                    print(f"[{self.device_id}] âœ“ App running (PID: {pid}) - attempt {attempt}")
+                    print(f"[{self.device_id}] ✓ App running (PID: {pid}) - attempt {attempt}")
                     return True
                 else:
-                    print(f"[{self.device_id}] âœ— App crashed/bounced! (attempt {attempt}) Retrying...")
+                    print(f"[{self.device_id}] ✗ App crashed/bounced! (attempt {attempt}) Retrying...")
                     sleep(0.5)
                     
             except Exception as e:
@@ -3312,15 +3312,15 @@ class RangerGearBot(threading.Thread):
         return False
 
     def _signal_ready(self):
-        """à¸šà¸­à¸à¸•à¸±à¸§à¸›à¸¥à¹ˆà¸­à¸¢à¸šà¸­à¸—à¸§à¹ˆà¸²à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸™à¸µà¹‰à¸žà¸£à¹‰à¸­à¸¡à¹à¸¥à¹‰à¸§ à¹€à¸žà¸·à¹ˆà¸­à¹ƒà¸«à¹‰à¸›à¸¥à¹ˆà¸­à¸¢à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸–à¸±à¸”à¹„à¸›à¹„à¸”à¹‰à¸—à¸±à¸™à¸—à¸µ
+        """บอกตัวปล่อยบอทว่าเครื่องนี้พร้อมแล้ว เพื่อให้ปล่อยเครื่องถัดไปได้ทันที
 
-        à¹ƒà¸Šà¹‰à¸à¸²à¸£à¸ˆà¸±à¸šà¸ˆà¸­à¸£à¸­à¸šà¹à¸£à¸à¹€à¸›à¹‡à¸™à¸•à¸±à¸§à¸§à¸±à¸”: à¸œà¹ˆà¸²à¸™à¹à¸¥à¹‰à¸§à¹à¸›à¸¥à¸§à¹ˆà¸² adb à¸•à¹ˆà¸­à¸•à¸´à¸”à¹à¸¥à¸°à¸‡à¸²à¸™à¸«à¸™à¸±à¸à¸•à¸­à¸™
-        à¸ªà¸•à¸²à¸£à¹Œà¸• (import / à¸•à¹ˆà¸­ adb / à¸ˆà¸±à¸šà¸ˆà¸­) à¸ˆà¸šà¸ˆà¸£à¸´à¸‡ à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆà¹€à¸”à¸²à¹€à¸­à¸²à¸ˆà¸²à¸à¸™à¸²à¸¬à¸´à¸à¸²
+        ใช้การจับจอรอบแรกเป็นตัววัด: ผ่านแล้วแปลว่า adb ต่อติดและงานหนักตอน
+        สตาร์ต (import / ต่อ adb / จับจอ) จบจริง ไม่ใช่เดาเอาจากนาฬิกา
         """
         q = getattr(self, "_ready_q", None)
         if q is None:
             return
-        self._ready_q = None          # à¸ªà¹ˆà¸‡à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§à¸žà¸­
+        self._ready_q = None          # ส่งครั้งเดียวพอ
         try:
             self.capture_screen()
         except Exception:
@@ -3332,35 +3332,35 @@ class RangerGearBot(threading.Thread):
 
     def run(self):
         print(f"[{self.device_id}] RangerGear Bot Thread Started", flush=True)
-        self._signal_ready()   # à¸žà¸£à¹‰à¸­à¸¡à¹à¸¥à¹‰à¸§ -> à¸›à¸¥à¹ˆà¸­à¸¢à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸–à¸±à¸”à¹„à¸›à¹„à¸”à¹‰à¹€à¸¥à¸¢
-        # à¹€à¸”à¸´à¸¡ try à¸„à¸£à¸­à¸š while True à¹„à¸§à¹‰à¸—à¸±à¹‰à¸‡à¸à¹‰à¸­à¸™ = à¸žà¸±à¸‡à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§ thread à¸•à¸²à¸¢à¸–à¸²à¸§à¸£
-        # à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸™à¸±à¹‰à¸™à¹€à¸‡à¸µà¸¢à¸šà¹„à¸›à¹€à¸¥à¸¢à¸—à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¹‚à¸›à¸£à¹à¸à¸£à¸¡à¸¢à¸±à¸‡à¹€à¸›à¸´à¸”à¸­à¸¢à¸¹à¹ˆ à¸•à¸­à¸™à¸™à¸µà¹‰à¹à¸¢à¸à¸¥à¸¹à¸›à¸­à¸­à¸à¸¡à¸²à¹à¸¥à¹‰à¸§
-        # supervise à¹ƒà¸«à¹‰à¸à¸¥à¸±à¸šà¸¡à¸²à¹€à¸”à¸´à¸™à¸•à¹ˆà¸­à¹€à¸­à¸‡à¹„à¸”à¹‰
+        self._signal_ready()   # พร้อมแล้ว -> ปล่อยเครื่องถัดไปได้เลย
+        # เดิม try ครอบ while True ไว้ทั้งก้อน = พังครั้งเดียว thread ตายถาวร
+        # เครื่องนั้นเงียบไปเลยทั้งที่โปรแกรมยังเปิดอยู่ ตอนนี้แยกลูปออกมาแล้ว
+        # supervise ให้กลับมาเดินต่อเองได้
         crash_count = 0
         while getattr(self, "_running", True):
             try:
                 self._main_loop()
-                crash_count = 0   # loop à¸ˆà¸šà¹€à¸­à¸‡ (à¹€à¸Šà¹ˆà¸™ à¸„à¸´à¸§à¸«à¸¡à¸”) - reset
+                crash_count = 0   # loop จบเอง (เช่น คิวหมด) - reset
             except Exception as e:
                 crash_count += 1
                 print(f"[{self.device_id}] Thread Crash #{crash_count}: {e} - recover", flush=True)
                 traceback.print_exc()
-                # recover: reconnect ADB + à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸š device à¸à¹ˆà¸­à¸™à¹€à¸‚à¹‰à¸² loop à¹ƒà¸«à¸¡à¹ˆ
-                # (à¹€à¸„à¸ªà¸«à¸¥à¸±à¸‡ VPN swap: ADB/MuMu à¸­à¸²à¸ˆà¸„à¹‰à¸²à¸‡ thread à¸•à¸²à¸¢ à¸•à¹‰à¸­à¸‡à¸›à¸¥à¸¸à¸ device à¸à¹ˆà¸­à¸™)
+                # recover: reconnect ADB + ตรวจสอบ device ก่อนเข้า loop ใหม่
+                # (เคสหลัง VPN swap: ADB/MuMu อาจค้าง thread ตาย ต้องปลุก device ก่อน)
                 try:
                     self._adb_recover_device()
                 except Exception as rec_e:
                     print(f"[{self.device_id}] ADB recover failed: {rec_e}", flush=True)
-                # exponential backoff à¸–à¹‰à¸² crash à¸‹à¹‰à¸³ à¹† (à¸à¸±à¸™ loop à¸žà¸±à¸‡à¸•à¸¥à¸­à¸”)
+                # exponential backoff ถ้า crash ซ้ำ ๆ (กัน loop พังตลอด)
                 delay = min(60, 5 * (2 ** min(crash_count - 1, 4)))   # 5, 10, 20, 40, 60, 60...
                 sleep(delay)
 
     def _adb_recover_device(self):
-        """à¸›à¸¥à¸¸à¸ ADB device à¸—à¸µà¹ˆà¸«à¸¥à¸¸à¸”/offline (à¸«à¸¥à¸±à¸‡ VPN swap / emulator sleep / timeout)
+        """ปลุก ADB device ที่หลุด/offline (หลัง VPN swap / emulator sleep / timeout)
         - adb disconnect + reconnect
-        - restart-server à¸–à¹‰à¸² device status 'offline'"""
+        - restart-server ถ้า device status 'offline'"""
         dev = self.device_id
-        # à¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆ TCP device (emulator-xxxx) -> à¹„à¸¡à¹ˆà¸¡à¸µà¸­à¸°à¹„à¸£à¹ƒà¸«à¹‰ reconnect
+        # ไม่ใช่ TCP device (emulator-xxxx) -> ไม่มีอะไรให้ reconnect
         if ":" not in dev:
             return
         print(f"[{dev}] [RECOVER] adb reconnect...", flush=True)
@@ -3373,7 +3373,7 @@ class RangerGearBot(threading.Thread):
             print(f"[{dev}] [RECOVER] {(r.stdout or '').strip()[:80]}", flush=True)
         except Exception as e:
             print(f"[{dev}] [RECOVER] connect error: {e}", flush=True)
-        # à¹€à¸Šà¹‡à¸„ device state - à¸–à¹‰à¸²à¸¢à¸±à¸‡ offline à¸¥à¸­à¸‡ restart ADB server
+        # เช็ค device state - ถ้ายัง offline ลอง restart ADB server
         try:
             r = subprocess.run([adb_path, "-s", dev, "get-state"], capture_output=True, text=True, timeout=10)
             state = (r.stdout or "").strip()
@@ -3387,11 +3387,11 @@ class RangerGearBot(threading.Thread):
         except Exception as e:
             print(f"[{dev}] [RECOVER] state check error: {e}", flush=True)
 
-    # à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸„à¸´à¸§à¸—à¸µà¹ˆà¸¢à¸­à¸¡à¸«à¸¢à¸´à¸šà¹„à¸Ÿà¸¥à¹Œà¸¡à¸²à¸—à¸³ = backup/ à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™ (à¸•à¸±à¹‰à¸‡à¸—à¸±à¸šà¹„à¸”à¹‰à¹ƒà¸™ config "queue_folders"
-    # à¹à¸•à¹ˆà¸„à¹ˆà¸²à¹€à¸£à¸´à¹ˆà¸¡à¸•à¹‰à¸™à¸ˆà¸‡à¹ƒà¸ˆà¹„à¸¡à¹ˆà¹à¸•à¸° input-id/ à¸—à¸µà¹ˆ loginà¸ªà¸°à¸ªà¸¡à¹ƒà¸Šà¹‰ à¸à¸±à¸™à¸ªà¸­à¸‡à¹‚à¸›à¸£à¹à¸à¸£à¸¡à¹à¸¢à¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œà¸à¸±à¸™)
-    # à¹€à¸œà¸·à¹ˆà¸­à¸­à¸¢à¸²à¸à¹ƒà¸«à¹‰à¸”à¸¶à¸‡à¸ˆà¸²à¸ input-id/ à¸—à¸µà¹ˆ loginà¸ªà¸°à¸ªà¸¡ (login.py) à¹ƒà¸Šà¹‰à¸£à¹ˆà¸§à¸¡à¸”à¹‰à¸§à¸¢
+    # โฟลเดอร์คิวที่ยอมหยิบไฟล์มาทำ = backup/ เท่านั้น (ตั้งทับได้ใน config "queue_folders"
+    # แต่ค่าเริ่มต้นจงใจไม่แตะ input-id/ ที่ loginสะสมใช้ กันสองโปรแกรมแย่งไฟล์กัน)
+    # เผื่ออยากให้ดึงจาก input-id/ ที่ loginสะสม (login.py) ใช้ร่วมด้วย
     QUEUE_FOLDERS_DEFAULT = ["backup"]
-    # à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¹ƒà¸Šà¹ˆà¸„à¸´à¸§ à¹à¸•à¹ˆà¸¡à¸±à¸à¸¡à¸µà¹„à¸Ÿà¸¥à¹Œà¸„à¹‰à¸²à¸‡ - à¹ƒà¸Šà¹‰à¸šà¸­à¸à¹ƒà¸™ log à¸•à¸­à¸™à¸§à¹ˆà¸²à¸‡à¸‡à¸²à¸™à¸§à¹ˆà¸²à¹„à¸Ÿà¸¥à¹Œà¹„à¸›à¸à¸­à¸‡à¸­à¸¢à¸¹à¹ˆà¹„à¸«à¸™
+    # โฟลเดอร์ที่ไม่ใช่คิว แต่มักมีไฟล์ค้าง - ใช้บอกใน log ตอนว่างงานว่าไฟล์ไปกองอยู่ไหน
     OTHER_FOLDERS = ["backup", "input-id", "input", "backup-xml", "login-success", "login-failed"]
 
     def _queue_folders(self):
@@ -3409,10 +3409,10 @@ class RangerGearBot(threading.Thread):
         return n
 
     def _report_idle_queue(self, every_sec=30):
-        """à¸šà¸­à¸à¸ªà¸²à¹€à¸«à¸•à¸¸à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸¡à¸µà¸‡à¸²à¸™à¸—à¸³
+        """บอกสาเหตุที่ไม่มีงานทำ
 
-        à¹€à¸”à¸´à¸¡à¸•à¸­à¸™à¸„à¸´à¸§à¸§à¹ˆà¸²à¸‡ log à¸¡à¸µà¹à¸•à¹ˆ [CONFIG] Base Loaded à¸§à¸´à¸™à¸²à¸—à¸µà¸¥à¸°à¸šà¸£à¸£à¸—à¸±à¸” à¹à¸¢à¸à¹„à¸¡à¹ˆà¸­à¸­à¸à¸§à¹ˆà¸²
-        à¸„à¸´à¸§à¸«à¸¡à¸”à¸ˆà¸£à¸´à¸‡ à¹„à¸Ÿà¸¥à¹Œà¸•à¸´à¸” lock à¸„à¹‰à¸²à¸‡ à¸«à¸£à¸·à¸­à¹„à¸Ÿà¸¥à¹Œà¹„à¸›à¸à¸­à¸‡à¸­à¸¢à¸¹à¹ˆà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸—à¸µà¹ˆà¸ªà¸„à¸£à¸´à¸›à¸•à¹Œà¸™à¸µà¹‰à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸­à¹ˆà¸²à¸™
+        เดิมตอนคิวว่าง log มีแต่ [CONFIG] Base Loaded วินาทีละบรรทัด แยกไม่ออกว่า
+        คิวหมดจริง ไฟล์ติด lock ค้าง หรือไฟล์ไปกองอยู่โฟลเดอร์ที่สคริปต์นี้ไม่ได้อ่าน
         """
         now = time.time()
         if now - getattr(self, "_idle_logged_at", 0) < every_sec:
@@ -3421,10 +3421,10 @@ class RangerGearBot(threading.Thread):
         total, locked = getattr(self, "_queue_stats", (0, 0))
         qnames = " + ".join(f + "/" for f in self._queue_folders())
         if total:
-            print(f"[{self.device_id}] [QUEUE] à¸§à¹ˆà¸²à¸‡à¸‡à¸²à¸™: à¹€à¸ˆà¸­ {total} à¹„à¸Ÿà¸¥à¹Œà¹ƒà¸™ {qnames} "
-                  f"à¹à¸•à¹ˆà¸•à¸´à¸” lock à¸­à¸¢à¸¹à¹ˆ {locked} à¹„à¸Ÿà¸¥à¹Œ (à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸­à¸·à¹ˆà¸™à¸–à¸·à¸­à¸­à¸¢à¸¹à¹ˆ à¸«à¸£à¸·à¸­ lock à¸„à¹‰à¸²à¸‡)")
+            print(f"[{self.device_id}] [QUEUE] ว่างงาน: เจอ {total} ไฟล์ใน {qnames} "
+                  f"แต่ติด lock อยู่ {locked} ไฟล์ (เครื่องอื่นถืออยู่ หรือ lock ค้าง)")
             return
-        # à¸„à¸´à¸§à¸«à¸¡à¸”à¸ˆà¸£à¸´à¸‡ - à¸šà¸­à¸à¸”à¹‰à¸§à¸¢à¸§à¹ˆà¸²à¹„à¸Ÿà¸¥à¹Œà¸—à¸µà¹ˆà¸¢à¸±à¸‡à¹€à¸«à¸¥à¸·à¸­à¹ƒà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹„à¸›à¸à¸­à¸‡à¸­à¸¢à¸¹à¹ˆà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¹„à¸«à¸™
+        # คิวหมดจริง - บอกด้วยว่าไฟล์ที่ยังเหลือในเครื่องไปกองอยู่โฟลเดอร์ไหน
         script_dir = os.path.dirname(os.path.abspath(__file__))
         queue_set = set(self._queue_folders())
         elsewhere = []
@@ -3434,10 +3434,10 @@ class RangerGearBot(threading.Thread):
             n = self._count_xml(os.path.join(script_dir, name))
             if n:
                 elsewhere.append(f"{name}/={n}")
-        msg = f"[{self.device_id}] [QUEUE] à¸§à¹ˆà¸²à¸‡à¸‡à¸²à¸™: à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œ .xml à¹€à¸«à¸¥à¸·à¸­à¹ƒà¸™ {qnames}"
+        msg = f"[{self.device_id}] [QUEUE] ว่างงาน: ไม่มีไฟล์ .xml เหลือใน {qnames}"
         if elsewhere:
-            msg += (f" | à¹„à¸Ÿà¸¥à¹Œà¸—à¸µà¹ˆà¸¢à¸±à¸‡à¹€à¸«à¸¥à¸·à¸­à¹„à¸›à¸à¸­à¸‡à¸­à¸¢à¸¹à¹ˆà¸—à¸µà¹ˆ {', '.join(elsewhere)}"
-                    f" - à¸–à¹‰à¸²à¸­à¸¢à¸²à¸à¹ƒà¸«à¹‰à¸”à¸¶à¸‡à¸¡à¸²à¸—à¸³à¸”à¹‰à¸§à¸¢ à¹ƒà¸ªà¹ˆà¸Šà¸·à¹ˆà¸­à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¹ƒà¸™ config \"queue_folders\"")
+            msg += (f" | ไฟล์ที่ยังเหลือไปกองอยู่ที่ {', '.join(elsewhere)}"
+                    f" - ถ้าอยากให้ดึงมาทำด้วย ใส่ชื่อโฟลเดอร์ใน config \"queue_folders\"")
         print(msg)
 
 
@@ -3451,7 +3451,7 @@ class RangerGearBot(threading.Thread):
                     # but if we have a file, we should probably keep it and just restart the logic.
                     # For simplicity, we just continue which will pick up next or same file.
 
-                # 0. Reload Config (à¹€à¸‡à¸µà¸¢à¸š - à¸žà¸´à¸¡à¸žà¹Œà¹€à¸‰à¸žà¸²à¸°à¸•à¸­à¸™à¸„à¹ˆà¸²à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸ˆà¸£à¸´à¸‡)
+                # 0. Reload Config (เงียบ - พิมพ์เฉพาะตอนค่าเปลี่ยนจริง)
                 load_config(quiet=True)
                 self.do_ranger = config.get("find_ranger", 0) or config.get("find_all", 1)
                 self.do_gear = config.get("find_gear", 0) or config.get("find_all", 1)
@@ -3540,21 +3540,21 @@ class RangerGearBot(threading.Thread):
                     sleep(1)
 
     def _get_lock_path(self, xml_file):
-        """Get lock file path in temp directory (à¹„à¸¡à¹ˆà¸£à¸ backup folder)"""
+        """Get lock file path in temp directory (ไม่รก backup folder)"""
         lock_dir = os.path.join(tempfile.gettempdir(), "ranger-locks")
         if not os.path.exists(lock_dir):
             os.makedirs(lock_dir, exist_ok=True)
-        # à¹ƒà¸Šà¹‰ hash à¸‚à¸­à¸‡ full path à¸à¸±à¸™ lock à¸Šà¸™à¸à¸±à¸™à¸à¸£à¸“à¸µà¹„à¸Ÿà¸¥à¹Œà¸Šà¸·à¹ˆà¸­à¸‹à¹‰à¸³à¹ƒà¸™à¸„à¸™à¸¥à¸°à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸¢à¹ˆà¸­à¸¢
+        # ใช้ hash ของ full path กัน lock ชนกันกรณีไฟล์ชื่อซ้ำในคนละโฟลเดอร์ย่อย
         full = os.path.abspath(xml_file)
         lock_name = hashlib.md5(full.encode("utf-8")).hexdigest() + "_" + os.path.basename(xml_file) + ".lock"
         return os.path.join(lock_dir, lock_name)
 
-    # lock à¸—à¸µà¹ˆà¸„à¹‰à¸²à¸‡à¹€à¸à¸´à¸™à¹€à¸§à¸¥à¸²à¸™à¸µà¹‰à¸–à¸·à¸­à¸§à¹ˆà¸²à¹€à¸ˆà¹‰à¸²à¸‚à¸­à¸‡à¸•à¸²à¸¢à¹„à¸›à¹à¸¥à¹‰à¸§ (à¸à¸±à¸™à¹„à¸Ÿà¸¥à¹Œà¸„à¹‰à¸²à¸‡à¸–à¸²à¸§à¸£)
+    # lock ที่ค้างเกินเวลานี้ถือว่าเจ้าของตายไปแล้ว (กันไฟล์ค้างถาวร)
     _STALE_LOCK_SEC = 1800
 
     @staticmethod
     def _pid_alive(pid):
-        """à¹€à¸ˆà¹‰à¸²à¸‚à¸­à¸‡ lock à¸¢à¸±à¸‡à¸£à¸±à¸™à¸­à¸¢à¸¹à¹ˆà¹„à¸«à¸¡ - à¸–à¹‰à¸²à¸•à¸²à¸¢à¹à¸¥à¹‰à¸§à¸¢à¸¶à¸” lock à¸„à¸·à¸™à¹„à¸”à¹‰à¹€à¸¥à¸¢ à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸£à¸­à¸„à¸£à¸š 30 à¸™à¸²à¸—à¸µ"""
+        """เจ้าของ lock ยังรันอยู่ไหม - ถ้าตายแล้วยึด lock คืนได้เลย ไม่ต้องรอครบ 30 นาที"""
         if pid <= 0:
             return True
         try:
@@ -3569,16 +3569,16 @@ class RangerGearBot(threading.Thread):
                 ok = ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
                 ctypes.windll.kernel32.CloseHandle(h)
                 return (not ok) or code.value == STILL_ACTIVE
-            os.kill(pid, 0)   # POSIX à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™ - à¸šà¸™ Windows os.kill à¸†à¹ˆà¸²à¹‚à¸›à¸£à¹€à¸‹à¸ªà¸ˆà¸£à¸´à¸‡
+            os.kill(pid, 0)   # POSIX เท่านั้น - บน Windows os.kill ฆ่าโปรเซสจริง
             return True
         except OSError:
             return False
         except Exception:
-            return True   # à¹€à¸Šà¹‡à¸„à¹„à¸¡à¹ˆà¹„à¸”à¹‰ = à¸–à¸·à¸­à¸§à¹ˆà¸²à¸¢à¸±à¸‡à¸­à¸¢à¸¹à¹ˆ à¸›à¸¥à¹ˆà¸­à¸¢à¹ƒà¸«à¹‰à¸à¸Ž 30 à¸™à¸²à¸—à¸µà¸ˆà¸±à¸”à¸à¸²à¸£à¹à¸—à¸™
+            return True   # เช็คไม่ได้ = ถือว่ายังอยู่ ปล่อยให้กฎ 30 นาทีจัดการแทน
 
     @staticmethod
     def _lock_owner(lock_file):
-        """à¸„à¸·à¸™ (pid, device) à¸‚à¸­à¸‡à¹€à¸ˆà¹‰à¸²à¸‚à¸­à¸‡ lock - lock à¸£à¸¹à¸›à¹à¸šà¸šà¹€à¸à¹ˆà¸²à¹€à¸à¹‡à¸šà¹à¸„à¹ˆ device à¸ˆà¸°à¹„à¸”à¹‰ pid = 0"""
+        """คืน (pid, device) ของเจ้าของ lock - lock รูปแบบเก่าเก็บแค่ device จะได้ pid = 0"""
         try:
             with open(lock_file, "r", encoding="utf-8", errors="ignore") as f:
                 raw = f.read().strip()
@@ -3594,13 +3594,13 @@ class RangerGearBot(threading.Thread):
 
     @staticmethod
     def _prune_if_empty(folder, root_folder):
-        """à¸¥à¸šà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸¢à¹ˆà¸­à¸¢à¹ƒà¸™ backup/ à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¹€à¸«à¸¥à¸·à¸­à¸­à¸°à¹„à¸£à¹à¸¥à¹‰à¸§
+        """ลบโฟลเดอร์ย่อยใน backup/ ที่ไม่เหลืออะไรแล้ว
 
-        à¹ƒà¸Šà¹‰ os.rmdir à¹€à¸›à¹‡à¸™à¸•à¸±à¸§à¸•à¸±à¸”à¸ªà¸´à¸™à¹€à¸¥à¸¢ à¹€à¸žà¸£à¸²à¸°à¸¡à¸±à¸™à¸¥à¸šà¹„à¸”à¹‰à¹€à¸‰à¸žà¸²à¸°à¸•à¸­à¸™à¸—à¸µà¹ˆà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸§à¹ˆà¸²à¸‡à¸ˆà¸£à¸´à¸‡ à¹†
-        à¹à¸¥à¸°à¹€à¸›à¹‡à¸™ operation à¹€à¸”à¸µà¸¢à¸§à¸ˆà¸š - à¸–à¹‰à¸²à¸­à¸µà¸à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹€à¸žà¸´à¹ˆà¸‡à¸«à¸¢à¹ˆà¸­à¸™à¹„à¸Ÿà¸¥à¹Œà¹€à¸‚à¹‰à¸²à¸¡à¸²à¸žà¸­à¸”à¸µ rmdir
-        à¸ˆà¸° error à¹à¸¥à¹‰à¸§à¹€à¸£à¸²à¸‚à¹‰à¸²à¸¡à¹„à¸› à¹„à¸¡à¹ˆà¸¡à¸µà¸—à¸²à¸‡à¸¥à¸šà¹„à¸Ÿà¸¥à¹Œà¸‚à¸­à¸‡à¹ƒà¸„à¸£à¸«à¸²à¸¢
-        à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ backup/ à¸•à¸±à¸§à¹à¸¡à¹ˆà¹„à¸¡à¹ˆà¸¥à¸š à¹à¸¥à¸°à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸—à¸µà¹ˆà¸¢à¸±à¸‡à¸¡à¸µà¹„à¸Ÿà¸¥à¹Œà¸­à¸·à¹ˆà¸™à¸„à¹‰à¸²à¸‡ (à¹€à¸Šà¹ˆà¸™ .txt)
-        à¸à¹‡à¹„à¸¡à¹ˆà¸¥à¸š à¹€à¸žà¸·à¹ˆà¸­à¹„à¸¡à¹ˆà¹ƒà¸«à¹‰à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸„à¸£à¸«à¸²à¸¢à¹‚à¸”à¸¢à¹„à¸¡à¹ˆà¸•à¸±à¹‰à¸‡à¹ƒà¸ˆ
+        ใช้ os.rmdir เป็นตัวตัดสินเลย เพราะมันลบได้เฉพาะตอนที่โฟลเดอร์ว่างจริง ๆ
+        และเป็น operation เดียวจบ - ถ้าอีกเครื่องเพิ่งหย่อนไฟล์เข้ามาพอดี rmdir
+        จะ error แล้วเราข้ามไป ไม่มีทางลบไฟล์ของใครหาย
+        โฟลเดอร์ backup/ ตัวแม่ไม่ลบ และโฟลเดอร์ที่ยังมีไฟล์อื่นค้าง (เช่น .txt)
+        ก็ไม่ลบ เพื่อไม่ให้ข้อมูลใครหายโดยไม่ตั้งใจ
         """
         if os.path.abspath(folder) == os.path.abspath(root_folder):
             return False
@@ -3612,13 +3612,13 @@ class RangerGearBot(threading.Thread):
             rel = os.path.relpath(folder, root_folder)
         except ValueError:
             rel = folder
-        print(f"[QUEUE] à¹ƒà¸Šà¹‰à¹„à¸Ÿà¸¥à¹Œà¸«à¸¡à¸”à¹à¸¥à¹‰à¸§ à¸¥à¸šà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸§à¹ˆà¸²à¸‡: backup/{rel}")
+        print(f"[QUEUE] ใช้ไฟล์หมดแล้ว ลบโฟลเดอร์ว่าง: backup/{rel}")
         return True
 
     def _get_next_available_file(self):
-        """à¸«à¸²à¹„à¸Ÿà¸¥à¹Œ .xml à¸•à¸±à¸§à¸–à¸±à¸”à¹„à¸›à¸ˆà¸²à¸à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸„à¸´à¸§à¹à¸¥à¹‰à¸§à¸ˆà¸­à¸‡à¹à¸šà¸š atomic
+        """หาไฟล์ .xml ตัวถัดไปจากโฟลเดอร์คิวแล้วจองแบบ atomic
 
-        à¹„à¸¥à¹ˆà¸•à¸²à¸¡à¸¥à¸³à¸”à¸±à¸šà¹ƒà¸™ queue_folders à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¹à¸£à¸à¸—à¸µà¹ˆà¸ˆà¸­à¸‡à¹„à¸”à¹‰à¸à¹‡à¸„à¸·à¸™à¹€à¸¥à¸¢
+        ไล่ตามลำดับใน queue_folders โฟลเดอร์แรกที่จองได้ก็คืนเลย
         """
         script_dir = os.path.dirname(os.path.abspath(__file__))
         total = locked = 0
@@ -3628,23 +3628,23 @@ class RangerGearBot(threading.Thread):
             locked += n_locked
             if picked:
                 return picked
-        # à¹€à¸à¹‡à¸šà¸ªà¸–à¸´à¸•à¸´à¹„à¸§à¹‰à¹ƒà¸«à¹‰ _report_idle_queue() à¸šà¸­à¸à¹„à¸”à¹‰à¸§à¹ˆà¸²à¸§à¹ˆà¸²à¸‡à¸‡à¸²à¸™à¹€à¸žà¸£à¸²à¸°à¸­à¸°à¹„à¸£
+        # เก็บสถิติไว้ให้ _report_idle_queue() บอกได้ว่าว่างงานเพราะอะไร
         self._queue_stats = (total, locked)
         return None
 
     def _pick_file_from(self, source_folder):
-        """à¸«à¸²+à¸ˆà¸­à¸‡à¹„à¸Ÿà¸¥à¹Œ .xml à¸ˆà¸²à¸à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¹€à¸”à¸µà¸¢à¸§
+        """หา+จองไฟล์ .xml จากโฟลเดอร์เดียว
 
-        à¸„à¸·à¸™ (path à¸—à¸µà¹ˆà¸ˆà¸­à¸‡à¹„à¸”à¹‰ à¸«à¸£à¸·à¸­ None, à¸ˆà¸³à¸™à¸§à¸™à¹„à¸Ÿà¸¥à¹Œà¸—à¸µà¹ˆà¹€à¸ˆà¸­, à¸ˆà¸³à¸™à¸§à¸™à¸—à¸µà¹ˆà¸•à¸´à¸” lock)
-        à¹€à¸”à¸´à¸™à¹€à¸‚à¹‰à¸²à¸—à¸¸à¸à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸¢à¹ˆà¸­à¸¢ (à¸¥à¸²à¸à¸—à¸±à¹‰à¸‡à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸¡à¸²à¸§à¸²à¸‡à¹„à¸”à¹‰à¹€à¸¥à¸¢) à¹à¸¥à¸°à¹€à¸à¹‡à¸šà¸à¸§à¸²à¸”
-        à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸¢à¹ˆà¸­à¸¢à¸—à¸µà¹ˆà¹ƒà¸Šà¹‰à¹„à¸Ÿà¸¥à¹Œà¸«à¸¡à¸”à¹à¸¥à¹‰à¸§à¸—à¸´à¹‰à¸‡à¹„à¸›à¸”à¹‰à¸§à¸¢
+        คืน (path ที่จองได้ หรือ None, จำนวนไฟล์ที่เจอ, จำนวนที่ติด lock)
+        เดินเข้าทุกโฟลเดอร์ย่อย (ลากทั้งโฟลเดอร์มาวางได้เลย) และเก็บกวาด
+        โฟลเดอร์ย่อยที่ใช้ไฟล์หมดแล้วทิ้งไปด้วย
         """
         if not os.path.exists(source_folder):
             return None, 0, 0
 
         files = []
-        # topdown=False = à¹€à¸”à¸´à¸™à¸ˆà¸²à¸à¹ƒà¸™à¸ªà¸¸à¸”à¸­à¸­à¸à¸¡à¸² à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸‹à¹‰à¸­à¸™à¸«à¸¥à¸²à¸¢à¸Šà¸±à¹‰à¸™à¸—à¸µà¹ˆà¸§à¹ˆà¸²à¸‡à¸«à¸¡à¸”à¹à¸¥à¹‰à¸§
-        # à¸ˆà¸°à¸–à¸¹à¸à¸¥à¸šà¹„à¸¥à¹ˆà¸ˆà¸²à¸à¸Šà¸±à¹‰à¸™à¹ƒà¸™à¸­à¸­à¸à¸¡à¸²à¹„à¸”à¹‰à¸„à¸£à¸šà¹ƒà¸™à¸£à¸­à¸šà¹€à¸”à¸µà¸¢à¸§
+        # topdown=False = เดินจากในสุดออกมา โฟลเดอร์ซ้อนหลายชั้นที่ว่างหมดแล้ว
+        # จะถูกลบไล่จากชั้นในออกมาได้ครบในรอบเดียว
         for root, dirs, filenames in os.walk(source_folder, topdown=False):
             for f in filenames:
                 if f.lower().endswith(".xml"):
@@ -3658,19 +3658,19 @@ class RangerGearBot(threading.Thread):
         for xml_file in files:
             lock_file = self._get_lock_path(xml_file)
 
-            # 1. Clean stale locks: à¹€à¸ˆà¹‰à¸²à¸‚à¸­à¸‡à¸•à¸²à¸¢à¹„à¸›à¹à¸¥à¹‰à¸§ à¸«à¸£à¸·à¸­à¸„à¹‰à¸²à¸‡à¹€à¸à¸´à¸™ 30 à¸™à¸²à¸—à¸µ
-            #    getmtime à¸­à¸²à¸ˆ error à¸–à¹‰à¸² thread à¸­à¸·à¹ˆà¸™à¹€à¸žà¸´à¹ˆà¸‡à¸›à¸¥à¹ˆà¸­à¸¢ lock à¸žà¸­à¸”à¸µ - à¹€à¸”à¸´à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸”à¸±à¸
-            #    exception à¸•à¸±à¸§à¸™à¸µà¹‰à¹€à¸¥à¸¢à¸«à¸¥à¸¸à¸”à¸­à¸­à¸à¹„à¸›à¸†à¹ˆà¸² thread à¸—à¸±à¹‰à¸‡à¸•à¸±à¸§
+            # 1. Clean stale locks: เจ้าของตายไปแล้ว หรือค้างเกิน 30 นาที
+            #    getmtime อาจ error ถ้า thread อื่นเพิ่งปล่อย lock พอดี - เดิมไม่ได้ดัก
+            #    exception ตัวนี้เลยหลุดออกไปฆ่า thread ทั้งตัว
             if os.path.exists(lock_file):
                 try:
                     age = time.time() - os.path.getmtime(lock_file)
                 except OSError:
-                    age = None   # à¸«à¸²à¸¢à¹„à¸›à¹à¸¥à¹‰à¸§à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡à¹€à¸Šà¹‡à¸„ - à¸¥à¸­à¸‡à¸¢à¸¶à¸”à¸•à¹ˆà¸­à¹„à¸”à¹‰à¹€à¸¥à¸¢
+                    age = None   # หายไปแล้วระหว่างเช็ค - ลองยึดต่อได้เลย
                 owner_pid, owner_dev = self._lock_owner(lock_file)
                 dead_owner = owner_pid > 0 and not self._pid_alive(owner_pid)
                 if age is None or dead_owner or age > self._STALE_LOCK_SEC:
                     if dead_owner:
-                        print(f"[{self.device_id}] [LOCK] à¹€à¸ˆà¹‰à¸²à¸‚à¸­à¸‡ lock (pid {owner_pid} / {owner_dev}) à¹„à¸¡à¹ˆà¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§ - à¸¢à¸¶à¸”à¸„à¸·à¸™: {os.path.basename(xml_file)}")
+                        print(f"[{self.device_id}] [LOCK] เจ้าของ lock (pid {owner_pid} / {owner_dev}) ไม่อยู่แล้ว - ยึดคืน: {os.path.basename(xml_file)}")
                     try: os.remove(lock_file)
                     except OSError: pass
                 else:
@@ -3682,9 +3682,9 @@ class RangerGearBot(threading.Thread):
                 fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 with os.fdopen(fd, 'w') as f:
                     f.write(f"{os.getpid()}|{self.device_id}")
-                # à¹„à¸Ÿà¸¥à¹Œà¸­à¸²à¸ˆà¸–à¸¹à¸à¸­à¸µà¸à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸«à¸¢à¸´à¸šà¹„à¸›à¸¢à¹‰à¸²à¸¢à¹€à¸£à¸µà¸¢à¸šà¸£à¹‰à¸­à¸¢à¹à¸¥à¹‰à¸§à¸•à¸±à¹‰à¸‡à¹à¸•à¹ˆà¸•à¸­à¸™à¸—à¸µà¹ˆà¹€à¸£à¸²à¹„à¸¥à¹ˆ list
-                # à¸–à¹‰à¸²à¸«à¸²à¸¢à¹„à¸›à¹à¸¥à¹‰à¸§à¸à¹‡à¸„à¸·à¸™ lock à¹à¸¥à¹‰à¸§à¹„à¸›à¸•à¸±à¸§à¸–à¸±à¸”à¹„à¸› à¸”à¸µà¸à¸§à¹ˆà¸²à¹€à¸­à¸² path à¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸¡à¸µà¸­à¸¢à¸¹à¹ˆà¸ˆà¸£à¸´à¸‡
-                # à¹„à¸›à¹ƒà¸«à¹‰ inject_file à¹à¸¥à¹‰à¸§à¹„à¸›à¹€à¸”à¹‰à¸‡ error à¸—à¸µà¸«à¸¥à¸±à¸‡
+                # ไฟล์อาจถูกอีกเครื่องหยิบไปย้ายเรียบร้อยแล้วตั้งแต่ตอนที่เราไล่ list
+                # ถ้าหายไปแล้วก็คืน lock แล้วไปตัวถัดไป ดีกว่าเอา path ที่ไม่มีอยู่จริง
+                # ไปให้ inject_file แล้วไปเด้ง error ทีหลัง
                 if not os.path.exists(xml_file):
                     try: os.remove(lock_file)
                     except OSError: pass
@@ -3782,8 +3782,8 @@ class RangerGearBot(threading.Thread):
             if not self.current_original_filename:
                 return False
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            queue_dir = queue_folder_paths()[0]   # à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸„à¸´à¸§à¸•à¸±à¸§à¹à¸£à¸à¸•à¸²à¸¡ config (input-id)
-            print(f"[{self.device_id}] à¸¢à¹‰à¸²à¸¢à¹„à¸Ÿà¸¥à¹Œ {self.current_original_filename} à¸à¸¥à¸±à¸šà¹€à¸‚à¹‰à¸²à¸„à¸´à¸§ ({os.path.basename(queue_dir)}/) à¹€à¸žà¸·à¹ˆà¸­à¸§à¸™à¹€à¸‚à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆ...")
+            queue_dir = queue_folder_paths()[0]   # โฟลเดอร์คิวตัวแรกตาม config (input-id)
+            print(f"[{self.device_id}] ย้ายไฟล์ {self.current_original_filename} กลับเข้าคิว ({os.path.basename(queue_dir)}/) เพื่อวนเข้าใหม่...")
             os.makedirs(queue_dir, exist_ok=True)
             source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
             dest_path = os.path.join(queue_dir, self.current_original_filename)
@@ -3792,7 +3792,7 @@ class RangerGearBot(threading.Thread):
             subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", source_path, dest_path], 
                            capture_output=True, timeout=15)
             if os.path.exists(dest_path):
-                print(f"[{self.device_id}] à¸¢à¹‰à¸²à¸¢à¹„à¸Ÿà¸¥à¹Œà¸à¸¥à¸±à¸šà¹€à¸‚à¹‰à¸²à¸„à¸´à¸§à¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {dest_path}")
+                print(f"[{self.device_id}] ย้ายไฟล์กลับเข้าคิวสำเร็จ: {dest_path}")
                 return True
             return False
         except Exception as e:
@@ -3801,7 +3801,7 @@ class RangerGearBot(threading.Thread):
 
     def backup_failed_login(self):
         try:
-            print(f"[{self.device_id}] à¸¥à¹‡à¸­à¸à¸­à¸´à¸™à¸¥à¹‰à¸¡à¹€à¸«à¸¥à¸§/à¸•à¸´à¸” apple - à¸à¸³à¸¥à¸±à¸‡à¸ªà¸³à¸£à¸­à¸‡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹„à¸›à¸¢à¸±à¸‡ login-failed...")
+            print(f"[{self.device_id}] ล็อกอินล้มเหลว/ติด apple - กำลังสำรองข้อมูลไปยัง login-failed...")
             filename_prefix = config.get('filename_prefix', 'conyfly')
             backup_dir = "login-failed"
             if not os.path.exists(backup_dir):
@@ -3815,7 +3815,7 @@ class RangerGearBot(threading.Thread):
             subprocess.run([self.adb_cmd, "-s", self.device_id, "pull", source_path, dest_path], 
                            capture_output=True, timeout=15)
             if os.path.exists(dest_path):
-                print(f"[{self.device_id}] à¸¢à¹‰à¸²à¸¢à¹„à¸Ÿà¸¥à¹Œà¹„à¸› login-failed à¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {dest_path}")
+                print(f"[{self.device_id}] ย้ายไฟล์ไป login-failed สำเร็จ: {dest_path}")
                 return True
             return False
         except Exception as e:
@@ -3844,7 +3844,7 @@ class RangerGearBot(threading.Thread):
         try:
             if os.path.exists(file_path):
                 shutil.move(file_path, dst)
-                print(f"[{self.device_id}] âœ“ Moved to {dst_dir}: {base}")
+                print(f"[{self.device_id}] ✓ Moved to {dst_dir}: {base}")
         except Exception as e:
             print(f"[{self.device_id}] Kaiby move error: {e}")
 
@@ -3932,10 +3932,11 @@ class RangerGearBot(threading.Thread):
             if os.name == 'nt':
                 kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
 
-            # à¹„à¸¡à¹ˆà¸¡à¸µ -p = à¹„à¸¡à¹ˆ encode PNG à¸šà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ Android à¹à¸¥à¸°à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡ decode à¸à¸±à¹ˆà¸‡à¸™à¸µà¹‰
+            # ไม่มี -p = ไม่ encode PNG บนเครื่อง Android และไม่ต้อง decode ฝั่งนี้
+            # timeout 10 -> 20 วิ (หลายจอแย่ง adb บน host บางรอบใช้ 12-15 วิ)
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap"] + (["-p"] if int(config.get("screencap_png", 1) or 0) else []),
-                capture_output=True, timeout=10, **kwargs
+                capture_output=True, timeout=20, **kwargs
             )
 
             if result.returncode == 0 and len(result.stdout) > 100:
@@ -3955,18 +3956,18 @@ class RangerGearBot(threading.Thread):
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
 
             # New frame -> any popup-free verdict from the previous frame is stale.
-            self._normalize_frame()   # à¹ƒà¸«à¹‰à¹€à¸Ÿà¸£à¸¡à¹€à¸›à¹‡à¸™ 960x540 à¹€à¸ªà¸¡à¸­ (template à¸—à¸¸à¸à¸£à¸¹à¸›à¸•à¸±à¸”à¸ˆà¸²à¸à¸‚à¸™à¸²à¸”à¸™à¸µà¹‰)
+            self._normalize_frame()   # ให้เฟรมเป็น 960x540 เสมอ (template ทุกรูปตัดจากขนาดนี้)
             self._screen_gen += 1
             self._cap_fail = 0
-            # === fixnet1/fixnet/fixplay (NET_POPUPS): à¹€à¸Šà¹‡à¸„à¸à¹ˆà¸­à¸™à¸—à¸¸à¸à¸­à¸¢à¹ˆà¸²à¸‡ à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸ˆà¸±à¸šà¸ˆà¸­ (à¹à¸šà¸š bot-tiket) ===
-            # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¸šà¸±à¸‡à¸—à¸¸à¸à¸­à¸¢à¹ˆà¸²à¸‡ à¸ˆà¸¶à¸‡à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¸•à¸£à¸‡à¸™à¸µà¹‰à¸à¹ˆà¸­à¸™à¸„à¸·à¸™à¸ à¸²à¸žà¹ƒà¸«à¹‰à¹ƒà¸„à¸£à¹ƒà¸Šà¹‰ - à¸„à¸£à¸­à¸šà¸„à¸¥à¸¸à¸¡
-            # à¸—à¸¸à¸à¸¥à¸¹à¸›/à¸—à¸¸à¸à¸Ÿà¸±à¸‡à¸à¹Œà¸Šà¸±à¸™à¹ƒà¸™à¹„à¸Ÿà¸¥à¹Œà¸­à¸±à¸•à¹‚à¸™à¸¡à¸±à¸•à¸´ à¹€à¸ˆà¸­à¸à¹‡à¸à¸” à¸£à¸­à¹ƒà¸«à¹‰à¸«à¸²à¸¢ à¹à¸¥à¹‰à¸§à¸ˆà¸±à¸šà¹ƒà¸«à¸¡à¹ˆà¹ƒà¸«à¹‰à¸œà¸¹à¹‰à¹€à¸£à¸µà¸¢à¸
+            # === fixnet1/fixnet/fixplay (NET_POPUPS): เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
+            # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
+            # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
             if not getattr(self, "_in_net_check", False):
                 self._in_net_check = True
                 try:
                     _hit = self._dismiss_net_popup(self._screen)
                     if _hit:
-                        self._clear_net_popup_loop(_hit)   # à¸à¸”à¸‹à¹‰à¸³à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¸ˆà¸°à¸«à¸²à¸¢ à¹à¸¥à¹‰à¸§à¸„à¹ˆà¸­à¸¢à¸„à¸·à¸™à¸ à¸²à¸žà¹ƒà¸«à¹‰à¸œà¸¹à¹‰à¹€à¸£à¸µà¸¢à¸
+                        self._clear_net_popup_loop(_hit)   # กดซ้ำจนกว่าป๊อปอัพจะหาย แล้วค่อยคืนภาพให้ผู้เรียก
                 finally:
                     self._in_net_check = False
 
@@ -3985,15 +3986,15 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Capture error: {e}")
             if "timed out" in str(e):
                 self._adb_slow_until = time.time() + float(config.get("adb_backoff_sec", 60))
-            # à¸™à¸±à¸š screencap à¸—à¸µà¹ˆà¸¥à¹‰à¸¡à¸•à¸´à¸”à¸à¸±à¸™ - à¸¥à¹‰à¸¡à¹à¸¥à¹‰à¸§ _screen à¸¢à¸±à¸‡à¹€à¸›à¹‡à¸™à¸ à¸²à¸žà¹€à¸à¹ˆà¸² à¸šà¸­à¸—à¸ˆà¸° 'à¸¡à¸­à¸‡à¹„à¸¡à¹ˆà¹€à¸«à¹‡à¸™' à¸›à¹Šà¸­à¸›à¸­à¸±à¸ž/à¸›à¸¸à¹ˆà¸¡à¹ƒà¸” à¹†
-            # (à¹€à¸„à¸ªà¸ˆà¸£à¸´à¸‡: 20 à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹à¸¢à¹ˆà¸‡ adb à¸à¸±à¸™ screencap à¸„à¹‰à¸²à¸‡à¹€à¸à¸´à¸™ 10 à¸§à¸´) à¸šà¸­à¸à¹ƒà¸«à¹‰à¸Šà¸±à¸”à¹à¸¥à¸°à¸¥à¸­à¸‡ reconnect à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸™à¸±à¹‰à¸™
+            # นับ screencap ที่ล้มติดกัน - ล้มแล้ว _screen ยังเป็นภาพเก่า บอทจะ 'มองไม่เห็น' ป๊อปอัพ/ปุ่มใด ๆ
+            # (เคสจริง: 20 เครื่องแย่ง adb กัน screencap ค้างเกิน 10 วิ) บอกให้ชัดและลอง reconnect เครื่องนั้น
             self._cap_fail = getattr(self, "_cap_fail", 0) + 1
             if self._cap_fail in (3, 10) or self._cap_fail % 30 == 0:
-                print(f"[{self.device_id}] [CAPTURE] screencap à¸¥à¹‰à¸¡à¹€à¸«à¸¥à¸§à¸•à¸´à¸”à¸à¸±à¸™ {self._cap_fail} à¸„à¸£à¸±à¹‰à¸‡ - à¸šà¸­à¸—à¹€à¸«à¹‡à¸™à¹à¸•à¹ˆà¸ à¸²à¸žà¹€à¸à¹ˆà¸² à¸ˆà¸°à¸«à¸²à¸­à¸°à¹„à¸£à¹„à¸¡à¹ˆà¹€à¸ˆà¸­à¸—à¸±à¹‰à¸‡à¸™à¸±à¹‰à¸™ (adb à¸«à¸£à¸·à¸­à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸„à¹‰à¸²à¸‡)")
+                print(f"[{self.device_id}] [CAPTURE] screencap ล้มเหลวติดกัน {self._cap_fail} ครั้ง - บอทเห็นแต่ภาพเก่า จะหาอะไรไม่เจอทั้งนั้น (adb หรือเครื่องค้าง)")
             if self._cap_fail % 5 == 0:
                 try:
                     self.adb_run([self.adb_cmd, "-s", self.device_id, "reconnect"], timeout=10)
-                    print(f"[{self.device_id}] [CAPTURE] à¸ªà¸±à¹ˆà¸‡ adb reconnect {self.device_id} à¹à¸¥à¹‰à¸§")
+                    print(f"[{self.device_id}] [CAPTURE] สั่ง adb reconnect {self.device_id} แล้ว")
                 except Exception:
                     pass
             if hasattr(self, "_in_popup_check"):
@@ -4167,12 +4168,12 @@ class RangerGearBot(threading.Thread):
     def check_floating_popups(self):
         """
         Check and click floating popups (checkline / fixnetv2 / fixplay / fixnet1).
-        à¹€à¸ˆà¸­à¸à¹‡à¸à¸” à¸§à¸™à¹€à¸Šà¹‡à¸„à¸‹à¹‰à¸³à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ popup à¹ƒà¸”à¹†
-        à¸—à¸³à¸‡à¸²à¸™à¸—à¸¸à¸à¸£à¸­à¸š capture_screen() à¸„à¸¥à¸¸à¸¡à¸—à¸±à¹‰à¸‡à¹„à¸Ÿà¸¥à¹Œ
+        เจอก็กด วนเช็คซ้ำจนกว่าจะไม่เจอ popup ใดๆ
+        ทำงานทุกรอบ capture_screen() คลุมทั้งไฟล์
 
-        à¹€à¸Šà¹‡à¸„à¸‹à¹‰à¸³à¸šà¸™à¸ à¸²à¸žà¹€à¸”à¸´à¸¡à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸­à¸°à¹„à¸£à¹€à¸žà¸´à¹ˆà¸¡ (matchTemplate à¹ƒà¸«à¹‰à¸œà¸¥à¹€à¸”à¸´à¸¡à¹€à¸›à¹Šà¸°) â€” à¸›à¸à¸•à¸´à¸£à¸­à¸šà¸™à¸¶à¸‡
-        à¹‚à¸”à¸™à¹€à¸£à¸µà¸¢à¸ 2 à¸„à¸£à¸±à¹‰à¸‡ (à¹ƒà¸™à¸¥à¸¹à¸› 1 + à¹ƒà¸™ check_error_images à¸­à¸µà¸ 1) = à¸ªà¹à¸à¸™à¸—à¸´à¹‰à¸‡à¸Ÿà¸£à¸µ
-        à¹€à¸¥à¸¢à¸ˆà¸³à¹„à¸§à¹‰à¸§à¹ˆà¸²à¹€à¸Ÿà¸£à¸¡à¹„à¸«à¸™à¹€à¸Šà¹‡à¸„à¸ˆà¸™à¸ˆà¸šà¹à¸¥à¹‰à¸§à¹„à¸¡à¹ˆà¹€à¸ˆà¸­à¸­à¸°à¹„à¸£ à¹à¸¥à¹‰à¸§à¸‚à¹‰à¸²à¸¡à¸£à¸­à¸šà¸‹à¹‰à¸³à¸‚à¸­à¸‡à¹€à¸Ÿà¸£à¸¡à¸™à¸±à¹‰à¸™
+        เช็คซ้ำบนภาพเดิมไม่ได้อะไรเพิ่ม (matchTemplate ให้ผลเดิมเป๊ะ) — ปกติรอบนึง
+        โดนเรียก 2 ครั้ง (ในลูป 1 + ใน check_error_images อีก 1) = สแกนทิ้งฟรี
+        เลยจำไว้ว่าเฟรมไหนเช็คจนจบแล้วไม่เจออะไร แล้วข้ามรอบซ้ำของเฟรมนั้น
         """
         gen_at_entry = self._screen_gen
         if self._popups_clean_gen == gen_at_entry:
@@ -4193,6 +4194,7 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
             self.click("img/checkline.png", similarity=0.8)
             sleep(0.5)
+
             # 1. Wait for @check-l1.png
             start_l1 = time.time()
             while time.time() - start_l1 < 60:
@@ -4201,9 +4203,12 @@ class RangerGearBot(threading.Thread):
                     print(f"[{self.device_id}] [POPUP] Found check-l1.png")
                     break
                 sleep(0.3)
+
             else:
                 _sc = self._match_score("img/check-l1.png")
-                print(f"[{self.device_id}] [CHECKLINE] check-l1.png timeout (score {_sc:.2f})")
+                _shot = self._save_debug_screen("checkline-miss")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.85)"
+                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             # 2. Coordinates
             print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
             self.tap(932, 133)
@@ -4212,6 +4217,7 @@ class RangerGearBot(threading.Thread):
             sleep(0.2)
             self.tap(926, 327)
             sleep(0.3)
+
             # 3. Wait for check-l4.png
             start_l4 = time.time()
             while time.time() - start_l4 < 60:
@@ -4221,9 +4227,12 @@ class RangerGearBot(threading.Thread):
                     self.click("img/check-l4.png", similarity=0.8)
                     break
                 sleep(0.3)
+
             else:
                 _sc = self._match_score("img/check-l4.png")
-                print(f"[{self.device_id}] [CHECKLINE] check-l4.png timeout (score {_sc:.2f})")
+                _shot = self._save_debug_screen("checkline-miss")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-l4.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             # 4. Click check-ok1.png
             print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
             for _ in range(60):
@@ -4236,9 +4245,12 @@ class RangerGearBot(threading.Thread):
                 sleep(0.3)
             else:
                 _sc = self._match_score("img/check-ok1.png")
-                print(f"[{self.device_id}] [CHECKLINE] check-ok1.png timeout (score {_sc:.2f})")
+                _shot = self._save_debug_screen("checkline-miss")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-ok1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             return
-        # fixnetv2.png: à¹€à¸ˆà¸­à¸à¹‡à¸à¸” à¹à¸¥à¹‰à¸§à¸£à¸­à¸à¸” fixnetv2ok.png
+
+        # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
         if self.exists_in_cache("img/fixnetv2.png", similarity=0.8):
             print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
             self.click("img/fixnetv2.png", similarity=0.8)
@@ -4249,9 +4261,9 @@ class RangerGearBot(threading.Thread):
                 sleep(0.3)
             return
 
-        # fixplay.png (PLAY): à¹€à¸Šà¹‡à¸„à¸•à¸¥à¸­à¸”à¹€à¸«à¸¡à¸·à¸­à¸™ fixnet - à¸­à¸¢à¸¹à¹ˆà¹ƒà¸™ NET_POPUPS à¹à¸¥à¹‰à¸§ (à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸ˆà¸±à¸šà¸ˆà¸­ + monitor
-        # à¹€à¸šà¸·à¹‰à¸­à¸‡à¸«à¸¥à¸±à¸‡ à¸à¸”à¸œà¹ˆà¸²à¸™ adb à¸‹à¹‰à¸³à¸ˆà¸™à¸«à¸²à¸¢ à¹à¸¥à¹‰à¸§à¸£à¸­à¸à¸” check-ok1.png à¸•à¹ˆà¸­ à¸•à¸²à¸¡ NET_FOLLOWUP)
-        # à¸•à¸£à¸‡à¸™à¸µà¹‰à¹€à¸œà¸·à¹ˆà¸­à¸«à¸¥à¸¸à¸”à¸¡à¸²à¸–à¸¶à¸‡ (à¸•à¸´à¸” cooldown / à¹€à¸Šà¹‡à¸„à¸‹à¹‰à¸­à¸™): à¸ªà¹ˆà¸‡à¹€à¸‚à¹‰à¸²à¸—à¸²à¸‡à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™ à¹„à¸¡à¹ˆà¸à¸”/à¸£à¸­ OK à¸‹à¹‰à¸³à¸ªà¸­à¸‡à¸Šà¸±à¹‰à¸™
+        # fixplay.png (PLAY): เช็คตลอดเหมือน fixnet - อยู่ใน NET_POPUPS แล้ว (ทุกครั้งที่จับจอ + monitor
+        # เบื้องหลัง กดผ่าน adb ซ้ำจนหาย แล้วรอกด check-ok1.png ต่อ ตาม NET_FOLLOWUP)
+        # ตรงนี้เผื่อหลุดมาถึง (ติด cooldown / เช็คซ้อน): ส่งเข้าทางเดียวกัน ไม่กด/รอ OK ซ้ำสองชั้น
         if self.exists_in_cache("img/fixplay.png", similarity=0.8) and not getattr(self, "_in_net_check", False):
             print(f"[{self.device_id}] [POPUP] fixplay.png detected, clearing via net-popup path...")
             self._in_net_check = True
@@ -4263,7 +4275,7 @@ class RangerGearBot(threading.Thread):
             finally:
                 self._in_net_check = False
 
-        # fixnet.png: à¹€à¸Šà¹‡à¸„à¸•à¸¥à¸­à¸”à¹€à¸ˆà¸­à¸à¹‡à¸à¸”à¸£à¸±à¸§à¹† à¹„à¸¡à¹ˆà¸¡à¸µà¸«à¸¢à¸¸à¸”à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¸«à¸²à¸¢à¹„à¸›
+        # fixnet.png: เช็คตลอดเจอก็กดรัวๆ ไม่มีหยุดจนกว่าจะหายไป
         fixnet_clicks = 0
         while self.exists_in_cache("img/fixnet.png", similarity=0.8):
             fixnet_clicks += 1
@@ -4275,19 +4287,19 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [POPUP] fixnet.png clicked 10 times, breaking to avoid infinite loop")
                 break
 
-        # fixnet1.png: à¸§à¸™à¹€à¸Šà¹‡à¸„à¸‹à¹‰à¸³à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ (re-capture à¸—à¸¸à¸à¸£à¸­à¸š) - à¸›à¸£à¸±à¸š similarity à¹€à¸›à¹‡à¸™ 0.8 à¹€à¸žà¸·à¹ˆà¸­à¸„à¸§à¸²à¸¡à¸Šà¸±à¸§à¸£à¹Œ
+        # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (re-capture ทุกรอบ) - ปรับ similarity เป็น 0.8 เพื่อความชัวร์
         fixnet1_clicks = 0
         while self.exists_in_cache("img/fixnet1.png", similarity=0.8):
             fixnet1_clicks += 1
             print(f"[{self.device_id}] [POPUP] fixnet1.png detected (click #{fixnet1_clicks}), clicking...")
             self.click("img/fixnet1.png", similarity=0.8)
             sleep(0.5)
-            self._raw_capture()  # à¸ˆà¸±à¸šà¸ à¸²à¸žà¹ƒà¸«à¸¡à¹ˆà¹€à¸žà¸·à¹ˆà¸­à¹€à¸Šà¹‡à¸„à¸‹à¹‰à¸³ (à¹„à¸¡à¹ˆà¸§à¸™à¸à¸¥à¸±à¸š popup check)
+            self._raw_capture()  # จับภาพใหม่เพื่อเช็คซ้ำ (ไม่วนกลับ popup check)
             if fixnet1_clicks >= 10:
                 print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times, breaking to avoid infinite loop")
                 break
 
-        # fixface.bmp: à¸ˆà¸­à¸ªà¹à¸à¸™à¸«à¸™à¹‰à¸²/à¸¢à¸·à¸™à¸¢à¸±à¸™à¸•à¸±à¸§à¸•à¸™ - à¸à¸” BACK 1 à¸„à¸£à¸±à¹‰à¸‡à¸–à¸­à¸¢à¸­à¸­à¸ (à¸«à¹‰à¸²à¸¡à¸à¸”à¸šà¸™à¸ˆà¸­)
+        # fixface.bmp: จอสแกนหน้า/ยืนยันตัวตน - กด BACK 1 ครั้งถอยออก (ห้ามกดบนจอ)
         if self.exists_in_cache("img/fixface.bmp", similarity=0.8):
             print(f"[{self.device_id}] [POPUP] fixface.bmp detected, pressing BACK once...")
             self.adb_shell("input keyevent 4")
@@ -4303,7 +4315,7 @@ class RangerGearBot(threading.Thread):
         if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
             self._fixnetv3_count += 1
             print(f"[{self.device_id}] [POPUP] fixnetv3.png detected (#{self._fixnetv3_count})! Tapping (472, 361)...")
-            self._adb_tap(472, 361)   # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•: à¸à¸”à¸œà¹ˆà¸²à¸™ adb à¸•à¸£à¸‡ à¹† à¹€à¸«à¸¡à¸·à¸­à¸™ bot-tiket
+            self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
             sleep(0.5)
             
             if self._fixnetv3_count >= 8:
@@ -4323,7 +4335,7 @@ class RangerGearBot(threading.Thread):
             self._popups_clean_gen = gen_at_entry
 
     def _raw_capture(self):
-        """Capture screen WITHOUT triggering popup checks (à¸›à¹‰à¸­à¸‡à¸à¸±à¸™à¸§à¸™à¸‹à¹‰à¸­à¸™)"""
+        """Capture screen WITHOUT triggering popup checks (ป้องกันวนซ้อน)"""
         try:
             kwargs = {}
             if os.name == 'nt':
@@ -4346,17 +4358,17 @@ class RangerGearBot(threading.Thread):
                 self._screen_raw_png = None
                 self._screen_rgba = None
                 self._screen_color = cv2.imread(self.filename, cv2.IMREAD_COLOR)
-            self._normalize_frame()   # à¹ƒà¸«à¹‰à¹€à¸Ÿà¸£à¸¡à¹€à¸›à¹‡à¸™ 960x540 à¹€à¸ªà¸¡à¸­ (template à¸—à¸¸à¸à¸£à¸¹à¸›à¸•à¸±à¸”à¸ˆà¸²à¸à¸‚à¸™à¸²à¸”à¸™à¸µà¹‰)
+            self._normalize_frame()   # ให้เฟรมเป็น 960x540 เสมอ (template ทุกรูปตัดจากขนาดนี้)
             self._screen_gen += 1
-            # === fixnet1/fixnet/fixplay (NET_POPUPS): à¹€à¸Šà¹‡à¸„à¸à¹ˆà¸­à¸™à¸—à¸¸à¸à¸­à¸¢à¹ˆà¸²à¸‡ à¸—à¸¸à¸à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸ˆà¸±à¸šà¸ˆà¸­ (à¹à¸šà¸š bot-tiket) ===
-            # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¸šà¸±à¸‡à¸—à¸¸à¸à¸­à¸¢à¹ˆà¸²à¸‡ à¸ˆà¸¶à¸‡à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¸•à¸£à¸‡à¸™à¸µà¹‰à¸à¹ˆà¸­à¸™à¸„à¸·à¸™à¸ à¸²à¸žà¹ƒà¸«à¹‰à¹ƒà¸„à¸£à¹ƒà¸Šà¹‰ - à¸„à¸£à¸­à¸šà¸„à¸¥à¸¸à¸¡
-            # à¸—à¸¸à¸à¸¥à¸¹à¸›/à¸—à¸¸à¸à¸Ÿà¸±à¸‡à¸à¹Œà¸Šà¸±à¸™à¹ƒà¸™à¹„à¸Ÿà¸¥à¹Œà¸­à¸±à¸•à¹‚à¸™à¸¡à¸±à¸•à¸´ à¹€à¸ˆà¸­à¸à¹‡à¸à¸” à¸£à¸­à¹ƒà¸«à¹‰à¸«à¸²à¸¢ à¹à¸¥à¹‰à¸§à¸ˆà¸±à¸šà¹ƒà¸«à¸¡à¹ˆà¹ƒà¸«à¹‰à¸œà¸¹à¹‰à¹€à¸£à¸µà¸¢à¸
+            # === fixnet1/fixnet/fixplay (NET_POPUPS): เช็คก่อนทุกอย่าง ทุกครั้งที่จับจอ (แบบ bot-tiket) ===
+            # ป๊อปอัพเน็ตหลุดบังทุกอย่าง จึงเคลียร์ตรงนี้ก่อนคืนภาพให้ใครใช้ - ครอบคลุม
+            # ทุกลูป/ทุกฟังก์ชันในไฟล์อัตโนมัติ เจอก็กด รอให้หาย แล้วจับใหม่ให้ผู้เรียก
             if not getattr(self, "_in_net_check", False):
                 self._in_net_check = True
                 try:
                     _hit = self._dismiss_net_popup(self._screen)
                     if _hit:
-                        self._clear_net_popup_loop(_hit)   # à¸à¸”à¸‹à¹‰à¸³à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¸ˆà¸°à¸«à¸²à¸¢ à¹à¸¥à¹‰à¸§à¸„à¹ˆà¸­à¸¢à¸„à¸·à¸™à¸ à¸²à¸žà¹ƒà¸«à¹‰à¸œà¸¹à¹‰à¹€à¸£à¸µà¸¢à¸
+                        self._clear_net_popup_loop(_hit)   # กดซ้ำจนกว่าป๊อปอัพจะหาย แล้วค่อยคืนภาพให้ผู้เรียก
                 finally:
                     self._in_net_check = False
         except Exception as e:
@@ -4392,7 +4404,7 @@ class RangerGearBot(threading.Thread):
     def check_error_images(self, skip_fixcak=False, skip_icon=False):
         """Check error images using cached screen"""
 
-        # ===== FLOATING POPUP CHECKS (à¸à¸”à¹à¸¥à¹‰à¸§à¸—à¸³à¸‡à¸²à¸™à¸•à¹ˆà¸­ à¹„à¸¡à¹ˆ return error) =====
+        # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ ไม่ return error) =====
         self.check_floating_popups()
 
         # Same throttle as the popup pass. check_critical_errors() below is the most
@@ -4411,7 +4423,7 @@ class RangerGearBot(threading.Thread):
             return None
         self._last_error_scan = now
 
-        # ===== CRITICAL ERROR CHECKS (à¸¢à¹‰à¸²à¸¢à¹„à¸Ÿà¸¥à¹Œà¸à¸¥à¸±à¸š/à¸ªà¸³à¸£à¸­à¸‡à¸¥à¹‰à¸§ restart) =====
+        # ===== CRITICAL ERROR CHECKS (ย้ายไฟล์กลับ/สำรองล้ว restart) =====
         critical = check_critical_errors(self, self.get_screen_color(), "check_error_images")
         if critical: return critical
         
@@ -4426,8 +4438,8 @@ class RangerGearBot(threading.Thread):
                 return "fixcak"
         
         # stopcheck.png: complete/stop process if found.
-        # à¹€à¸”à¸´à¸¡à¸§à¸™ [0.95, 0.9, 0.85, 0.8] = matchTemplate à¸ à¸²à¸žà¹€à¸”à¸´à¸¡ 4 à¸£à¸­à¸š à¹„à¸”à¹‰à¸œà¸¥à¹€à¸—à¹ˆà¸²à¸à¸±à¸™à¸—à¸¸à¸à¸£à¸­à¸š
-        # à¸•à¹ˆà¸²à¸‡à¹à¸„à¹ˆà¸„à¹ˆà¸²à¸—à¸µà¹ˆà¹€à¸­à¸²à¹„à¸›à¹€à¸—à¸µà¸¢à¸š à¸‹à¸¶à¹ˆà¸‡à¹€à¸—à¸µà¸¢à¸šà¹€à¸—à¹ˆà¸²à¸à¸±à¸šà¹€à¸Šà¹‡à¸„à¸—à¸µà¹ˆà¸„à¹ˆà¸²à¸«à¸¥à¸§à¸¡à¸ªà¸¸à¸”à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§à¹€à¸›à¹Šà¸° à¹†
+        # เดิมวน [0.95, 0.9, 0.85, 0.8] = matchTemplate ภาพเดิม 4 รอบ ได้ผลเท่ากันทุกรอบ
+        # ต่างแค่ค่าที่เอาไปเทียบ ซึ่งเทียบเท่ากับเช็คที่ค่าหลวมสุดครั้งเดียวเป๊ะ ๆ
         if self.exists_in_cache("img/stopcheck.png", similarity=0.8):
             return "stopcheck"
 
@@ -4481,7 +4493,7 @@ class RangerGearBot(threading.Thread):
             h, w = img.shape[:2]
             
             # --- Padding Selection ---
-            # RUBY/TICKET à¹ƒà¸Šà¹‰ pad à¸™à¹‰à¸­à¸¢ à¸à¸±à¸™à¸‚à¸¢à¸²à¸¢à¸à¸£à¸­à¸šà¹„à¸›à¸ˆà¸±à¸šà¹„à¸­à¸„à¸­à¸™à¸‚à¹‰à¸²à¸‡à¹† (à¹„à¸­à¸„à¸­à¸™à¸—à¸³ OCR à¸ªà¸±à¸šà¸ªà¸™)
+            # RUBY/TICKET ใช้ pad น้อย กันขยายกรอบไปจับไอคอนข้างๆ (ไอคอนทำ OCR สับสน)
             PAD = 2 if ("RUBY" in label or "TICKET" in label) else 10
             x1 = max(0, int(x) - PAD)
             y1 = max(0, int(y) - PAD)
@@ -4517,12 +4529,12 @@ class RangerGearBot(threading.Thread):
             # manual_180 is very reliable for white text on dark background
             _, v_bin = cv2.threshold(v_scaled, 180, 255, cv2.THRESH_BINARY_INV)
 
-            # à¹€à¸•à¸´à¸¡à¸‚à¸­à¸šà¸‚à¸²à¸§à¸£à¸­à¸šà¸ à¸²à¸ž à¸Šà¹ˆà¸§à¸¢à¹ƒà¸«à¹‰ EasyOCR à¸•à¸£à¸§à¸ˆà¹€à¸¥à¸‚à¸«à¸¥à¸±à¸à¹€à¸”à¸µà¸¢à¸§à¹‚à¸”à¸”à¹† (à¹€à¸Šà¹ˆà¸™ "4") à¹„à¸”à¹‰ (BINARY_INV -> à¸žà¸·à¹‰à¸™à¸«à¸¥à¸±à¸‡à¸‚à¸²à¸§=255)
+            # เติมขอบขาวรอบภาพ ช่วยให้ EasyOCR ตรวจเลขหลักเดียวโดดๆ (เช่น "4") ได้ (BINARY_INV -> พื้นหลังขาว=255)
             v_bin = cv2.copyMakeBorder(v_bin, 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=255)
 
             reader = get_ocr_reader()
-            with _ocr_run_lock:  # OCR à¸—à¸µà¸¥à¸°à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ à¸à¸±à¸™ CPU à¸•à¸±à¸™
-                # text_threshold/low_text à¸•à¹ˆà¸³à¸¥à¸‡ = detect à¹€à¸¥à¸‚à¸«à¸¥à¸±à¸à¹€à¸”à¸µà¸¢à¸§à¹€à¸¥à¹‡à¸à¹† à¹„à¸”à¹‰à¹„à¸§à¸‚à¸¶à¹‰à¸™
+            with _ocr_run_lock:  # OCR ทีละเครื่อง กัน CPU ตัน
+                # text_threshold/low_text ต่ำลง = detect เลขหลักเดียวเล็กๆ ได้ไวขึ้น
                 results = reader.readtext(v_bin, allowlist='0123456789,', detail=0,
                                           text_threshold=0.5, low_text=0.3)
             
@@ -4557,7 +4569,7 @@ class RangerGearBot(threading.Thread):
         tx, ty, tw, th = 558, 20, 56, 16
         ticket_value = self.read_number_from_region(img, tx, ty, tw, th, label="TICKET")
         
-        # Backup: Template search à¹à¸¢à¸à¸­à¸´à¸ªà¸£à¸°à¸•à¹ˆà¸­à¸„à¹ˆà¸² (à¹€à¸ˆà¸­à¸•à¸±à¸§à¹„à¸«à¸™ None à¸à¹‡ backup à¸•à¸±à¸§à¸™à¸±à¹‰à¸™)
+        # Backup: Template search แยกอิสระต่อค่า (เจอตัวไหน None ก็ backup ตัวนั้น)
         if ruby_value is None:
             print(f"[{self.device_id}] [RESOURCE] RUBY fixed ROI failed, trying Template backup...")
             ruby_match = self.find_template_ocr(img, 'img/checkruby.png', threshold=0.7)
@@ -4596,27 +4608,27 @@ class RangerGearBot(threading.Thread):
                  print(f"[{self.device_id}] gotogacha2.png not found")
         
         # --- Mandatory Stable Wait ---
-        # à¸«à¸² fixgems à¸•à¸¥à¸­à¸” (à¸¥à¸­à¸¢à¹†) à¹€à¸ˆà¸­ popup gems à¸à¸”à¸›à¸´à¸” 1 à¸£à¸­à¸š à¹à¸¥à¹‰à¸§à¸§à¸™à¸à¸¥à¸±à¸šà¹„à¸›à¸«à¸² waitgacha
-        # à¹€à¸ˆà¸­ waitgacha.png à¸„à¹ˆà¸­à¸¢à¹€à¸£à¸´à¹ˆà¸¡à¸ªà¹à¸à¸™ (à¹€à¸žà¸”à¸²à¸™ 90 à¸§à¸´ - à¹€à¸”à¸´à¸¡à¹„à¸¡à¹ˆà¸¡à¸µ timeout
-        # à¸žà¸­à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”à¸•à¸­à¸™à¹€à¸‚à¹‰à¸²à¸«à¸™à¹‰à¸²à¸à¸²à¸Šà¸² waitgacha à¹„à¸¡à¹ˆà¸¡à¸µà¸§à¸±à¸™à¹‚à¸œà¸¥à¹ˆ = à¸„à¹‰à¸²à¸‡à¸–à¸²à¸§à¸£)
+        # หา fixgems ตลอด (ลอยๆ) เจอ popup gems กดปิด 1 รอบ แล้ววนกลับไปหา waitgacha
+        # เจอ waitgacha.png ค่อยเริ่มสแกน (เพดาน 90 วิ - เดิมไม่มี timeout
+        # พอเน็ตหลุดตอนเข้าหน้ากาชา waitgacha ไม่มีวันโผล่ = ค้างถาวร)
         WAITGACHA_SIM = 0.95
         FIXGEMS_SIM = 0.85
         print(f"[{self.device_id}] [RESOURCE-WAIT] Waiting for waitgacha.png (stable screen)...")
         wait_deadline = time.time() + 90
         while True:
             if time.time() > wait_deadline:
-                print(f"[{self.device_id}] [RESOURCE-WAIT] waitgacha à¹„à¸¡à¹ˆà¸¡à¸²à¹ƒà¸™ 90 à¸§à¸´ (à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”/à¸ˆà¸­à¹„à¸¡à¹ˆà¸¡à¸²) - à¸‚à¹‰à¸²à¸¡à¸à¸²à¸£à¹€à¸Šà¹‡à¸„ Ruby/Ticket")
+                print(f"[{self.device_id}] [RESOURCE-WAIT] waitgacha ไม่มาใน 90 วิ (เน็ตหลุด/จอไม่มา) - ข้ามการเช็ค Ruby/Ticket")
                 return None, None
             self.capture_screen()
 
-            # à¸«à¸² fixgems à¸•à¸¥à¸­à¸” â€” à¹€à¸ˆà¸­ fixgems à¹à¸¥à¹‰à¸§à¸à¸” fixgems1 (1 à¸£à¸­à¸š) à¹à¸¥à¹‰à¸§à¸à¸¥à¸±à¸šà¹„à¸›à¸«à¸² waitgacha
+            # หา fixgems ตลอด — เจอ fixgems แล้วกด fixgems1 (1 รอบ) แล้วกลับไปหา waitgacha
             if self.exists_in_cache("img/fixgems.png", similarity=FIXGEMS_SIM):
                 print(f"[{self.device_id}] [RESOURCE-WAIT] fixgems found -> clicking fixgems1.")
                 self.click("img/fixgems1.png", similarity=FIXGEMS_SIM)
                 sleep(1.0)
                 continue
 
-            # à¹€à¸ˆà¸­ waitgacha à¹à¸¥à¹‰à¸§à¹€à¸£à¸´à¹ˆà¸¡à¸ªà¹à¸à¸™ (ONLY Check visibility, DO NOT CLICK)
+            # เจอ waitgacha แล้วเริ่มสแกน (ONLY Check visibility, DO NOT CLICK)
             if self.exists_in_cache("img/waitgacha.png", similarity=WAITGACHA_SIM):
                 print(f"[{self.device_id}] [RESOURCE-WAIT] Screen confirmed stable (waitgacha found). Scanning now.")
                 break
@@ -4640,7 +4652,7 @@ class RangerGearBot(threading.Thread):
             self.capture_screen()
             ticket, ruby = self.read_ticket_and_ruby()
 
-            # retry à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¸­à¹ˆà¸²à¸™à¹„à¸”à¹‰à¸„à¸£à¸šà¸—à¸±à¹‰à¸‡ ruby à¹à¸¥à¸° ticket (à¸«à¸£à¸·à¸­à¸„à¸£à¸š 3 à¸£à¸­à¸š)
+            # retry จนกว่าจะอ่านได้ครบทั้ง ruby และ ticket (หรือครบ 3 รอบ)
             if ruby is not None and ticket is not None:
                 break
         
@@ -4693,7 +4705,7 @@ class RangerGearBot(threading.Thread):
         
         try:
             reader = get_ocr_reader()
-            with _ocr_run_lock:  # OCR à¸—à¸µà¸¥à¸°à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ à¸à¸±à¸™ CPU à¸•à¸±à¸™
+            with _ocr_run_lock:  # OCR ทีละเครื่อง กัน CPU ตัน
                 results = reader.readtext(img, detail=1)
             
             text_results = []
@@ -4776,10 +4788,10 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Cleared shared_prefs + cache (Full)")
 
     # ---------------------------------------------------------
-    # à¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œà¹€à¸‚à¹‰à¸²à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (à¹‚à¸«à¸¡à¸” "à¸„à¸±à¸”à¸¥à¸­à¸-à¸§à¸²à¸‡" à¹„à¸¡à¹ˆà¹ƒà¸Šà¹‰ adb push)
+    # ส่งไฟล์เข้าเครื่อง (โหมด "คัดลอก-วาง" ไม่ใช้ adb push)
     # ---------------------------------------------------------
     def _remote_md5(self, remote_path):
-        """md5 à¸‚à¸­à¸‡à¹„à¸Ÿà¸¥à¹Œà¸šà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ à¸«à¸£à¸·à¸­ None à¸–à¹‰à¸²à¸­à¹ˆà¸²à¸™à¹„à¸¡à¹ˆà¹„à¸”à¹‰"""
+        """md5 ของไฟล์บนเครื่อง หรือ None ถ้าอ่านไม่ได้"""
         try:
             r = self.adb_shell(f"su -c 'md5sum {remote_path} 2>/dev/null'", timeout=20)
             txt = ((r.stdout or b"") + b" ").decode("utf-8", "ignore").strip()
@@ -4791,12 +4803,12 @@ class RangerGearBot(threading.Thread):
         return None
 
     def _write_remote_b64(self, data, remote_path, chunk=1200):
-        """à¹€à¸‚à¸µà¸¢à¸™à¹„à¸Ÿà¸¥à¹Œà¸¥à¸‡à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸”à¹‰à¸§à¸¢ echo base64 à¸—à¸µà¸¥à¸°à¸—à¹ˆà¸­à¸™ à¹à¸¥à¹‰à¸§ decode à¸šà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡
+        """เขียนไฟล์ลงเครื่องด้วย echo base64 ทีละท่อน แล้ว decode บนเครื่อง
 
-        à¸—à¸³à¹„à¸¡à¹„à¸¡à¹ˆà¹ƒà¸Šà¹‰ adb push: push à¹ƒà¸Šà¹‰ sync service à¸‚à¸­à¸‡ adb à¸‹à¸¶à¹ˆà¸‡à¸žà¸­à¹€à¸›à¸´à¸”à¸«à¸¥à¸²à¸¢à¸ˆà¸­à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™
-        à¸ˆà¸°à¹à¸¢à¹ˆà¸‡à¸„à¸´à¸§à¸à¸±à¸™à¸ˆà¸™à¸„à¹‰à¸²à¸‡/à¸«à¸¥à¸¸à¸”à¸à¸¥à¸²à¸‡à¸—à¸²à¸‡ = "à¹„à¸Ÿà¸¥à¹Œà¹€à¸‚à¹‰à¸²à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¹€à¸¥à¸¢" à¸—à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¹„à¸Ÿà¸¥à¹Œà¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸žà¸±à¸‡
-        à¸§à¸´à¸˜à¸µà¸™à¸µà¹‰à¸ªà¹ˆà¸‡à¸œà¹ˆà¸²à¸™ adb shell à¸˜à¸£à¸£à¸¡à¸”à¸² (à¹„à¸Ÿà¸¥à¹Œ pref à¹à¸„à¹ˆ ~1 KB) à¹€à¸«à¸¡à¸·à¸­à¸™à¸žà¸´à¸¡à¸žà¹Œà¸§à¸²à¸‡à¹€à¸­à¸‡
-        à¸„à¸·à¸™ True à¸–à¹‰à¸²à¹€à¸‚à¸µà¸¢à¸™à¸„à¸£à¸šà¹à¸¥à¸° md5 à¸•à¸£à¸‡à¸à¸±à¸šà¸•à¹‰à¸™à¸—à¸²à¸‡
+        ทำไมไม่ใช้ adb push: push ใช้ sync service ของ adb ซึ่งพอเปิดหลายจอพร้อมกัน
+        จะแย่งคิวกันจนค้าง/หลุดกลางทาง = "ไฟล์เข้าไม่ได้เลย" ทั้งที่ไฟล์ไม่ได้พัง
+        วิธีนี้ส่งผ่าน adb shell ธรรมดา (ไฟล์ pref แค่ ~1 KB) เหมือนพิมพ์วางเอง
+        คืน True ถ้าเขียนครบและ md5 ตรงกับต้นทาง
         """
         b64 = base64.b64encode(data).decode("ascii")
         want_md5 = hashlib.md5(data).hexdigest()
@@ -4805,44 +4817,44 @@ class RangerGearBot(threading.Thread):
             r = self.adb_shell(f"rm -f {b64_path} {remote_path}", timeout=20)
             for i in range(0, len(b64), chunk):
                 part = b64[i:i + chunk]
-                # base64 à¸¡à¸µà¹à¸„à¹ˆ A-Za-z0-9+/= à¸ˆà¸¶à¸‡à¹„à¸¡à¹ˆà¸¡à¸µà¸­à¸±à¸à¸‚à¸£à¸°à¸—à¸µà¹ˆà¸—à¸³à¹ƒà¸«à¹‰ quote à¸žà¸±à¸‡
+                # base64 มีแค่ A-Za-z0-9+/= จึงไม่มีอักขระที่ทำให้ quote พัง
                 r = self.adb_shell(f"echo -n '{part}' >> {b64_path}", timeout=25)
                 if r.returncode != 0:
                     err = ((r.stderr or b"")).decode("utf-8", "ignore").strip()
-                    print(f"[{self.device_id}] [PUT] à¹€à¸‚à¸µà¸¢à¸™à¸—à¹ˆà¸­à¸™à¸—à¸µà¹ˆ {i // chunk + 1} à¹„à¸¡à¹ˆà¸œà¹ˆà¸²à¸™: {err[:120]}")
+                    print(f"[{self.device_id}] [PUT] เขียนท่อนที่ {i // chunk + 1} ไม่ผ่าน: {err[:120]}")
                     return False
-            # decode à¸šà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (toybox base64 à¸à¹ˆà¸­à¸™ à¹„à¸¡à¹ˆà¸¡à¸µà¸„à¹ˆà¸­à¸¢ busybox)
+            # decode บนเครื่อง (toybox base64 ก่อน ไม่มีค่อย busybox)
             dec = self.adb_shell(
                 f"base64 -d {b64_path} > {remote_path} 2>/dev/null || "
                 f"busybox base64 -d {b64_path} > {remote_path}", timeout=30)
             got = self._remote_md5(remote_path)
             if got != want_md5:
                 out = (((dec.stdout or b"") + (dec.stderr or b"")).decode("utf-8", "ignore")).strip()
-                print(f"[{self.device_id}] [PUT] decode à¹à¸¥à¹‰à¸§ md5 à¹„à¸¡à¹ˆà¸•à¸£à¸‡ ({got} != {want_md5})"
+                print(f"[{self.device_id}] [PUT] decode แล้ว md5 ไม่ตรง ({got} != {want_md5})"
                       + (f" | {out[:120]}" if out else ""))
                 return False
             return True
         except Exception as e:
-            print(f"[{self.device_id}] [PUT] à¸ªà¹ˆà¸‡à¹à¸šà¸š base64 à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {e}")
+            print(f"[{self.device_id}] [PUT] ส่งแบบ base64 ไม่สำเร็จ: {e}")
             return False
         finally:
             try: self.adb_shell(f"rm -f {b64_path}", timeout=15)
             except Exception: pass
 
     def _put_remote_file(self, src, remote_path):
-        """à¹€à¸­à¸²à¹„à¸Ÿà¸¥à¹Œ local à¹„à¸›à¸§à¸²à¸‡à¸—à¸µà¹ˆ remote_path à¹ƒà¸«à¹‰à¹„à¸”à¹‰ - à¸„à¸·à¸™ (ok, à¸‚à¸™à¸²à¸”à¹„à¸Ÿà¸¥à¹Œà¸•à¹‰à¸™à¸—à¸²à¸‡)
+        """เอาไฟล์ local ไปวางที่ remote_path ให้ได้ - คืน (ok, ขนาดไฟล์ต้นทาง)
 
-        à¸¥à¸³à¸”à¸±à¸š: base64-over-shell (à¸›à¸¥à¸­à¸”à¸ à¸±à¸¢à¸ªà¸¸à¸” à¹„à¸¡à¹ˆà¹à¸¢à¹ˆà¸‡ sync service) -> à¸–à¹‰à¸²à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸„à¹ˆà¸­à¸¢ adb push
-        à¸ªà¸¥à¸±à¸šà¸¥à¸³à¸”à¸±à¸šà¹„à¸”à¹‰à¸”à¹‰à¸§à¸¢ config "inject_method": "shell" (à¸šà¸±à¸‡à¸„à¸±à¸š) / "push" (à¹à¸šà¸šà¹€à¸”à¸´à¸¡) / "auto"
+        ลำดับ: base64-over-shell (ปลอดภัยสุด ไม่แย่ง sync service) -> ถ้าไม่ได้ค่อย adb push
+        สลับลำดับได้ด้วย config "inject_method": "shell" (บังคับ) / "push" (แบบเดิม) / "auto"
         """
         try:
             with open(src, "rb") as f:
                 data = f.read()
         except OSError as e:
-            print(f"[{self.device_id}] à¸­à¹ˆà¸²à¸™à¹„à¸Ÿà¸¥à¹Œà¸•à¹‰à¸™à¸—à¸²à¸‡à¹„à¸¡à¹ˆà¹„à¸”à¹‰: {e}")
+            print(f"[{self.device_id}] อ่านไฟล์ต้นทางไม่ได้: {e}")
             return False, 0
         if not data:
-            print(f"[{self.device_id}] à¹„à¸Ÿà¸¥à¹Œà¸•à¹‰à¸™à¸—à¸²à¸‡à¸§à¹ˆà¸²à¸‡à¹€à¸›à¸¥à¹ˆà¸² ({src}) - à¹„à¸¡à¹ˆ inject")
+            print(f"[{self.device_id}] ไฟล์ต้นทางว่างเปล่า ({src}) - ไม่ inject")
             return False, 0
 
         method = str(config.get("inject_method", "auto")).lower()
@@ -4853,23 +4865,23 @@ class RangerGearBot(threading.Thread):
             if use_shell and self._write_remote_b64(data, remote_path):
                 return True, len(data)
 
-            # à¸ªà¸³à¸£à¸­à¸‡: adb push à¹à¸šà¸šà¹€à¸”à¸´à¸¡ (à¹„à¸Ÿà¸¥à¹Œà¹ƒà¸«à¸à¹ˆ à¸«à¸£à¸·à¸­à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹„à¸¡à¹ˆà¸¡à¸µ base64)
+            # สำรอง: adb push แบบเดิม (ไฟล์ใหญ่ หรือเครื่องไม่มี base64)
             try:
                 result = self.adb_run([self.adb_cmd, "-s", self.device_id, "push", src, remote_path], timeout=60)
                 if result.returncode != 0:
                     err = result.stderr.decode("utf-8", errors="ignore") if result.stderr else "Unknown Error"
-                    print(f"[{self.device_id}] [PUT] push à¹„à¸¡à¹ˆà¸œà¹ˆà¸²à¸™: {err.strip()[:200]}")
+                    print(f"[{self.device_id}] [PUT] push ไม่ผ่าน: {err.strip()[:200]}")
                     return False, len(data)
             except Exception as e:
                 print(f"[{self.device_id}] [PUT] push error: {e}")
                 return False, len(data)
         if self._remote_size(remote_path) != len(data):
-            print(f"[{self.device_id}] [PUT] push à¹à¸¥à¹‰à¸§à¸‚à¸™à¸²à¸”à¹„à¸¡à¹ˆà¸•à¸£à¸‡")
+            print(f"[{self.device_id}] [PUT] push แล้วขนาดไม่ตรง")
             return False, len(data)
         return True, len(data)
 
     def _remote_size(self, remote_path):
-        """à¸‚à¸™à¸²à¸”à¹„à¸Ÿà¸¥à¹Œà¸šà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (à¹„à¸šà¸•à¹Œ) à¸«à¸£à¸·à¸­ None à¸–à¹‰à¸²à¹„à¸¡à¹ˆà¸¡à¸µà¹„à¸Ÿà¸¥à¹Œ/à¸­à¹ˆà¸²à¸™à¹„à¸¡à¹ˆà¹„à¸”à¹‰"""
+        """ขนาดไฟล์บนเครื่อง (ไบต์) หรือ None ถ้าไม่มีไฟล์/อ่านไม่ได้"""
         try:
             r = self.adb_shell(f"su -c 'stat -c %s {remote_path} 2>/dev/null || wc -c < {remote_path}'", timeout=15)
             txt = (r.stdout or b"").decode("utf-8", "ignore").strip()
@@ -4883,7 +4895,7 @@ class RangerGearBot(threading.Thread):
     def inject_file(self, local_xml_path):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
 
-        # à¸›à¸¥à¸”à¸¥à¹‡à¸­à¸ Read-only (à¸–à¹‰à¸²à¸¡à¸µ)
+        # ปลดล็อก Read-only (ถ้ามี)
         self.adb_shell("su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'")
 
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
@@ -4901,22 +4913,22 @@ class RangerGearBot(threading.Thread):
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                # 1) à¸§à¸²à¸‡à¹„à¸Ÿà¸¥à¹Œà¸¥à¸‡ /data/local/tmp à¸à¹ˆà¸­à¸™ (base64 à¸œà¹ˆà¸²à¸™ shell, à¸ªà¸³à¸£à¸­à¸‡à¸”à¹‰à¸§à¸¢ adb push)
+                # 1) วางไฟล์ลง /data/local/tmp ก่อน (base64 ผ่าน shell, สำรองด้วย adb push)
                 ok, local_size = self._put_remote_file(src, tmp)
                 if not local_size:
-                    return None                    # à¹„à¸Ÿà¸¥à¹Œà¸•à¹‰à¸™à¸—à¸²à¸‡à¸žà¸±à¸‡/à¸§à¹ˆà¸²à¸‡ - à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸¥à¸­à¸‡à¸‹à¹‰à¸³
+                    return None                    # ไฟล์ต้นทางพัง/ว่าง - ไม่ต้องลองซ้ำ
                 if not ok:
-                    print(f"[{self.device_id}] Put attempt {attempt}: à¸ªà¹ˆà¸‡à¹„à¸Ÿà¸¥à¹Œà¹€à¸‚à¹‰à¸²à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ - à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ")
+                    print(f"[{self.device_id}] Put attempt {attempt}: ส่งไฟล์เข้าเครื่องไม่สำเร็จ - ลองใหม่")
                     sleep(2)
                     continue
 
-                # 2) à¹à¸­à¸›à¸—à¸µà¹ˆà¹€à¸žà¸´à¹ˆà¸‡à¸–à¸¹à¸à¸¥à¹‰à¸²à¸‡à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¡à¸µà¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ shared_prefs -> cp à¸¥à¹‰à¸¡à¹€à¸‡à¸µà¸¢à¸š à¹† à¸ªà¸£à¹‰à¸²à¸‡à¹ƒà¸«à¹‰à¸à¹ˆà¸­à¸™
+                # 2) แอปที่เพิ่งถูกล้างยังไม่มีโฟลเดอร์ shared_prefs -> cp ล้มเงียบ ๆ สร้างให้ก่อน
                 self.adb_shell(
                     f"su -c 'mkdir -p {final_dir} && "
                     f"chown $(stat -c %u:%g {pkg_dir} 2>/dev/null || echo 1000:1000) {final_dir} && "
                     f"chmod 771 {final_dir}'", timeout=20)
 
-                # 3) copy à¹€à¸‚à¹‰à¸²à¸—à¸µà¹ˆà¸ˆà¸£à¸´à¸‡ + à¸•à¸±à¹‰à¸‡à¸ªà¸´à¸—à¸˜à¸´à¹Œ/à¹€à¸ˆà¹‰à¸²à¸‚à¸­à¸‡à¹ƒà¸«à¹‰à¹€à¸«à¸¡à¸·à¸­à¸™à¹„à¸Ÿà¸¥à¹Œà¸—à¸µà¹ˆà¹à¸­à¸›à¸ªà¸£à¹‰à¸²à¸‡à¹€à¸­à¸‡
+                # 3) copy เข้าที่จริง + ตั้งสิทธิ์/เจ้าของให้เหมือนไฟล์ที่แอปสร้างเอง
                 shell_cmd = (
                     f"su -c '"
                     f"cp {tmp} {final} && "
@@ -4927,11 +4939,11 @@ class RangerGearBot(threading.Thread):
                 res = self.adb_shell(shell_cmd, timeout=20)
                 out = ((res.stdout or b"") + (res.stderr or b"")).decode("utf-8", "ignore").strip()
 
-                # 4) su à¸ªà¸³à¹€à¸£à¹‡à¸ˆ à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¹à¸›à¸¥à¸§à¹ˆà¸² cp à¸ªà¸³à¹€à¸£à¹‡à¸ˆ - à¸¢à¸·à¸™à¸¢à¸±à¸™à¸‚à¸™à¸²à¸” + md5 à¸à¹ˆà¸­à¸™à¸šà¸­à¸à¸§à¹ˆà¸²à¹€à¸‚à¹‰à¸²à¹à¸¥à¹‰à¸§
+                # 4) su สำเร็จ ไม่ได้แปลว่า cp สำเร็จ - ยืนยันขนาด + md5 ก่อนบอกว่าเข้าแล้ว
                 final_size = self._remote_size(final)
                 if final_size != local_size:
-                    print(f"[{self.device_id}] Inject attempt {attempt}: à¹„à¸Ÿà¸¥à¹Œà¹„à¸¡à¹ˆà¹€à¸‚à¹‰à¸²/à¹„à¸¡à¹ˆà¸„à¸£à¸š "
-                          f"(à¸šà¸™à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ {final_size} à¹„à¸šà¸•à¹Œ, à¸•à¹‰à¸™à¸—à¸²à¸‡ {local_size} à¹„à¸šà¸•à¹Œ)"
+                    print(f"[{self.device_id}] Inject attempt {attempt}: ไฟล์ไม่เข้า/ไม่ครบ "
+                          f"(บนเครื่อง {final_size} ไบต์, ต้นทาง {local_size} ไบต์)"
                           + (f" | {out[:200]}" if out else ""))
                     sleep(2)
                     continue
@@ -4944,13 +4956,13 @@ class RangerGearBot(threading.Thread):
                     except OSError:
                         local_md5 = None
                     if local_md5 and remote_md5 != local_md5:
-                        print(f"[{self.device_id}] Inject attempt {attempt}: md5 à¹„à¸¡à¹ˆà¸•à¸£à¸‡ "
-                              f"({remote_md5} != {local_md5}) - à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ")
+                        print(f"[{self.device_id}] Inject attempt {attempt}: md5 ไม่ตรง "
+                              f"({remote_md5} != {local_md5}) - ลองใหม่")
                         sleep(2)
                         continue
 
                 self.adb_shell(f"su -c 'rm -f {tmp}'", timeout=15)
-                print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} à¹„à¸šà¸•à¹Œ)")
+                print(f"[{self.device_id}] Injection successful on attempt {attempt} ({local_size} ไบต์)")
                 _PUT_FAIL_STREAK[self.device_id] = 0   # success - reset streak
                 return local_xml_path
 
@@ -4959,18 +4971,18 @@ class RangerGearBot(threading.Thread):
                 sleep(2)
 
         print(f"[{self.device_id}] Injection FAILED after {max_retries} attempts!")
-        # auto-recover: push à¸¥à¹‰à¸¡à¹€à¸«à¸¥à¸§à¸•à¸´à¸”à¸•à¹ˆà¸­à¸à¸±à¸™ -> emu/adb à¹€à¸™à¹ˆà¸² (md5 mismatch, ADB protocol corrupt)
-        # 3 à¹„à¸Ÿà¸¥à¹Œà¸•à¸´à¸” -> reconnect adb ; 5 à¹„à¸Ÿà¸¥à¹Œà¸•à¸´à¸” -> adb reboot à¹€à¸‰à¸žà¸²à¸°à¸ˆà¸­à¸™à¸µà¹‰
+        # auto-recover: push ล้มเหลวติดต่อกัน -> emu/adb เน่า (md5 mismatch, ADB protocol corrupt)
+        # 3 ไฟล์ติด -> reconnect adb ; 5 ไฟล์ติด -> adb reboot เฉพาะจอนี้
         _PUT_FAIL_STREAK[self.device_id] = _PUT_FAIL_STREAK.get(self.device_id, 0) + 1
         streak = _PUT_FAIL_STREAK[self.device_id]
         try:
             if streak >= 5:
-                print(f"[{self.device_id}] [RECOVER] push à¸¥à¹‰à¸¡ {streak} à¹„à¸Ÿà¸¥à¹Œà¸•à¸´à¸” - à¸ªà¸±à¹ˆà¸‡ reboot emu")
+                print(f"[{self.device_id}] [RECOVER] push ล้ม {streak} ไฟล์ติด - สั่ง reboot emu")
                 subprocess.run([self.adb_cmd, "-s", self.device_id, "reboot"],
                                capture_output=True, timeout=15)
-                _PUT_FAIL_STREAK[self.device_id] = 0   # reset à¸«à¸¥à¸±à¸‡ reboot (à¹ƒà¸«à¹‰à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸«à¸¥à¸±à¸‡ boot à¹€à¸ªà¸£à¹‡à¸ˆ)
+                _PUT_FAIL_STREAK[self.device_id] = 0   # reset หลัง reboot (ให้ลองใหม่หลัง boot เสร็จ)
             elif streak == 3:
-                print(f"[{self.device_id}] [RECOVER] push à¸¥à¹‰à¸¡ 3 à¹„à¸Ÿà¸¥à¹Œà¸•à¸´à¸” - à¸•à¹ˆà¸­ adb à¹ƒà¸«à¸¡à¹ˆ")
+                print(f"[{self.device_id}] [RECOVER] push ล้ม 3 ไฟล์ติด - ต่อ adb ใหม่")
                 subprocess.run([self.adb_cmd, "disconnect", self.device_id],
                                capture_output=True, timeout=10)
                 sleep(1)
@@ -5169,15 +5181,15 @@ class RangerGearBot(threading.Thread):
         results = {}
         
         # Step 1 & 2: Navigation to search screen
-        # à¹€à¸žà¸”à¸²à¸™ nav_timeout à¸§à¸´ - à¹€à¸”à¸´à¸¡à¸¥à¸¹à¸›à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¸¡à¸µà¹€à¸žà¸”à¸²à¸™à¹€à¸¥à¸¢ à¸–à¹‰à¸² sec1/sec2 à¹„à¸¡à¹ˆà¹‚à¸œà¸¥à¹ˆ
-        # (à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”/à¸ˆà¸­à¸„à¹‰à¸²à¸‡/à¹à¸­à¸›à¹€à¸”à¹‰à¸‡) thread à¸ˆà¸°à¸§à¸™à¸•à¸£à¸‡à¸™à¸µà¹‰à¸•à¸¥à¸­à¸”à¸à¸²à¸¥à¸—à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸¢à¸±à¸‡à¸–à¸·à¸­ lock à¹„à¸Ÿà¸¥à¹Œà¸­à¸¢à¸¹à¹ˆ
+        # เพดาน nav_timeout วิ - เดิมลูปนี้ไม่มีเพดานเลย ถ้า sec1/sec2 ไม่โผล่
+        # (เน็ตหลุด/จอค้าง/แอปเด้ง) thread จะวนตรงนี้ตลอดกาลทั้งที่ยังถือ lock ไฟล์อยู่
         nav_timeout = config.get("nav_timeout", 180)
-        print(f"[{self.device_id}] Starting persistent navigation (Searching for sec1/sec2, à¹€à¸žà¸”à¸²à¸™ {nav_timeout} à¸§à¸´)...")
+        print(f"[{self.device_id}] Starting persistent navigation (Searching for sec1/sec2, เพดาน {nav_timeout} วิ)...")
         sec1_clicked = False
         nav_deadline = time.time() + nav_timeout
         while True:
             if time.time() > nav_deadline:
-                print(f"[{self.device_id}] [NAVI] à¸«à¸² sec1/sec2 à¹„à¸¡à¹ˆà¹€à¸ˆà¸­à¹ƒà¸™ {nav_timeout} à¸§à¸´ - à¸¢à¸à¹€à¸¥à¸´à¸ find-ranger à¸£à¸­à¸šà¸™à¸µà¹‰")
+                print(f"[{self.device_id}] [NAVI] หา sec1/sec2 ไม่เจอใน {nav_timeout} วิ - ยกเลิก find-ranger รอบนี้")
                 return results
             self.capture_screen()
 
@@ -5185,7 +5197,7 @@ class RangerGearBot(threading.Thread):
             self.check_floating_popups()
             # --------------------------------
             
-            # Check for crash while waiting (à¹ƒà¸Šà¹‰ pidof à¹à¸—à¸™ icon.png)
+            # Check for crash while waiting (ใช้ pidof แทน icon.png)
             try:
                 pid_result = subprocess.run(
                     [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
@@ -5260,7 +5272,7 @@ class RangerGearBot(threading.Thread):
             
             # e) Scan ranger images with RETRY (to be sure)
             current_found_in_iteration = False
-            # Revert to full folder scan as requested ("à¸‚à¸­à¹à¸šà¸šà¹€à¸”à¸´à¸¡à¹€à¸¥à¸¢")
+            # Revert to full folder scan as requested ("ขอแบบเดิมเลย")
             matching_files = self.ranger_files
 
             for attempt in range(2):
@@ -5345,7 +5357,7 @@ class RangerGearBot(threading.Thread):
         filename = self.current_original_filename or "unknown.xml"
         source_path = "/data/data/com.linecorp.LGRGS/shared_prefs/_LINE_COCOS_PREF_KEY.xml"
         
-        # à¸§à¸´à¸˜à¸µà¸—à¸µà¹ˆà¹„à¸”à¹‰à¸œà¸¥ 100%: cp à¹„à¸› /data/local/tmp â†’ chmod â†’ pull
+        # วิธีที่ได้ผล 100%: cp ไป /data/local/tmp → chmod → pull
         safe_dev = self.device_id.replace(":", "_")
         temp_remote = f"/data/local/tmp/backup_{safe_dev}.xml"
         
@@ -5448,29 +5460,29 @@ class RangerGearBot(threading.Thread):
             print(f"[{self.device_id}] Failed to find findgear3.png")
             return set()
 
-        # à¸£à¸­à¸ˆà¸­ Gear à¹‚à¸«à¸¥à¸”à¸ˆà¸£à¸´à¸‡à¸à¹ˆà¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡à¹€à¸Šà¹‡à¸„: à¸«à¸² weapons1/weapons2 à¹„à¸›à¹€à¸£à¸·à¹ˆà¸­à¸¢ à¹†
-        # à¹€à¸ˆà¸­à¸•à¸±à¸§à¹ƒà¸”à¸•à¸±à¸§à¸«à¸™à¸¶à¹ˆà¸‡ = à¸ˆà¸­à¸¡à¸²à¹à¸¥à¹‰à¸§ à¸„à¹ˆà¸­à¸¢à¹€à¸£à¸´à¹ˆà¸¡à¸«à¸² checkgear2
-        # à¸à¸±à¸™à¹€à¸„à¸ªà¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”/à¸ˆà¸­à¹‚à¸«à¸¥à¸”à¸Šà¹‰à¸²à¹à¸¥à¹‰à¸§à¸£à¸µà¸šà¸ªà¸£à¸¸à¸›à¸§à¹ˆà¸²à¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¸­à¸‡ à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡à¸£à¸­à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹ƒà¸«à¹‰
-        # à¹€à¸žà¸”à¸²à¸™ gear_wait_timeout à¸§à¸´ - à¹€à¸”à¸´à¸¡à¹€à¸›à¹‡à¸™ while True à¹€à¸›à¸¥à¹ˆà¸² à¹† (à¸„à¸­à¸¡à¹€à¸¡à¸™à¸•à¹Œà¹€à¸‚à¸µà¸¢à¸™à¹„à¸§à¹‰à¹€à¸­à¸‡à¸§à¹ˆà¸²
-        # "à¹„à¸¡à¹ˆà¸¡à¸µ timeout") à¸žà¸­ weapons1/weapons2 à¹„à¸¡à¹ˆà¸¡à¸²à¸ªà¸±à¸à¸—à¸µ thread à¸„à¹‰à¸²à¸‡à¸•à¸£à¸‡à¸™à¸µà¹‰à¸•à¸¥à¸­à¸”à¸à¸²à¸¥
-        # à¸—à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸¢à¸±à¸‡à¸–à¸·à¸­ lock à¸‚à¸­à¸‡à¹„à¸Ÿà¸¥à¹Œà¸­à¸¢à¸¹à¹ˆ = à¸šà¸­à¸—à¸”à¸¹à¹€à¸«à¸¡à¸·à¸­à¸™à¸«à¸¢à¸¸à¸”à¸—à¸³à¸‡à¸²à¸™ à¹à¸•à¹ˆà¹„à¸Ÿà¸¥à¹Œà¸¢à¸±à¸‡à¸„à¹‰à¸²à¸‡à¹ƒà¸™ backup/
+        # รอจอ Gear โหลดจริงก่อนเริ่มเช็ค: หา weapons1/weapons2 ไปเรื่อย ๆ
+        # เจอตัวใดตัวหนึ่ง = จอมาแล้ว ค่อยเริ่มหา checkgear2
+        # กันเคสเน็ตหลุด/จอโหลดช้าแล้วรีบสรุปว่าไม่มีของ ระหว่างรอเคลียร์ป๊อปอัพให้
+        # เพดาน gear_wait_timeout วิ - เดิมเป็น while True เปล่า ๆ (คอมเมนต์เขียนไว้เองว่า
+        # "ไม่มี timeout") พอ weapons1/weapons2 ไม่มาสักที thread ค้างตรงนี้ตลอดกาล
+        # ทั้งที่ยังถือ lock ของไฟล์อยู่ = บอทดูเหมือนหยุดทำงาน แต่ไฟล์ยังค้างใน backup/
         gear_wait_timeout = config.get("gear_wait_timeout", 120)
-        print(f"[{self.device_id}] [GEAR-WAIT] à¸£à¸­ weapons1/weapons2 à¹‚à¸œà¸¥à¹ˆà¸à¹ˆà¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡à¹€à¸Šà¹‡à¸„à¹€à¸à¸µà¸¢à¸£à¹Œ (à¹€à¸žà¸”à¸²à¸™ {gear_wait_timeout} à¸§à¸´)...")
+        print(f"[{self.device_id}] [GEAR-WAIT] รอ weapons1/weapons2 โผล่ก่อนเริ่มเช็คเกียร์ (เพดาน {gear_wait_timeout} วิ)...")
         gear_wait_rounds = 0
         gear_wait_deadline = time.time() + gear_wait_timeout
         while True:
             if time.time() > gear_wait_deadline:
-                print(f"[{self.device_id}] [GEAR-WAIT] weapons1/weapons2 à¹„à¸¡à¹ˆà¸¡à¸²à¹ƒà¸™ {gear_wait_timeout} à¸§à¸´ - à¹„à¸›à¸•à¹ˆà¸­à¸”à¹‰à¸§à¸¢ checkgear2 à¹à¸—à¸™ (à¹„à¸¡à¹ˆà¸„à¹‰à¸²à¸‡à¸£à¸­à¸–à¸²à¸§à¸£)")
+                print(f"[{self.device_id}] [GEAR-WAIT] weapons1/weapons2 ไม่มาใน {gear_wait_timeout} วิ - ไปต่อด้วย checkgear2 แทน (ไม่ค้างรอถาวร)")
                 break
             self.capture_screen()
             if (self.exists_in_cache("img/weapons1.png", similarity=0.9)
                     or self.exists_in_cache("img/weapons2.png", similarity=0.9)):
-                print(f"[{self.device_id}] [GEAR-WAIT] à¸ˆà¸­ Gear à¸žà¸£à¹‰à¸­à¸¡à¹à¸¥à¹‰à¸§ - à¹€à¸£à¸´à¹ˆà¸¡à¹€à¸Šà¹‡à¸„à¹€à¸à¸µà¸¢à¸£à¹Œ")
+                print(f"[{self.device_id}] [GEAR-WAIT] จอ Gear พร้อมแล้ว - เริ่มเช็คเกียร์")
                 break
             self.check_floating_popups()
             gear_wait_rounds += 1
             if gear_wait_rounds % 30 == 0:
-                print(f"[{self.device_id}] [GEAR-WAIT] à¸¢à¸±à¸‡à¸£à¸­ weapons1/weapons2 à¸­à¸¢à¸¹à¹ˆ ({gear_wait_rounds} à¸£à¸­à¸š)")
+                print(f"[{self.device_id}] [GEAR-WAIT] ยังรอ weapons1/weapons2 อยู่ ({gear_wait_rounds} รอบ)")
             sleep(0.5)
 
         # Step 2: Read gear names with OCR (Linear, one-way scan)
@@ -5481,10 +5493,10 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] [GEAR] Phase 1: checkgear2 -> checkgear3...")
         checkgear2_ok = self.wait_and_click_image("checkgear2.png", timeout=8, similarity=0.92)
         if not checkgear2_ok:
-            # à¹€à¸›à¸´à¸”à¸«à¸™à¹‰à¸²à¸£à¸²à¸¢à¸à¸²à¸£ gear à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™à¹€à¸¥à¸¢ - à¸ªà¹ˆà¸§à¸™à¹ƒà¸«à¸à¹ˆà¸„à¸·à¸­à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”/à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¸šà¸±à¸‡à¸•à¸­à¸™
-            # à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸ˆà¸­ (fixnet à¹€à¸”à¹‰à¸‡) - à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¸›à¹Šà¸­à¸›à¸­à¸±à¸ž à¸£à¸­à¹€à¸à¸¡à¹‚à¸«à¸¥à¸” à¹à¸¥à¹‰à¸§à¹€à¸”à¸´à¸™à¹€à¸‚à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆ
-            # à¸­à¸µà¸à¸¢à¸à¹€à¸”à¸µà¸¢à¸§à¸à¹ˆà¸­à¸™à¸¢à¸­à¸¡à¸ªà¸£à¸¸à¸›à¸§à¹ˆà¸²à¹„à¸¡à¹ˆà¸¡à¸µ gear à¹„à¸¡à¹ˆà¸‡à¸±à¹‰à¸™à¹„à¸Ÿà¸¥à¹Œà¹‚à¸”à¸™à¸•à¸±à¸”à¸ªà¸´à¸™à¸œà¸´à¸”à¹€à¸žà¸£à¸²à¸°à¹€à¸™à¹‡à¸•à¸ªà¸°à¸”à¸¸à¸”
-            print(f"[{self.device_id}] [GEAR] checkgear2 à¹„à¸¡à¹ˆà¸¡à¸² (à¹€à¸™à¹‡à¸•à¸«à¸¥à¸¸à¸”/à¸›à¹Šà¸­à¸›à¸­à¸±à¸ž?) - à¸¥à¸­à¸‡à¹€à¸‚à¹‰à¸²à¸«à¸™à¹‰à¸² gear à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸¢à¸")
+            # เปิดหน้ารายการ gear ไม่ขึ้นเลย - ส่วนใหญ่คือเน็ตหลุด/ป๊อปอัพบังตอน
+            # เปลี่ยนจอ (fixnet เด้ง) - เคลียร์ป๊อปอัพ รอเกมโหลด แล้วเดินเข้าใหม่
+            # อีกยกเดียวก่อนยอมสรุปว่าไม่มี gear ไม่งั้นไฟล์โดนตัดสินผิดเพราะเน็ตสะดุด
+            print(f"[{self.device_id}] [GEAR] checkgear2 ไม่มา (เน็ตหลุด/ป๊อปอัพ?) - ลองเข้าหน้า gear ใหม่อีกยก")
             self.capture_screen()
             self.check_floating_popups()
             sleep(3)
@@ -5518,17 +5530,17 @@ class RangerGearBot(threading.Thread):
         return all_found_gears
 
     def backup_to_not_found(self, filename, source_path):
-        """Backup pref file to not-found folder (à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ prefix à¸Šà¸·à¹ˆà¸­à¸®à¸µà¹‚à¸£à¹ˆ -> noherofound)"""
+        """Backup pref file to not-found folder (เปลี่ยน prefix ชื่อฮีโร่ -> noherofound)"""
         not_found_dir = "not-found"
         if not os.path.exists(not_found_dir):
             os.makedirs(not_found_dir)
 
-        # à¹„à¸¡à¹ˆà¹€à¸ˆà¸­à¸®à¸µà¹‚à¸£à¹ˆ -> à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ prefix à¸Šà¸·à¹ˆà¸­à¸®à¸µà¹‚à¸£à¹ˆà¹€à¸›à¹‡à¸™ noherofound (à¸„à¸‡ ruby[]+ticket[] à¸‚à¹‰à¸²à¸‡à¸«à¸™à¹‰à¸²à¹„à¸§à¹‰)
+        # ไม่เจอฮีโร่ -> เปลี่ยน prefix ชื่อฮีโร่เป็น noherofound (คง ruby[]+ticket[] ข้างหน้าไว้)
         import re
-        # à¹à¸¢à¸à¸ªà¹ˆà¸§à¸™ tag ruby[]+ticket[] à¸‚à¹‰à¸²à¸‡à¸«à¸™à¹‰à¸²à¸­à¸­à¸à¸à¹ˆà¸­à¸™
+        # แยกส่วน tag ruby[]+ticket[] ข้างหน้าออกก่อน
         mtag = re.match(r'^((?:ruby\[[^\]]*\]\+)?(?:ticket\[[^\]]*\]\+)?)(.*)$', filename)
         tag_prefix, rest = mtag.group(1), mtag.group(2)
-        # account id à¸‚à¸¶à¹‰à¸™à¸•à¹‰à¸™à¸”à¹‰à¸§à¸¢à¸•à¸±à¸§à¹€à¸¥à¸‚à¹€à¸ªà¸¡à¸­, prefix à¹€à¸›à¹‡à¸™à¸•à¸±à¸§à¸­à¸±à¸à¸©à¸£ -> à¸•à¸±à¸”à¸•à¸±à¸§à¸­à¸±à¸à¸©à¸£à¸™à¸³à¸«à¸™à¹‰à¸²à¸­à¸­à¸
+        # account id ขึ้นต้นด้วยตัวเลขเสมอ, prefix เป็นตัวอักษร -> ตัดตัวอักษรนำหน้าออก
         m = re.match(r'^(?:\(D\d+\))?[A-Za-z]*(\d.*)$', rest)
         if m:
             rest = "noherofound" + m.group(1)
@@ -5536,7 +5548,7 @@ class RangerGearBot(threading.Thread):
 
         backup_path = os.path.join(not_found_dir, filename)
         
-        # à¸§à¸´à¸˜à¸µà¸—à¸µà¹ˆà¹„à¸”à¹‰à¸œà¸¥ 100%: cp à¹„à¸› /data/local/tmp â†’ chmod â†’ pull
+        # วิธีที่ได้ผล 100%: cp ไป /data/local/tmp → chmod → pull
         safe_dev = self.device_id.replace(":", "_")
         temp_remote = f"/data/local/tmp/backup_{safe_dev}.xml"
         
@@ -5569,18 +5581,18 @@ class RangerGearBot(threading.Thread):
         self._login_fixid_count = 0  # Reset fixid counter for each new ID
         self._fixid_seen = False
         self._wg_net_hits = 0
-        self._wg_recover_n = 0       # à¹‚à¸„à¸§à¸•à¸²à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¹à¸­à¸›+à¸›à¸´à¸”/à¹€à¸›à¸´à¸” VPN à¹€à¸¡à¸·à¹ˆà¸­à¹€à¸ˆà¸­ Unstable network (à¸•à¹ˆà¸­à¹„à¸­à¸”à¸µ)
+        self._wg_recover_n = 0       # โควตาเคลียร์แอป+ปิด/เปิด VPN เมื่อเจอ Unstable network (ต่อไอดี)
         
         # Clear app
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(0.5)
         
-        # à¹€à¸›à¸´à¸”à¹à¸­à¸›à¸”à¹‰à¸§à¸¢ am start (à¹€à¸£à¹‡à¸§à¸à¸§à¹ˆà¸²à¹à¸¥à¸°à¹€à¸ªà¸–à¸µà¸¢à¸£à¸à¸§à¹ˆà¸²à¸„à¸¥à¸´à¸ icon.png)
+        # เปิดแอปด้วย am start (เร็วกว่าและเสถียรกว่าคลิก icon.png)
         self.open_app()
         sleep(1)
         
-        # === Black Screen Check à¸«à¸¥à¸±à¸‡à¹€à¸›à¸´à¸”à¹à¸­à¸ž (15 à¸§à¸´ à¸–à¹‰à¸²à¸¢à¸±à¸‡à¸”à¸³/à¹€à¸—à¸² > 80% â†’ clear + restart) ===
-        for black_attempt in range(3):  # à¸¥à¸­à¸‡à¹„à¸”à¹‰ 3 à¸„à¸£à¸±à¹‰à¸‡
+        # === Black Screen Check หลังเปิดแอพ (15 วิ ถ้ายังดำ/เทา > 80% → clear + restart) ===
+        for black_attempt in range(3):  # ลองได้ 3 ครั้ง
             black_start = time.time()
             is_stuck = False
             while time.time() - black_start < 10:
@@ -5592,7 +5604,7 @@ class RangerGearBot(threading.Thread):
                         total = self._screen.shape[0] * self._screen.shape[1]
                         black_ratio = num_black / total
                         if black_ratio < 0.85:
-                            # à¸ˆà¸­à¸ªà¸§à¹ˆà¸²à¸‡à¹à¸¥à¹‰à¸§ (>15% pixels not black)
+                            # จอสว่างแล้ว (>15% pixels not black)
                             print(f"[{self.device_id}] [BLACK] Screen OK! (app loaded)")
                             is_stuck = False
                             break
@@ -5606,17 +5618,17 @@ class RangerGearBot(threading.Thread):
             
             if is_stuck:
                 print(f"[{self.device_id}] [BLACK] Dark screen 15s after launch! (attempt {black_attempt+1}/3) Clearing...")
-                self._wg_strike("à¸ˆà¸­à¸”à¸³à¸«à¸¥à¸±à¸‡à¹€à¸›à¸´à¸”à¹€à¸à¸¡")
+                self._wg_strike("จอดำหลังเปิดเกม")
                 self.clear_and_restart()
                 self.open_app()
                 sleep(1)
             else:
-                break  # à¹à¸­à¸žà¹‚à¸«à¸¥à¸”à¸ªà¸³à¹€à¸£à¹‡à¸ˆ à¸­à¸­à¸à¸ˆà¸²à¸ loop
+                break  # แอพโหลดสำเร็จ ออกจาก loop
             
         loop_count = 0
         status = "unknown"
-        event_passed = False  # à¸«à¸¥à¸±à¸‡à¹€à¸ˆà¸­ event.png à¹à¸¥à¹‰à¸§à¸«à¸¢à¸¸à¸”à¹€à¸Šà¹‡à¸„ fixok
-        event_popup_count = 0  # à¸à¸±à¸™ event popup à¹€à¸”à¹‰à¸‡à¸§à¸™à¹„à¸¡à¹ˆà¸ˆà¸š (à¸ˆà¸³à¸à¸±à¸”à¸ˆà¸³à¸™à¸§à¸™à¸„à¸£à¸±à¹‰à¸‡à¸—à¸µà¹ˆà¸à¸”)
+        event_passed = False  # หลังเจอ event.png แล้วหยุดเช็ค fixok
+        event_popup_count = 0  # กัน event popup เด้งวนไม่จบ (จำกัดจำนวนครั้งที่กด)
         
         while True:
             loop_count += 1
@@ -5625,7 +5637,7 @@ class RangerGearBot(threading.Thread):
 
             self.capture_screen()
 
-            # === à¹€à¸Šà¹‡à¸„à¸§à¹ˆà¸²à¹€à¸à¸¡à¸¢à¸±à¸‡à¸£à¸±à¸™à¸­à¸¢à¸¹à¹ˆà¸ˆà¸£à¸´à¸‡à¹„à¸«à¸¡ (à¸—à¸¸à¸à¸£à¸­à¸š) ===
+            # === เช็คว่าเกมยังรันอยู่จริงไหม (ทุกรอบ) ===
             try:
                 pid_result = subprocess.run(
                     [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
@@ -5639,13 +5651,13 @@ class RangerGearBot(threading.Thread):
             except:
                 pass
 
-            # ===== FLOATING POPUP CHECKS (à¸à¸”à¹à¸¥à¹‰à¸§à¸—à¸³à¸‡à¸²à¸™à¸•à¹ˆà¸­) =====
-            # checkline.png: à¸¥à¸³à¸”à¸±à¸šà¹€à¸Šà¹‡à¸„à¸šà¸¥à¹‡à¸­à¸à¸žà¸´à¹€à¸¨à¸©
+            # ===== FLOATING POPUP CHECKS (กดแล้วทำงานต่อ) =====
+            # checkline.png: ลำดับเช็คบล็อกพิเศษ
             if self.exists_in_cache("img/checkline.png"):
                 self.check_floating_popups()
                 continue
 
-            # fixnetv2.png: à¹€à¸ˆà¸­à¸à¹‡à¸à¸” à¹à¸¥à¹‰à¸§à¸£à¸­à¸à¸” fixnetv2ok.png
+            # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
             if self.exists_in_cache("img/fixnetv2.png", similarity=0.8):
                 print(f"[{self.device_id}] [POPUP] fixnetv2.png detected in login loop, clicking...")
                 self.click("img/fixnetv2.png", similarity=0.8)
@@ -5656,8 +5668,8 @@ class RangerGearBot(threading.Thread):
                     sleep(0.3)
                 continue
 
-            # fixplay.png (PLAY): à¹€à¸Šà¹‡à¸„à¸•à¸¥à¸­à¸”à¹€à¸«à¸¡à¸·à¸­à¸™ fixnet - capture_screen() à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¹ƒà¸«à¹‰à¹à¸¥à¹‰à¸§à¸—à¸²à¸‡ NET_POPUPS
-            # (à¸à¸”à¸‹à¹‰à¸³à¸ˆà¸™à¸«à¸²à¸¢ à¹à¸¥à¹‰à¸§à¸£à¸­à¸à¸” check-ok1.png à¸•à¹ˆà¸­) à¸•à¸£à¸‡à¸™à¸µà¹‰à¹€à¸œà¸·à¹ˆà¸­à¸«à¸¥à¸¸à¸”à¸¡à¸²à¸–à¸¶à¸‡ à¸ªà¹ˆà¸‡à¹€à¸‚à¹‰à¸²à¸—à¸²à¸‡à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™
+            # fixplay.png (PLAY): เช็คตลอดเหมือน fixnet - capture_screen() เคลียร์ให้แล้วทาง NET_POPUPS
+            # (กดซ้ำจนหาย แล้วรอกด check-ok1.png ต่อ) ตรงนี้เผื่อหลุดมาถึง ส่งเข้าทางเดียวกัน
             if self.exists_in_cache("img/fixplay.png", similarity=0.8) and not getattr(self, "_in_net_check", False):
                 print(f"[{self.device_id}] [POPUP] fixplay.png detected in login loop, clearing via net-popup path...")
                 self._in_net_check = True
@@ -5670,14 +5682,14 @@ class RangerGearBot(threading.Thread):
                     self._in_net_check = False
                 continue
 
-            # fixnet1.png: à¸§à¸™à¹€à¸Šà¹‡à¸„à¸‹à¹‰à¸³à¸ˆà¸™à¸à¸§à¹ˆà¸²à¸ˆà¸°à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ (à¸›à¸£à¸±à¸š similarity 0.8)
+            # fixnet1.png: วนเช็คซ้ำจนกว่าจะไม่เจอ (ปรับ similarity 0.8)
             fixnet1_login_clicks = 0
             while self.exists_in_cache("img/fixnet1.png", similarity=0.8):
                 fixnet1_login_clicks += 1
                 print(f"[{self.device_id}] [POPUP] fixnet1.png detected in login loop (click #{fixnet1_login_clicks}), clicking...")
                 self.click("img/fixnet1.png", similarity=0.8)
                 sleep(1.5)
-                self.capture_screen()  # à¸ˆà¸±à¸šà¸ à¸²à¸žà¹ƒà¸«à¸¡à¹ˆà¹€à¸žà¸·à¹ˆà¸­à¹€à¸Šà¹‡à¸„à¸‹à¹‰à¸³
+                self.capture_screen()  # จับภาพใหม่เพื่อเช็คซ้ำ
                 if fixnet1_login_clicks >= 10:
                     print(f"[{self.device_id}] [POPUP] fixnet1.png clicked 10 times in login, breaking")
                     break
@@ -5686,41 +5698,41 @@ class RangerGearBot(threading.Thread):
 
             # fixnetv3.png Check in login loop
             if self.exists_in_cache("img/fixnetv3.png", similarity=0.8) and self._wg_request_net_recover("login loop"):
-                continue                      # à¸›à¸´à¸”à¹€à¸à¸¡ + à¸›à¸´à¸”/à¹€à¸›à¸´à¸” VPN + à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹ƒà¸«à¸¡à¹ˆà¹à¸¥à¹‰à¸§ (wg_once=1 à¸ˆà¸°à¹„à¸¡à¹ˆà¸—à¸³ -> à¸à¸”à¹à¸šà¸šà¹€à¸”à¸´à¸¡)
+                continue                      # ปิดเกม + ปิด/เปิด VPN + เปิดเกมใหม่แล้ว (wg_once=1 จะไม่ทำ -> กดแบบเดิม)
             if self.exists_in_cache("img/fixnetv3.png", similarity=0.8):
                 print(f"[{self.device_id}] [POPUP] fixnetv3.png detected in login loop! Tapping (472, 361)...")
-                self._adb_tap(472, 361)   # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸™à¹‡à¸•: à¸à¸”à¸œà¹ˆà¸²à¸™ adb à¸•à¸£à¸‡ à¹† à¹€à¸«à¸¡à¸·à¸­à¸™ bot-tiket
+                self._adb_tap(472, 361)   # ป๊อปอัพเน็ต: กดผ่าน adb ตรง ๆ เหมือน bot-tiket
                 sleep(0.5)
                 continue
 
-            # === fixokk.png Persistence Check (à¸£à¸­à¸„à¹‰à¸²à¸‡à¸„à¸£à¸š 5 à¸§à¸´ à¸–à¸¶à¸‡à¸ˆà¸°à¸à¸”) ===
+            # === fixokk.png Persistence Check (รอค้างครบ 5 วิ ถึงจะกด) ===
             if self.exists_in_cache("img/fixokk.png", similarity=0.8):
                 if not hasattr(self, '_fixokk_start_time') or self._fixokk_start_time is None:
                     self._fixokk_start_time = time.time()
                     if getattr(self, '_fixid_seen', False):
-                        # à¹€à¸„à¸¢à¹€à¸ˆà¸­ fixid à¹ƒà¸™à¹„à¸­à¸”à¸µà¸™à¸µà¹‰à¹à¸¥à¹‰à¸§ -> à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸£à¸­ 5 à¸§à¸´ à¸à¸” fixokk à¹€à¸¥à¸¢
-                        print(f"[{self.device_id}] à¹€à¸ˆà¸­ fixokk.png (à¹€à¸„à¸¢à¹€à¸ˆà¸­ fixid à¹à¸¥à¹‰à¸§) -> à¸à¸”à¹€à¸¥à¸¢")
+                        # เคยเจอ fixid ในไอดีนี้แล้ว -> ไม่ต้องรอ 5 วิ กด fixokk เลย
+                        print(f"[{self.device_id}] เจอ fixokk.png (เคยเจอ fixid แล้ว) -> กดเลย")
                         self.click("img/fixokk.png", similarity=0.8)
                         self._fixokk_start_time = None
                         sleep(2)
                     else:
                         print(f"[{self.device_id}] Detected fixokk.png... waiting 5s")
                 elif getattr(self, '_fixid_seen', False) or time.time() - self._fixokk_start_time >= 5:
-                    print(f"[{self.device_id}] âš ï¸ fixokk.png à¸„à¹‰à¸²à¸‡à¸­à¸¢à¸¹à¹ˆà¸„à¸£à¸š 5 à¸§à¸´à¸™à¸²à¸—à¸µ! à¸—à¸³à¸à¸²à¸£à¸à¸”...")
+                    print(f"[{self.device_id}] ⚠️ fixokk.png ค้างอยู่ครบ 5 วินาที! ทำการกด...")
                     self.click("img/fixokk.png", similarity=0.8)
                     self._fixokk_start_time = None
                     sleep(0.5)
             else:
                 self._fixokk_start_time = None
 
-            # === alert2.png Persistence Check (à¸£à¸­à¸„à¹‰à¸²à¸‡à¸„à¸£à¸š 15 à¸§à¸´ à¹ƒà¸«à¹‰ clear app à¹à¸¥à¹‰à¸§à¹€à¸›à¸´à¸”à¹ƒà¸«à¸¡à¹ˆ) ===
+            # === alert2.png Persistence Check (รอค้างครบ 15 วิ ให้ clear app แล้วเปิดใหม่) ===
             if self.exists_in_cache("img/alert2.png", similarity=0.8):
                 if not hasattr(self, '_alert2_start_time') or self._alert2_start_time is None:
                     self._alert2_start_time = time.time()
                     print(f"[{self.device_id}] Detected alert2.png... waiting 15s to clear app")
                 elif time.time() - self._alert2_start_time >= 15:
-                    print(f"[{self.device_id}] âš ï¸ alert2.png à¸„à¹‰à¸²à¸‡à¸­à¸¢à¸¹à¹ˆà¸„à¸£à¸š 15 à¸§à¸´à¸™à¸²à¸—à¸µ! à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¹à¸­à¸žà¹à¸¥à¸°à¹€à¸‚à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆ...")
-                    self._wg_strike("LINE GAME à¸„à¹‰à¸²à¸‡")
+                    print(f"[{self.device_id}] ⚠️ alert2.png ค้างอยู่ครบ 15 วินาที! เคลียร์แอพและเข้าใหม่...")
+                    self._wg_strike("LINE GAME ค้าง")
                     self.clear_and_restart()
                     self.open_app()
                     self._alert2_start_time = None
@@ -5729,16 +5741,16 @@ class RangerGearBot(threading.Thread):
             else:
                 self._alert2_start_time = None
 
-            # === fixid1.png â†’ failed à¸—à¸±à¸™à¸—à¸µ ===
+            # === fixid1.png → failed ทันที ===
             if self.exists_in_cache("img/fixid1.png", similarity=0.95):
                 print(f"[{self.device_id}] Found fixid1.png! -> login-failed immediately")
                 self._login_fixid_count = 0
                 return "failed"
 
-            # === fixid.png Check (à¹€à¸Šà¹‡à¸„à¸—à¸¸à¸à¸£à¸­à¸š) -> fixok -> refresh -> check ===
+            # === fixid.png Check (เช็คทุกรอบ) -> fixok -> refresh -> check ===
             if self.exists_in_cache("img/fixid.png", similarity=0.95):
-                self._fixid_seen = True   # à¸ˆà¸³à¹„à¸§à¹‰: à¸•à¹ˆà¸­à¸ˆà¸²à¸à¸™à¸µà¹‰à¹€à¸ˆà¸­ fixokk à¸à¸”à¸—à¸±à¸™à¸—à¸µ
-                # Authentication failed à¸•à¸­à¸™à¸•à¹ˆà¸­ VPN = IP à¸™à¸µà¹‰à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸ -> à¸›à¸´à¸”à¹€à¸à¸¡ + à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™ IP à¸—à¸±à¸™à¸—à¸µ + à¹€à¸›à¸´à¸”à¹€à¸à¸¡à¹ƒà¸«à¸¡à¹ˆ (config "wg_fixid_switch")
+                self._fixid_seen = True   # จำไว้: ต่อจากนี้เจอ fixokk กดทันที
+                # Authentication failed ตอนต่อ VPN = IP นี้โดนบล็อก -> ปิดเกม + เปลี่ยน IP ทันที + เปิดเกมใหม่ (config "wg_fixid_switch")
                 if (int(config.get("wg_fixid_switch", 1) or 0)
                         and self._wg_request_net_recover("Authentication failed", switch_now=True)):
                     self._login_fixid_count = 0
@@ -5750,13 +5762,13 @@ class RangerGearBot(threading.Thread):
                 if self._login_fixid_count >= 15:
                     print(f"[{self.device_id}] fixid limit reached (15 times)! Failing...")
                     self._wg_auth_failed()
-                    self._wg_strike("fixid à¸„à¸£à¸š 15")
+                    self._wg_strike("fixid ครบ 15")
                     self._login_fixid_count = 0
                     return "failed"
                 
-                # 1) à¸à¸” fikcheck
+                # 1) กด fikcheck
                 print(f"[{self.device_id}] Step 1: waiting for fikcheck.png (10s timeout)...")
-                sleep(0.5) # à¹ƒà¸«à¹‰à¸«à¸™à¹‰à¸²à¸ˆà¸­à¹€à¸ªà¸–à¸µà¸¢à¸£à¸«à¸¥à¸±à¸‡ re-route
+                sleep(0.5) # ให้หน้าจอเสถียรหลัง re-route
                 for _ in range(10): # Timeout 10s
                     self.capture_screen()
                     if self.exists_in_cache("img/fikcheck.png", similarity=0.8):
@@ -5766,7 +5778,7 @@ class RangerGearBot(threading.Thread):
                         break
                     sleep(0.5)
                 
-                # 2) à¸à¸” refresh
+                # 2) กด refresh
                 print(f"[{self.device_id}] Step 2: clicking refresh.png (10s timeout)...")
                 for _ in range(10): # Timeout 10s
                     self.capture_screen()
@@ -5779,12 +5791,12 @@ class RangerGearBot(threading.Thread):
                     sleep(0.5)
                 
                 else:
-                    # à¸„à¸£à¸šà¹€à¸§à¸¥à¸²à¹à¸¥à¹‰à¸§à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ refresh.png - à¹€à¸”à¸´à¸¡à¹€à¸‡à¸µà¸¢à¸šà¹„à¸›à¹€à¸‰à¸¢ à¹† à¹„à¸¥à¹ˆà¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸§à¹ˆà¸²à¸£à¸¹à¸›à¹„à¸¡à¹ˆà¹à¸¡à¸•à¸Šà¹Œà¸«à¸£à¸·à¸­à¸ˆà¸­à¹„à¸¡à¹ˆà¸¡à¸²
+                    # ครบเวลาแล้วไม่เจอ refresh.png - เดิมเงียบไปเฉย ๆ ไล่ไม่ได้ว่ารูปไม่แมตช์หรือจอไม่มา
                     _sc = self._match_score("img/refresh.png")
                     _shot = self._save_debug_screen("refresh-miss")
-                    print(f"[{self.device_id}] [REFRESH] à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ refresh.png (à¸„à¸°à¹à¸™à¸™à¸ªà¸¹à¸‡à¸ªà¸¸à¸” {_sc:.2f} / à¸•à¹‰à¸­à¸‡à¸à¸²à¸£ 0.80)"
-                          + (f" - à¹€à¸à¹‡à¸šà¸ à¸²à¸žà¹„à¸§à¹‰à¸—à¸µà¹ˆ {_shot}" if _shot else ""))
-                # 3) à¸£à¸­ check.png à¹à¸¥à¹‰à¸§à¸à¸”
+                    print(f"[{self.device_id}] [REFRESH] ไม่เจอ refresh.png (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                          + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
+                # 3) รอ check.png แล้วกด
                 print(f"[{self.device_id}] Step 3: waiting for check.png (60s timeout)...")
                 check_wait_start = time.time()
                 while time.time() - check_wait_start < 60:
@@ -5793,7 +5805,7 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] Found check.png! Clicking...")
                         self.click("img/check.png")
                         sleep(0.5)
-                        # à¸«à¸¥à¸±à¸‡à¸à¸” check -> à¸£à¸­à¸”à¸¹ fixid à¸à¹ˆà¸­à¸™ 2 à¸§à¸´
+                        # หลังกด check -> รอดู fixid ก่อน 2 วิ
                         found_fixid_after_check = False
                         for _ in range(2):
                             self.capture_screen()
@@ -5815,7 +5827,7 @@ class RangerGearBot(threading.Thread):
                 
                 continue
 
-            # === à¹€à¸ˆà¸­ refresh.png (à¹„à¸¡à¹ˆà¸¡à¸µ fixid) -> à¸à¸” refresh -> check ===
+            # === เจอ refresh.png (ไม่มี fixid) -> กด refresh -> check ===
             if self.exists_in_cache("img/refresh.png", similarity=0.8):
                 print(f"[{self.device_id}] Found refresh.png (no fixid), clicking refresh -> check...")
                 self.click("img/refresh.png", similarity=0.8)
@@ -5829,7 +5841,7 @@ class RangerGearBot(threading.Thread):
                         print(f"[{self.device_id}] Found check.png! Clicking...")
                         self.click("img/check.png")
                         sleep(0.5)
-                        # à¸«à¸¥à¸±à¸‡à¸à¸” check -> à¸£à¸­à¸”à¸¹ fixid à¸à¹ˆà¸­à¸™ 2 à¸§à¸´
+                        # หลังกด check -> รอดู fixid ก่อน 2 วิ
                         found_fixid_after_check = False
                         for _ in range(4):
                             self.capture_screen()
@@ -5852,7 +5864,7 @@ class RangerGearBot(threading.Thread):
                 continue
             # ====================================================
 
-            # Crash Check: à¹ƒà¸Šà¹‰ pidof + open_app à¹à¸—à¸™à¸„à¸¥à¸´à¸ icon.png
+            # Crash Check: ใช้ pidof + open_app แทนคลิก icon.png
             try:
                 pid_result = subprocess.run(
                     [self.adb_cmd, "-s", self.device_id, "shell", "pidof", "com.linecorp.LGRGS"],
@@ -5883,10 +5895,10 @@ class RangerGearBot(threading.Thread):
                 loop_count = 0
                 continue
                 
-            # à¹„à¸à¹ˆà¸šà¸µà¹‰à¸—à¸¸à¸à¹à¸šà¸š
+            # ไก่บี้ทุกแบบ
             kaiby_hit = self.find_kaiby(similarity=0.8)
             if kaiby_hit:
-                print(f"[{self.device_id}] âš ï¸ à¸žà¸š {kaiby_hit}! (à¹„à¸à¹ˆà¸šà¸µà¹‰à¹€à¸”à¹‰à¸‡à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡ Login) à¹€à¸„à¸¥à¸µà¸¢à¸£à¹Œà¹à¸­à¸žà¹à¸¥à¸°à¸ªà¹ˆà¸‡à¹€à¸‚à¹‰à¸²à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ kaiby...")
+                print(f"[{self.device_id}] ⚠️ พบ {kaiby_hit}! (ไก่บี้เด้งระหว่าง Login) เคลียร์แอพและส่งเข้าโฟลเดอร์ kaiby...")
                 self.clear_and_restart()
                 sleep(0.5)
                 return "kaiby"
@@ -5897,7 +5909,7 @@ class RangerGearBot(threading.Thread):
                 self._wg_ok()
                 self._wg_auth_fail = 0
                 if int(config.get("wg_after_login", 0) or 0):
-                    self._ensure_wireguard()   # à¸¥à¹‡à¸­à¸à¸­à¸´à¸™à¸œà¹ˆà¸²à¸™à¹à¸¥à¹‰à¸§ -> à¸„à¹ˆà¸­à¸¢à¸•à¹ˆà¸­ VPN (à¹€à¸‹à¸´à¸£à¹Œà¸Ÿ LINE à¹„à¸¡à¹ˆà¸¢à¸­à¸¡à¹ƒà¸«à¹‰à¸¥à¹‡à¸­à¸à¸­à¸´à¸™à¸œà¹ˆà¸²à¸™ VPN)
+                    self._ensure_wireguard()   # ล็อกอินผ่านแล้ว -> ค่อยต่อ VPN (เซิร์ฟ LINE ไม่ยอมให้ล็อกอินผ่าน VPN)
                 
                 # === Check for kaibyswap_shop.png before proceeding (if configured) ===
                 kaibyskip_enabled = config.get("kaibyskip", 0)
@@ -5917,7 +5929,7 @@ class RangerGearBot(threading.Thread):
                         sleep(0.5)
                     
                     if kaibyswap_found:
-                        print(f"[{self.device_id}] âš ï¸ Found kaibyswap_shop.png! Returning kaiby...")
+                        print(f"[{self.device_id}] ⚠️ Found kaibyswap_shop.png! Returning kaiby...")
                         self.clear_and_restart()
                         return "kaiby"
                 # ====================================================================
@@ -5959,9 +5971,9 @@ class RangerGearBot(threading.Thread):
                 # Combine results and backup
                 filename = self.current_original_filename or "unknown.xml"
                 
-                # Handle Ruby/Ticket in filename â€” à¸¢à¹‰à¸²à¸¢ tag à¸¡à¸²à¹„à¸§à¹‰à¸‚à¹‰à¸²à¸‡à¸«à¸™à¹‰à¸²: ruby[]+ticket[]+à¸Šà¸·à¹ˆà¸­
+                # Handle Ruby/Ticket in filename — ย้าย tag มาไว้ข้างหน้า: ruby[]+ticket[]+ชื่อ
                 import re
-                # strip tag ruby/ticket à¹€à¸”à¸´à¸¡ (à¸­à¸¢à¸¹à¹ˆà¸«à¸™à¹‰à¸²à¸«à¸£à¸·à¸­à¸«à¸¥à¸±à¸‡à¸à¹‡à¹„à¸”à¹‰) à¹ƒà¸«à¹‰à¹€à¸«à¸¥à¸·à¸­à¸Šà¸·à¹ˆà¸­ base à¸ªà¸°à¸­à¸²à¸”
+                # strip tag ruby/ticket เดิม (อยู่หน้าหรือหลังก็ได้) ให้เหลือชื่อ base สะอาด
                 base = os.path.splitext(filename)[0]
                 base = re.sub(r'\+?ruby\[[^\]]*\]', '', base)
                 base = re.sub(r'\+?ticket\[[^\]]*\]', '', base)
@@ -6003,13 +6015,13 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [DEBUG] category={category}")
                 
                 if category != "unknown":
-                    msg = f"[{self.device_id}] ðŸ† Success! Found {category}: {found_names}"
+                    msg = f"[{self.device_id}] 🏆 Success! Found {category}: {found_names}"
                     print(msg)
                     
                     # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
                     ui_stats.update_hero(found_names)
                     
-                    # chmod for pull (à¸§à¸´à¸˜à¸µà¸—à¸µà¹ˆà¹„à¸”à¹‰à¸œà¸¥ 100%: cp â†’ tmp â†’ chmod â†’ pull)
+                    # chmod for pull (วิธีที่ได้ผล 100%: cp → tmp → chmod → pull)
                     safe_dev = self.device_id.replace(":", "_")
                     temp_remote = f"/data/local/tmp/backup_{safe_dev}.xml"
                     self.adb_shell(f"su -c 'cp {source_path} {temp_remote}'")
@@ -6024,11 +6036,11 @@ class RangerGearBot(threading.Thread):
                     clean_base = os.path.splitext(clean_filename)[0]
                     if os.path.exists(backup_dir):
                         for old_f in os.listdir(backup_dir):
-                            # match à¸—à¸±à¹‰à¸‡à¸Šà¸·à¹ˆà¸­à¹€à¸à¹ˆà¸² (tag à¸‚à¹‰à¸²à¸‡à¸«à¸¥à¸±à¸‡) à¹à¸¥à¸°à¹ƒà¸«à¸¡à¹ˆ (tag à¸‚à¹‰à¸²à¸‡à¸«à¸™à¹‰à¸²) à¸”à¹‰à¸§à¸¢ account base
+                            # match ทั้งชื่อเก่า (tag ข้างหลัง) และใหม่ (tag ข้างหน้า) ด้วย account base
                             is_match = old_f.endswith(".xml") and (
                                 old_f == (clean_base + ".xml")
-                                or old_f.startswith(clean_base + "+")          # à¹€à¸à¹ˆà¸²: base+ruby[]+ticket[]
-                                or old_f.endswith("+" + clean_base + ".xml")   # à¹ƒà¸«à¸¡à¹ˆ: ruby[]+ticket[]+base
+                                or old_f.startswith(clean_base + "+")          # เก่า: base+ruby[]+ticket[]
+                                or old_f.endswith("+" + clean_base + ".xml")   # ใหม่: ruby[]+ticket[]+base
                             )
                             if is_match:
                                 try:
@@ -6044,18 +6056,18 @@ class RangerGearBot(threading.Thread):
                     )
                     
                     if result.returncode == 0:
-                        print(f"[{self.device_id}] âœ“ Backed up to: {dst}")
+                        print(f"[{self.device_id}] ✓ Backed up to: {dst}")
                     else:
-                        print(f"[{self.device_id}] âœ— Backup failed: {result.stderr}")
+                        print(f"[{self.device_id}] ✗ Backup failed: {result.stderr}")
                     # Cleanup temp
                     self.adb_shell(f"rm -f {temp_remote}")
                 else:
                     # No results from either ranger or gear -> backup to not-found
-                    msg = f"[{self.device_id}] à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ Ranger/Gear à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸²à¸£"
+                    msg = f"[{self.device_id}] ไม่เจอ Ranger/Gear ที่ต้องการ"
                     print(msg)
                     
                     # ALWAYS update hero stats for shared Dashboard (even in CLI mode)
-                    ui_stats.update_hero("à¹„à¸¡à¹ˆà¹€à¸ˆà¸­")
+                    ui_stats.update_hero("ไม่เจอ")
                     
                     print(f"[{self.device_id}] No results from ranger or gear - backing up to not-found")
                     self.backup_to_not_found(filename, source_path)
@@ -6066,7 +6078,7 @@ class RangerGearBot(threading.Thread):
                 self.clear_and_restart()
                 return "success"
                 
-            # à¹„à¸à¹ˆà¸šà¸µà¹‰à¸—à¸¸à¸à¹à¸šà¸š (High Priority)
+            # ไก่บี้ทุกแบบ (High Priority)
             reason = self.find_kaiby()
             if reason:
                 print(f"[{self.device_id}] {reason} detected! Stopping login...")
@@ -6096,7 +6108,7 @@ class RangerGearBot(threading.Thread):
                 loop_count = 0
                 continue
             
-            # === fixok.png Check (à¹€à¸Šà¹‡à¸„à¸•à¸¥à¸­à¸” à¹à¸•à¹ˆà¸«à¸¢à¸¸à¸”à¸«à¸¥à¸±à¸‡ event) ===
+            # === fixok.png Check (เช็คตลอด แต่หยุดหลัง event) ===
             if not event_passed and self.exists_in_cache("img/fixok.png"):
                 print(f"[{self.device_id}] Found fixok.png! Clicking...")
                 self.click("img/fixok.png")
@@ -6105,12 +6117,12 @@ class RangerGearBot(threading.Thread):
 
             # Event / Popups
             if self.exists_in_cache("img/event.png"):
-                event_passed = True  # à¸«à¸¥à¸±à¸‡à¸ˆà¸²à¸à¸™à¸µà¹‰à¸«à¸¢à¸¸à¸”à¹€à¸Šà¹‡à¸„ fixok
+                event_passed = True  # หลังจากนี้หยุดเช็ค fixok
                 event_popup_count += 1
                 if event_popup_count > 15:
-                    # à¸›à¹Šà¸­à¸›à¸­à¸±à¸žà¹€à¸”à¹‰à¸‡à¸à¸¥à¸±à¸šà¸¡à¸²à¹„à¸¡à¹ˆà¸ˆà¸š - à¹€à¸¥à¸´à¸à¸à¸”à¸¡à¸±à¸™ à¸›à¸¥à¹ˆà¸­à¸¢à¸¥à¸¹à¸›à¹€à¸”à¸´à¸™à¸•à¹ˆà¸­à¹ƒà¸«à¹‰à¹€à¸žà¸”à¸²à¸™
-                    # 500 à¸£à¸­à¸šà¸ˆà¸±à¸”à¸à¸²à¸£à¹à¸—à¸™ (à¹€à¸”à¸´à¸¡ loop_count -= 1 à¸•à¸£à¸‡à¸™à¸µà¹‰à¸—à¸³à¹ƒà¸«à¹‰à¸•à¸±à¸§à¸™à¸±à¸š
-                    # à¹„à¸¡à¹ˆà¸‚à¸¢à¸±à¸š = à¸¥à¸¹à¸›à¸§à¸™à¸•à¸¥à¸­à¸”à¸à¸²à¸¥ à¹„à¸¡à¹ˆà¸¡à¸µà¸§à¸±à¸™à¸–à¸¶à¸‡ timeout)
+                    # ป๊อปอัพเด้งกลับมาไม่จบ - เลิกกดมัน ปล่อยลูปเดินต่อให้เพดาน
+                    # 500 รอบจัดการแทน (เดิม loop_count -= 1 ตรงนี้ทำให้ตัวนับ
+                    # ไม่ขยับ = ลูปวนตลอดกาล ไม่มีวันถึง timeout)
                     if event_popup_count == 16:
                         print(f"[{self.device_id}] Event popup keeps returning (>15) - stop clicking, let timeout handle it")
                 else:
@@ -6120,7 +6132,7 @@ class RangerGearBot(threading.Thread):
                     self.adb_shell("input keyevent 4")  # Back button
                     sleep(1)
 
-                    # à¹€à¸Šà¹‡à¸„ cancel.png à¹€à¸‰à¸žà¸²à¸°à¸«à¸¥à¸±à¸‡à¹€à¸ˆà¸­ event à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™
+                    # เช็ค cancel.png เฉพาะหลังเจอ event เท่านั้น
                     self.capture_screen()
                     if self.exists_in_cache("img/cancel.png"):
                         print(f"[{self.device_id}] Cancel button after event. Clicking...")
@@ -6129,8 +6141,8 @@ class RangerGearBot(threading.Thread):
                     continue
             
             sleep(0.5)
-            # à¸—à¸¸à¸ 100 à¸£à¸­à¸šà¸—à¸µà¹ˆà¹„à¸¡à¹ˆà¸¡à¸µà¸à¸²à¸£ match (= à¸„à¹‰à¸²à¸‡à¸«à¸™à¹‰à¸² splash/LINE login) -> restart app à¸„à¸£à¸±à¹‰à¸‡à¹€à¸”à¸µà¸¢à¸§
-            # à¹à¸¥à¹‰à¸§à¸–à¹‰à¸²à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸‚à¸¶à¹‰à¸™à¸„à¹ˆà¸­à¸¢ timeout à¸—à¸µà¹ˆ 300 à¸£à¸­à¸š (= ~2.5 à¸™à¸²à¸—à¸µ) à¹à¸—à¸™à¸£à¸­à¸„à¸£à¸š 500 (~4 à¸™à¸²à¸—à¸µ)
+            # ทุก 100 รอบที่ไม่มีการ match (= ค้างหน้า splash/LINE login) -> restart app ครั้งเดียว
+            # แล้วถ้ายังไม่ขึ้นค่อย timeout ที่ 300 รอบ (= ~2.5 นาที) แทนรอครบ 500 (~4 นาที)
             if loop_count == 100 and not event_passed:
                 print(f"[{self.device_id}] [STUCK] 100 iter no progress - force relaunch app")
                 try:
@@ -6149,12 +6161,12 @@ class RangerGearBot(threading.Thread):
 
 
 class DeviceLogTee:
-    """à¹€à¸à¹‡à¸š log à¸¥à¸‡à¹„à¸Ÿà¸¥à¹Œ .txt à¹à¸¢à¸à¸£à¸²à¸¢ device (logs/<device>.txt) + à¸£à¸§à¸¡à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”à¹ƒà¸™ logs/all.txt
+    """เก็บ log ลงไฟล์ .txt แยกราย device (logs/<device>.txt) + รวมทั้งหมดใน logs/all.txt
 
-    à¸„à¸£à¸­à¸š stdout/stderr à¹€à¸”à¸´à¸¡: à¸„à¸­à¸™à¹‚à¸‹à¸¥/GUI à¹€à¸«à¹‡à¸™à¹€à¸«à¸¡à¸·à¸­à¸™à¹€à¸”à¸´à¸¡à¸—à¸¸à¸à¸›à¸£à¸°à¸à¸²à¸£ à¹à¸„à¹ˆà¸ˆà¸”à¸¥à¸‡à¹„à¸Ÿà¸¥à¹Œà¹€à¸žà¸´à¹ˆà¸¡
-    à¸£à¸°à¸šà¸¸ device à¸ˆà¸²à¸ thread à¸—à¸µà¹ˆà¸žà¸´à¸¡à¸žà¹Œ (RangerGearBot à¸¡à¸µ device_id) à¹€à¸›à¹‡à¸™à¸«à¸¥à¸±à¸
-    à¸–à¹‰à¸²à¸žà¸´à¸¡à¸žà¹Œà¸ˆà¸²à¸ thread à¸­à¸·à¹ˆà¸™à¸ˆà¸°à¸”à¸¹ prefix [127.0.0.1:xxxx] / [emulator-xxxx] à¹à¸—à¸™
-    à¹„à¸Ÿà¸¥à¹Œà¹€à¸à¸´à¸™ 20MB à¸ªà¸¥à¸±à¸šà¹„à¸›à¹€à¸›à¹‡à¸™ .old.txt à¸à¸±à¸™à¹‚à¸•à¹„à¸¡à¹ˆà¸ˆà¸³à¸à¸±à¸”
+    ครอบ stdout/stderr เดิม: คอนโซล/GUI เห็นเหมือนเดิมทุกประการ แค่จดลงไฟล์เพิ่ม
+    ระบุ device จาก thread ที่พิมพ์ (RangerGearBot มี device_id) เป็นหลัก
+    ถ้าพิมพ์จาก thread อื่นจะดู prefix [127.0.0.1:xxxx] / [emulator-xxxx] แทน
+    ไฟล์เกิน 20MB สลับไปเป็น .old.txt กันโตไม่จำกัด
     """
 
     MAX_BYTES = 20 * 1024 * 1024
@@ -6229,8 +6241,8 @@ class DeviceLogTee:
 
 
 if __name__ == "__main__":
-    # à¹€à¸à¹‡à¸š log à¸—à¸¸à¸à¸šà¸£à¸£à¸—à¸±à¸”à¸¥à¸‡à¹„à¸Ÿà¸¥à¹Œ .txt à¹à¸¢à¸à¸£à¸²à¸¢ device à¹ƒà¸™à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ logs/
-    # (à¸„à¸­à¸™à¹‚à¸‹à¸¥/GUI à¹à¸ªà¸”à¸‡à¸œà¸¥à¹€à¸«à¸¡à¸·à¸­à¸™à¹€à¸”à¸´à¸¡ à¹à¸„à¹ˆà¸ˆà¸”à¸¥à¸‡à¹„à¸Ÿà¸¥à¹Œà¹€à¸žà¸´à¹ˆà¸¡)
+    # เก็บ log ทุกบรรทัดลงไฟล์ .txt แยกราย device ในโฟลเดอร์ logs/
+    # (คอนโซล/GUI แสดงผลเหมือนเดิม แค่จดลงไฟล์เพิ่ม)
     sys.stdout = DeviceLogTee(sys.stdout)
     sys.stderr = DeviceLogTee(sys.stderr)
 
@@ -6253,39 +6265,39 @@ if __name__ == "__main__":
         except: pass
 
     print("=== Auto Ranger+Gear Script v3.2.0 ===")
-    print(f"[VERSION] build 2026-10-12 gacha-v1 | à¹„à¸Ÿà¸¥à¹Œà¹à¸à¹‰à¸¥à¹ˆà¸²à¸ªà¸¸à¸” {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
+    print(f"[VERSION] build 2026-10-12 gacha-v1 | ไฟล์แก้ล่าสุด {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(os.path.abspath(__file__))))}")
     
     load_config()
     
-    # à¸¥à¸šà¹„à¸Ÿà¸¥à¹Œ .lock à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”à¸•à¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡à¸£à¸±à¸™ (à¸—à¸±à¹‰à¸‡ backup/ à¹à¸¥à¸° temp/)
+    # ลบไฟล์ .lock ทั้งหมดตอนเริ่มรัน (ทั้ง backup/ และ temp/)
     cleanup_count = 0
-    # 1. à¸¥à¸š lock à¹€à¸à¹ˆà¸²à¸—à¸µà¹ˆà¸­à¸²à¸ˆà¸„à¹‰à¸²à¸‡à¹ƒà¸™à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸„à¸´à¸§
+    # 1. ลบ lock เก่าที่อาจค้างในโฟลเดอร์คิว
     for queue_folder in queue_folder_paths():
         if not os.path.exists(queue_folder):
             continue
         for lf in glob.glob(os.path.join(queue_folder, "*.lock")):
             try: os.remove(lf); cleanup_count += 1
             except: pass
-    # 2. à¸¥à¸š lock à¹ƒà¸™ temp/ranger-locks/
+    # 2. ลบ lock ใน temp/ranger-locks/
     temp_lock_dir = os.path.join(tempfile.gettempdir(), "ranger-locks")
     if os.path.exists(temp_lock_dir):
         for lf in glob.glob(os.path.join(temp_lock_dir, "*.lock")):
             try: os.remove(lf); cleanup_count += 1
             except: pass
-    # 2b. à¸¥à¹‰à¸²à¸‡à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­ IP à¸—à¸µà¹ˆà¸ˆà¸”à¸§à¹ˆà¸²à¹‚à¸”à¸™à¸šà¸¥à¹‡à¸­à¸/à¸žà¸±à¸à¹„à¸§à¹‰à¸ˆà¸²à¸à¸£à¸­à¸šà¸à¹ˆà¸­à¸™ (wg_reset_blocked_on_start, default 1)
-    #     à¸à¸±à¸™à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¸—à¸µà¹ˆà¸ˆà¸”à¸œà¸´à¸”à¸ªà¸°à¸ªà¸¡à¸ˆà¸™à¹„à¸¡à¹ˆà¸¡à¸µ IP à¹ƒà¸«à¹‰à¹ƒà¸Šà¹‰/à¸ªà¸£à¹‰à¸²à¸‡à¹ƒà¸«à¸¡à¹ˆà¹„à¸¡à¹ˆà¹„à¸”à¹‰ - à¸•à¸±à¸§à¸—à¸µà¹ˆà¹‚à¸”à¸™à¸ˆà¸£à¸´à¸‡à¸šà¸­à¸—à¸ˆà¸°à¸—à¸”à¸ªà¸­à¸šà¹€à¸ˆà¸­à¹ƒà¸«à¸¡à¹ˆà¹€à¸­à¸‡
+    # 2b. ล้างรายชื่อ IP ที่จดว่าโดนบล็อก/พักไว้จากรอบก่อน (wg_reset_blocked_on_start, default 1)
+    #     กันรายชื่อที่จดผิดสะสมจนไม่มี IP ให้ใช้/สร้างใหม่ไม่ได้ - ตัวที่โดนจริงบอทจะทดสอบเจอใหม่เอง
     if int(config.get("wg_reset_blocked_on_start", 1) or 0):
         for _bf in (".blocked.json", ".cooldown.json"):
             try: os.remove(os.path.join(str(config.get("wg_dir", "wg")), _bf)); cleanup_count += 1
             except OSError: pass
-    # 2c. à¸¥à¹‰à¸²à¸‡à¸à¸²à¸£à¸ˆà¸­à¸‡à¹„à¸Ÿà¸¥à¹Œ WireGuard à¸‚à¸­à¸‡à¸£à¸­à¸šà¸à¹ˆà¸­à¸™ (à¹à¸•à¹ˆà¸¥à¸°à¸ˆà¸­à¸ˆà¸°à¸ˆà¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¹„à¸¡à¹ˆà¸‹à¹‰à¸³à¸à¸±à¸™)
+    # 2c. ล้างการจองไฟล์ WireGuard ของรอบก่อน (แต่ละจอจะจองใหม่ไม่ซ้ำกัน)
     for lf in glob.glob(os.path.join(str(config.get("wg_dir", "wg")), ".claims", "*.lock")):
         try: os.remove(lf); cleanup_count += 1
         except: pass
     if cleanup_count > 0:
         print(f"[CLEANUP] Removed {cleanup_count} stale .lock file(s)")
 
-    # 3. à¸¥à¸šà¹„à¸Ÿà¸¥à¹Œ shared_stats.json à¹€à¸žà¸·à¹ˆà¸­à¸¥à¹‰à¸²à¸‡à¸„à¹ˆà¸²à¸ˆà¸²à¸à¸£à¸­à¸šà¹€à¸à¹ˆà¸²
+    # 3. ลบไฟล์ shared_stats.json เพื่อล้างค่าจากรอบเก่า
     shared_stats_file = ui_stats._get_shared_file()
     if os.path.exists(shared_stats_file):
         try:
@@ -6293,7 +6305,7 @@ if __name__ == "__main__":
             print("[CLEANUP] Removed old shared_stats.json")
         except: pass
     
-    # à¸£à¸µà¹€à¸‹à¹‡à¸•à¸„à¹ˆà¸²à¹ƒà¸™à¸«à¸™à¹ˆà¸§à¸¢à¸„à¸§à¸²à¸¡à¸ˆà¸³à¸”à¹‰à¸§à¸¢
+    # รีเซ็ตค่าในหน่วยความจำด้วย
     ui_stats.success_count = 0
     ui_stats.fail_count = 0
     ui_stats.hero_found_list = {}
@@ -6329,24 +6341,24 @@ if __name__ == "__main__":
 
     print(f"[INFO] Connected Devices ({len(devices)}): {', '.join(devices)}")
     
-    # === à¸¥à¹‰à¸²à¸‡à¹€à¸™à¹‡à¸•à¸—à¸¸à¸à¸ˆà¸­à¸à¹ˆà¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡: à¸›à¸´à¸” VPN (WireGuard) à¸—à¸µà¹ˆà¸„à¹‰à¸²à¸‡ + à¸¥à¹‰à¸²à¸‡ proxy à¸„à¹‰à¸²à¸‡ à¹à¸¥à¹‰à¸§à¹€à¸Šà¹‡à¸„à¸§à¹ˆà¸²à¸­à¸­à¸à¹€à¸™à¹‡à¸•à¹„à¸”à¹‰ ===
+    # === ล้างเน็ตทุกจอก่อนเริ่ม: ปิด VPN (WireGuard) ที่ค้าง + ล้าง proxy ค้าง แล้วเช็คว่าออกเน็ตได้ ===
     reset_network_all(devices)
 
-    # === à¹„à¸Ÿà¸¥à¹Œ WireGuard à¹„à¸¡à¹ˆà¸žà¸­à¸ˆà¸³à¸™à¸§à¸™à¸ˆà¸­ -> à¸ªà¸£à¹‰à¸²à¸‡à¹€à¸žà¸´à¹ˆà¸¡à¸­à¸±à¸•à¹‚à¸™à¸¡à¸±à¸•à¸´à¸ˆà¸²à¸ Key Pair à¸—à¸µà¹ˆà¸¡à¸µ (wg_gen.py) ===
-    # use_host_vpn=1: VPN à¸­à¸¢à¸¹à¹ˆà¸šà¸™ Windows host - à¸‚à¹‰à¸²à¸¡ auto-gen (à¹„à¸¡à¹ˆà¹à¸•à¸°à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œ wg/)
-    # wg_auto_gen=0: Proton mode - wg_gen à¹ƒà¸Šà¹‰à¹„à¸¡à¹ˆà¹„à¸”à¹‰à¸à¸±à¸š Proton conf (à¹„à¸¡à¹ˆà¸¡à¸µ PresharedKey)
+    # === ไฟล์ WireGuard ไม่พอจำนวนจอ -> สร้างเพิ่มอัตโนมัติจาก Key Pair ที่มี (wg_gen.py) ===
+    # use_host_vpn=1: VPN อยู่บน Windows host - ข้าม auto-gen (ไม่แตะโฟลเดอร์ wg/)
+    # wg_auto_gen=0: Proton mode - wg_gen ใช้ไม่ได้กับ Proton conf (ไม่มี PresharedKey)
     if (int(config.get("wg_enabled", 1) or 0)
             and int(config.get("wg_auto_gen", 1) or 0)
             and not int(config.get("use_host_vpn", 0) or 0)):
         try:
             import wg_gen
-            _mach = int(config.get("wg_machine", 0) or 0)   # à¹€à¸¥à¸‚à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡ (à¸«à¸¥à¸²à¸¢à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¹ƒà¸Šà¹‰à¸à¸¸à¸à¹à¸ˆà¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™) 0 = à¸›à¸´à¸”
+            _mach = int(config.get("wg_machine", 0) or 0)   # เลขเครื่อง (หลายเครื่องใช้กุญแจเดียวกัน) 0 = ปิด
             _per = int(config.get("wg_per_machine", 0) or 0) or (len(devices) + int(config.get("wg_gen_spare", 2)))
             wg_gen.generate(_per, config.get("wg_gen_countries") or None, str(config.get("wg_dir", "wg")), _mach,
-                            str(config.get("wg_account", "") or "").strip() or None,   # à¹€à¸¥à¸·à¸­à¸à¸šà¸±à¸à¸Šà¸µ: wg_accounts/<à¸Šà¸·à¹ˆà¸­>/
+                            str(config.get("wg_account", "") or "").strip() or None,   # เลือกบัญชี: wg_accounts/<ชื่อ>/
                             int(config.get("wg_total_machines", 30) or 30))
         except Exception as e:
-            print(f"[WG-GEN] à¸ªà¸£à¹‰à¸²à¸‡à¹„à¸Ÿà¸¥à¹Œà¸­à¸±à¸•à¹‚à¸™à¸¡à¸±à¸•à¸´à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ: {e}")
+            print(f"[WG-GEN] สร้างไฟล์อัตโนมัติไม่สำเร็จ: {e}")
 
     # Prepare OCR
     find_ranger = config.get("find_ranger", 0)
@@ -6361,7 +6373,7 @@ if __name__ == "__main__":
             print(f"[WARN] Failed to load OCR: {e}")
     
     # Setup Queue (Still needed for GUI but threads will use directory scanning)
-    # à¹€à¸”à¸´à¸¡à¸™à¸±à¸šà¹€à¸‰à¸žà¸²à¸°à¸Šà¸±à¹‰à¸™à¸šà¸™à¸ªà¸¸à¸”à¸‚à¸­à¸‡ backup/ à¹€à¸¥à¸¢à¹„à¸¡à¹ˆà¸•à¸£à¸‡à¸à¸±à¸šà¸—à¸µà¹ˆà¸šà¸­à¸—à¸«à¸¢à¸´à¸šà¹„à¸”à¹‰à¸ˆà¸£à¸´à¸‡
+    # เดิมนับเฉพาะชั้นบนสุดของ backup/ เลยไม่ตรงกับที่บอทหยิบได้จริง
     total_files = 0
     for source_folder in queue_folder_paths():
         if not os.path.exists(source_folder):
@@ -6370,9 +6382,9 @@ if __name__ == "__main__":
         for _root, _dirs, _fs in os.walk(source_folder):
             n += len([f for f in _fs if f.lower().endswith(".xml")])
         total_files += n
-        print(f"[FILE] Found {n} files in {source_folder} (à¸£à¸§à¸¡à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸¢à¹ˆà¸­à¸¢)")
+        print(f"[FILE] Found {n} files in {source_folder} (รวมโฟลเดอร์ย่อย)")
     ui_stats.update(total=total_files)
-    print(f"[FILE] à¸„à¸´à¸§à¸£à¸§à¸¡à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” {total_files} à¹„à¸Ÿà¸¥à¹Œ")
+    print(f"[FILE] คิวรวมทั้งหมด {total_files} ไฟล์")
     
     # Selection
     if not args.cli and GUI_AVAILABLE:
@@ -6395,20 +6407,20 @@ if __name__ == "__main__":
     # If device is specified, only run that one (useful for multi-window mode)
     targets = [args.device] if args.device else devices
     
-    # à¸›à¸¥à¹ˆà¸­à¸¢à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™ start_batch à¸•à¸±à¸§ à¹à¸¥à¹‰à¸§à¹€à¸•à¸´à¸¡à¸•à¸±à¸§à¸–à¸±à¸”à¹„à¸›à¸—à¸±à¸™à¸—à¸µà¸—à¸µà¹ˆà¸•à¸±à¸§à¸à¹ˆà¸­à¸™à¸«à¸™à¹‰à¸²à¸ªà¹ˆà¸‡à¸ªà¸±à¸à¸à¸²à¸“à¸žà¸£à¹‰à¸­à¸¡
+    # ปล่อยพร้อมกัน start_batch ตัว แล้วเติมตัวถัดไปทันทีที่ตัวก่อนหน้าส่งสัญญาณพร้อม
     delay = float(config.get("thread_delay", 5))
     batch = max(1, int(config.get("start_batch", 4)))
     start_timeout = float(config.get("start_timeout", delay * 4))
-    print(f"[INFO] Starting {len(targets)} threads: à¸›à¸¥à¹ˆà¸­à¸¢à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™ {batch} à¸•à¸±à¸§ "
-          f"à¹à¸¥à¹‰à¸§à¸•à¹ˆà¸­à¸„à¸´à¸§à¸—à¸±à¸™à¸—à¸µà¸—à¸µà¹ˆà¹à¸•à¹ˆà¸¥à¸°à¸•à¸±à¸§à¸žà¸£à¹‰à¸­à¸¡ (à¹€à¸žà¸”à¸²à¸™ {start_timeout:.0f}s/à¸•à¸±à¸§)")
+    print(f"[INFO] Starting {len(targets)} threads: ปล่อยพร้อมกัน {batch} ตัว "
+          f"แล้วต่อคิวทันทีที่แต่ละตัวพร้อม (เพดาน {start_timeout:.0f}s/ตัว)")
     ready_q = queue.Queue()
     inflight = 0
     for dev in targets:
         while inflight >= batch:
             try:
-                print(f"[INFO] {ready_q.get(timeout=start_timeout)} à¸žà¸£à¹‰à¸­à¸¡à¹à¸¥à¹‰à¸§")
+                print(f"[INFO] {ready_q.get(timeout=start_timeout)} พร้อมแล้ว")
             except queue.Empty:
-                print(f"[WARN] à¹„à¸¡à¹ˆà¸¡à¸µà¸ªà¸±à¸à¸à¸²à¸“à¸žà¸£à¹‰à¸­à¸¡à¹ƒà¸™ {start_timeout:.0f}s - à¸›à¸¥à¹ˆà¸­à¸¢à¸•à¸±à¸§à¸–à¸±à¸”à¹„à¸›à¹€à¸¥à¸¢")
+                print(f"[WARN] ไม่มีสัญญาณพร้อมใน {start_timeout:.0f}s - ปล่อยตัวถัดไปเลย")
             inflight -= 1
         t = RangerGearBot(dev, args)
         t._ready_q = ready_q
