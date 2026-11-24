@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.3.2"
+BOT_VERSION = "5.3.3"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -9718,49 +9718,39 @@ class RangerGearBot(threading.Thread):
         taps_at_entry = self._tap_count
 
         # checkline.png: Handle Checkbox Popup Sequence
+        # - ใช้ check-l1.png เป็น CHECKPOINT (รอให้โผล่ แต่ไม่คลิก)
+        # - เมื่อ check-l1 โผล่ -> tap 4 จุดตามพิกัด (ไม่สแกน check-l4)
         if self.exists_in_cache("img/checkline.png", similarity=0.8):
-            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
+            print(f"[{self.device_id}] [POPUP] checkline.png detected! Waiting for check-l1 checkpoint...")
             self.click("img/checkline.png", similarity=0.8)
             sleep(0.5)
-            
-            # 1. Wait for @check-l1.png
+
+            # รอ check-l1.png โผล่ (checkpoint - ไม่คลิก)
             start_l1 = time.time()
+            found_l1 = False
             while time.time() - start_l1 < 60:
                 self._raw_capture()
                 if self.exists_in_cache("img/check-l1.png", similarity=0.85):
-                    print(f"[{self.device_id}] [POPUP] Found check-l1.png")
+                    print(f"[{self.device_id}] [POPUP] check-l1 checkpoint hit -> tap 4 coords")
+                    found_l1 = True
                     break
                 sleep(0.3)
-            
-            else:
+            if not found_l1:
                 _sc = self._match_score("img/check-l1.png")
                 _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.85)"
-                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
-            # 2. Coordinates
-            print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 279), (928, 351)...")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png ไม่เจอใน 60s (score {_sc:.2f}/0.85)"
+                      + (f" - saved {_shot}" if _shot else "") + " - ข้ามรอบนี้")
+                return
+
+            # tap 4 coords (ไม่ใช้รูปใด ๆ หลังจากนี้)
             self.tap(932, 133)
             sleep(0.2)
             self.tap(930, 279)
             sleep(0.2)
             self.tap(928, 351)
+            sleep(0.2)
+            self.tap(429, 431)
             sleep(0.3)
-            
-            # 3. Wait for check-l4.png
-            start_l4 = time.time()
-            while time.time() - start_l4 < 60:
-                self._raw_capture()
-                if self.exists_in_cache("img/check-l4.png", similarity=0.8):
-                    print(f"[{self.device_id}] [POPUP] Found and clicking check-l4.png")
-                    self.click("img/check-l4.png", similarity=0.8)
-                    break
-                sleep(0.3)
-                
-            else:
-                _sc = self._match_score("img/check-l4.png")
-                _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] รอ check-l4.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
-                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             # 4. Click check-ok1.png
             print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
             for _ in range(60):
