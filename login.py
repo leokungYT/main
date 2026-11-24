@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.3.1"
+BOT_VERSION = "5.3.2"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -9738,12 +9738,12 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.85)"
                       + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             # 2. Coordinates
-            print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
+            print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 279), (928, 351)...")
             self.tap(932, 133)
             sleep(0.2)
-            self.tap(930, 253)
+            self.tap(930, 279)
             sleep(0.2)
-            self.tap(926, 327)
+            self.tap(928, 351)
             sleep(0.3)
             
             # 3. Wait for check-l4.png
