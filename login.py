@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.3.5"
+BOT_VERSION = "5.3.6"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -8639,6 +8639,22 @@ class RangerGearBot(threading.Thread):
                 except Exception as e:
                     print(f"[{self.device_id}] Critical Error with {xml_file}: {e}")
                     self._release_file_lock(xml_file)
+                    # ถ้า timeout ติดๆ -> device ตายจริง ๆ recover ADB + รอนานขึ้น
+                    # กันเสียคิวไฟล์เพราะ bot ลอง inject เรื่อย ๆ โดยที่ device ไม่ตอบ
+                    emsg = str(e).lower()
+                    if "timed out" in emsg or "timeout" in emsg:
+                        self._timeout_streak = getattr(self, "_timeout_streak", 0) + 1
+                        if self._timeout_streak >= 3:
+                            print(f"[{self.device_id}] [DEAD-DEVICE] timeout 3 ครั้งติด -> recover ADB + รอ 30s")
+                            try:
+                                self._adb_recover_device()
+                            except Exception as rec_e:
+                                print(f"[{self.device_id}] [DEAD-DEVICE] recover error: {rec_e}")
+                            sleep(30)
+                            self._timeout_streak = 0
+                            continue
+                    else:
+                        self._timeout_streak = 0
                     sleep(5)
         except RestartTimeoutError:
             # ตาข่ายชั้นสุดท้าย - ไม่ควรมาถึงตรงนี้ แต่ถ้ามา -> raise ให้ supervisor restart
@@ -9082,7 +9098,8 @@ class RangerGearBot(threading.Thread):
             kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
         return subprocess.run(args, capture_output=True, timeout=timeout, **kwargs)
 
-    def adb_shell(self, shell_cmd, timeout=10):
+    def adb_shell(self, shell_cmd, timeout=20):
+        # default 10 -> 20 วิ (หลายจอแย่ง adb บน host บางคำสั่งใช้ 12-15s)
         kwargs = {}
         if os.name == 'nt':
             kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
