@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.3.3"
+BOT_VERSION = "5.3.4"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -9193,9 +9193,10 @@ class RangerGearBot(threading.Thread):
                 kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
 
             # ไม่มี -p = ไม่ encode PNG บนเครื่อง Android และไม่ต้อง decode ฝั่งนี้
+            # timeout 10 -> 20 วิ (หลายจอแย่ง adb บน host บางรอบใช้เวลา 12-15 วิ)
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap"] + (["-p"] if int(config.get("screencap_png", 0) or 0) else []),
-                capture_output=True, timeout=10, **kwargs
+                capture_output=True, timeout=20, **kwargs
             )
 
             if result.returncode == 0 and len(result.stdout) > 100:
@@ -9249,6 +9250,14 @@ class RangerGearBot(threading.Thread):
             self._cap_fail = getattr(self, "_cap_fail", 0) + 1
             if self._cap_fail in (3, 10) or self._cap_fail % 30 == 0:
                 print(f"[{self.device_id}] [CAPTURE] screencap ล้มเหลวติดกัน {self._cap_fail} ครั้ง - บอทเห็นแต่ภาพเก่า จะหาอะไรไม่เจอทั้งนั้น (adb หรือเครื่องค้าง)")
+            # ล้ม 5 ครั้งติด -> auto recover ADB (reconnect device)
+            # กันเคส bot ติดอยู่บนภาพเก่าไม่เห็นหน้าใหม่ (เช่น popup You must accept)
+            if self._cap_fail == 5:
+                try:
+                    print(f"[{self.device_id}] [CAPTURE] auto-recover ADB (fail 5 ติด)...")
+                    self._adb_recover_device()
+                except Exception as rec_e:
+                    print(f"[{self.device_id}] [CAPTURE] recover error: {rec_e}")
             if hasattr(self, "_in_popup_check"):
                 self._in_popup_check = False
 
@@ -9720,9 +9729,13 @@ class RangerGearBot(threading.Thread):
         # checkline.png: Handle Checkbox Popup Sequence
         # - ใช้ check-l1.png เป็น CHECKPOINT (รอให้โผล่ แต่ไม่คลิก)
         # - เมื่อ check-l1 โผล่ -> tap 4 จุดตามพิกัด (ไม่สแกน check-l4)
-        if self.exists_in_cache("img/checkline.png", similarity=0.8):
-            print(f"[{self.device_id}] [POPUP] checkline.png detected! Waiting for check-l1 checkpoint...")
-            self.click("img/checkline.png", similarity=0.8)
+        # ลด similarity 0.8 -> 0.7 (popup เดิมอาจดูไม่ match pixel-exact ถ้า UI อัพเดต)
+        # + บังคับจับภาพใหม่ก่อนเช็ค (cache อาจเก่า screencap พึ่งล้ม)
+        self._raw_capture()
+        if self.exists_in_cache("img/checkline.png", similarity=0.7):
+            _cs = self._match_score("img/checkline.png")
+            print(f"[{self.device_id}] [POPUP] checkline.png detected (score {_cs:.2f})! Waiting for check-l1 checkpoint...")
+            self.click("img/checkline.png", similarity=0.7)
             sleep(0.5)
 
             # รอ check-l1.png โผล่ (checkpoint - ไม่คลิก)
@@ -9730,7 +9743,7 @@ class RangerGearBot(threading.Thread):
             found_l1 = False
             while time.time() - start_l1 < 60:
                 self._raw_capture()
-                if self.exists_in_cache("img/check-l1.png", similarity=0.85):
+                if self.exists_in_cache("img/check-l1.png", similarity=0.75):
                     print(f"[{self.device_id}] [POPUP] check-l1 checkpoint hit -> tap 4 coords")
                     found_l1 = True
                     break
@@ -9738,9 +9751,10 @@ class RangerGearBot(threading.Thread):
             if not found_l1:
                 _sc = self._match_score("img/check-l1.png")
                 _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png ไม่เจอใน 60s (score {_sc:.2f}/0.85)"
-                      + (f" - saved {_shot}" if _shot else "") + " - ข้ามรอบนี้")
-                return
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png ไม่เจอใน 60s (score {_sc:.2f}/0.75)"
+                      + (f" - saved {_shot}" if _shot else "") + " - แต่กด 4 coords อยู่ดี")
+                # ไม่ return แล้ว - กด coords ไปเลย popup อาจอยู่แต่ check-l1 ไม่ match pixel-exact
+                # ปรับกว้าง ๆ: ยอมกด 4 จุด แม้ check-l1 ไม่เจอ (เพราะ checkline แม่ตัวเดียวพอยืนยันว่ามี popup)
 
             # tap 4 coords (ไม่ใช้รูปใด ๆ หลังจากนี้)
             self.tap(932, 133)
