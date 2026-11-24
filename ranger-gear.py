@@ -2054,9 +2054,9 @@ class RangerGearBot(threading.Thread):
         self.weapon_names = config.get("weaponname", {})
         self.ocr_region = config.get("ocr_region", self.ocr_region)
         
-        # Sequence Definitions (Reverted to use coordinates for checkboxes)
-        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png']
-        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
+        # Checkpoint images wait without clicking; coordinate items tap the checkbox positions.
+        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', (932, 133), (930, 267), (928, 351), (429, 431), 'check-ok1.png']
+        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', (932, 133), (930, 267), (928, 351), (429, 431), 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
         self.adb_cmd = adb_path
         self._screen = None
@@ -4209,31 +4209,18 @@ class RangerGearBot(threading.Thread):
                 _shot = self._save_debug_screen("checkline-miss")
                 print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.85)"
                       + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
-            # 2. Coordinates
-            print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
+            # 2. Tap the checkbox positions after check-l1 is visible
+            print(f"[{self.device_id}] [POPUP] Tapping checkline positions (932, 133), (930, 267), (928, 351), (429, 431)...")
             self.tap(932, 133)
             sleep(0.2)
-            self.tap(930, 253)
+            self.tap(930, 267)
             sleep(0.2)
-            self.tap(926, 327)
+            self.tap(928, 351)
+            sleep(0.2)
+            self.tap(429, 431)
             sleep(0.3)
 
-            # 3. Wait for check-l4.png
-            start_l4 = time.time()
-            while time.time() - start_l4 < 60:
-                self._raw_capture()
-                if self.exists_in_cache("img/check-l4.png", similarity=0.8):
-                    print(f"[{self.device_id}] [POPUP] Found and clicking check-l4.png")
-                    self.click("img/check-l4.png", similarity=0.8)
-                    break
-                sleep(0.3)
-
-            else:
-                _sc = self._match_score("img/check-l4.png")
-                _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] รอ check-l4.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
-                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
-            # 4. Click check-ok1.png
+            # 3. Wait for the confirmation button
             print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
             for _ in range(60):
                 self._raw_capture()
