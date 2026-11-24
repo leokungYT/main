@@ -129,3 +129,13 @@ evpn_creds.txt
 # swap_bot PyInstaller build cache (dist/ kept intentionally)
 swap_bot/build/
 swap_bot/dist/vpn_rotator.log
+
+# swap_bot runtime log + ip-meter state (per-machine, don't push)
+swap_bot/vpn_rotator.log
+vpn_rotator.log
+ip_meter.json
+
+# user screenshots pasted into repo root by mistake
+/image.png
+/image*.png
+/Screenshot*.png
