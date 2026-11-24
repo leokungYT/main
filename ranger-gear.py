@@ -1,4 +1,4 @@
-﻿import cv2
+import cv2
 import numpy as np
 import subprocess
 import os
@@ -2055,8 +2055,9 @@ class RangerGearBot(threading.Thread):
         self.ocr_region = config.get("ocr_region", self.ocr_region)
         
         # Sequence Definitions (Reverted to use coordinates for checkboxes)
-        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png']
-        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
+        # ลบ check-l1 / check-l4 / check-ok1 ออก - ใช้ 4 coords แทน
+        self.seq1 = ['icon.png', 'apple.png', (932, 133), (930, 279), (928, 351), (429, 431)]
+        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', (932, 133), (930, 279), (928, 351), (429, 431), 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
         self.adb_cmd = adb_path
         self._screen = None
@@ -4188,67 +4189,23 @@ class RangerGearBot(threading.Thread):
         self._last_popup_scan = now
         taps_at_entry = self._tap_count
 
-        # checkline.png: Handle Checkbox Popup Sequence
-        if self.exists_in_cache("img/checkline.png", similarity=0.8):
-            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
-            self.click("img/checkline.png", similarity=0.8)
+        # checkline.png -> tap 4 coords (no check-l1 / check-l4 / check-ok1)
+        self._raw_capture()
+        if self.exists_in_cache("img/checkline.png", similarity=0.7):
+            _cs = self._match_score("img/checkline.png")
+            print(f"[{self.device_id}] [POPUP] checkline.png detected (score {_cs:.2f}) -> tap 4 coords")
+            self.click("img/checkline.png", similarity=0.7)
             sleep(0.5)
-            
-            # 1. Wait for @check-l1.png
-            start_l1 = time.time()
-            while time.time() - start_l1 < 60:
-                self._raw_capture()
-                if self.exists_in_cache("img/check-l1.png", similarity=0.85):
-                    print(f"[{self.device_id}] [POPUP] Found check-l1.png")
-                    break
-                sleep(0.3)
-            
-            else:
-                _sc = self._match_score("img/check-l1.png")
-                _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] à¸£à¸­ check-l1.png à¸ˆà¸™à¸«à¸¡à¸”à¹€à¸§à¸¥à¸²à¹à¸¥à¹‰à¸§à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ (à¸„à¸°à¹à¸™à¸™à¸ªà¸¹à¸‡à¸ªà¸¸à¸” {_sc:.2f} / à¸•à¹‰à¸­à¸‡à¸à¸²à¸£ 0.85)"
-                      + (f" - à¹€à¸à¹‡à¸šà¸ à¸²à¸žà¹„à¸§à¹‰à¸—à¸µà¹ˆ {_shot}" if _shot else ""))
-            # 2. Coordinates
-            print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
             self.tap(932, 133)
             sleep(0.2)
-            self.tap(930, 253)
+            self.tap(930, 279)
             sleep(0.2)
-            self.tap(926, 327)
-            sleep(0.3)
-            
-            # 3. Wait for check-l4.png
-            start_l4 = time.time()
-            while time.time() - start_l4 < 60:
-                self._raw_capture()
-                if self.exists_in_cache("img/check-l4.png", similarity=0.8):
-                    print(f"[{self.device_id}] [POPUP] Found and clicking check-l4.png")
-                    self.click("img/check-l4.png", similarity=0.8)
-                    break
-                sleep(0.3)
-                
-            else:
-                _sc = self._match_score("img/check-l4.png")
-                _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] à¸£à¸­ check-l4.png à¸ˆà¸™à¸«à¸¡à¸”à¹€à¸§à¸¥à¸²à¹à¸¥à¹‰à¸§à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ (à¸„à¸°à¹à¸™à¸™à¸ªà¸¹à¸‡à¸ªà¸¸à¸” {_sc:.2f} / à¸•à¹‰à¸­à¸‡à¸à¸²à¸£ 0.80)"
-                      + (f" - à¹€à¸à¹‡à¸šà¸ à¸²à¸žà¹„à¸§à¹‰à¸—à¸µà¹ˆ {_shot}" if _shot else ""))
-            # 4. Click check-ok1.png
-            print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
-            for _ in range(60):
-                self._raw_capture()
-                if self.exists_in_cache("img/check-ok1.png", similarity=0.8):
-                    self.click("img/check-ok1.png", similarity=0.8)
-                    print(f"[{self.device_id}] [POPUP] Checkline sequence complete!")
-                    sleep(0.3)
-                    break
-                sleep(0.3)
-            else:
-                _sc = self._match_score("img/check-ok1.png")
-                _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] à¸£à¸­ check-ok1.png à¸ˆà¸™à¸«à¸¡à¸”à¹€à¸§à¸¥à¸²à¹à¸¥à¹‰à¸§à¹„à¸¡à¹ˆà¹€à¸ˆà¸­ (à¸„à¸°à¹à¸™à¸™à¸ªà¸¹à¸‡à¸ªà¸¸à¸” {_sc:.2f} / à¸•à¹‰à¸­à¸‡à¸à¸²à¸£ 0.80)"
-                      + (f" - à¹€à¸à¹‡à¸šà¸ à¸²à¸žà¹„à¸§à¹‰à¸—à¸µà¹ˆ {_shot}" if _shot else ""))
+            self.tap(928, 351)
+            sleep(0.2)
+            self.tap(429, 431)
+            sleep(0.5)
+            print(f"[{self.device_id}] [POPUP] Checkline 4-tap sequence done")
             return
-
         # fixnetv2.png: à¹€à¸ˆà¸­à¸à¹‡à¸à¸” à¹à¸¥à¹‰à¸§à¸£à¸­à¸à¸” fixnetv2ok.png
         if self.exists_in_cache("img/fixnetv2.png", similarity=0.8):
             print(f"[{self.device_id}] [POPUP] fixnetv2.png detected, clicking...")
