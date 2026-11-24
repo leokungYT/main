@@ -4210,15 +4210,27 @@ class RangerGearBot(threading.Thread):
                 print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.85)"
                       + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
             # 2. Tap the checkbox positions after check-l1 is visible
-            print(f"[{self.device_id}] [POPUP] Tapping checkline positions (932, 133), (930, 267), (928, 351), (429, 431)...")
+            print(f"[{self.device_id}] [POPUP] Tapping checkbox positions (932, 133), (930, 267), (928, 351)...")
             self.tap(932, 133)
             sleep(0.2)
             self.tap(930, 267)
             sleep(0.2)
             self.tap(928, 351)
             sleep(0.2)
-            self.tap(429, 431)
-            sleep(0.3)
+
+            # Tap Agree only if the checkline popup remains visible for five seconds.
+            checkline_deadline = time.time() + 5
+            checkline_still_visible = False
+            while time.time() < checkline_deadline:
+                self._raw_capture()
+                checkline_still_visible = self.exists_in_cache("img/checkline.png", similarity=0.8)
+                if not checkline_still_visible:
+                    break
+                sleep(0.3)
+            if checkline_still_visible:
+                print(f"[{self.device_id}] [POPUP] checkline.png still visible after 5s; tapping Agree at (429, 431)...")
+                self.tap(429, 431)
+                sleep(0.3)
 
             # 3. Wait for the confirmation button
             print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
