@@ -4212,11 +4212,11 @@ class RangerGearBot(threading.Thread):
             # 2. Tap the checkbox positions after check-l1 is visible
             print(f"[{self.device_id}] [POPUP] Tapping checkbox positions (932, 133), (930, 267), (928, 351)...")
             self.tap(932, 133)
-            sleep(0.2)
+            sleep(5)
             self.tap(930, 267)
-            sleep(0.2)
+            sleep(5)
             self.tap(928, 351)
-            sleep(0.2)
+            sleep(5)
 
             # Tap Agree only if the checkline popup remains visible for five seconds.
             checkline_deadline = time.time() + 5
