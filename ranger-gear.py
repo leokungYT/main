@@ -2054,9 +2054,9 @@ class RangerGearBot(threading.Thread):
         self.weapon_names = config.get("weaponname", {})
         self.ocr_region = config.get("ocr_region", self.ocr_region)
         
-        # Checkpoint images wait without clicking; confirmation images are clicked when found.
-        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', 'check-lg1.png', 'check-lg4.png', 'check-ook.png']
-        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', 'check-lg1.png', 'check-lg4.png', 'check-ook.png']
+        # Checkpoint and confirmation images; popup branch handles missing LG templates with fixed taps.
+        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', 'check-l4.png', 'check-ok1.png']
+        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
         self.adb_cmd = adb_path
         self._screen = None
@@ -4191,6 +4191,45 @@ class RangerGearBot(threading.Thread):
 
         # checkline.png: Handle LG Checkbox Popup Sequence
         if self.exists_in_cache("img/checkline.png", similarity=0.8):
+            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running LG sequence...")
+
+            # Fixed points in normalized 960x540 coordinates.
+            lg_sequence = (
+                ("check-lg1.png", 932, 133),
+                ("check-lg4.png", 930, 253),
+                ("check-ook.png", 480, 427),
+            )
+
+            for template_name, fallback_x, fallback_y in lg_sequence:
+                template_path = f"img/{template_name}"
+                print(f"[{self.device_id}] [POPUP] Waiting for {template_name}...")
+                deadline = time.time() + 60
+                clicked = False
+
+                while time.time() < deadline:
+                    self._raw_capture()
+                    if os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), template_path)):
+                        if self.exists_in_cache(template_path, similarity=0.8):
+                            clicked = self.click(template_path, similarity=0.8)
+                    else:
+                        self.tap(fallback_x, fallback_y)
+                        clicked = True
+
+                    if clicked:
+                        print(f"[{self.device_id}] [POPUP] Clicked {template_name} at/fallback ({fallback_x},{fallback_y})")
+                        sleep(0.3)
+                        break
+                    sleep(0.3)
+
+                if not clicked:
+                    _sc = self._match_score(template_path)
+                    _shot = self._save_debug_screen("check-lg-miss")
+                    print(f"[{self.device_id}] [CHECKLINE] รอ {template_name} ไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                          + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else "") +
+                          f" - fallback ({fallback_x},{fallback_y})")
+
+            print(f"[{self.device_id}] [POPUP] Checkline LG sequence complete!")
+            return
             print(f"[{self.device_id}] [POPUP] checkline.png detected! Running LG sequence...")
 
             for template_name in ("check-lg1.png", "check-lg4.png", "check-ook.png"):
