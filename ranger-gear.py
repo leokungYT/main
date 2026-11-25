@@ -2055,8 +2055,8 @@ class RangerGearBot(threading.Thread):
         self.ocr_region = config.get("ocr_region", self.ocr_region)
         
         # Checkpoint images wait without clicking; confirmation images are clicked when found.
-        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', 'check-l4.png', 'check-ok1.png']
-        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
+        self.seq1 = ['icon.png', 'apple.png']
+        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
         self.adb_cmd = adb_path
         self._screen = None
@@ -4195,35 +4195,44 @@ class RangerGearBot(threading.Thread):
             self.click("img/checkline.png", similarity=0.8)
             sleep(0.5)
 
-            # 1. Wait for @check-l1.png
-            start_l1 = time.time()
-            while time.time() - start_l1 < 60:
+            # Give check-l1 three fresh-frame attempts; click it at most once.
+            check_l1_found = False
+            for attempt in range(3):
                 self._raw_capture()
                 if self.exists_in_cache("img/check-l1.png", similarity=0.85):
                     print(f"[{self.device_id}] [POPUP] Found check-l1.png")
+                    self.click("img/check-l1.png", similarity=0.85)
+                    check_l1_found = True
                     break
                 sleep(0.3)
-
-            else:
+            if not check_l1_found:
                 _sc = self._match_score("img/check-l1.png")
                 _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.85)"
+                print(f"[{self.device_id}] [CHECKLINE] หา check-l1.png ครบ 3 รอบแล้วยังไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.85)"
                       + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
-            # 2. Wait for and click the final checkbox after check-l1.
-            print(f"[{self.device_id}] [POPUP] Waiting for check-l4.png...")
-            check_l4_deadline = time.time() + 60
-            while time.time() < check_l4_deadline:
+
+            # Never click the final checkbox until the verifier appears four times.
+            print(f"[{self.device_id}] [POPUP] Waiting for verfy-checklg.bmp (4 detections)...")
+            verify_count = 0
+            verify_deadline = time.time() + 60
+            while time.time() < verify_deadline and verify_count <= 3:
                 self._raw_capture()
-                if self.exists_in_cache("img/check-l4.png", similarity=0.8):
-                    print(f"[{self.device_id}] [POPUP] Found and clicking check-l4.png")
+                if self.exists_in_cache("img/verfy-checklg.bmp", similarity=0.8):
+                    verify_count += 1
+                    print(f"[{self.device_id}] [CHECKLINE] verfy-checklg.bmp detected ({verify_count}/4)")
+                if verify_count > 3:
+                    print(f"[{self.device_id}] [POPUP] Verifier confirmed; clicking check-l4.png")
                     self.click("img/check-l4.png", similarity=0.8)
                     break
                 sleep(0.3)
             else:
-                _sc = self._match_score("img/check-l4.png")
+                _sc = self._match_score("img/verfy-checklg.bmp")
                 _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] รอ check-l4.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                print(f"[{self.device_id}] [CHECKLINE] พบ verfy-checklg.bmp เพียง {verify_count}/4 ครั้งใน 60 วิ; ไม่กด check-l4.png (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
                       + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
+
+            if verify_count <= 3:
+                return
 
             # 3. Wait for the confirmation button
             print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
