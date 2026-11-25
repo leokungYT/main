@@ -4189,8 +4189,117 @@ class RangerGearBot(threading.Thread):
         self._last_popup_scan = now
         taps_at_entry = self._tap_count
 
-        # checkline.png: Handle LG Checkbox Popup Sequence
+        # checkline.png: Handle Checkbox Popup Sequence
         if self.exists_in_cache("img/checkline.png", similarity=0.8):
+            now = time.time()
+            if now < getattr(self, "_checkline_cooldown_until", 0):
+                self._popups_clean_gen = gen_at_entry
+                return
+
+            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running stable coordinate sequence...")
+
+            start_l1 = time.time()
+            while time.time() - start_l1 < 60:
+                self._raw_capture()
+                if self.exists_in_cache("img/check-l1.png", similarity=0.85):
+                    print(f"[{self.device_id}] [POPUP] Found check-l1.png")
+                    break
+                sleep(0.3)
+
+            print(f"[{self.device_id}] [POPUP] Tapping checkbox positions (932,133), (930,267), (928,351)...")
+            self.tap(932, 133)
+            sleep(0.5)
+            self.tap(930, 267)
+            sleep(0.5)
+            self.tap(928, 351)
+            sleep(0.5)
+
+            checkline_deadline = time.time() + 5
+            checkline_still_visible = False
+            while time.time() < checkline_deadline:
+                self._raw_capture()
+                checkline_still_visible = self.exists_in_cache("img/checkline.png", similarity=0.8)
+                if not checkline_still_visible:
+                    break
+                sleep(0.3)
+
+            if checkline_still_visible:
+                print(f"[{self.device_id}] [POPUP] checkline.png still visible after 5s; tapping Agree at (429,431)...")
+                self.tap(429, 431)
+                sleep(0.5)
+
+            settled_deadline = time.time() + 30
+            settled = False
+            while time.time() < settled_deadline:
+                self._raw_capture()
+                if not self.exists_in_cache("img/checkline.png", similarity=0.8):
+                    settled = True
+                    break
+                sleep(0.3)
+
+            self._checkline_cooldown_until = time.time() + (3 if settled else 15)
+            print(f"[{self.device_id}] [POPUP] Checkline sequence settled!" if settled
+                  else f"[{self.device_id}] [POPUP] Checkline still visible; sequence cooldown 15s")
+            self._popups_clean_gen = gen_at_entry
+            return
+
+        # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png
+            now = time.time()
+            if now < getattr(self, "_checkline_cooldown_until", 0):
+                self._popups_clean_gen = gen_at_entry
+                return
+
+            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running stable coordinate sequence...")
+
+            # 1. Wait for the checkline screen, then tap the checkbox positions used by the prior working flow.
+            start_l1 = time.time()
+            while time.time() - start_l1 < 60:
+                self._raw_capture()
+                if self.exists_in_cache("img/check-l1.png", similarity=0.85):
+                    print(f"[{self.device_id}] [POPUP] Found check-l1.png")
+                    break
+                sleep(0.3)
+
+            print(f"[{self.device_id}] [POPUP] Tapping checkbox positions (932,133), (930,267), (928,351)...")
+            self.tap(932, 133)
+            sleep(0.5)
+            self.tap(930, 267)
+            sleep(0.5)
+            self.tap(928, 351)
+            sleep(0.5)
+
+            # 2. Tap Agree only if the checkline popup remains visible after the checkboxes settle.
+            checkline_deadline = time.time() + 5
+            checkline_still_visible = False
+            while time.time() < checkline_deadline:
+                self._raw_capture()
+                checkline_still_visible = self.exists_in_cache("img/checkline.png", similarity=0.8)
+                if not checkline_still_visible:
+                    break
+                sleep(0.3)
+
+            if checkline_still_visible:
+                print(f"[{self.device_id}] [POPUP] checkline.png still visible after 5s; tapping Agree at (429,431)...")
+                self.tap(429, 431)
+                sleep(0.5)
+
+            # 3. Wait for the Close/OK follow-up and keep a cooldown to prevent immediate repeated runs.
+            settled_deadline = time.time() + 30
+            settled = False
+            while time.time() < settled_deadline:
+                self._raw_capture()
+                if not self.exists_in_cache("img/checkline.png", similarity=0.8):
+                    settled = True
+                    break
+                sleep(0.3)
+
+            self._checkline_cooldown_until = time.time() + (3 if settled else 15)
+            if settled:
+                print(f"[{self.device_id}] [POPUP] Checkline sequence settled!")
+            else:
+                print(f"[{self.device_id}] [POPUP] Checkline still visible; sequence cooldown 15s")
+            self._popups_clean_gen = gen_at_entry
+            return
             print(f"[{self.device_id}] [POPUP] checkline.png detected! Running LG sequence...")
 
             # Fixed points in normalized 960x540 coordinates.
