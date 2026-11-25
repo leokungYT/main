@@ -2055,8 +2055,8 @@ class RangerGearBot(threading.Thread):
         self.ocr_region = config.get("ocr_region", self.ocr_region)
         
         # Checkpoint images wait without clicking; confirmation images are clicked when found.
-        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', 'check-l4.png', 'check-ok1.png']
-        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
+        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', 'check-lg1.png', 'check-lg4.png', 'check-ook.png']
+        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', 'check-lg1.png', 'check-lg4.png', 'check-ook.png']
         
         self.adb_cmd = adb_path
         self._screen = None
@@ -4189,8 +4189,87 @@ class RangerGearBot(threading.Thread):
         self._last_popup_scan = now
         taps_at_entry = self._tap_count
 
-        # checkline.png: Handle Checkbox Popup Sequence
+        # checkline.png: Handle LG Checkbox Popup Sequence
         if self.exists_in_cache("img/checkline.png", similarity=0.8):
+            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running LG sequence...")
+
+            for template_name in ("check-lg1.png", "check-lg4.png", "check-ook.png"):
+                template_path = f"img/{template_name}"
+                print(f"[{self.device_id}] [POPUP] Waiting for {template_name}...")
+                deadline = time.time() + 60
+                clicked = False
+
+                while time.time() < deadline:
+                    self._raw_capture()
+                    if self.exists_in_cache(template_path, similarity=0.8):
+                        clicked = self.click(template_path, similarity=0.8)
+                        if clicked:
+                            print(f"[{self.device_id}] [POPUP] Clicked {template_name}")
+                            sleep(0.3)
+                            break
+                    sleep(0.3)
+
+                if not clicked:
+                    _sc = self._match_score(template_path)
+                    _shot = self._save_debug_screen("check-lg-miss")
+                    print(f"[{self.device_id}] [CHECKLINE] รอ {template_name} ไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                          + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
+
+            print(f"[{self.device_id}] [POPUP] Checkline LG sequence complete!")
+            return
+            # Check-LG sequence: lg1 -> lg4 -> ook
+            print(f"[{self.device_id}] [POPUP] Waiting for check-lg1.png...")
+            lg1_deadline = time.time() + 60
+            lg1_clicked = False
+            while time.time() < lg1_deadline:
+                self._raw_capture()
+                if self.exists_in_cache("img/check-lg1.png", similarity=0.8):
+                    lg1_clicked = self.click("img/check-lg1.png", similarity=0.8)
+                    if lg1_clicked:
+                        print(f"[{self.device_id}] [POPUP] Clicked check-lg1.png")
+                        break
+                sleep(0.3)
+
+            if not lg1_clicked:
+                _sc = self._match_score("img/check-lg1.png")
+                _shot = self._save_debug_screen("check-lg1-miss")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-lg1.png ไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
+
+            print(f"[{self.device_id}] [POPUP] Waiting for check-lg4.png...")
+            lg4_deadline = time.time() + 60
+            lg4_clicked = False
+            while time.time() < lg4_deadline:
+                self._raw_capture()
+                if self.exists_in_cache("img/check-lg4.png", similarity=0.8):
+                    lg4_clicked = self.click("img/check-lg4.png", similarity=0.8)
+                    if lg4_clicked:
+                        print(f"[{self.device_id}] [POPUP] Clicked check-lg4.png")
+                        break
+                sleep(0.3)
+
+            if not lg4_clicked:
+                _sc = self._match_score("img/check-lg4.png")
+                _shot = self._save_debug_screen("check-lg4-miss")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-lg4.png ไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
+
+            print(f"[{self.device_id}] [POPUP] Waiting for check-ook.png...")
+            ook_deadline = time.time() + 60
+            while time.time() < ook_deadline:
+                self._raw_capture()
+                if self.exists_in_cache("img/check-ook.png", similarity=0.8):
+                    self.click("img/check-ook.png", similarity=0.8)
+                    print(f"[{self.device_id}] [POPUP] Clicked check-ook.png")
+                    sleep(0.3)
+                    break
+                sleep(0.3)
+            else:
+                _sc = self._match_score("img/check-ook.png")
+                _shot = self._save_debug_screen("check-ook-miss")
+                print(f"[{self.device_id}] [CHECKLINE] รอ check-ook.png ไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
+                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
+            print(f"[{self.device_id}] [POPUP] Checkline sequence complete!")
             print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
             self.click("img/checkline.png", similarity=0.8)
             sleep(0.5)
