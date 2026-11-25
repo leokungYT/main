@@ -3879,13 +3879,15 @@ class RangerGearBot(threading.Thread):
             
         return cls._template_cache_cls[template_path]
 
-    def adb_run(self, args, timeout=10, **kwargs):
-        return subprocess.run(args, capture_output=True, timeout=timeout, **kwargs)
+    def adb_run(self, args, timeout=30, **kwargs):
+        # Raise normal screencap timeout to 30 seconds
+        return subprocess.run(args, capture_output=True, timeout=30, **kwargs)
 
-    def adb_shell(self, shell_cmd, timeout=10):
+    def adb_shell(self, shell_cmd, timeout=30):
+        # Raise raw screencap timeout to 30 seconds
         return subprocess.run(
             [self.adb_cmd, "-s", self.device_id, "shell", shell_cmd],
-            capture_output=True, timeout=timeout)
+            capture_output=True, timeout=30, **kwargs)
 
     def _decode_raw_screencap(self, raw_data):
         """Decode a raw (un-encoded) screencap frame.
@@ -3936,7 +3938,7 @@ class RangerGearBot(threading.Thread):
             # timeout 10 -> 20 วิ (หลายจอแย่ง adb บน host บางรอบใช้ 12-15 วิ)
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap"] + (["-p"] if int(config.get("screencap_png", 1) or 0) else []),
-                capture_output=True, timeout=20, **kwargs
+                capture_output=True, timeout=30, **kwargs
             )
 
             if result.returncode == 0 and len(result.stdout) > 100:
@@ -4561,7 +4563,7 @@ class RangerGearBot(threading.Thread):
                 kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
                 [self.adb_cmd, "-s", self.device_id, "exec-out", "screencap"] + (["-p"] if int(config.get("screencap_png", 1) or 0) else []),
-                capture_output=True, timeout=10, **kwargs
+                capture_output=True, timeout=30, **kwargs
             )
             if result.returncode == 0 and len(result.stdout) > 100:
                 if not self._decode_raw_screencap(result.stdout):
@@ -5115,7 +5117,7 @@ class RangerGearBot(threading.Thread):
         print(f"[{self.device_id}] Injecting file (Robust Mode)...")
 
         # ปลดล็อก Read-only (ถ้ามี)
-        self.adb_shell("su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'")
+        self.adb_shell("su -c 'mount -o remount,rw / 2>/dev/null || mount -o remount,rw /data 2>/dev/null'", timeout=30)
 
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
