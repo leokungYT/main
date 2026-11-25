@@ -3887,7 +3887,7 @@ class RangerGearBot(threading.Thread):
         # Raise raw screencap timeout to 30 seconds
         return subprocess.run(
             [self.adb_cmd, "-s", self.device_id, "shell", shell_cmd],
-            capture_output=True, timeout=30, **kwargs)
+            capture_output=True, timeout=timeout)
 
     def _decode_raw_screencap(self, raw_data):
         """Decode a raw (un-encoded) screencap frame.
