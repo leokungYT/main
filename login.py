@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.4.4"
+BOT_VERSION = "5.4.5"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -12933,14 +12933,45 @@ class RangerGearBot(threading.Thread):
                 break
             sleep(0.5)
         if found5:
-            print(f"[{self.device_id}] [TUT-SKIP] เจอ new5.png - กด")
+            print(f"[{self.device_id}] [TUT-SKIP] เจอ new5.png (skip) - กด")
             try:
                 self.click("img/new5.png", similarity=sim)
             except Exception:
                 pass
             sleep(1.0)
         else:
-            print(f"[{self.device_id}] [TUT-SKIP] ไม่เจอ new5.png ใน {scan_sec}s - ข้ามไป ESC")
+            print(f"[{self.device_id}] [TUT-SKIP] ไม่เจอ new5.png ใน {scan_sec}s - ข้ามไป OK scan")
+
+        # 2.5) หลัง skip -> หา OK popup 10s (tut_ok / tut_okwhite / tut_okgust / tut_gachaok / tut_stageok)
+        #       เจอตัวไหนกดตัวนั้น ไม่เจอครบ 10s = ข้าม
+        ok_templates = (
+            "img/tut_ok.png",
+            "img/tut_okwhite.png",
+            "img/tut_okgust.png",
+            "img/tut_gachaok.png",
+            "img/tut_stageok.png",
+        )
+        print(f"[{self.device_id}] [TUT-SKIP] หา OK popup 10s...")
+        t0 = time.time()
+        ok_found = False
+        while time.time() - t0 < 10:
+            self.last_activity_time = time.time()
+            self.capture_screen()
+            for tpl in ok_templates:
+                try:
+                    if self.exists_in_cache(tpl, similarity=sim):
+                        print(f"[{self.device_id}] [TUT-SKIP] เจอ {tpl} - กด")
+                        self.click(tpl, similarity=sim)
+                        sleep(0.8)
+                        ok_found = True
+                        break
+                except Exception:
+                    pass
+            if ok_found:
+                break
+            sleep(0.5)
+        if not ok_found:
+            print(f"[{self.device_id}] [TUT-SKIP] ไม่เจอ OK popup ใน 10s - ข้าม")
 
         # 3) รัว ESC จนเจอ cancel.png แล้วกด cancel - หยุด
         print(f"[{self.device_id}] [TUT-SKIP] รัว ESC จนเจอ cancel")
