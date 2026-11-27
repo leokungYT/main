@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.3.9"
+BOT_VERSION = "5.4.0"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -9765,13 +9765,16 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(0.3)
 
-            # 2. Tap 3 checkbox coords
-            print(f"[{self.device_id}] [POPUP] Tapping (932,133), (930,279), (928,351)...")
-            self.tap(932, 133)
+            # 2. Tap 4 checkbox coords (y=133 เดิมโดน X ปิด, แก้เป็น 207)
+            # ระยะ 72px: Agreement(207), Privacy(279), LINE_GAME(351), Note(423)
+            print(f"[{self.device_id}] [POPUP] Tapping 4 checkboxes (932,207), (930,279), (928,351), (928,423)...")
+            self.tap(932, 207)   # Agreement Regarding Use
             sleep(0.5)
-            self.tap(930, 279)
+            self.tap(930, 279)   # Privacy Policy
             sleep(0.5)
-            self.tap(928, 351)
+            self.tap(928, 351)   # LINE GAME Services
+            sleep(0.5)
+            self.tap(928, 423)   # Note
             sleep(0.5)
 
             # 3. Wait + CLICK check-l4.png
@@ -9786,10 +9789,10 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(0.3)
 
-            # 3b. Fallback: Agree tap if check-l4 missing
+            # 3b. Fallback: Agree button tap if check-l4 missing
             if not clicked_l4 and self.exists_in_cache("img/checkline.png", similarity=0.8):
-                print(f"[{self.device_id}] [POPUP] check-l4 not found; tapping Agree at (429,431)...")
-                self.tap(429, 431)
+                print(f"[{self.device_id}] [POPUP] check-l4 not found; tapping Agree at (430,475)...")
+                self.tap(430, 475)
                 sleep(0.5)
 
             # 4. Wait + CLICK check-ok1.png

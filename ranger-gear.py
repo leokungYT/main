@@ -4213,13 +4213,16 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(0.3)
 
-            # 2. Tap 3 checkbox coords (279 not 253 - user confirmed correct)
-            print(f"[{self.device_id}] [POPUP] Tapping (932,133), (930,279), (928,351)...")
-            self.tap(932, 133)
+            # 2. Tap 4 checkbox coords (user screenshot: y=133 โดน X ปิด, แก้เป็น 207)
+            # ระยะห่างระหว่าง rows = 72px: Agreement(207), Privacy(279), LINE_GAME(351), Note(423)
+            print(f"[{self.device_id}] [POPUP] Tapping 4 checkboxes (932,207), (930,279), (928,351), (928,423)...")
+            self.tap(932, 207)   # Agreement Regarding Use
             sleep(0.5)
-            self.tap(930, 279)
+            self.tap(930, 279)   # Privacy Policy
             sleep(0.5)
-            self.tap(928, 351)
+            self.tap(928, 351)   # LINE GAME Services
+            sleep(0.5)
+            self.tap(928, 423)   # Note
             sleep(0.5)
 
             # 3. Wait + CLICK check-l4.png
@@ -4234,10 +4237,10 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(0.3)
 
-            # 3b. Fallback: if check-l4 not found + popup still visible -> tap Agree
+            # 3b. Fallback: if check-l4 not found + popup still visible -> tap Agree button
             if not clicked_l4 and self.exists_in_cache("img/checkline.png", similarity=0.8):
-                print(f"[{self.device_id}] [POPUP] check-l4 not found; tapping Agree at (429,431)...")
-                self.tap(429, 431)
+                print(f"[{self.device_id}] [POPUP] check-l4 not found; tapping Agree at (430,475)...")
+                self.tap(430, 475)
                 sleep(0.5)
 
             # 4. Wait + CLICK check-ok1.png
