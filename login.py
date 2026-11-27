@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.4.3"
+BOT_VERSION = "5.4.4"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -12898,66 +12898,72 @@ class RangerGearBot(threading.Thread):
                     sleep(_tap_gap)
                 _seen[i] = _now + _cool   # cool-down กันกดถี่
 
-    def _ps_dismiss_tutorial_then_fixstage(self, max_rounds=15):
-        """กด Skip tutorial (gacha intro / step popup) จนหมด -> ถ้าเจอ fixstage1 เรียก cleanup เดิม
-        เรียกก่อน process_auto_play_stage หรือเมื่อ acc ค้างหน้า tutorial"""
-        sim = float(config.get("play_stage_similarity", 0.9))
-        tut_templates = (
-            "img/tut_skip.png",
-            "img/tut_ok.png",
-            "img/tut_okwhite.png",
-            "img/tut_okgust.png",
-            "img/tut_gachaok.png",
-            "img/tut_stageok.png",
-            "img/tut_start.png",
-            "img/step3skip.png",
-        )
-        # หา wm size จริงของ emulator ครั้งเดียว - ปุ่ม Skip อยู่ ~87.5% x, ~87.8% y
-        sw, sh = 1760, 990
-        try:
-            out = self.adb_shell("wm size") or ""
-            import re as _re
-            m = _re.search(r"(\d+)x(\d+)", out)
-            if m:
-                sw, sh = int(m.group(1)), int(m.group(2))
-        except Exception:
-            pass
-        skip_x, skip_y = int(sw * 0.875), int(sh * 0.878)
-
-        for rnd in range(max_rounds):
+    def _ps_dismiss_tutorial_then_fixstage(self, scan_sec=8):
+        """ขั้นตอน: เจอ new4.png -> รอ new5.png -> รัว ESC จนเจอ cancel -> กด cancel -> หยุด
+        ใช้เคลียร์หน้า 'You've seen this place...' tutorial ที่บล็อก acc lv80+"""
+        sim = float(config.get("play_stage_similarity", 0.9)) - 0.1
+        # 1) สแกน new4 สูงสุด scan_sec วินาที
+        self.capture_screen()
+        found4 = False
+        t0 = time.time()
+        while time.time() - t0 < scan_sec:
             self.last_activity_time = time.time()
             self.capture_screen()
-            tapped = False
-            for tpl in tut_templates:
-                try:
-                    if self.exists_in_cache(tpl, similarity=sim - 0.15):
-                        print(f"[{self.device_id}] [TUT-SKIP] round {rnd+1}: tap {tpl}")
-                        self.click(tpl, similarity=sim - 0.15)
-                        sleep(1.0)
-                        tapped = True
-                        break
-                except Exception:
-                    pass
-            if not tapped:
-                print(f"[{self.device_id}] [TUT-SKIP] round {rnd+1}: fallback tap ({skip_x},{skip_y})")
-                try:
-                    self.adb_shell(f"input tap {skip_x} {skip_y}")
-                except Exception:
-                    pass
-                sleep(0.8)
-            # เช็ค fixstage1 ทุกรอบ - เจอก็ cleanup ทันที
+            if self.exists_in_cache("img/new4.png", similarity=sim):
+                found4 = True
+                break
+            sleep(0.5)
+        if not found4:
+            return   # ไม่มี tutorial - ข้าม
+        print(f"[{self.device_id}] [TUT-SKIP] เจอ new4.png - กด + รอ new5.png")
+        try:
+            self.click("img/new4.png", similarity=sim)
+        except Exception:
+            pass
+        sleep(1.0)
+
+        # 2) รอ new5 โผล่ สูงสุด scan_sec วิ
+        found5 = False
+        t0 = time.time()
+        while time.time() - t0 < scan_sec:
+            self.last_activity_time = time.time()
+            self.capture_screen()
+            if self.exists_in_cache("img/new5.png", similarity=sim):
+                found5 = True
+                break
+            sleep(0.5)
+        if found5:
+            print(f"[{self.device_id}] [TUT-SKIP] เจอ new5.png - กด")
             try:
-                fs = self._find_in_screen(
-                    self._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp"), 0.8
-                )
+                self.click("img/new5.png", similarity=sim)
             except Exception:
-                fs = None
-            if fs is not None:
-                print(f"[{self.device_id}] [TUT-SKIP] พ้น tutorial, เจอ fixstage1 -> cleanup")
-                if getattr(self, "_ps_active", False):
-                    self._ps_check_fixstage()
+                pass
+            sleep(1.0)
+        else:
+            print(f"[{self.device_id}] [TUT-SKIP] ไม่เจอ new5.png ใน {scan_sec}s - ข้ามไป ESC")
+
+        # 3) รัว ESC จนเจอ cancel.png แล้วกด cancel - หยุด
+        print(f"[{self.device_id}] [TUT-SKIP] รัว ESC จนเจอ cancel")
+        n = 0
+        max_esc = 40
+        while n < max_esc:
+            self.last_activity_time = time.time()
+            try:
+                self.adb_shell("input keyevent KEYCODE_ESCAPE")
+            except Exception:
+                pass
+            n += 1
+            sleep(float(config.get("event_back_wait", 0.8)))
+            self.capture_screen()
+            if self.exists_in_cache("img/cancel.png", similarity=sim):
+                print(f"[{self.device_id}] [TUT-SKIP] ESC {n} ครั้ง เจอ cancel - กด แล้วหยุด")
+                try:
+                    self.click("img/cancel.png", similarity=sim)
+                except Exception:
+                    pass
+                sleep(1.0)
                 return
-        print(f"[{self.device_id}] [TUT-SKIP] tutorial ไม่หายหลัง {max_rounds} รอบ - ไปต่อ")
+        print(f"[{self.device_id}] [TUT-SKIP] ESC {max_esc} ครั้ง ไม่เจอ cancel - ปล่อย")
 
     def _ps_check_fixstage(self):
         """เจอ img/login-kaiby/fixstage/fixstage1 -> รัว ESC จนเจอ cancel -> กด cancel -> โยน _PSRestart
