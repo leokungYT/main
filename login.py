@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.4.0"
+BOT_VERSION = "5.4.1"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -13080,11 +13080,27 @@ class RangerGearBot(threading.Thread):
             return False
         return True
 
-    def _ps_wait_tap(self, name, loop=True, max_clicks=5):
-        """แบบ process_sequence ของ play150/checkstage.py: รอจนเจอ (ไม่มี timeout) แล้วกด
+    # fallback coords สำหรับ _ps_wait_tap - ถ้าหารูปไม่เจอใน 60s ให้กดพิกัดเลย
+    # จาก screenshot: START button ด่าน 100 (Select a Friend) อยู่กลางล่าง
+    _PS_FALLBACK_COORDS = {
+        "next": (540, 492),      # STAGE 100 Select a Friend -> START
+        "side": (540, 492),      # similar layout
+        "buyhelp": (540, 492),
+        "startnew": (540, 492),
+    }
+
+    def _ps_wait_tap(self, name, loop=True, max_clicks=5, timeout=60):
+        """รอจนเจอรูปแล้วกด - ถ้าไม่เจอใน timeout (60s) กดพิกัด fallback
         loop=True = กดซ้ำจนรูปหาย (สูงสุด max_clicks)"""
         path = f"img/auto-play-stage/{name}.png"
-        self._login_kaiby_wait_click(path, 0, 0.8)
+        result = self._login_kaiby_wait_click(path, timeout, 0.8)
+        if result is None:
+            # หารูปไม่เจอใน timeout - fallback tap พิกัดที่น่าจะใช่
+            fb = self._PS_FALLBACK_COORDS.get(name)
+            if fb:
+                print(f"[{self.device_id}] [PLAY-STAGE] หา {name}.png ไม่เจอใน {timeout}s - fallback tap {fb}")
+                self.tap(*fb)
+            return
         clicks = 1
         while loop and clicks < max_clicks:
             sleep(0.6)
