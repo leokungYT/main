@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.3.7"
+BOT_VERSION = "5.3.8"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -5171,8 +5171,9 @@ class RangerGearBot(threading.Thread):
         self.current_original_filename = None
         
         # Sequence Definitions (Reverted to use coordinates for checkboxes)
-        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png']
-        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', (932, 133), (930, 253), (926, 327), 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
+        # Sequence Definitions (synced from ranger-gear.py)
+        self.seq1 = ['icon.png', 'apple.png', '@check-l1.png', 'check-l4.png', 'check-ok1.png']
+        self.seq2 = ['check-gusetid.png', 'check-gusetid1.png', '@check-l1.png', 'check-l4.png', 'check-ok1.png', 'check-ok2.png', 'check-ok3.png', 'check-ok4.png']
         
         self.adb_cmd = adb_path
         self._screen = None
@@ -9743,13 +9744,16 @@ class RangerGearBot(threading.Thread):
         self._last_popup_scan = now
         taps_at_entry = self._tap_count
 
-        # checkline.png: Handle Checkbox Popup Sequence
+        # checkline.png: Handle Checkbox Popup Sequence (synced from ranger-gear.py)
         if self.exists_in_cache("img/checkline.png", similarity=0.8):
-            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running special sequence...")
-            self.click("img/checkline.png", similarity=0.8)
-            sleep(0.5)
+            now = time.time()
+            if now < getattr(self, "_checkline_cooldown_until", 0):
+                self._popups_clean_gen = gen_at_entry
+                return
 
-            # 1. Wait for @check-l1.png
+            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running stable coordinate sequence...")
+
+            # 1. Wait for check-l1 (checkpoint only, not clicked)
             start_l1 = time.time()
             while time.time() - start_l1 < 60:
                 self._raw_capture()
@@ -9758,50 +9762,44 @@ class RangerGearBot(threading.Thread):
                     break
                 sleep(0.3)
 
-            else:
-                _sc = self._match_score("img/check-l1.png")
-                _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] รอ check-l1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.85)"
-                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
-            # 2. Coordinates
-            print(f"[{self.device_id}] [POPUP] Clicking coordinates (932, 133), (930, 253), (926, 327)...")
+            # 2. Tap 3 checkbox positions
+            print(f"[{self.device_id}] [POPUP] Tapping checkbox positions (932,133), (930,267), (928,351)...")
             self.tap(932, 133)
-            sleep(5)
-            self.tap(930, 253)
-            sleep(5)
-            self.tap(926, 327)
-            sleep(5)
+            sleep(0.5)
+            self.tap(930, 267)
+            sleep(0.5)
+            self.tap(928, 351)
+            sleep(0.5)
 
-            # 3. Wait for check-l4.png
-            start_l4 = time.time()
-            while time.time() - start_l4 < 60:
+            # 3. Tap Agree only if checkline still visible after 5s
+            checkline_deadline = time.time() + 5
+            checkline_still_visible = False
+            while time.time() < checkline_deadline:
                 self._raw_capture()
-                if self.exists_in_cache("img/check-l4.png", similarity=0.8):
-                    print(f"[{self.device_id}] [POPUP] Found and clicking check-l4.png")
-                    self.click("img/check-l4.png", similarity=0.8)
+                checkline_still_visible = self.exists_in_cache("img/checkline.png", similarity=0.8)
+                if not checkline_still_visible:
                     break
                 sleep(0.3)
 
-            else:
-                _sc = self._match_score("img/check-l4.png")
-                _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] รอ check-l4.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
-                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
-            # 4. Click check-ok1.png
-            print(f"[{self.device_id}] [POPUP] Waiting for check-ok1.png to finish...")
-            for _ in range(60):
+            if checkline_still_visible:
+                print(f"[{self.device_id}] [POPUP] checkline.png still visible after 5s; tapping Agree at (429,431)...")
+                self.tap(429, 431)
+                sleep(0.5)
+
+            # 4. Wait for popup to clear + cooldown to prevent rapid re-runs
+            settled_deadline = time.time() + 30
+            settled = False
+            while time.time() < settled_deadline:
                 self._raw_capture()
-                if self.exists_in_cache("img/check-ok1.png", similarity=0.8):
-                    self.click("img/check-ok1.png", similarity=0.8)
-                    print(f"[{self.device_id}] [POPUP] Checkline sequence complete!")
-                    sleep(0.3)
+                if not self.exists_in_cache("img/checkline.png", similarity=0.8):
+                    settled = True
                     break
                 sleep(0.3)
-            else:
-                _sc = self._match_score("img/check-ok1.png")
-                _shot = self._save_debug_screen("checkline-miss")
-                print(f"[{self.device_id}] [CHECKLINE] รอ check-ok1.png จนหมดเวลาแล้วไม่เจอ (คะแนนสูงสุด {_sc:.2f} / ต้องการ 0.80)"
-                      + (f" - เก็บภาพไว้ที่ {_shot}" if _shot else ""))
+
+            self._checkline_cooldown_until = time.time() + (3 if settled else 15)
+            print(f"[{self.device_id}] [POPUP] Checkline sequence settled!" if settled
+                  else f"[{self.device_id}] [POPUP] Checkline still visible; sequence cooldown 15s")
+            self._popups_clean_gen = gen_at_entry
             return
 
         # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png - + trigger host rotator ให้สลับ IP
