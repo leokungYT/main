@@ -4191,46 +4191,67 @@ class RangerGearBot(threading.Thread):
         self._last_popup_scan = now
         taps_at_entry = self._tap_count
 
-        # checkline.png: Handle Checkbox Popup Sequence
+        # checkline.png: Full original flow (click check-l1 + taps + click check-l4 + click check-ok1)
+        # ของเดิมที่เคยทำงาน (user: "แต่ก่อนไม่เป็น")
         if self.exists_in_cache("img/checkline.png", similarity=0.8):
             now = time.time()
             if now < getattr(self, "_checkline_cooldown_until", 0):
                 self._popups_clean_gen = gen_at_entry
                 return
 
-            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running stable coordinate sequence...")
+            print(f"[{self.device_id}] [POPUP] checkline.png detected! Running full sequence...")
+            self.click("img/checkline.png", similarity=0.8)
+            sleep(0.5)
 
+            # 1. Wait + CLICK check-l1.png
             start_l1 = time.time()
             while time.time() - start_l1 < 60:
                 self._raw_capture()
                 if self.exists_in_cache("img/check-l1.png", similarity=0.85):
-                    print(f"[{self.device_id}] [POPUP] Found check-l1.png")
+                    print(f"[{self.device_id}] [POPUP] Found + click check-l1.png")
+                    self.click("img/check-l1.png", similarity=0.85)
                     break
                 sleep(0.3)
 
-            print(f"[{self.device_id}] [POPUP] Tapping checkbox positions (932,133), (930,267), (928,351)...")
+            # 2. Tap 3 checkbox coords (279 not 253 - user confirmed correct)
+            print(f"[{self.device_id}] [POPUP] Tapping (932,133), (930,279), (928,351)...")
             self.tap(932, 133)
             sleep(0.5)
-            self.tap(930, 267)
+            self.tap(930, 279)
             sleep(0.5)
             self.tap(928, 351)
             sleep(0.5)
 
-            checkline_deadline = time.time() + 5
-            checkline_still_visible = False
-            while time.time() < checkline_deadline:
+            # 3. Wait + CLICK check-l4.png
+            start_l4 = time.time()
+            clicked_l4 = False
+            while time.time() - start_l4 < 30:
                 self._raw_capture()
-                checkline_still_visible = self.exists_in_cache("img/checkline.png", similarity=0.8)
-                if not checkline_still_visible:
+                if self.exists_in_cache("img/check-l4.png", similarity=0.8):
+                    print(f"[{self.device_id}] [POPUP] Found + click check-l4.png")
+                    self.click("img/check-l4.png", similarity=0.8)
+                    clicked_l4 = True
                     break
                 sleep(0.3)
 
-            if checkline_still_visible:
-                print(f"[{self.device_id}] [POPUP] checkline.png still visible after 5s; tapping Agree at (429,431)...")
+            # 3b. Fallback: if check-l4 not found + popup still visible -> tap Agree
+            if not clicked_l4 and self.exists_in_cache("img/checkline.png", similarity=0.8):
+                print(f"[{self.device_id}] [POPUP] check-l4 not found; tapping Agree at (429,431)...")
                 self.tap(429, 431)
                 sleep(0.5)
 
-            settled_deadline = time.time() + 30
+            # 4. Wait + CLICK check-ok1.png
+            for _ in range(60):
+                self._raw_capture()
+                if self.exists_in_cache("img/check-ok1.png", similarity=0.8):
+                    print(f"[{self.device_id}] [POPUP] Found + click check-ok1.png - DONE")
+                    self.click("img/check-ok1.png", similarity=0.8)
+                    sleep(0.3)
+                    break
+                sleep(0.3)
+
+            # 5. Wait for popup to clear + cooldown
+            settled_deadline = time.time() + 15
             settled = False
             while time.time() < settled_deadline:
                 self._raw_capture()
@@ -4240,8 +4261,8 @@ class RangerGearBot(threading.Thread):
                 sleep(0.3)
 
             self._checkline_cooldown_until = time.time() + (3 if settled else 15)
-            print(f"[{self.device_id}] [POPUP] Checkline sequence settled!" if settled
-                  else f"[{self.device_id}] [POPUP] Checkline still visible; sequence cooldown 15s")
+            print(f"[{self.device_id}] [POPUP] Checkline settled!" if settled
+                  else f"[{self.device_id}] [POPUP] Checkline still visible; cooldown 15s")
             self._popups_clean_gen = gen_at_entry
             return
 
