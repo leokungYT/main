@@ -12893,6 +12893,52 @@ class RangerGearBot(threading.Thread):
                     sleep(_tap_gap)
                 _seen[i] = _now + _cool   # cool-down กันกดถี่
 
+    def _ps_dismiss_tutorial_then_fixstage(self, max_rounds=10):
+        """กด Skip tutorial (gacha intro / step popup) จนหมด -> ถ้าเจอ fixstage1 เรียก cleanup เดิม
+        เรียกหลัง login สำเร็จ ก่อนเข้า play-stage loop หรือเมื่อ acc ค้างหน้า tutorial"""
+        if not getattr(self, "_ps_active", False):
+            return
+        sim = float(config.get("play_stage_similarity", 0.9))
+        tut_templates = (
+            "img/tut_skip.png",
+            "img/tut_ok.png",
+            "img/tut_okwhite.png",
+            "img/tut_okgust.png",
+            "img/tut_gachaok.png",
+            "img/tut_stageok.png",
+            "img/tut_start.png",
+            "img/step3skip.png",
+        )
+        for rnd in range(max_rounds):
+            self.last_activity_time = time.time()
+            self.capture_screen()
+            tapped = False
+            for tpl in tut_templates:
+                try:
+                    if self.exists_in_cache(tpl, similarity=sim - 0.1):
+                        print(f"[{self.device_id}] [TUT-SKIP] round {rnd+1}: tap {tpl}")
+                        self.click(tpl, similarity=sim - 0.1)
+                        sleep(1.0)
+                        tapped = True
+                        break
+                except Exception:
+                    pass
+            if not tapped:
+                # fallback: ยิงพิกัด Skip มุมขวาล่าง (พิกัดจากจอ 1735x970)
+                try:
+                    self.adb_shell("input tap 1519 846")
+                except Exception:
+                    pass
+                sleep(0.8)
+            # เช็ค fixstage1 ทุกรอบ - เจอก็ cleanup ทันที
+            if self._find_in_screen(
+                self._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp"), 0.8
+            ) is not None:
+                print(f"[{self.device_id}] [TUT-SKIP] พ้น tutorial, เจอ fixstage1 -> cleanup")
+                self._ps_check_fixstage()
+                return
+        print(f"[{self.device_id}] [TUT-SKIP] tutorial ไม่หายหลัง {max_rounds} รอบ")
+
     def _ps_check_fixstage(self):
         """เจอ img/login-kaiby/fixstage/fixstage1 -> รัว ESC จนเจอ cancel -> กด cancel -> โยน _PSRestart
         (ใช้จอที่ capture ไว้แล้ว ไม่ capture ใหม่)"""
@@ -13003,6 +13049,7 @@ class RangerGearBot(threading.Thread):
                   "fixstage", "fixstage1", "fixstage2", "stageok",
                   "item1", "item2", "item3", "item4"]
         back_streak = 0   # กด backmisson ติดกันกี่ครั้งแล้ว
+        self._ps_dismiss_tutorial_then_fixstage()   # เคลียร์ tutorial popup ก่อนเข้า loop
         while True:
             self.last_activity_time = time.time()   # ด่านเล่นนาน ไม่ให้ safety 500s รีสตาร์ท
             self.capture_screen()
