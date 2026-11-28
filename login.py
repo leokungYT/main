@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.4.5"
+BOT_VERSION = "5.4.6"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -11122,6 +11122,45 @@ class RangerGearBot(threading.Thread):
         # Disabled moving to login-success folder
         pass
 
+    def _reset_per_id_state(self):
+        """ล้าง state ที่ค้างระหว่าง ID — ป้องกัน acc หลัง ๆ หลอน/วนลูป
+        (pos cache, template cache, play-stage flags, streak counters)"""
+        try:
+            if getattr(self, "_pos_mem", None) is not None and hasattr(self._pos_mem, "clear"):
+                self._pos_mem.clear()
+        except Exception:
+            pass
+        try:
+            self._template_cache = {}
+        except Exception:
+            pass
+        # play-stage flags
+        for attr in ("_play_stage_done", "_ps_active", "_ps_deadline",
+                     "_ps_fix100_done", "_ps_in_flow100", "_wg_past_login"):
+            try:
+                setattr(self, attr, False if "done" in attr or "active" in attr or "past" in attr else None)
+            except Exception:
+                pass
+        try:
+            self._ps_skip_track = {}
+        except Exception:
+            pass
+        # streak / loop counters (ที่พบใน log: EVENT back total, dist spam total)
+        for attr in ("_event_back_total", "_dist_back_total", "_backmisson_streak",
+                     "_misson_tap_count", "_watch_loop_count", "_login_idle_loops"):
+            try:
+                setattr(self, attr, 0)
+            except Exception:
+                pass
+        # last-screen cache ถ้ามี
+        for attr in ("_last_screen", "_screen_cache", "_cached_screens"):
+            try:
+                if hasattr(self, attr):
+                    setattr(self, attr, None)
+            except Exception:
+                pass
+        print(f"[{self.device_id}] [RESET] per-ID state cleared")
+
     def clear_and_restart(self):
         """Soft restart for the next file without deleting the game's saved data."""
         self._auth_done("clear_and_restart")
@@ -11129,6 +11168,7 @@ class RangerGearBot(threading.Thread):
         self.clear_specific_shared_prefs()
         self.adb_run([self.adb_cmd, "-s", self.device_id, "shell", "am", "force-stop", "com.linecorp.LGRGS"])
         sleep(2)
+        self._reset_per_id_state()
 
     # =========================================================
     # Mission Sequence (ported from misson.py)
@@ -13421,8 +13461,18 @@ class RangerGearBot(threading.Thread):
                 if not self._ps_not_myteam():
                     continue
                 if self._ps_tap_if("misson1", 2):
+                    # กันค้างกด misson1 ซ้ำ ๆ ไม่มีด่านโผล่ (bug acc หลอน)
+                    self._misson1_streak = getattr(self, "_misson1_streak", 0) + 1
+                    if self._misson1_streak >= 20:
+                        print(f"[{self.device_id}] [PLAY-STAGE] กด misson1 ซ้ำ 20 ครั้งไม่มีด่าน - ESC เคลียร์ popup")
+                        for _ in range(5):
+                            try: self.adb_shell("input keyevent KEYCODE_ESCAPE")
+                            except Exception: pass
+                            sleep(0.6)
+                        self._misson1_streak = 0
                     idle_since = time.time()
                     continue
+                self._misson1_streak = 0
                 if self._ps_tap_if("misson2", 2):
                     idle_since = time.time()
                     continue
