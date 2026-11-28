@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.6.1"
+BOT_VERSION = "5.6.2"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -3314,24 +3314,6 @@ def load_config():
             print(f"[CONFIG] UI Settings Loaded: {ui_config_file}")
         except Exception as e:
             print(f"[WARN] Error loading UI config: {e}")
-
-    # 2.5) RECEIVE-ONLY MODE: ปิด toggle "ทำงาน/เล่น/สแกน" ทั้งหมด
-    #      เปิดเฉพาะ "misson" (ทำเควส) - รับของอื่น (all-in/all-tiket/7day) ปิดเพราะกดมั่วใส่ event/MATERIAL LAB
-    #      ไม่แก้ configmain.json - force override ตอน load เท่านั้น
-    _receive_only_disable = (
-        "play30", "play100", "play150",
-        "kaibyskip", "kaibycheck", "login-kaiby",
-        "shopgacha", "swap_shop", "swap_shopevent",
-        "random-gear", "ruby-gear200", "check-gear",
-        "auto_cap", "check_lv", "check_ruby_ticket",
-        "link", "cab-sell", "loop1", "first_loop",
-        "recycle_failed",
-        "all-in", "all-tiket", "7day",
-    )
-    for _k in _receive_only_disable:
-        config[_k] = 0
-    config["misson"] = 1
-    print(f"[CONFIG] RECEIVE-ONLY MODE: ปิด {len(_receive_only_disable)} toggle, เปิด misson อย่างเดียว")
 
     # 3. wg_profile: สลับโฟลเดอร์ IP (เช่น ip-chan / ip-boy) โดยไม่ต้องแก้ wg_dir
     #    KILL_VPN_HARDCODED=True -> ปิด VPN ถาวรทั่วทั้งฝูง (อ่านไม่เอาค่าจาก config remote)
