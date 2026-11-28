@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.5.1"
+BOT_VERSION = "5.5.2"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -13036,6 +13036,7 @@ class RangerGearBot(threading.Thread):
         # 0) scan popup 'Collect evolution materials in Special Stages' (lv80+)
         #    ก่อน new4 flow - เจอกดปิดก่อน (บล็อก lobby ทำให้หา new4 ไม่เจอ)
         self.capture_screen()
+        _evo_hit = False
         for _evo in ("img/tut_evolution.png", "img/fixevo.png"):
             try:
                 if self.exists_in_cache(_evo, similarity=sim):
@@ -13045,7 +13046,19 @@ class RangerGearBot(threading.Thread):
                     except Exception:
                         pass
                     sleep(1.0)
+                    _evo_hit = True
                     break
+            except Exception:
+                pass
+        # blind-tap fallback: tap START button (960x540 coord 480,415) เพื่อปิด popup
+        # ใช้เฉพาะเมื่อ config tut_evolution_blind_tap=1 (default on)
+        if not _evo_hit and int(config.get("tut_evolution_blind_tap", 1)):
+            try:
+                _bx = int(config.get("tut_evolution_blind_x", 480))
+                _by = int(config.get("tut_evolution_blind_y", 415))
+                print(f"[{self.device_id}] [TUT-SKIP] blind-tap START ({_bx},{_by}) กัน evolution popup ค้าง")
+                self.tap(_bx, _by)
+                sleep(0.6)
             except Exception:
                 pass
 
