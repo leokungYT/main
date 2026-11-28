@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.5.8"
+BOT_VERSION = "5.5.9"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -12528,6 +12528,11 @@ class RangerGearBot(threading.Thread):
                               f"{config.get('play_stage30_timeout', 60)}s - clear app ส่งไป no-kaiby/")
                         self.clear_and_restart()
                         return "no_kaiby"
+                    except self._PSLockStage:
+                        print(f"[{self.device_id}] [PLAY-STAGE] lockstage ค้างครบ "
+                              f"{config.get('play_stage_lockstage_sec', 20)}s - clear app + ไอดีใหม่")
+                        self.clear_and_restart()
+                        return "lockstage"
                     except Exception as _e:
                         print(f"[{self.device_id}] [PLAY-STAGE] error: {_e}")
 
@@ -12731,6 +12736,9 @@ class RangerGearBot(threading.Thread):
 
     class _PSNoKaiby(Exception):
         """ด่าน 30 เริ่มรบไม่ได้ใน play_stage30_timeout (60s) -> เลเวลไม่ถึง: clear app + ส่ง no-kaiby/"""
+
+    class _PSLockStage(Exception):
+        """เจอ lockstage.png ค้างครบ play_stage_lockstage_sec (20s) -> จบไอดีนี้ clear + ไอดีใหม่"""
 
     def _ps_check_deadline(self):
         dl = getattr(self, "_ps_deadline", None)
@@ -13232,7 +13240,8 @@ class RangerGearBot(threading.Thread):
     def _ps_check_fixstage(self):
         """เจอ img/login-kaiby/fixstage/fixstage1 -> รัว ESC จนเจอ cancel -> กด cancel -> โยน _PSRestart
         (ใช้จอที่ capture ไว้แล้ว ไม่ capture ใหม่)
-        บวก float-scan fixnew5.png (evolution popup) - เจอกด ไม่ restart ไม่ blocking"""
+        บวก float-scan fixnew5.png (evolution popup) - เจอกด ไม่ restart ไม่ blocking
+        บวก float-scan lockstage.png - ค้างครบ play_stage_lockstage_sec (20s) -> โยน _PSLockStage"""
         if not getattr(self, "_ps_active", False):
             return
         # fixnew5 float-scan: multi-scale + sim 0.65 (เหมือน check_floating_popups)
@@ -13244,6 +13253,33 @@ class RangerGearBot(threading.Thread):
                     _fs, _fx, _fy, _fsc, _, _ = _fn5
                     print(f"[{self.device_id}] [PLAY-STAGE] fixnew5 float-hit score {_fs:.2f} x{_fsc:.2f} -> tap ({_fx},{_fy})")
                     self._adb_tap(_fx, _fy)
+            except Exception:
+                pass
+        # lockstage float-scan: เจอครั้งแรกเริ่มจับเวลา, ค้างครบ play_stage_lockstage_sec -> _PSLockStage
+        # หายไป -> reset timer
+        if self._screen is not None:
+            try:
+                _lock_hit = False
+                _ls = self._best_match_any(self._screen, "img/lockstage.png", self.NET_SCALES)
+                if _ls is not None and _ls[0] >= 0.75:
+                    _lock_hit = True
+                if _lock_hit:
+                    _since = getattr(self, "_ps_lockstage_since", None)
+                    if _since is None:
+                        self._ps_lockstage_since = time.time()
+                        print(f"[{self.device_id}] [PLAY-STAGE] lockstage detected - start timer")
+                    else:
+                        _elapsed = time.time() - _since
+                        _limit = float(config.get("play_stage_lockstage_sec", 20))
+                        if _elapsed >= _limit:
+                            print(f"[{self.device_id}] [PLAY-STAGE] lockstage ค้างครบ {_elapsed:.1f}s -> จบไอดีนี้ เริ่มใหม่")
+                            self._ps_lockstage_since = None
+                            raise self._PSLockStage()
+                else:
+                    if getattr(self, "_ps_lockstage_since", None) is not None:
+                        self._ps_lockstage_since = None
+            except self._PSLockStage:
+                raise
             except Exception:
                 pass
         if self._find_in_screen(self._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp"), 0.8) is None:
@@ -13551,6 +13587,7 @@ class RangerGearBot(threading.Thread):
         self._ps_skip_track = {}   # หา verify-stage{s} ไม่เจอครบ skip_sec -> ข้ามด่าน
         self._ps_in_flow100 = False   # กันซ้อน: flow100 กำลังทำอยู่ -> float check ข้าม
         self._ps_claim_restarts = 0   # นับครั้งที่ claim โยนกลับไปหาด่านใหม่ (cap 3)
+        self._ps_lockstage_since = None   # timer lockstage.png - ค้างครบ 20s -> _PSLockStage
         try:
             while True:
                 try:
