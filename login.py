@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.4.8"
+BOT_VERSION = "5.4.9"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -12942,6 +12942,23 @@ class RangerGearBot(threading.Thread):
         """ขั้นตอน: เจอ new4.png -> รอ new5.png -> รัว ESC จนเจอ cancel -> กด cancel -> หยุด
         ใช้เคลียร์หน้า 'You've seen this place...' tutorial ที่บล็อก acc lv80+"""
         sim = float(config.get("play_stage_similarity", 0.9)) - 0.1
+
+        # 0) scan popup 'Collect evolution materials in Special Stages' (lv80+)
+        #    ก่อน new4 flow - เจอกดปิดก่อน (บล็อก lobby ทำให้หา new4 ไม่เจอ)
+        self.capture_screen()
+        for _evo in ("img/tut_evolution.png", "img/fixevo.png"):
+            try:
+                if self.exists_in_cache(_evo, similarity=sim):
+                    print(f"[{self.device_id}] [TUT-SKIP] เจอ {_evo} (lobby block) - กด")
+                    try:
+                        self.click(_evo, similarity=sim)
+                    except Exception:
+                        pass
+                    sleep(1.0)
+                    break
+            except Exception:
+                pass
+
         # 1) สแกน new4 สูงสุด scan_sec วินาที
         self.capture_screen()
         found4 = False
@@ -13000,14 +13017,17 @@ class RangerGearBot(threading.Thread):
         else:
             print(f"[{self.device_id}] [TUT-SKIP] ไม่เจอ new5.png ใน {scan_sec}s - ข้ามไป OK scan")
 
-        # 2.5) หลัง skip -> หา OK popup 10s (tut_ok / tut_okwhite / tut_okgust / tut_gachaok / tut_stageok)
+        # 2.5) หลัง skip -> หา OK popup 10s (tut_ok / tut_okwhite / tut_okgust / tut_gachaok / tut_stageok / tut_evolution)
         #       เจอตัวไหนกดตัวนั้น ไม่เจอครบ 10s = ข้าม
+        #       tut_evolution.png = popup 'Collect evolution materials in Special Stages' (lv80+)
         ok_templates = (
             "img/tut_ok.png",
             "img/tut_okwhite.png",
             "img/tut_okgust.png",
             "img/tut_gachaok.png",
             "img/tut_stageok.png",
+            "img/tut_evolution.png",
+            "img/fixevo.png",
         )
         print(f"[{self.device_id}] [TUT-SKIP] หา OK popup 10s...")
         t0 = time.time()
