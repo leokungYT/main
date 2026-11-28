@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.5.0"
+BOT_VERSION = "5.5.1"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -13098,21 +13098,51 @@ class RangerGearBot(threading.Thread):
             sleep(1.0)
 
             # 2.1) หลัง new5 -> หา fixnew5.png (confirm skip popup) สูงสุด scan_sec วิ
-            #       เจอ -> กด แล้ว return ไปทำ backmisson ต่อทันที (ข้าม OK scan + ESC chain)
-            print(f"[{self.device_id}] [TUT-SKIP] หา fixnew5.png {scan_sec}s...")
+            #       เจอ -> กด -> ถ้าค้างครบ scan_sec อีกรอบ -> กดซ้ำ (float scan ตลอด cap 60s)
+            #       หายแล้ว -> return ไป backmisson + mission_loop (หา stage 30/100/150)
+            print(f"[{self.device_id}] [TUT-SKIP] หา fixnew5.png {scan_sec}s (float)...")
             t0 = time.time()
+            _first_hit = False
             while time.time() - t0 < scan_sec:
                 self.last_activity_time = time.time()
                 self.capture_screen()
                 if self.exists_in_cache("img/fixnew5.png", similarity=sim):
-                    print(f"[{self.device_id}] [TUT-SKIP] เจอ fixnew5.png - กด แล้วไป backmisson")
+                    _first_hit = True
+                    break
+                sleep(0.5)
+
+            if _first_hit:
+                # เจอ fixnew5 -> กดซ้ำจนหาย (รัวทุก scan_sec วิ cap 60s)
+                _max_wait = float(config.get("tut_fixnew5_max_wait", 60))
+                _retry_start = time.time()
+                _retries = 0
+                while time.time() - _retry_start < _max_wait:
+                    self.last_activity_time = time.time()
+                    self.capture_screen()
+                    if not self.exists_in_cache("img/fixnew5.png", similarity=sim):
+                        print(f"[{self.device_id}] [TUT-SKIP] fixnew5.png หายแล้ว (retry {_retries}) - ไป backmisson + หา stage 30/100/150")
+                        sleep(1.0)
+                        # โยน restart ถ้าถูกเรียกจาก mid-flow (process_auto_play_stage จะวน mission_loop ใหม่)
+                        if getattr(self, "_ps_active", False):
+                            raise self._PSRestart()
+                        return
+                    _retries += 1
+                    print(f"[{self.device_id}] [TUT-SKIP] กด fixnew5.png (retry #{_retries})")
                     try:
                         self.click("img/fixnew5.png", similarity=sim)
                     except Exception:
                         pass
-                    sleep(1.0)
-                    return
-                sleep(0.5)
+                    # หลังกด -> float scan ทุก 0.5s ครบ scan_sec วิ ไม่หายกดใหม่
+                    _wait_t = time.time()
+                    while time.time() - _wait_t < scan_sec:
+                        self.last_activity_time = time.time()
+                        self.capture_screen()
+                        if not self.exists_in_cache("img/fixnew5.png", similarity=sim):
+                            break
+                        sleep(0.5)
+                print(f"[{self.device_id}] [TUT-SKIP] fixnew5.png ยังอยู่หลัง retry {_retries} ครั้ง ({_max_wait:.0f}s) - ปล่อย")
+                return
+
             print(f"[{self.device_id}] [TUT-SKIP] ไม่เจอ fixnew5.png ใน {scan_sec}s - ไปต่อ OK scan")
         else:
             print(f"[{self.device_id}] [TUT-SKIP] ไม่เจอ new5.png ใน {scan_sec}s - ข้ามไป OK scan")
