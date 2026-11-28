@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.5.4"
+BOT_VERSION = "5.5.5"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -9823,15 +9823,17 @@ class RangerGearBot(threading.Thread):
 
         # fixnew5.png: evolution/Special Stages tutorial banner - เจอที่ไหนกดที่นั้น
         # (lv80+ ค้าง lobby ตอนไหนก็ได้ ต้องสแกนตลอด ไม่ใช่แค่ใน tut-skip helper)
-        if self.exists_in_cache("img/fixnew5.png", similarity=0.8):
-            print(f"[{self.device_id}] [POPUP] fixnew5.png (evolution tutorial) detected, clicking...")
-            try:
-                self.click("img/fixnew5.png", similarity=0.8)
-            except Exception:
-                pass
-            sleep(0.5)
-            self._popups_clean_gen = gen_at_entry
-            return
+        # template เป็น text crop lowres -> multi-scale + similarity 0.65 กัน scale/aa variance
+        if self._screen is not None:
+            _fn5 = self._best_match_any(self._screen, "img/fixnew5.png", self.NET_SCALES)
+            if _fn5 is not None:
+                _fs, _fx, _fy, _fsc, _, _ = _fn5
+                if _fs >= 0.65:
+                    print(f"[{self.device_id}] [POPUP] fixnew5.png (evolution) score {_fs:.2f} x{_fsc:.2f} -> adb tap ({_fx},{_fy})")
+                    self._adb_tap(_fx, _fy)
+                    sleep(0.5)
+                    self._popups_clean_gen = gen_at_entry
+                    return
 
         # fixnetv2.png: เจอก็กด แล้วรอกด fixnetv2ok.png - + trigger host rotator ให้สลับ IP
         if self.exists_in_cache("img/fixnetv2.png", similarity=0.8):
