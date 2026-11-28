@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.4.9"
+BOT_VERSION = "5.5.0"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -12938,6 +12938,96 @@ class RangerGearBot(threading.Thread):
                     sleep(_tap_gap)
                 _seen[i] = _now + _cool   # cool-down กันกดถี่
 
+    def _run_checkline_flow(self):
+        """Ranger-gear checkline flow (clone of check_floating_popups L9747-9822)
+        เรียกได้จากที่ไหนก็ได้ที่เจอ checkline.png - ยิง full sequence แบบ idempotent
+        (click checkline -> check-l1 -> 4 checkboxes -> check-l4 -> check-ok1 -> รอ settle)
+        return True ถ้า settle ก่อน 15s / False ถ้า popup ยังอยู่"""
+        now = time.time()
+        if now < getattr(self, "_checkline_cooldown_until", 0):
+            return True   # cooldown active -> ถือว่าเคลียร์แล้ว
+        print(f"[{self.device_id}] [CHECKLINE] running full sequence...")
+        try:
+            self.click("img/checkline.png", similarity=0.8)
+        except Exception:
+            pass
+        sleep(0.5)
+
+        # 1) wait + click check-l1 (<=60s)
+        _t = time.time()
+        while time.time() - _t < 60:
+            try:
+                self._raw_capture()
+            except Exception:
+                self.capture_screen()
+            if self.exists_in_cache("img/check-l1.png", similarity=0.85):
+                print(f"[{self.device_id}] [CHECKLINE] found + click check-l1")
+                try: self.click("img/check-l1.png", similarity=0.85)
+                except Exception: pass
+                break
+            sleep(0.3)
+
+        # 2) tap 4 checkboxes (932,207) (930,279) (928,351) (928,423) - 72px spacing
+        print(f"[{self.device_id}] [CHECKLINE] tap 4 checkboxes")
+        for _x, _y in ((932, 207), (930, 279), (928, 351), (928, 423)):
+            try: self.tap(_x, _y)
+            except Exception: pass
+            sleep(0.5)
+
+        # 3) wait + click check-l4 (<=30s)
+        _t = time.time()
+        _l4_clicked = False
+        while time.time() - _t < 30:
+            try:
+                self._raw_capture()
+            except Exception:
+                self.capture_screen()
+            if self.exists_in_cache("img/check-l4.png", similarity=0.8):
+                print(f"[{self.device_id}] [CHECKLINE] found + click check-l4")
+                try: self.click("img/check-l4.png", similarity=0.8)
+                except Exception: pass
+                _l4_clicked = True
+                break
+            sleep(0.3)
+
+        # 3b) fallback: ไม่เจอ check-l4 + popup ยังอยู่ -> tap Agree (430,475)
+        if not _l4_clicked and self.exists_in_cache("img/checkline.png", similarity=0.8):
+            print(f"[{self.device_id}] [CHECKLINE] check-l4 miss - tap Agree (430,475)")
+            try: self.tap(430, 475)
+            except Exception: pass
+            sleep(0.5)
+
+        # 4) wait + click check-ok1 (<=18s)
+        for _ in range(60):
+            try:
+                self._raw_capture()
+            except Exception:
+                self.capture_screen()
+            if self.exists_in_cache("img/check-ok1.png", similarity=0.8):
+                print(f"[{self.device_id}] [CHECKLINE] found + click check-ok1 - DONE")
+                try: self.click("img/check-ok1.png", similarity=0.8)
+                except Exception: pass
+                sleep(0.3)
+                break
+            sleep(0.3)
+
+        # 5) wait popup clear + cooldown
+        _deadline = time.time() + 15
+        _settled = False
+        while time.time() < _deadline:
+            try:
+                self._raw_capture()
+            except Exception:
+                self.capture_screen()
+            if not self.exists_in_cache("img/checkline.png", similarity=0.8):
+                _settled = True
+                break
+            sleep(0.3)
+        self._checkline_cooldown_until = time.time() + (3 if _settled else 15)
+        print(f"[{self.device_id}] [CHECKLINE] settled" if _settled
+              else f"[{self.device_id}] [CHECKLINE] still visible; cooldown 15s")
+        return _settled
+
     def _ps_dismiss_tutorial_then_fixstage(self, scan_sec=8):
         """ขั้นตอน: เจอ new4.png -> รอ new5.png -> รัว ESC จนเจอ cancel -> กด cancel -> หยุด
         ใช้เคลียร์หน้า 'You've seen this place...' tutorial ที่บล็อก acc lv80+"""
@@ -12958,6 +13048,16 @@ class RangerGearBot(threading.Thread):
                     break
             except Exception:
                 pass
+
+        # 0.5) checkline popup (LINE terms/agreement sheet) - บล็อก lobby เหมือนกัน
+        #      ยิง full flow จาก ranger-gear (check-l1 -> 4 checkboxes -> check-l4 -> check-ok1)
+        try:
+            self.capture_screen()
+            if self.exists_in_cache("img/checkline.png", similarity=0.8):
+                print(f"[{self.device_id}] [TUT-SKIP] เจอ checkline.png - run ranger-gear flow")
+                self._run_checkline_flow()
+        except Exception as _e:
+            print(f"[{self.device_id}] [TUT-SKIP] checkline flow error: {_e}")
 
         # 1) สแกน new4 สูงสุด scan_sec วินาที
         self.capture_screen()
