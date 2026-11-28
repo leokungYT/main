@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.4.6"
+BOT_VERSION = "5.4.7"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -13345,27 +13345,31 @@ class RangerGearBot(threading.Thread):
         self._ps_fix100_done = False   # flow ด่าน 100 ทำได้ครั้งเดียวต่อไอดี
         self._ps_skip_track = {}   # หา verify-stage{s} ไม่เจอครบ skip_sec -> ข้ามด่าน
         self._ps_in_flow100 = False   # กันซ้อน: flow100 กำลังทำอยู่ -> float check ข้าม
+        self._ps_claim_restarts = 0   # นับครั้งที่ claim โยนกลับไปหาด่านใหม่ (cap 3)
         try:
             while True:
                 try:
                     self._ps_mission_loop(wanted, done)
+                    # หาด่านไม่เจอ/เล่นครบ -> กลับหน้าภารกิจด้วย backmisson เสมอ แล้วรับของ
+                    self._ps_back_to_mission()
+                    self._ps_claim_rewards(wanted, done)
                     break
                 except self._PSRestart:
                     self._ps_deadline = None   # วนหา misson ใหม่ -> เริ่มจับเวลาด่าน 30 ใหม่ตอนกด missonstage30
                     continue
-            # หาด่านไม่เจอ/เล่นครบ -> กลับหน้าภารกิจด้วย backmisson เสมอ แล้วรับของ (ไม่เจอ stageget ค่อยจบ)
-            self._ps_back_to_mission()
-            self._ps_claim_rewards()
         finally:
             self._ps_active = False
             self._ps_deadline = None
         print(f"[{self.device_id}] [PLAY-STAGE] จบ - เล่นแล้ว: {', '.join(sorted(done, key=int)) or '-'}")
         return done
 
-    def _ps_claim_rewards(self):
+    def _ps_claim_rewards(self, wanted=None, done=None):
         """รับรางวัล: (backmisson มาแล้ว) -> misson1 -> misson2 -> misson3 -> stageget -> OK (stageok/stageokk)
         จบได้ทางเดียว: กด misson3 แล้ว ไม่เจอ stageget ติดกัน play_stage_claim_idle วิ (default 10)
-        ยังไม่ถึง misson3 แล้วไม่เจออะไรเลย -> ทำ backmisson ใหม่แล้ววนต่อ (ไม่จบ)"""
+        ยังไม่ถึง misson3 แล้วไม่เจออะไรเลย -> ทำ backmisson ใหม่แล้ววนต่อ (ไม่จบ)
+
+        wanted/done: ถ้ายังมีด่านค้างไม่ได้เล่น -> รัน tutorial-dismiss (new4/new5) แล้วโยน _PSRestart
+        กลับไป mission_loop หา stage30/100/150 อีกรอบ (cap 3 ครั้งต่อไอดี)"""
         idle = float(config.get("play_stage_claim_idle", 10))
         print(f"[{self.device_id}] [PLAY-STAGE] กลับไป misson3 รับรางวัล (stageget)")
         quiet_since = time.time()
@@ -13406,9 +13410,22 @@ class RangerGearBot(threading.Thread):
             if time.time() - quiet_since >= idle:
                 if "misson3" in tapped:
                     break   # กด misson3 แล้วไม่มี stageget เหลือ = รับครบ
-                # ยังไปไม่ถึง misson3 -> กลับหน้าภารกิจด้วย backmisson ใหม่ แล้วเริ่ม misson1 ใหม่
+                # ยังไปไม่ถึง misson3 -> กลับหน้าภารกิจด้วย backmisson ใหม่
                 print(f"[{self.device_id}] [PLAY-STAGE] ยังไม่ถึง misson3 - ทำ backmisson ใหม่")
                 self._ps_back_to_mission()
+                # ยังมีด่านค้าง (เล่นไม่ครบ) -> รัน tutorial-dismiss (new4/new5) แล้วโยน restart
+                # กลับไปหาด่าน 30/100/150 อีกรอบ (cap 3 ครั้ง)
+                if wanted and done is not None and len(done) < len(wanted):
+                    self._ps_claim_restarts = getattr(self, "_ps_claim_restarts", 0) + 1
+                    if self._ps_claim_restarts <= 3:
+                        _left = [s for s in wanted if s not in done]
+                        print(f"[{self.device_id}] [PLAY-STAGE] ด่านค้าง: {','.join(_left)} - run new4/new5 + หาใหม่ (#{self._ps_claim_restarts}/3)")
+                        try:
+                            self._ps_dismiss_tutorial_then_fixstage()
+                        except Exception as _e:
+                            print(f"[{self.device_id}] [PLAY-STAGE] tutorial-dismiss error: {_e}")
+                        raise self._PSRestart()
+                    print(f"[{self.device_id}] [PLAY-STAGE] restart ครบ 3 ครั้ง - เลิกหาด่าน เอาเท่าที่เล่นได้")
                 tapped.clear()
                 quiet_since = time.time()
                 continue
