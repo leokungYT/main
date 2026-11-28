@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.4.7"
+BOT_VERSION = "5.4.8"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -12979,6 +12979,24 @@ class RangerGearBot(threading.Thread):
             except Exception:
                 pass
             sleep(1.0)
+
+            # 2.1) หลัง new5 -> หา fixnew5.png (confirm skip popup) สูงสุด scan_sec วิ
+            #       เจอ -> กด แล้ว return ไปทำ backmisson ต่อทันที (ข้าม OK scan + ESC chain)
+            print(f"[{self.device_id}] [TUT-SKIP] หา fixnew5.png {scan_sec}s...")
+            t0 = time.time()
+            while time.time() - t0 < scan_sec:
+                self.last_activity_time = time.time()
+                self.capture_screen()
+                if self.exists_in_cache("img/fixnew5.png", similarity=sim):
+                    print(f"[{self.device_id}] [TUT-SKIP] เจอ fixnew5.png - กด แล้วไป backmisson")
+                    try:
+                        self.click("img/fixnew5.png", similarity=sim)
+                    except Exception:
+                        pass
+                    sleep(1.0)
+                    return
+                sleep(0.5)
+            print(f"[{self.device_id}] [TUT-SKIP] ไม่เจอ fixnew5.png ใน {scan_sec}s - ไปต่อ OK scan")
         else:
             print(f"[{self.device_id}] [TUT-SKIP] ไม่เจอ new5.png ใน {scan_sec}s - ข้ามไป OK scan")
 
