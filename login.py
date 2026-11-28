@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.5.5"
+BOT_VERSION = "5.5.6"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -13215,9 +13215,21 @@ class RangerGearBot(threading.Thread):
 
     def _ps_check_fixstage(self):
         """เจอ img/login-kaiby/fixstage/fixstage1 -> รัว ESC จนเจอ cancel -> กด cancel -> โยน _PSRestart
-        (ใช้จอที่ capture ไว้แล้ว ไม่ capture ใหม่)"""
+        (ใช้จอที่ capture ไว้แล้ว ไม่ capture ใหม่)
+        บวก float-scan fixnew5.png (evolution popup) - เจอกด ไม่ restart ไม่ blocking"""
         if not getattr(self, "_ps_active", False):
             return
+        # fixnew5 float-scan: multi-scale + sim 0.65 (เหมือน check_floating_popups)
+        # เจอ -> adb tap ไม่โยน restart ไม่ wait ไม่ retry (fire-and-forget)
+        if self._screen is not None:
+            try:
+                _fn5 = self._best_match_any(self._screen, "img/fixnew5.png", self.NET_SCALES)
+                if _fn5 is not None and _fn5[0] >= 0.65:
+                    _fs, _fx, _fy, _fsc, _, _ = _fn5
+                    print(f"[{self.device_id}] [PLAY-STAGE] fixnew5 float-hit score {_fs:.2f} x{_fsc:.2f} -> tap ({_fx},{_fy})")
+                    self._adb_tap(_fx, _fy)
+            except Exception:
+                pass
         if self._find_in_screen(self._login_kaiby_img("img/login-kaiby/fixstage/fixstage1.bmp"), 0.8) is None:
             return
         print(f"[{self.device_id}] [PLAY-STAGE] เจอ fixstage1 - รัว ESC จนเจอ cancel")
