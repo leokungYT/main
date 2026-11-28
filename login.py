@@ -18,7 +18,7 @@ import struct
 import re
 
 # เลขเวอร์ชัน - ขึ้นทุกครั้งที่ commit login.py จะได้ดูออกว่าเครื่องบอตใช้โค้ดเก่าหรือใหม่
-BOT_VERSION = "5.5.6"
+BOT_VERSION = "5.5.7"
 
 # === HARDCODED KILL SWITCH: ปิด VPN ถาวรทั่วทั้งฝูงบอต (ไม่ต้องแก้ config ราย remote) ===
 # เหตุผล: configmain.json ถูก untrack ไปแล้ว (commit d07b13d) บอต remote มี config ตัวเอง
@@ -14103,11 +14103,58 @@ class RangerGearBot(threading.Thread):
                 best = (float(max_val), max_loc[0] + tw // 2, max_loc[1] + th // 2, sc, tw, th)
         return best
 
+class _ProcessLogTee:
+    """Per-process log tee: ทุก print ใน child process จดลง logs/<device>.txt
+    (multiprocessing spawn ไม่ inherit DeviceLogTee จาก parent -> ต้องตั้งใน child เอง)"""
+    MAX_BYTES = 20 * 1024 * 1024
+    def __init__(self, real, device_id):
+        self.real = real
+        self.dev = str(device_id).replace(":", "_")
+        self.dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        self.path = os.path.join(self.dir, f"{self.dev}.txt")
+        self.buf = ""
+        try: os.makedirs(self.dir, exist_ok=True)
+        except Exception: pass
+    def write(self, text):
+        try: self.real.write(text)
+        except Exception: pass
+        try:
+            self.buf += str(text)
+            while "\n" in self.buf:
+                line, self.buf = self.buf.split("\n", 1)
+                line = line.rstrip("\r")
+                if not line.strip(): continue
+                try:
+                    if os.path.getsize(self.path) > self.MAX_BYTES:
+                        old = self.path[:-4] + ".old.txt"
+                        if os.path.exists(old): os.remove(old)
+                        os.rename(self.path, old)
+                except OSError: pass
+                try:
+                    with open(self.path, "a", encoding="utf-8") as f:
+                        f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {line}\n")
+                except Exception: pass
+        except Exception: pass
+        return len(text) if isinstance(text, str) else 0
+    def flush(self):
+        try: self.real.flush()
+        except Exception: pass
+    def isatty(self):
+        try: return self.real.isatty()
+        except Exception: return False
+
+
 def run_bot_process(device_id, cli_args_dict, ready_q=None):
     """แต่ละ process จะรัน bot สำหรับ 1 device (แยก CPU core กัน)
     ต้องอยู่นอก if __name__ == '__main__' เพื่อให้ Windows multiprocessing (spawn) หาเจอ
     """
     try:
+        # per-device log file (logs/<device>.txt) - ทุก print ใน child ลงไฟล์นี้ด้วย
+        try:
+            sys.stdout = _ProcessLogTee(sys.stdout, device_id)
+            sys.stderr = _ProcessLogTee(sys.stderr, device_id)
+        except Exception:
+            pass
         # Re-initialize everything in the new process
         load_config()
         find_adb_executable()
